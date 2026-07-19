@@ -9,8 +9,22 @@
 # Node
 node_modules/
 npm-debug.log*
+yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+
+# Next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+
+# Vercel
+.vercel
 
 # Divers
 .DS_Store
 *.log
+*.pem
+/coverage
