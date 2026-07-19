@@ -1,0 +1,16 @@
+# Secrets & env — ne jamais committer
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Divers
+.DS_Store
+*.log
