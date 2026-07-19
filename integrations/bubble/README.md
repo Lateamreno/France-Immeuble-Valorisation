@@ -11,7 +11,23 @@ tout passe par variables d'environnement.
    prestataires…). Chaque type coché devient lisible via `GET /api/1.1/obj/{type}`.
 3. Si les types ne sont pas publics : créer un **API token** (Settings → API → API Tokens).
 
-## Configuration
+## Où vit le token `BUBBLE_API_TOKEN` ?
+
+Le token Bubble n'est **pas** lecture seule : il donne un accès admin à l'API de
+l'app. On ne le committe jamais. Il a deux foyers possibles, selon l'usage :
+
+| Usage | Où poser la variable | Qui la lit |
+|---|---|---|
+| **App déployée (prod)** | Environment Variables **Vercel** | le runtime Next.js sur Vercel |
+| **Reconnaissance / scripts dans la session Claude Code** | Variables d'environnement de **l'environnement Claude Code** | `recon.mjs` ici |
+
+> ⚠️ Les variables **Vercel ne sont PAS accessibles** depuis le sandbox de session
+> Claude Code. Pour que la recon tourne ici sans coller le token dans le chat,
+> ajoute `BUBBLE_APP_URL` et `BUBBLE_API_TOKEN` aux variables **de l'environnement
+> Claude Code** (cf. https://code.claude.com/docs/en/claude-code-on-the-web).
+> Après la recon, tu peux **révoquer/regénérer** le token côté Bubble.
+
+## Configuration locale (alternative)
 
 ```bash
 cp integrations/bubble/.env.example integrations/bubble/.env

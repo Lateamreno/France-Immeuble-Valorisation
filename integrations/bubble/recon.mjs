@@ -11,15 +11,19 @@
 // d'endpoint « liste des data types » — il faut donc nommer les types à sonder.
 
 import { fetchPage, apiRoot } from "./bubbleClient.mjs";
+import { loadConfig, KNOWN_TYPES } from "./config.mjs";
 
+// Vérifie l'environnement avant tout (message clair si BUBBLE_APP_URL manque).
+loadConfig({ requireToken: false });
+
+// Types passés en argument, sinon les types connus par défaut.
 const types = process.argv.slice(2);
-
 if (types.length === 0) {
-  console.error(
-    "Aucun data type fourni.\n" +
-      "Ex: node integrations/bubble/recon.mjs operation immeuble lot prestataire",
+  types.push(...KNOWN_TYPES);
+  console.log(
+    `Aucun data type fourni → types connus par défaut : ${KNOWN_TYPES.join(", ")}\n` +
+      `(passe-les en argument pour en sonder d'autres : node integrations/bubble/recon.mjs immeuble proprietaire lot ...)\n`,
   );
-  process.exit(1);
 }
 
 function fieldsOf(rows) {
