@@ -11,12 +11,16 @@ const NAV = [
     icon: <><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></> },
   { href: "/prestataires", label: "Prestataires", n: undefined,
     icon: <><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 8 9 5 9-5"/></> },
+  { href: "/analytics", label: "Analytics", n: undefined,
+    icon: <><path d="M4 4v16h16"/><path d="M7 15l3-4 3 2 4-6"/></> },
   { href: "/documents", label: "Documents", n: undefined,
     icon: <><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/></> },
+  { href: "/communications", label: "Communications", n: undefined,
+    icon: <><path d="M21 11.5a8.5 8.5 0 0 1-12.2 7.7L3 21l1.8-5.8A8.5 8.5 0 1 1 21 11.5z"/></> },
 ];
 
 const PHASES = [
-  { lb: "Mandat", sm: "signé · n° 2026‑014", state: "done" },
+  { lb: "Mandat", sm: "signé · 12 mai 2026", state: "done" },
   { lb: "Urbanisme & structuration", sm: "EDD · géomètre", state: "done" },
   { lb: "Syndic & copropriété", sm: "", state: "done" },
   { lb: "Diagnostics & pricing", sm: "", state: "done" },
@@ -73,6 +77,13 @@ export function Sidebar() {
       <div className="side-foot">
         <div className="av">MA</div>
         <div className="who"><b>Marc-Antoine</b><span>Admin</span></div>
+        <span className="foot-cog">
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4"/></svg>
+        </span>
+      </div>
+      <div className="foot-links">
+        <span>Paramètres</span>
+        <span>Déconnexion</span>
       </div>
     </aside>
   );
