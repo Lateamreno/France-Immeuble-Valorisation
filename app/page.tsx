@@ -1,6 +1,8 @@
-const MODULES = [
-  { code: "M1", label: "Fondations — couche opérations, rôles, RLS", statut: "en cours" },
-  { code: "M2", label: "Immeubles, lots, baux, coffre documentaire", statut: "à venir" },
+import { PageHeader } from "@/components/page-header";
+
+const MILESTONES = [
+  { code: "M1", label: "Fondations — couche opérations, rôles, RLS", statut: "à venir" },
+  { code: "M2", label: "Immeubles, lots, baux, coffre documentaire", statut: "en cours" },
   { code: "M3", label: "Estimation bloc vs découpe & grilles de prix", statut: "à venir" },
   { code: "M4", label: "Prestataires & devis email (boîte devis@)", statut: "à venir" },
   { code: "M5", label: "Documents contractuels & registre des mandats", statut: "à venir" },
@@ -15,24 +17,19 @@ const OPERATIONS_REF = [
 
 export default function Home() {
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
-      <header className="mb-10">
-        <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
-          Groupe Grey Stone Capital · France Immeuble
-        </p>
-        <h1 className="mt-1 text-4xl font-bold tracking-tight">
-          Cockpit Découpe
-        </h1>
-        <p className="mt-3 max-w-2xl text-slate-600 dark:text-slate-400">
-          Cockpit d&apos;opération de vente à la découpe : un immeuble, un cycle de
-          vie complet, du mandat à l&apos;encaissement du dernier lot.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Vue d'ensemble des opérations de découpe. Le calendrier unifié et les alertes d'échéances arriveront avec le moteur de séquencement (M6)."
+        milestone="M6"
+      />
 
       <section className="mb-10">
-        <h2 className="mb-4 text-lg font-semibold">Milestones</h2>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Milestones
+        </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
-          {MODULES.map((m) => (
+          {MILESTONES.map((m) => (
             <li
               key={m.code}
               className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
@@ -59,7 +56,7 @@ export default function Home() {
       </section>
 
       <section>
-        <h2 className="mb-4 text-lg font-semibold">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
           Opérations de référence (tests)
         </h2>
         <ul className="space-y-2">
@@ -73,11 +70,6 @@ export default function Home() {
           ))}
         </ul>
       </section>
-
-      <footer className="mt-12 border-t border-slate-200 pt-6 text-xs text-slate-400 dark:border-slate-800">
-        Backend : Supabase « Plein Bail » (mutualisé). Le cockpit ajoute la couche
-        opérations au-dessus de listings / listing_lots.
-      </footer>
-    </main>
+    </>
   );
 }
