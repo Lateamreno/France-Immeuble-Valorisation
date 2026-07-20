@@ -3,7 +3,7 @@ import { ComingSoon } from "@/components/coming-soon";
 
 export default function EstimationPage() {
   return (
-    <>
+    <div className="content panel">
       <PageHeader
         title="Estimation bloc vs découpe"
         subtitle="Moteur d'estimation à deux modes : lecture vendeur (sans IS ni TVA sur marge) et interne marchand (bilan complet)."
@@ -17,6 +17,6 @@ export default function EstimationPage() {
           "Croisement loyers de marché (loyers_benchmarks) et potentiel locatif.",
         ]}
       />
-    </>
+    </div>
   );
 }

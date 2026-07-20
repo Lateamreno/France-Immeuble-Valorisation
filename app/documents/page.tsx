@@ -3,7 +3,7 @@ import { ComingSoon } from "@/components/coming-soon";
 
 export default function DocumentsPage() {
   return (
-    <>
+    <div className="content panel">
       <PageHeader
         title="Documents & mandats"
         subtitle="Générateur propal / mission / mandat, bibliothèque de clauses, registre des mandats séquentiel (conformité Hoguet)."
@@ -17,6 +17,6 @@ export default function DocumentsPage() {
           "Coffre documentaire (extension listing_documents).",
         ]}
       />
-    </>
+    </div>
   );
 }

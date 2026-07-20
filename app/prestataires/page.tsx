@@ -3,7 +3,7 @@ import { ComingSoon } from "@/components/coming-soon";
 
 export default function PrestatairesPage() {
   return (
-    <>
+    <div className="content panel">
       <PageHeader
         title="Prestataires & devis"
         subtitle="Annuaire qui grandit à chaque opération, historique des prix cherchable, demandes de devis par email (boîte devis@)."
@@ -17,6 +17,6 @@ export default function PrestatairesPage() {
           "Réception threadée (Gmail API) + comparateur de devis.",
         ]}
       />
-    </>
+    </div>
   );
 }
