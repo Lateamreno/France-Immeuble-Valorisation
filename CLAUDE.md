@@ -292,3 +292,56 @@ Mandats, contrats de mission, protocoles de départ locataire.
 - Société porteuse (Grey Stone Capital ou entité dédiée).
 - Lien facturation ↔ module tréso de la plateforme CM IA.
 - Politique de rétention / archivage des opérations closes.
+
+---
+
+## 12. Runbook déploiement Vercel — erreur `404: NOT_FOUND`
+
+> Déjà rencontré plusieurs fois. À lire **avant** de paniquer sur un 404 Vercel.
+> Le repo est déployé sur Vercel, **production sur la branche `main`**.
+
+### 12.1 D'abord : distinguer les deux types de 404
+- **404 « plateforme Vercel »** = page blanche avec `404: NOT_FOUND`, `Code: NOT_FOUND`
+  et un `ID: cdg1::…`. → **Ce n'est PAS un bug du code.** C'est Vercel qui ne
+  sert pas l'app (déploiement absent, mauvais domaine, ou mauvais framework).
+- **404 Next.js** = la page « This page could not be found » stylée avec la mise
+  en page de l'app. → là c'est une **route** manquante côté code.
+
+### 12.2 Test qui tranche (toujours faire ça)
+1. Vérifier en local que la route marche : `npm run build && npm run start` puis
+   `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/` → doit être `200`.
+   - Si `200` en local mais 404 en ligne → **problème Vercel, pas le code.**
+2. Sur Vercel → **Deployments** → ouvrir le déploiement **Production** (Ready) →
+   bouton **Visit** (URL propre au déploiement).
+   - Page OK sur cette URL mais 404 sur le domaine → **problème de domaine**.
+   - 404 **même** sur l'URL du déploiement → **build sert un mauvais output**
+     (framework mal détecté / Root Directory).
+
+### 12.3 Les 2 causes déjà vues, et leur fix
+**Cause A — la branche de prod est vide.** `main` ne contenait qu'un commit
+d'init ; tout le code était sur la branche de dev → prod 404.
+- **Fix :** s'assurer que `main` contient l'app (merger la branche de dev dans
+  `main`), OU régler Vercel *Settings → Git → Production Branch* sur la bonne branche.
+
+**Cause B — Vercel ne détecte pas Next.js** (le plus fréquent ici). Le
+déploiement passe **Ready** mais sert le dossier statique `public/` (sans
+`index.html`) → `404: NOT_FOUND` sur **toutes** les routes.
+- **Fix durable (déjà en place) :** `vercel.json` à la racine :
+  ```json
+  { "framework": "nextjs", "buildCommand": "next build", "installCommand": "npm install" }
+  ```
+  `vercel.json` **prime** sur les réglages du dashboard.
+- **Condition :** le `vercel.json` n'est lu que depuis le **Root Directory**. Si
+  *Settings → Build & Deployment → Root Directory* pointe sur un sous-dossier, le
+  fichier est ignoré → mettre Root Directory **vide** (= racine) puis **Redeploy**.
+
+### 12.4 Prévention (à respecter à chaque nouveau déploiement)
+- Garder `vercel.json` (framework=nextjs) à la **racine** du repo.
+- **Root Directory Vercel = vide** (racine). Ne jamais pointer un sous-dossier
+  tant que l'app Next est à la racine.
+- **Production Branch = `main`**, et `main` doit toujours contenir une app
+  buildable (ne jamais laisser `main` vide).
+- Après un push, attendre que le déploiement Production soit **Ready** avant de
+  conclure à un bug ; le 1ᵉʳ 404 vient souvent d'un test **avant** la fin du build.
+- Polices : rester sur des **polices système** (pas de `next/font/google`) pour un
+  build hermétique, indépendant de l'accès réseau au build.
