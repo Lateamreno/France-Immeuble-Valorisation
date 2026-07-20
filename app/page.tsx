@@ -95,6 +95,32 @@ export default function OperationOverview() {
               ))}
             </tbody>
           </table>
+          <div className="iso-wrap">
+            <svg className="iso" viewBox="0 0 360 200">
+              <defs>
+                <linearGradient id="isoG" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#f0d074" /><stop offset="1" stopColor="#a97f2e" />
+                </linearGradient>
+              </defs>
+              <g stroke="rgba(184,137,43,.45)" strokeWidth="1" fill="none">
+                <path d="M180 40 320 120 180 200 40 120Z" />
+                <path d="M110 80 250 160M250 80 110 160M180 40 180 200M40 120 320 120" opacity=".45" />
+              </g>
+              <g>
+                <path d="M110 108 145 128 145 96 110 76Z" fill="url(#isoG)" opacity=".92" />
+                <path d="M145 128 180 108 180 76 145 96Z" fill="#c9a34a" opacity=".85" />
+                <path d="M110 76 145 96 180 76 145 56Z" fill="#f4dc8f" />
+                <path d="M180 128 215 148 215 120 180 100Z" fill="url(#isoG)" opacity=".72" />
+                <path d="M215 148 250 128 250 100 215 120Z" fill="#c9a34a" opacity=".66" />
+                <path d="M180 100 215 120 250 100 215 80Z" fill="#f4dc8f" opacity=".92" />
+              </g>
+              <g fill="#f0d074"><circle cx="90" cy="70" r="1.8" /><circle cx="270" cy="90" r="1.8" /><circle cx="230" cy="60" r="1.4" /><circle cx="150" cy="180" r="1.4" /></g>
+            </svg>
+            <div className="iso-btn">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}><path d="M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+              Vue 3D de la découpe
+            </div>
+          </div>
         </div>
 
         <div className="card">
