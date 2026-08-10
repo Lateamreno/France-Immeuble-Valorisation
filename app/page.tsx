@@ -10,11 +10,11 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ agent?: string }>;
 }) {
-  const { agent = "romain" } = await searchParams;
-  const slug = agent in AGENT_IDS ? agent : "romain";
+  const { agent = "marc-antoine" } = await searchParams;
+  const slug = agent in AGENT_IDS ? agent : "marc-antoine";
 
   let blocs = DASHBOARD;
-  let agentName = "Romain";
+  let agentName = "Marc-Antoine";
   let enCours = 5;
   let liveError: string | null = null;
 

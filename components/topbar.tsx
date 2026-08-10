@@ -2,16 +2,22 @@
 
 import { useRouter } from "next/navigation";
 
-const AGENT_ORDER = ["marc-antoine", "romain", "guillaume", "francois", "sophie"];
+// Ordre du menu déroulant du BO (capture « Selection Agent »).
+const AGENTS: [slug: string, name: string][] = [
+  ["marc-antoine", "Marc-Antoine"],
+  ["guillaume", "Guillaume"],
+  ["sophie", "Sophie"],
+  ["francois", "François"],
+  ["romain", "Romain"],
+];
 
 // Barre haute — réplique : titre + recherche immeuble + filtres
-// « En cours / En attente » + bouton orange « Immeubles suivis par X ».
-// Cliquer le bouton orange passe à l'agent suivant (le BO ouvre un menu).
+// « En cours / En attente » + sélecteur orange « Immeubles suivis par X »
+// (menu déroulant natif comme le BO).
 export function TopBar({
   title = "Dashboard",
   enCours = 5,
-  agent = "Romain",
-  agentSlug = "romain",
+  agentSlug = "marc-antoine",
 }: {
   title?: string;
   enCours?: number;
@@ -19,7 +25,6 @@ export function TopBar({
   agentSlug?: string;
 }) {
   const router = useRouter();
-  const next = AGENT_ORDER[(AGENT_ORDER.indexOf(agentSlug) + 1) % AGENT_ORDER.length];
 
   return (
     <div className="topbar">
@@ -49,14 +54,19 @@ export function TopBar({
           En attente
         </button>
       </div>
-      <button
+      <select
         className="agentbtn"
-        type="button"
-        title="Changer d'agent"
-        onClick={() => router.push(`/?agent=${next}`)}
+        value={agentSlug}
+        onChange={(e) => router.push(`/?agent=${e.target.value}`)}
+        aria-label="Filtrer par agent"
+        style={{ cursor: "pointer", appearance: "none" }}
       >
-        Immeubles suivis par {agent}
-      </button>
+        {AGENTS.map(([slug, name]) => (
+          <option key={slug} value={slug}>
+            Immeubles suivis par {name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

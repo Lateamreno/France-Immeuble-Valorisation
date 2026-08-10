@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
@@ -25,7 +26,7 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
 function Card({ c }: { c: KCard }) {
   return (
     <div className={`kard${c.wait ? " alert" : ""}`}>
-      <div className="kard-top">
+      <Link href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>
         <div className="kthumb">
           {c.photoUrl ? (
             <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -94,7 +95,7 @@ function Card({ c }: { c: KCard }) {
             </div>
           )}
         </div>
-      </div>
+      </Link>
 
       <div className="kact">
         <button className="kbtn" type="button" aria-label="Autres actions">

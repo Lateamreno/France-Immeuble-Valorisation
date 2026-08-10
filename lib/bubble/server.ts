@@ -82,22 +82,7 @@ async function count(type: string, constraints?: Constraint[]) {
 
 /* ---------- helpers de présentation ---------- */
 
-const FR_DATE = new Intl.DateTimeFormat("fr-FR", {
-  timeZone: "Europe/Paris",
-  day: "2-digit",
-  month: "2-digit",
-  year: "2-digit",
-});
-const dmy = (iso?: unknown) => {
-  if (typeof iso !== "string") return undefined;
-  const d = new Date(iso);
-  if (Number.isNaN(+d)) return undefined;
-  return FR_DATE.format(d);
-};
-const group = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-const euros = (n?: unknown) => (typeof n === "number" && n > 0 ? `${group(n)} €` : undefined);
-const keur = (n?: unknown) =>
-  typeof n === "number" && n > 0 ? `${Math.round(n / 1000)} k€` : undefined;
+import { dmy, euros, keur } from "@/lib/format";
 
 function contactLabel(c?: Record<string, unknown>) {
   if (!c) return "";
@@ -338,5 +323,117 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     agentSlug,
     agentName: agent.name,
     enCours: byStatut([1]).length,
+  };
+}
+
+/* ===================== Fiche Bien ===================== */
+
+const photoProxy = (u?: unknown) =>
+  typeof u === "string" && u
+    ? `/api/photo?u=${encodeURIComponent(u.replace(/^\/\//, "https://"))}`
+    : undefined;
+
+export type BienData = {
+  im: Record<string, unknown>;
+  ville: string;
+  adresse: string;
+  photoUrl?: string;
+  prix?: string;
+  statut: string;
+  standby?: string;
+  agentInitials: string;
+  proprietaire?: Record<string, unknown>;
+  autresBiens: { id: string; label: string; statut: string }[];
+  suivis: {
+    date?: string;
+    canal?: string;
+    type?: string;
+    notes?: string;
+    motif?: string;
+    relance?: string;
+  }[];
+  lots: Record<string, unknown>[];
+  composants: Record<string, unknown>[];
+  travaux: Record<string, unknown>[];
+  photos: { id: string; url?: string }[];
+  estimations: Record<string, unknown>[];
+  mandats: Record<string, unknown>[];
+  dossiers: Record<string, unknown>[];
+  propositions: { total: number; rows: Record<string, unknown>[] };
+  visites: Record<string, unknown>[];
+  offres: Record<string, unknown>[];
+};
+
+export async function getBien(id: string): Promise<BienData | null> {
+  if (!TOKEN) return null;
+
+  const one = await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
+  const im = one.results[0];
+  if (!im) return null;
+
+  const [suivisR, lots, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
+    await Promise.all([
+      fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
+      fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
+      fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
+      fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
+      fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
+      fetchAll("estimation", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
+      fetchAll("mandat", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
+      fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
+      bq("proposition", { constraints: [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], limit: 10 }),
+      fetchAll("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
+      fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
+    ]);
+
+  const proprietaire = im.PROPRIETAIRE
+    ? (await bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: im.PROPRIETAIRE }], limit: 1 })).results[0]
+    : undefined;
+
+  const autres = proprietaire
+    ? await fetchAll("immeuble", [
+        { key: "PROPRIETAIRE", constraint_type: "equals", value: im.PROPRIETAIRE },
+      ], 20).catch(() => [])
+    : [];
+
+  const agentEntry = Object.values(AGENT_IDS).find((a) => a.id === im.AGENT);
+
+  return {
+    im,
+    ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? im.adresse_dpt ?? ""})`,
+    adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
+    photoUrl: photoProxy(im.photo_main_compressed),
+    prix: euros(im.prix_hai),
+    statut: String(im.Statut ?? "").replace(/^\d+ - /, ""),
+    standby: typeof im.standby_Statut === "string" ? im.standby_Statut : undefined,
+    agentInitials: agentEntry?.initials ?? "FI",
+    proprietaire,
+    autresBiens: autres
+      .filter((a) => a._id !== id)
+      .map((a) => ({
+        id: a._id as string,
+        label: `${a.adresse_ville ?? ""} — ${[a.adresse_numero_rue, a.adresse_rue].filter(Boolean).join(" ")}`,
+        statut: String(a.Statut ?? "").replace(/^\d+ - /, ""),
+      })),
+    suivis: [...suivisR]
+      .sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))
+      .map((s) => ({
+        date: dmy(s.date_start ?? s["Created Date"]),
+        canal: Array.isArray(s.Canals) ? String(s.Canals[0] ?? "") : undefined,
+        type: typeof s.Type === "string" ? s.Type : undefined,
+        notes: typeof s.notes === "string" ? s.notes : undefined,
+        motif: typeof s.Motif_standby === "string" ? s.Motif_standby : undefined,
+        relance: dmy(s.date_relance),
+      })),
+    lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
+    composants,
+    travaux,
+    photos: photos.map((p) => ({ id: p._id as string, url: photoProxy(p.compressed ?? p.image) })),
+    estimations: [...estimations].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
+    mandats: [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
+    dossiers: [...dossiers].sort((a, b) => Number(b.version ?? 0) - Number(a.version ?? 0)),
+    propositions: { total: propositions.remaining + propositions.results.length, rows: propositions.results },
+    visites: [...visites].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
+    offres: [...offres].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
   };
 }
