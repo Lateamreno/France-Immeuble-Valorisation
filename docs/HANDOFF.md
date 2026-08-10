@@ -167,6 +167,17 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   - **Edge Function `bubble-sync`** (déployée sur france-immeuble-bo) : upsert
     idempotent par type/curseur ; incrémental via `since` (Modified Date >).
     Pilotée par `scripts/sync-bubble.mjs` (BUBBLE_API_TOKEN requis).
+  - **Synchro AUTOMATIQUE (autonome, sans Claude ni machine locale)** :
+    pg_cron `bo-sync-horaire` (toutes les heures à :12) → `bo_run_sync()` →
+    pg_net POST vers l'Edge Function pour les 25 types, avec
+    `since = max(bubble_modified) - 1 h` par type (recouvrement).
+    Token Bubble stocké dans **Vault** (`bubble_api_token`, posé via une
+    fonction jetable, jamais en clair dans le code/repo). Testée : 25 × HTTP
+    200, incrémental OK. Santé : `select * from bo_sync_state order by
+    updated_at desc;` et `net._http_response`. Limite connue : les
+    suppressions côté Bubble ne sont pas propagées (upsert only) — purge
+    dédiée à prévoir si besoin. Le jour de la bascule définitive :
+    `select cron.unschedule('bo-sync-horaire');`.
   - **La couche de données de l'app bascule automatiquement** : si
     `SUPABASE_SERVICE_ROLE_KEY` est présente → lectures PostgREST sur bo_*
     (sémantique validée : 188 actifs, 59 Romain, mêmes lots/suivis) ; sinon

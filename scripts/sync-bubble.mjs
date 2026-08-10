@@ -1,5 +1,7 @@
 // Synchro Bubble → Supabase (tables miroir bo_*), via l'Edge Function
-// `bubble-sync` déployée sur Plein Bail. Réexécutable à volonté (upsert).
+// `bubble-sync` déployée sur france-immeuble-bo. Réexécutable à volonté (upsert).
+// NB : une synchro AUTOMATIQUE tourne déjà toutes les heures dans Supabase
+// (pg_cron « bo-sync-horaire ») — ce script sert aux resyncs manuels/complets.
 //
 //   node scripts/sync-bubble.mjs                    # tous les types (complet)
 //   node scripts/sync-bubble.mjs immeuble suivi     # types choisis
