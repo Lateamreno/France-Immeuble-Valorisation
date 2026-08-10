@@ -36,10 +36,69 @@ export const AGENT_IDS: Record<string, { id: string; name: string; initials: str
 
 type Constraint = { key: string; constraint_type: string; value: unknown };
 
+/* ---------- Source de données : Supabase (miroir bo_*) ou Bubble ----------
+   Les 25 data types Bubble sont mirrorés dans Plein Bail (tables bo_<type>,
+   RLS sans policy → service_role uniquement). Si SUPABASE_SERVICE_ROLE_KEY
+   est présente, toutes les lectures passent par Supabase ; sinon repli sur
+   la Data API Bubble. Synchro : Edge Function `bubble-sync`. */
+
+const SB_URL =
+  process.env.SUPABASE_URL ??
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??
+  "https://fkfwucqpdhbkgkouccyi.supabase.co";
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const USE_SB = !!SB_KEY;
+
+const SORT_COL: Record<string, string> = {
+  "Created Date": "bubble_created",
+  "Modified Date": "bubble_modified",
+};
+
+function sbParams(constraints?: Constraint[]) {
+  const p = new URLSearchParams();
+  p.set("select", "data");
+  for (const c of constraints ?? []) {
+    if (c.key === "_id" && c.constraint_type === "equals") p.append("id", `eq.${c.value}`);
+    else if (c.key === "_id" && c.constraint_type === "in")
+      p.append("id", `in.(${(c.value as string[]).map((v) => `"${v}"`).join(",")})`);
+    else if (c.constraint_type === "greater than" && SORT_COL[c.key])
+      p.append(SORT_COL[c.key], `gt.${c.value}`);
+    else if (c.constraint_type === "equals") p.append(`data->>${c.key}`, `eq.${c.value}`);
+    else if (c.constraint_type === "contains")
+      p.append("data", `cs.${JSON.stringify({ [c.key]: [c.value] })}`);
+  }
+  return p;
+}
+
+async function sbq(
+  type: string,
+  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
+): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
+  const p = sbParams(opts.constraints);
+  p.set("limit", String(opts.limit ?? 100));
+  p.set("offset", String(opts.cursor ?? 0));
+  if (opts.sort) p.set("order", `${SORT_COL[opts.sort] ?? "bubble_modified"}.${opts.desc ? "desc" : "asc"}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
+    headers: {
+      apikey: SB_KEY!,
+      Authorization: `Bearer ${SB_KEY!}`,
+      Prefer: "count=exact",
+    },
+    next: { revalidate: 30 },
+  });
+  if (!res.ok) throw new Error(`Supabase ${res.status} sur bo_${type}`);
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  const range = res.headers.get("content-range"); // ex. "0-99/1824"
+  const total = range ? parseInt(range.split("/")[1], 10) || 0 : rows.length;
+  const cursor = opts.cursor ?? 0;
+  return { results: rows.map((r) => r.data), remaining: Math.max(0, total - cursor - rows.length) };
+}
+
 async function bq(
   type: string,
   opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
 ): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
+  if (USE_SB) return sbq(type, opts);
   const p = new URLSearchParams({
     limit: String(opts.limit ?? 100),
     cursor: String(opts.cursor ?? 0),
@@ -106,7 +165,7 @@ export type DashboardLive = {
 };
 
 export async function getDashboardLive(agentSlug: string): Promise<DashboardLive | null> {
-  if (!TOKEN) return null;
+  if (!TOKEN && !USE_SB) return null;
   const agent = AGENT_IDS[agentSlug] ?? AGENT_IDS["romain"];
 
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
@@ -365,7 +424,7 @@ export type BienData = {
 };
 
 export async function getBien(id: string): Promise<BienData | null> {
-  if (!TOKEN) return null;
+  if (!TOKEN && !USE_SB) return null;
 
   const one = await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
   const im = one.results[0];

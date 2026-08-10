@@ -148,8 +148,36 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   - Badges de la sidebar (36/53/5/9/31) : sémantique exacte non identifiée
     (statuts tabulés ne collent pas) → encore statiques, à confirmer avec MAV.
 
-**Prochain :** répliquer module par module (liste Immeubles → fiche Bien →
-Estimations → Mandats → Recherches → Contacts → Propositions → Visites →
-Offres → Suivi → Objectifs → Datas) : pour chaque module, télécharger les
-captures pixel (pipeline tool-results/transcripts documenté plus haut), puis
-brancher sur la Data API avec la même approche.
+- **Fiche Bien répliquée** (`/bien/[id]`, `components/bien-fiche.tsx`) : rail
+  droit avec indicateurs de complétude (champs `ok_*`), sections Suivi /
+  Propriétaire / Emplacement / État locatif (tableau lots) / État technique /
+  Description et prix / Photos / Estimations / Mandats / Dossiers / Acheteurs.
+  Sélecteur d'agents = menu déroulant orange (défaut Marc-Antoine), cartes du
+  dashboard cliquables. Or de la fiche : #b6a359.
+- **MIGRATION SUPABASE (décision : ne PAS écrire dans Bubble)** :
+  - Les 25 data types Bubble sont **mirrorés dans Plein Bail** : tables
+    `public.bo_<type>` (id Bubble en PK + `data` jsonb + bubble_created/
+    modified), **RLS activée sans policy** → service_role uniquement
+    (garde-fou §8.4). ~72 000 lignes synchronisées le 10/08/26.
+  - **Edge Function `bubble-sync`** (déployée sur Plein Bail) : upsert
+    idempotent par type/curseur ; incrémental via `since` (Modified Date >).
+    Pilotée par `scripts/sync-bubble.mjs` (BUBBLE_API_TOKEN requis).
+  - **La couche de données de l'app bascule automatiquement** : si
+    `SUPABASE_SERVICE_ROLE_KEY` est présente → lectures PostgREST sur bo_*
+    (sémantique validée : 188 actifs, 59 Romain, mêmes lots/suivis) ; sinon
+    repli Data API Bubble. Traductions : equals → `data->>k=eq.`,
+    contains → `data=cs.{...}`, _id in → `id=in.(...)`, tri via
+    bubble_created/modified.
+  - ⚠️ **Action requise** : coller la clé service_role (Dashboard Supabase →
+    Project Settings → API keys) en `SUPABASE_SERVICE_ROLE_KEY` dans Vercel
+    ET dans l'environnement Claude. Le token Bubble reste utile pour la
+    synchro et le proxy photos privées.
+  - Écritures futures (suivis, lots, estimations, mandats…) : **dans bo_***
+    uniquement ; Bubble reste en lecture. Attention au recouvrement : tant
+    que le BO Bubble est utilisé en parallèle, une resynchro écrase les
+    lignes modifiées des deux côtés (dernier Modified Date gagne côté sync).
+
+**Prochain :** écritures Supabase (ajouter un suivi, éditer les lots/infos du
+bien, wizard estimation → mandat → dossier → commercialisation), puis
+réplique des modules liste restants (Immeubles, Estimations, Mandats,
+Recherches, Contacts, Propositions, Visites, Offres, Suivi, Objectifs, Datas).
