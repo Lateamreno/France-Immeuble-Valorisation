@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    // Les vignettes passent par /api/photo?u=<url> (proxy authentifié vers les
+    // fichiers Bubble privés) ; autoriser la query string pour next/image.
+    localPatterns: [{ pathname: "/api/photo" }],
+  },
 };
 
 export default nextConfig;

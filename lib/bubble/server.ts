@@ -1,0 +1,342 @@
+// Couche de lecture Bubble Data API pour le dashboard (server-only).
+//
+// Logique VALIDÉE contre les captures (voir docs/HANDOFF.md) :
+// - Colonnes du dashboard = immeubles NON archivés, groupés par préfixe de
+//   `Statut` (1 FORMULAIRE, 2 Estimation, 3 A transformer, 4 OK pour vendre,
+//   5 Commercialisé (A/B), 6 Commercialisé (all), 7 Sous offre,
+//   8 Compromis programmé, 9 Sous compromis, 10 Acte programmé, 11 VENDU),
+//   filtrés par AGENT — vérifié : agent « Romain » ⇒ 5/15/16, 7/0/13, 3/0/0
+//   comme sur les captures.
+// - Carte « en attente » (bordure rouge) = standby_Statut ≠ 'Traité' ; la frise
+//   date → motif → date vient du dernier `suivi` (date_start → date_relance,
+//   motif = Motif_standby).
+// - k€ HT des cartes VENTES = honos_ht de l'offre liée (18+17+10 = 45 ✓).
+
+import "server-only";
+
+const TOKEN = process.env.BUBBLE_API_TOKEN;
+const ROOT = (process.env.BUBBLE_APP_URL || "https://vente.france-immeuble.fr")
+  .trim()
+  .split(/\s+/)[0]
+  .replace(/\/+$/, "")
+  .replace(/\/api\/1\.1\/obj$/, "")
+  .replace(/\/version-test$/, "");
+
+const REVALIDATE = 120; // secondes de cache par requête
+
+export const AGENT_IDS: Record<string, { id: string; name: string; initials: string }> = {
+  // Mapping vérifié : MAV = 106 immeubles actifs ; Romain = compteurs 5/15/16 des captures.
+  "marc-antoine": { id: "1565404488771x470475486480623740", name: "Marc-Antoine", initials: "MAV" },
+  romain: { id: "1774279722391x446415073281754000", name: "Romain", initials: "RV" },
+  // TODO: confirmer les 3 mappings suivants (noms du sélecteur d'agent du BO).
+  guillaume: { id: "1677062113544x976734254041606900", name: "Guillaume", initials: "G" },
+  francois: { id: "1565404520377x697816437227848800", name: "François", initials: "F" },
+  sophie: { id: "1630466502391x893427918358294500", name: "Sophie", initials: "S" },
+};
+
+type Constraint = { key: string; constraint_type: string; value: unknown };
+
+async function bq(
+  type: string,
+  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
+): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
+  const p = new URLSearchParams({
+    limit: String(opts.limit ?? 100),
+    cursor: String(opts.cursor ?? 0),
+  });
+  if (opts.constraints) p.set("constraints", JSON.stringify(opts.constraints));
+  if (opts.sort) {
+    p.set("sort_field", opts.sort);
+    p.set("descending", String(opts.desc ?? false));
+  }
+  const res = await fetch(`${ROOT}/api/1.1/obj/${type}?${p}`, {
+    headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+    next: { revalidate: REVALIDATE },
+  });
+  if (!res.ok) throw new Error(`Bubble ${res.status} sur ${type}`);
+  const j = await res.json();
+  return { results: j.response?.results ?? [], remaining: j.response?.remaining ?? 0 };
+}
+
+async function fetchAll(
+  type: string,
+  constraints?: Constraint[],
+  max = 2000,
+  sort?: { field: string; desc?: boolean },
+) {
+  const rows: Record<string, unknown>[] = [];
+  let cursor = 0;
+  for (;;) {
+    const p = await bq(type, { constraints, cursor, sort: sort?.field, desc: sort?.desc });
+    rows.push(...p.results);
+    if (p.remaining <= 0 || rows.length >= max || p.results.length === 0) break;
+    cursor += p.results.length;
+  }
+  return rows;
+}
+
+async function count(type: string, constraints?: Constraint[]) {
+  const p = await bq(type, { constraints, limit: 1 });
+  return p.remaining + p.results.length;
+}
+
+/* ---------- helpers de présentation ---------- */
+
+const FR_DATE = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: "Europe/Paris",
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+});
+const dmy = (iso?: unknown) => {
+  if (typeof iso !== "string") return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(+d)) return undefined;
+  return FR_DATE.format(d);
+};
+const group = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const euros = (n?: unknown) => (typeof n === "number" && n > 0 ? `${group(n)} €` : undefined);
+const keur = (n?: unknown) =>
+  typeof n === "number" && n > 0 ? `${Math.round(n / 1000)} k€` : undefined;
+
+function contactLabel(c?: Record<string, unknown>) {
+  if (!c) return "";
+  const p = typeof c["prénom"] === "string" ? (c["prénom"] as string) : "";
+  const n = typeof c.nom === "string" ? (c.nom as string) : "";
+  return `${p ? p[0].toUpperCase() + ". " : ""}${n.toUpperCase()}`.trim();
+}
+
+/* ---------- assemblage du dashboard ---------- */
+
+import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
+
+const statutOf = (im: Record<string, unknown>) =>
+  parseInt(String(im.Statut ?? "").split(" ")[0], 10) || 0;
+
+export type DashboardLive = {
+  blocs: KBloc[];
+  agentSlug: string;
+  agentName: string;
+  enCours: number;
+};
+
+export async function getDashboardLive(agentSlug: string): Promise<DashboardLive | null> {
+  if (!TOKEN) return null;
+  const agent = AGENT_IDS[agentSlug] ?? AGENT_IDS["romain"];
+
+  // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
+  const [imsAll, suivis, offres, mandats] = await Promise.all([
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]),
+    fetchAll("suivi", undefined, 600, { field: "Created Date", desc: true }).catch(() => []),
+    fetchAll("offre"),
+    fetchAll("mandat"),
+  ]);
+
+  const ims = imsAll
+    .filter((i) => i.AGENT === agent.id)
+    .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
+
+  // Dernier suivi par immeuble (les suivis récents d'abord).
+  const suiviByIm = new Map<string, Record<string, unknown>>();
+  for (const s of [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
+    for (const id of (s.IMMEUBLEs as string[] | undefined) ?? []) {
+      if (!suiviByIm.has(id)) suiviByIm.set(id, s);
+    }
+  }
+
+  // Offre la plus récente par immeuble (pour les k€ HT des VENTES).
+  const offreByIm = new Map<string, Record<string, unknown>>();
+  for (const o of [...offres].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
+    for (const id of (o.IMMEUBLEs as string[] | undefined) ?? []) {
+      if (!offreByIm.has(id)) offreByIm.set(id, o);
+    }
+  }
+
+  // Dernier mandat par immeuble (statut « Mandat à signer / expiré »).
+  const mandatByIm = new Map<string, Record<string, unknown>>();
+  for (const m of [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
+    for (const id of (m.IMMEUBLEs as string[] | undefined) ?? []) {
+      if (!mandatByIm.has(id)) mandatByIm.set(id, m);
+    }
+  }
+
+  // Contacts propriétaires des immeubles affichés.
+  const ownerIds = [...new Set(ims.map((i) => i.PROPRIETAIRE).filter(Boolean))] as string[];
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < ownerIds.length; i += 50) {
+    const chunk = ownerIds.slice(i, i + 50);
+    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }]);
+    rows.forEach((c) => contacts.set(c._id as string, c));
+  }
+
+  // Compteurs propositions / visites / offres par immeuble commercialisé (statuts 5-7).
+  const commIds = ims.filter((i) => [5, 6, 7].includes(statutOf(i))).map((i) => i._id as string);
+  const countsByIm = new Map<string, { prop: number; vis: number; off: number }>();
+  const CONC = 6;
+  for (let i = 0; i < commIds.length; i += CONC) {
+    await Promise.all(
+      commIds.slice(i, i + CONC).map(async (id) => {
+        const [prop, vis, off] = await Promise.all([
+          count("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
+          count("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
+          count("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }]).catch(() => 0),
+        ]);
+        countsByIm.set(id, { prop, vis, off });
+      }),
+    );
+  }
+
+  const mkCard = (im: Record<string, unknown>): KCard => {
+    const id = im._id as string;
+    const st = statutOf(im);
+    const suivi = suiviByIm.get(id);
+    const enAttente = im.standby_Statut !== "Traité" && !!im.standby_Statut;
+    const ville = `${im.adresse_ville ?? ""} (${im.adresse_dpt ?? ""})`;
+    const adresse = [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ");
+    const photo = typeof im.photo_main_compressed === "string" && im.photo_main_compressed.length > 0;
+    const mandat = mandatByIm.get(id);
+    const offre = offreByIm.get(id);
+
+    const card: KCard = {
+      id,
+      ville,
+      contact: contactLabel(contacts.get(im.PROPRIETAIRE as string)),
+      adresse,
+      photo,
+      photoUrl: photo
+        ? `/api/photo?u=${encodeURIComponent((im.photo_main_compressed as string).replace(/^\/\//, "https://"))}`
+        : undefined,
+      rv: true,
+      rvText: agent.initials,
+      history: !!suivi,
+    };
+
+    if (enAttente && suivi) {
+      card.wait = {
+        from: dmy(suivi.date_start ?? suivi["Created Date"]) ?? "",
+        to: dmy(suivi.date_relance) ?? "",
+        motif: String(suivi.Motif_standby ?? im.standby_Statut ?? ""),
+      };
+      card.prix = euros(im.prix_hai);
+      card.action = { label: "Réactiver", kind: "green" };
+      return card;
+    }
+
+    // Chip date + note = dernier événement connu.
+    if (suivi && typeof suivi.notes === "string" && suivi.notes) {
+      card.date = dmy(suivi.date_start ?? suivi["Created Date"]);
+      card.note = (suivi.notes as string).split("\n")[0];
+      card.chevron = (suivi.notes as string).length > 40;
+    } else if (st === 1) {
+      card.date = dmy(im.date_contact_form ?? im["Created Date"]);
+      card.note = "Formulaire";
+      card.chevron = true;
+    } else if (im.date_last_est) {
+      card.date = dmy(im.date_last_est);
+      card.estimation = true;
+    }
+
+    // Statut mandat (cartes commercialisation).
+    if ([4, 5, 6].includes(st) && mandat) {
+      const ms = String(mandat.Statut ?? "");
+      if (ms === "Expiré") card.statusMandat = "Mandat expiré";
+      else if (ms === "Attente signature" || ms === "A signer") card.statusMandat = "Mandat à signer";
+      else if (ms === "A rédiger") card.statusMandat = "Mandat à rédiger";
+    }
+
+    if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);
+
+    if ([5, 6, 7].includes(st)) card.counts = countsByIm.get(id) ?? { prop: 0, vis: 0, off: 0 };
+
+    if (st >= 7 && st <= 10) {
+      card.fee = keur(offre?.honos_ht);
+      card.prix = euros(offre?.prix_hai ?? im.prix_hai);
+    }
+
+    if (st === 1) card.action = { label: "Contacté" };
+    else if (st === 2) card.action = { label: "Estimer" };
+    else if (st === 3) card.action = { label: "OK pour vendre" };
+    else if (st === 7 || st === 8) card.action = { label: "Programmer le compromis" };
+
+    return card;
+  };
+
+  const byStatut = (sts: number[]) => ims.filter((i) => sts.includes(statutOf(i)));
+  const cardsOf = (sts: number[]) => byStatut(sts).map(mkCard);
+
+  const mkCol = (key: string, titre: string, icon: KCol["icon"], sts: number[], fee?: number): KCol => {
+    const cards = cardsOf(sts);
+    return {
+      key,
+      titre,
+      icon,
+      count: cards.length,
+      fee: fee !== undefined && fee > 0 ? `${Math.round(fee / 1000)} k€ HT` : undefined,
+      cards,
+    };
+  };
+
+  const honosOf = (sts: number[]) =>
+    byStatut(sts).reduce((s, im) => {
+      const o = offreByIm.get(im._id as string);
+      return s + (typeof o?.honos_ht === "number" ? (o.honos_ht as number) : 0);
+    }, 0);
+
+  const honosPipeline = honosOf([7, 8, 9, 10]);
+  const honosVendus = honosOf([11]);
+  const nVentes = byStatut([7, 8, 9, 10, 11]).length;
+
+  const blocs: KBloc[] = [
+    {
+      key: "prospects",
+      titre: "PROSPECTS",
+      icon: "in",
+      nred: byStatut([1, 2, 3]).filter((i) => i.standby_Statut === "En attente").length,
+      nsq: byStatut([1, 2, 3]).length,
+      openDefault: true,
+      cols: [
+        mkCol("formulaires", "Formulaires a traiter", "form", [1]),
+        mkCol("a-estimer", "Immeubles a estimer", "building", [2]),
+        mkCol("a-transformer", "A transformer", "flame", [3]),
+      ],
+    },
+    {
+      key: "commercialisations",
+      titre: "COMMERCIALISATIONS",
+      icon: "megaphone",
+      nred: byStatut([4, 5, 6]).filter((i) => i.standby_Statut === "En attente").length,
+      nsq: byStatut([4, 5, 6]).length,
+      openDefault: false,
+      cols: [
+        mkCol("preparation", "Preparation mandat et dossier", "pdf", [4]),
+        mkCol("clients-ab", "Commercialises aux clients A et B", "spread", [5]),
+        mkCol("tous-clients", "Commercialises a tous les clients", "globe", [6]),
+      ],
+    },
+    {
+      key: "ventes",
+      titre: "VENTES",
+      icon: "flag",
+      nred: 0,
+      nsq: nVentes,
+      ventes: {
+        left: `${Math.round(honosVendus / 1000)} k€ HT`,
+        right: `${Math.round(honosPipeline / 1000)} k€ HT`,
+        pctGreen: honosPipeline + honosVendus > 0 ? Math.max(1.5, (100 * honosVendus) / (honosVendus + honosPipeline)) : 1.5,
+      },
+      openDefault: false,
+      cols: [
+        mkCol("offres-acceptees", "Offres acceptees", "tool", [7, 8], honosOf([7, 8])),
+        mkCol("compromis", "Compromis signes", "bank", [9, 10], honosOf([9, 10])),
+        mkCol("vendus", `Vendus en ${new Date().getFullYear()}`, "flag", [11]),
+      ],
+    },
+  ];
+
+  return {
+    blocs,
+    agentSlug,
+    agentName: agent.name,
+    enCours: byStatut([1]).length,
+  };
+}

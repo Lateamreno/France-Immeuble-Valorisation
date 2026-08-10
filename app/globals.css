@@ -252,6 +252,7 @@ button { font-family: inherit; cursor: pointer; }
   overflow: hidden;
 }
 .kthumb svg { width: 34px; height: 34px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.kthumb img { width: 100%; height: 100%; object-fit: cover; }
 .kthumb .rv {
   position: absolute; left: 0; bottom: 0;
   background: var(--orange); color: #fff;

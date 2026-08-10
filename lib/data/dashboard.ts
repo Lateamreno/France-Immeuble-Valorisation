@@ -7,9 +7,13 @@ export type KCard = {
   ville: string;
   contact: string;
   adresse: string;
-  /** Photo disponible (placeholder tant que la donnée Bubble n'est pas branchée). */
+  /** Photo disponible (placeholder si pas d'URL). */
   photo?: boolean;
+  /** URL réelle de la photo (photo_main_compressed Bubble). */
+  photoUrl?: string;
   rv?: boolean;
+  /** Texte du badge orange (initiales de l'agent, ex. « RV », « MAV »). */
+  rvText?: string;
   /** Ligne statut mandat (rouge) : « Mandat à signer », « Mandat expiré »… */
   statusMandat?: string;
   /** Chip date + note grise (MAJUSCULES conservées telles quelles). */

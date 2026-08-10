@@ -124,7 +124,32 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   `/version-test/api/1.1/wf` — permet d'APPELER des workflows (POST), pas de
   les lister ; il faudra les noms d'endpoints (ou captures de l'éditeur).
 
-**Prochain :** brancher le dashboard sur la Data API Bubble (compteurs + cartes
-réels), puis répliquer module par module (Immeubles, fiche Bien, Estimations,
-Mandats, Recherches, Contacts, Propositions, Visites, Offres, Suivi, Objectifs,
-Datas) en téléchargeant les captures pixel de chaque module au moment voulu.
+- **Dashboard branché sur la vraie base Bubble** (`lib/bubble/server.ts`) :
+  - Sémantique VALIDÉE : colonnes = immeubles non archivés groupés par préfixe
+    de `Statut` (énum 0 RETIRé → 11 VENDU), filtrés par `AGENT`. Vérifié :
+    Romain (`1774279722391x…`) ⇒ 5/15/16, 7/0/13, 3/0/0 = les captures.
+    MAV = `1565404488771x…`. Mapping Guillaume/François/Sophie à confirmer.
+  - Cartes : contact = `PROPRIETAIRE`→contact ; note/date = dernier `suivi`
+    (trié Created Date desc — champ `Motif_standby` porte le motif d'attente,
+    `Canals` le canal) ; carte rouge = `standby_Statut` ≠ Traité, frise
+    `date_start` → `date_relance` ; statut mandat = dernier `mandat` de
+    l'immeuble ; k€ HT = `honos_ht` de l'offre liée (18+17+10=45 ✓) ;
+    compteurs prop/vis/off = counts par immeuble (statuts 5-7).
+  - **Photos** : `photo_main_compressed` est PRIVÉ (401) → proxy
+    `/api/photo?u=…` avec le token serveur + `next/image` (redimensionnement,
+    certaines photos font 6 Mo). `next.config.ts` : `images.localPatterns`.
+  - Dates formatées en **Europe/Paris** (sinon décalées d'un jour).
+  - Fallback : sans `BUBBLE_API_TOKEN`, mock + bandeau discret.
+  - ⚠️ **Vercel** : définir `BUBBLE_API_TOKEN` (+ `BUBBLE_APP_URL` propre) dans
+    les env vars du projet pour que la preview affiche la vraie donnée.
+  - Types annexes découverts : `user` (Agent FI/Role), `suivi` (3 496),
+    `question`, `download`, `commercialisation`, `dossier`, `objectif`,
+    `photo`, `parcelle`, `composant`, `charge`, `prix`, `adresse`.
+  - Badges de la sidebar (36/53/5/9/31) : sémantique exacte non identifiée
+    (statuts tabulés ne collent pas) → encore statiques, à confirmer avec MAV.
+
+**Prochain :** répliquer module par module (liste Immeubles → fiche Bien →
+Estimations → Mandats → Recherches → Contacts → Propositions → Visites →
+Offres → Suivi → Objectifs → Datas) : pour chaque module, télécharger les
+captures pixel (pipeline tool-results/transcripts documenté plus haut), puis
+brancher sur la Data API avec la même approche.

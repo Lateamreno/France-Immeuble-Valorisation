@@ -1,16 +1,26 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
+const AGENT_ORDER = ["marc-antoine", "romain", "guillaume", "francois", "sophie"];
+
 // Barre haute — réplique : titre + recherche immeuble + filtres
 // « En cours / En attente » + bouton orange « Immeubles suivis par X ».
+// Cliquer le bouton orange passe à l'agent suivant (le BO ouvre un menu).
 export function TopBar({
   title = "Dashboard",
   enCours = 5,
   agent = "Romain",
+  agentSlug = "romain",
 }: {
   title?: string;
   enCours?: number;
   agent?: string;
+  agentSlug?: string;
 }) {
+  const router = useRouter();
+  const next = AGENT_ORDER[(AGENT_ORDER.indexOf(agentSlug) + 1) % AGENT_ORDER.length];
+
   return (
     <div className="topbar">
       <div className="tt">
@@ -39,7 +49,14 @@ export function TopBar({
           En attente
         </button>
       </div>
-      <button className="agentbtn" type="button">Immeubles suivis par {agent}</button>
+      <button
+        className="agentbtn"
+        type="button"
+        title="Changer d'agent"
+        onClick={() => router.push(`/?agent=${next}`)}
+      >
+        Immeubles suivis par {agent}
+      </button>
     </div>
   );
 }
