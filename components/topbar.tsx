@@ -1,23 +1,34 @@
-export function TopBar() {
+"use client";
+
+import { useState } from "react";
+import { AGENTS } from "@/lib/nav";
+
+export function TopBar({ title = "Dashboard" }: { title?: string }) {
+  const [agent, setAgent] = useState<string>(AGENTS[1]);
+
   return (
-    <div className="bar panel">
-      <div className="bc">
-        Opérations <span className="s">›</span> <b>55 rue Volant</b> <span className="s">›</span> Commercialisation
-      </div>
+    <div className="topbar">
+      <h1>{title}</h1>
       <div className="spacer" />
-      <div className="search">
-        <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.8}><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>
-        Rechercher…
-      </div>
-      <div className="ibtn">
-        <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z"/></svg>
-      </div>
-      <div className="ibtn bell">
-        <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-        <span className="pip" />
-      </div>
-      <div className="plusbtn">
-        <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.8}><path d="M12 6v12M6 12h12"/></svg>
+      <label className="searchbox">
+        <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.8} strokeLinecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4-4" />
+        </svg>
+        <input placeholder="Rechercher un immeuble, un contact, un mandat…" aria-label="Recherche globale" />
+      </label>
+      <div className="agentpick" title="Filtrer par agent">
+        <span className="av">{agent === "Tous les agents" ? "∗" : agent.slice(0, 1)}</span>
+        <select
+          value={agent}
+          onChange={(e) => setAgent(e.target.value)}
+          style={{ border: 0, background: "transparent", font: "inherit", color: "inherit", outline: 0, cursor: "pointer" }}
+          aria-label="Filtrer par agent"
+        >
+          {AGENTS.map((a) => (
+            <option key={a}>{a}</option>
+          ))}
+        </select>
       </div>
     </div>
   );

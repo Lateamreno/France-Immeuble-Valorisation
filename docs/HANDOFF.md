@@ -87,6 +87,22 @@ charte : artefact Claude « Cockpit France Immeuble — Dashboard (3 versions) �
 
 ## 7. État du code
 
-App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée. Un thème
-« vitrine » sombre/bronze avait été posé pour tests ; **à remplacer** par la charte claire
-ci-dessus dans la vraie refonte (Path B). `integrations/bubble/` = lecture Bubble.
+App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
+`integrations/bubble/` = lecture Bubble (le client nettoie lui-même une
+`BUBBLE_APP_URL` contenant le chemin API ou `/version-test`).
+
+**Fait (10/08/26) :**
+- Cartographie complète du BO Bubble : `docs/CARTOGRAPHIE-BO.md` + `docs/cartographie/`
+  (base réelle via Data API + les ~144 captures dépouillées écran par écran).
+- **Charte claire posée** (`app/globals.css`) : tokens marque + déclinaison claire,
+  rail noir signature, sémantique sauge/ocre/terre cuite, polices **auto-hébergées**
+  (`public/fonts/*.woff2`, subsets latin variables Archivo/Inter/JetBrains Mono).
+- **Dashboard 9 cases V1** (`app/page.tsx`) : 3 blocs × 3 cases (Prospection /
+  Commercialisation / Bouclage), cartes immeuble avec bouton d'avancement,
+  badges sémantiques, « en attente », **vue kanban en option** (toggle) ;
+  rail calqué sur le BO réel avec compteurs (`lib/nav.ts`), recherche globale +
+  filtre agent (topbar), **barre de création rapide** (desktop) / FAB (mobile),
+  responsive (rail → tab bar bas). Données : mock typé `lib/data/dashboard.ts`
+  (exemples réels de la cartographie) — à brancher sur Supabase/Bubble ensuite.
+
+**Prochain :** brancher les compteurs/cases sur la vraie donnée, puis module Immeuble.
