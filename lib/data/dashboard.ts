@@ -1,307 +1,170 @@
-// Données du dashboard 9 cases.
-//
-// Couche de données mock, typée sur la forme cible : elle sera remplacée par
-// des lectures Supabase (couche operations) et/ou Bubble (migration) sans
-// toucher aux composants. Les exemples reprennent des dossiers réels du BO
-// Bubble (cf. docs/cartographie/) pour valider la maquette sur de la vraie
-// matière.
+// Données du dashboard — réplique des cartes visibles sur les captures du BO
+// (dossier Drive « Dashboard »). Couche mock typée : sera branchée sur la
+// Data API Bubble puis Supabase sans toucher aux composants.
 
-export type CardBadge = {
-  label: string;
-  tone?: "ok" | "warn" | "late";
-};
-
-export type DashCard = {
+export type KCard = {
   id: string;
   ville: string;
-  cp: string;
-  adresse: string;
   contact: string;
+  adresse: string;
+  /** Photo disponible (placeholder tant que la donnée Bubble n'est pas branchée). */
+  photo?: boolean;
+  rv?: boolean;
+  /** Ligne statut mandat (rouge) : « Mandat à signer », « Mandat expiré »… */
+  statusMandat?: string;
+  /** Chip date + note grise (MAJUSCULES conservées telles quelles). */
+  date?: string;
   note?: string;
+  /** Tag « Estimation » avec icône après la date. */
+  estimation?: boolean;
+  /** Note repliable (chevron ˅). */
+  chevron?: boolean;
+  /** Carte « en attente » : bordure rouge + frise date → motif → date. */
+  wait?: { from: string; to: string; motif: string };
   prix?: string;
-  badges?: CardBadge[];
-  /** Libellé du bouton d'avancement (franchit l'étape, comme le BO actuel). */
-  action?: string;
+  fee?: string;
+  /** Bouton principal. */
+  action?: { label: string; kind?: "green" };
+  /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */
+  counts?: { prop: number; vis: number; off: number };
+  /** Icônes d'alerte rouges (mandat / PDF / contacts) + cadenas gris. */
+  redIcons?: boolean;
+  /** Bouton historique visible. */
+  history?: boolean;
 };
 
-export type DashCase = {
+export type KCol = {
   key: string;
   titre: string;
-  total: number;
-  enAttente?: number;
-  cards: DashCard[];
+  icon: "form" | "building" | "flame" | "pdf" | "spread" | "globe" | "tool" | "bank" | "flag";
+  count: number;
+  fee?: string;
+  cards: KCard[];
 };
 
-export type DashBloc = {
-  key: "prospection" | "commercialisation" | "bouclage";
+export type KBloc = {
+  key: string;
   titre: string;
-  resume: string;
-  cases: [DashCase, DashCase, DashCase];
+  icon: "in" | "megaphone" | "flag";
+  nred: number;
+  nsq: number;
+  /** Bandeau VENTES : « 0 k€ HT → 45 k€ HT » + barre de progression. */
+  ventes?: { left: string; right: string; pctGreen: number };
+  openDefault: boolean;
+  cols: [KCol, KCol, KCol];
 };
 
-export const DASHBOARD: DashBloc[] = [
+export const DASHBOARD: KBloc[] = [
   {
-    key: "prospection",
-    titre: "Prospection",
-    resume: "336 dossiers · 16 en attente",
-    cases: [
+    key: "prospects",
+    titre: "PROSPECTS",
+    icon: "in",
+    nred: 3,
+    nsq: 36,
+    openDefault: true,
+    cols: [
       {
-        key: "a-contacter",
-        titre: "À contacter",
-        total: 4,
-        enAttente: 2,
+        key: "formulaires",
+        titre: "Formulaires a traiter",
+        icon: "form",
+        count: 5,
         cards: [
-          {
-            id: "p1",
-            ville: "Marseille",
-            cp: "13",
-            adresse: "70 Rue Caisserie",
-            contact: "Formulaire Vendre",
-            note: "Reçu le 23/06 — immeuble mixte, 1 commerce + 3 logements",
-            action: "Contacté",
-          },
-          {
-            id: "p2",
-            ville: "Épinay-sur-Seine",
-            cp: "93",
-            adresse: "12 Rue de Paris",
-            contact: "Formulaire Vendre",
-            note: "Reçu le 02/07 — souhaite vendre dès maintenant",
-            action: "Contacté",
-          },
+          { id: "f1", ville: "Faches-Thumesnil (59)", contact: "R. BOUGAILLOU", rv: true, date: "23/04/26", note: "Mess voc laisser le 23/04/26", adresse: "81 Rue Jean Jaurès", action: { label: "Contacté" }, history: true },
+          { id: "f2", ville: "Lisle-sur-Tarn (81)", contact: "K. AYACHE", rv: true, date: "08/04/26", note: "MESS VOC LE 08/04/26", adresse: "29 Place Paul Saissac", action: { label: "Contacté" }, history: true },
+          { id: "f3", ville: "Marseille (13)", contact: "Y. MALO", rv: true, date: "23/06/26", note: "Formulaire", chevron: true, adresse: "131 Boulevard Baille", action: { label: "Contacté" } },
+          { id: "f4", ville: "Épinay-sur-Seine (93)", contact: "I. JACQUEMIN", rv: true, date: "02/07/26", note: "Formulaire", chevron: true, adresse: "106 Avenue Jean Jaurès", action: { label: "Contacté" } },
         ],
       },
       {
         key: "a-estimer",
-        titre: "À estimer",
-        total: 5,
+        titre: "Immeubles a estimer",
+        icon: "building",
+        count: 15,
         cards: [
-          {
-            id: "p3",
-            ville: "Villejuif",
-            cp: "94800",
-            adresse: "9 Avenue de Paris",
-            contact: "W. ABERGEL",
-            note: "145 m² · 62 % occupé · petit immeuble mixte",
-            prix: "640 000 €",
-            action: "Estimer",
-          },
-          {
-            id: "p4",
-            ville: "Gennevilliers",
-            cp: "92230",
-            adresse: "25 Avenue des Grésillons",
-            contact: "MAV",
-            note: "Estimation du 21/07 — PDF manquant",
-            prix: "3 748 000 €",
-            badges: [{ label: "PDF manquant", tone: "warn" }],
-            action: "Estimer",
-          },
+          { id: "e1", ville: "Chelles (77)", contact: "B. DA COSTA", photo: true, rv: true, date: "23/04/26", note: "encore mess vocal le 23/04/26", adresse: "52 Avenue du Maréchal Foch", action: { label: "Estimer" }, history: true },
+          { id: "e2", ville: "Collonges-sous-Salève (74)", contact: "J. ORY", rv: true, date: "12/05/26", note: "Mess voc + SMS LE 12/05/26", adresse: "31 Route d'Annemasse", action: { label: "Estimer" }, history: true },
+          { id: "e3", ville: "Perpignan (66)", contact: "D. SOLER", rv: true, date: "12/05/26", note: "Mess voc le 12/05/26", adresse: "14 Plaça del Puig", action: { label: "Estimer" }, history: true },
+          { id: "e4", ville: "Amiens (80)", contact: "J. DERVIN", rv: true, date: "14/05/26", note: "MESS VOC LE 14/05/2026", adresse: "3 Rue Vivien", action: { label: "Estimer" }, history: true },
         ],
       },
       {
-        key: "a-convertir",
-        titre: "À convertir",
-        total: 15,
-        enAttente: 6,
+        key: "a-transformer",
+        titre: "A transformer",
+        icon: "flame",
+        count: 16,
         cards: [
-          {
-            id: "p5",
-            ville: "Faches-Thumesnil",
-            cp: "59",
-            adresse: "81 Rue Jean Jaurès",
-            contact: "R. BOUGAILLOU",
-            note: "Mess voc laissé le 23/04",
-            prix: "680 000 €",
-            action: "OK pour vendre",
-          },
-          {
-            id: "p6",
-            ville: "Chelles",
-            cp: "77",
-            adresse: "40 Avenue de la Résistance",
-            contact: "N. DANIEL",
-            note: "A toujours un voisin intéressé mais…",
-            prix: "2 340 000 €",
-            badges: [{ label: "Temps de réflexion → 07/09", tone: "warn" }],
-            action: "OK pour vendre",
-          },
+          { id: "t1", ville: "Vaires-sur-Marne (77)", contact: "N. DANIEL", photo: true, rv: true, wait: { from: "18/02/26", to: "18/02/26", motif: "Point avec co-décisionnaires" }, adresse: "100 Rue de la Liberté", prix: "680 000 €", action: { label: "Réactiver", kind: "green" }, history: true },
+          { id: "t2", ville: "Le Raincy (93)", contact: "L. DROBAC", photo: true, rv: true, wait: { from: "25/03/26", to: "25/04/26", motif: "Temps de réflexion" }, adresse: "9 Allée Clémencet", prix: "1 600 000 €", action: { label: "Réactiver", kind: "green" }, history: true },
+          { id: "t3", ville: "Brie-Comte-Robert (77)", contact: "N. DANIEL", photo: true, rv: true, wait: { from: "25/03/26", to: "26/04/26", motif: "Vacances" }, adresse: "1 Rue Gambetta", prix: "780 000 €", action: { label: "Réactiver", kind: "green" }, history: true },
+          { id: "t4", ville: "Trappes (78)", contact: "M. MAQUIN", photo: true, rv: true, date: "30/04/26", note: "A toujours un voisin intéréssé mais...", chevron: true, adresse: "37 Rue Jean Jaurès", action: { label: "OK pour vendre" }, history: true },
         ],
       },
     ],
   },
   {
-    key: "commercialisation",
-    titre: "Commercialisation",
-    resume: "36 en cours · 2 clients A/B · 20 diffusés",
-    cases: [
+    key: "commercialisations",
+    titre: "COMMERCIALISATIONS",
+    icon: "megaphone",
+    nred: 2,
+    nsq: 20,
+    openDefault: false,
+    cols: [
       {
-        key: "signature-contrat",
-        titre: "Signature contrat",
-        total: 5,
-        enAttente: 1,
+        key: "preparation",
+        titre: "Preparation mandat et dossier",
+        icon: "pdf",
+        count: 7,
         cards: [
-          {
-            id: "c1",
-            ville: "Montreuil",
-            cp: "93",
-            adresse: "15 Rue de Normandie",
-            contact: "N. LANSKI",
-            note: "Mandat #2098 · exclusif · à signer",
-            prix: "2 425 000 €",
-            badges: [{ label: "À signer", tone: "warn" }],
-            action: "Signé",
-          },
-          {
-            id: "c2",
-            ville: "Saint-Maur-des-Fossés",
-            cp: "94",
-            adresse: "8 Avenue du Bac",
-            contact: "P. VOCI",
-            note: "Mandat à rédiger",
-            prix: "3 120 000 €",
-            badges: [{ label: "Pas de numéro", tone: "late" }],
-            action: "Rédiger",
-          },
+          { id: "p1", ville: "Montmorency (95)", contact: "M. HAYON", photo: true, rv: true, wait: { from: "26/03/26", to: "30/04/26", motif: "Attente infos" }, adresse: "15 Rue de Pontoise", prix: "840 000 €", action: { label: "Réactiver", kind: "green" }, history: true },
+          { id: "p2", ville: "Ivry-sur-Seine (94)", contact: "G. JOURNET", photo: true, rv: true, wait: { from: "26/03/26", to: "16/05/26", motif: "Autre" }, adresse: "5 Boulevard de Brandebourg", prix: "1 890 000 €", action: { label: "Réactiver", kind: "green" }, history: true },
+          { id: "p3", ville: "Saint-Germain-des-Prés (45)", contact: "J. FRUGIER", photo: true, rv: true, date: "03/04/26", note: "MESS VOC LAISSE LE 03/04/26", adresse: "20 Avenue de Pourprix", prix: "360 000 €", redIcons: true, history: true },
+          { id: "p4", ville: "Rueil-Malmaison (92)", contact: "A. DEVELAY", photo: true, rv: true, date: "26/03/26", note: "MESSAGE VOC LE 26/03/26", adresse: "53 Rue Gallieni", prix: "2 340 000 €", history: true },
         ],
       },
       {
-        key: "devis",
-        titre: "Devis",
-        total: 4,
-        cards: [
-          {
-            id: "c3",
-            ville: "Brueil-en-Vexin",
-            cp: "78440",
-            adresse: "37 Rue du Vexin",
-            contact: "E. LEPIED",
-            note: "Dossier V4 · 214 emails · 198 propositions à relancer",
-            prix: "1 050 000 €",
-            badges: [{ label: "198 à relancer", tone: "late" }],
-            action: "Relancer",
-          },
-          {
-            id: "c4",
-            ville: "Isbergues",
-            cp: "62",
-            adresse: "101 Rue de Guarbecque",
-            contact: "RV",
-            note: "Diffusion du 26/06 · clients A et B",
-            prix: "661 500 €",
-            badges: [{ label: "Clients A/B", tone: "ok" }],
-            action: "Diffuser à tous",
-          },
-        ],
+        key: "clients-ab",
+        titre: "Commercialises aux clients A et B",
+        icon: "spread",
+        count: 0,
+        cards: [],
       },
       {
-        key: "rdv",
-        titre: "RDV",
-        total: 9,
-        enAttente: 2,
+        key: "tous-clients",
+        titre: "Commercialises a tous les clients",
+        icon: "globe",
+        count: 13,
         cards: [
-          {
-            id: "c5",
-            ville: "Nanterre",
-            cp: "92",
-            adresse: "55 Rue Volant",
-            contact: "A. BERGUE",
-            note: "Visite du 14/04 à 10h30",
-            badges: [{ label: "Confirmée", tone: "ok" }],
-            action: "Compte-rendu",
-          },
-          {
-            id: "c6",
-            ville: "Drancy",
-            cp: "93",
-            adresse: "113 Rue Diderot",
-            contact: "S. SOARES",
-            note: "Visite du 05/05 à 12h30",
-            badges: [{ label: "À confirmer", tone: "warn" }],
-            action: "Confirmer",
-          },
+          { id: "c1", ville: "Saint-Maur-des-Fossés (94)", contact: "P. VOCI", photo: true, rv: true, statusMandat: "Mandat à signer", date: "24/11/20", estimation: true, adresse: "106 Boulevard de la Marne", prix: "3 120 000 €", counts: { prop: 1, vis: 0, off: 0 } },
+          { id: "c2", ville: "Verneuil d'Avre et d'Iton (27)", contact: "M. RICHARD", photo: true, rv: true, statusMandat: "Mandat expiré", date: "23/03/26", note: "Nous n'avions pas de contacts intér...", chevron: true, adresse: "13 Place de Verdun", prix: "661 500 €", counts: { prop: 10, vis: 1, off: 0 }, history: true },
+          { id: "c3", ville: "Isbergues (62)", contact: "A. MAESTRACCI", photo: true, rv: true, date: "05/05/26", estimation: true, adresse: "101 Rue de Guarbecque", prix: "2 320 000 €", counts: { prop: 13, vis: 0, off: 1 }, history: true },
+          { id: "c4", ville: "Angerville (91)", contact: "N. MAYANT", photo: true, rv: true, statusMandat: "Mandat expiré", adresse: "", counts: { prop: 0, vis: 0, off: 0 } },
         ],
       },
     ],
   },
   {
-    key: "bouclage",
-    titre: "Bouclage",
-    resume: "3 offres acceptées · 45 k€ HT compromis · 0 k€ encaissé 2026",
-    cases: [
+    key: "ventes",
+    titre: "VENTES",
+    icon: "flag",
+    nred: 0,
+    nsq: 3,
+    ventes: { left: "0 k€ HT", right: "45 k€ HT", pctGreen: 1.5 },
+    openDefault: false,
+    cols: [
       {
-        key: "demarches-locatives",
-        titre: "Démarches locatives",
-        total: 2,
+        key: "offres-acceptees",
+        titre: "Offres acceptees",
+        icon: "tool",
+        count: 3,
+        fee: "45 k€ HT",
         cards: [
-          {
-            id: "b1",
-            ville: "Bruyères-sur-Oise",
-            cp: "95",
-            adresse: "1 Rue du Pont",
-            contact: "A. CUBIZOLLES",
-            note: "Découpe : congés à purger avant vente des lots",
-            badges: [{ label: "Préemption L. 75", tone: "warn" }],
-            action: "Notifier",
-          },
+          { id: "v1", ville: "Corbeil-Essonnes (91)", contact: "M. LONCHAMPT", photo: true, rv: true, date: "15/03/21", estimation: true, adresse: "53 Rue des Caillettes", fee: "18 k€", prix: "450 000 €", action: { label: "Programmer le compromis" } },
+          { id: "v2", ville: "Montereau-Fault-Yonne (77)", contact: "N. AHMED", photo: true, rv: true, date: "08/09/25", note: "Il est parti à l'étranger et est se...", chevron: true, adresse: "6 Place Pierre Semard", fee: "17 k€", prix: "475 000 €", action: { label: "Programmer le compromis" }, history: true },
+          { id: "v3", ville: "Montereau-Fault-Yonne (77)", contact: "M. AHMED", photo: true, rv: true, adresse: "34 Bis Avenue de Surville", fee: "10 k€", prix: "256 000 €", action: { label: "Programmer le compromis" } },
         ],
       },
-      {
-        key: "ventes",
-        titre: "Ventes",
-        total: 3,
-        cards: [
-          {
-            id: "b2",
-            ville: "Corbeil-Essonnes",
-            cp: "91",
-            adresse: "2 Rue Féray",
-            contact: "M. LONCHAMPT",
-            note: "Offre acceptée — compromis à programmer",
-            prix: "450 000 €",
-            badges: [{ label: "18 k€ honos", tone: "ok" }],
-            action: "Programmer le compromis",
-          },
-          {
-            id: "b3",
-            ville: "Paris",
-            cp: "75003",
-            adresse: "22 Rue du Pont aux Choux",
-            contact: "MAV",
-            note: "Compromis signé — acte prévu T4",
-            badges: [{ label: "100 k€ honos", tone: "ok" }],
-            action: "Acte signé",
-          },
-        ],
-      },
-      {
-        key: "bouclage",
-        titre: "Bouclage",
-        total: 3,
-        cards: [
-          {
-            id: "b4",
-            ville: "Drancy",
-            cp: "93",
-            adresse: "5 Rue Marcelin Berthelot",
-            contact: "MAV",
-            note: "Vente signée — facturation honoraires",
-            prix: "73 k€ HT",
-            badges: [{ label: "À facturer", tone: "warn" }],
-            action: "Facturer",
-          },
-          {
-            id: "b5",
-            ville: "Marseille",
-            cp: "13002",
-            adresse: "70 Rue Caisserie",
-            contact: "SJ · MAV",
-            note: "Vente signée — encaissé",
-            prix: "29 k€ HT",
-            badges: [{ label: "Encaissé", tone: "ok" }],
-          },
-        ],
-      },
+      { key: "compromis", titre: "Compromis signes", icon: "bank", count: 0, cards: [] },
+      { key: "vendus", titre: "Vendus en 2026", icon: "flag", count: 0, cards: [] },
     ],
   },
 ];

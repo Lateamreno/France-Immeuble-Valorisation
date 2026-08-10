@@ -94,15 +94,37 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
 **Fait (10/08/26) :**
 - Cartographie complète du BO Bubble : `docs/CARTOGRAPHIE-BO.md` + `docs/cartographie/`
   (base réelle via Data API + les ~144 captures dépouillées écran par écran).
-- **Charte claire posée** (`app/globals.css`) : tokens marque + déclinaison claire,
-  rail noir signature, sémantique sauge/ocre/terre cuite, polices **auto-hébergées**
-  (`public/fonts/*.woff2`, subsets latin variables Archivo/Inter/JetBrains Mono).
-- **Dashboard 9 cases V1** (`app/page.tsx`) : 3 blocs × 3 cases (Prospection /
-  Commercialisation / Bouclage), cartes immeuble avec bouton d'avancement,
-  badges sémantiques, « en attente », **vue kanban en option** (toggle) ;
-  rail calqué sur le BO réel avec compteurs (`lib/nav.ts`), recherche globale +
-  filtre agent (topbar), **barre de création rapide** (desktop) / FAB (mobile),
-  responsive (rail → tab bar bas). Données : mock typé `lib/data/dashboard.ts`
-  (exemples réels de la cartographie) — à brancher sur Supabase/Bubble ensuite.
+- **DÉCISION (10/08/26, remplace la charte pour cette phase) : réplique 100 % fidèle
+  du BO Bubble actuel d'abord** — mêmes couleurs, mêmes écrans, même workflow.
+  La charte bronze/claire et les évolutions (découpe, Plein Bail, IA) viendront
+  APRÈS avoir atteint l'iso-fonctionnel. Un dashboard « 9 cases » chartré avait été
+  posé puis remplacé par la réplique (dispo dans l'historique git si besoin).
+- **Captures en pixels** : le connecteur Drive ne renvoie que de l'OCR via
+  `read_file_content`; les pixels s'obtiennent via `download_file_content` —
+  les gros résultats sont sauvés par le harness dans
+  `~/.claude/projects/<session>/tool-results/*.txt` (JSON `{content: base64, title}`),
+  les petits passent par des sous-agents puis extraction de leur transcript JSONL.
+  Scripts : `scratchpad/decode-tr.mjs` + `scratchpad/extract.mjs` ; images dans
+  `scratchpad/captures/`.
+- **Design system du BO relevé au pixel** (voir en-tête de `app/globals.css`) :
+  sidebar #424247, slate #44525f, rouge #d60000, orange #e3790d, vert #3db327,
+  bande bloc #e3e3e3, fond colonnes #f0f0f0. Polices réelles de l'app Bubble :
+  **Poppins + Lato** (auto-hébergées dans `public/fonts`).
+- **Dashboard répliqué** (`app/page.tsx` + `lib/data/dashboard.ts`) : 3 blocs
+  repliables PROSPECTS / COMMERCIALISATIONS / VENTES (badges rouge + carré,
+  barre rouge/verte et k€ HT sur VENTES), colonnes avec compteurs, cartes
+  fidèles (vignette + badge RV, chip contact, chip date + note, frise rouge
+  « en attente » date→motif→date, prix, honos k€, statut mandat rouge,
+  compteurs propositions/visites/offres, icônes d'alerte rouges, boutons
+  › Contacté / › Estimer / › OK pour vendre / Réactiver vert /
+  › Programmer le compromis), topbar (recherche + pills En cours/En attente +
+  bouton orange agent), bottom bar 7 entités. Données mock = cartes exactes
+  des captures ; à brancher sur la Data API Bubble.
+- **API Workflow Bubble** : `BUBBLE_APP_URL_WORKFLOWS` pointe sur
+  `/version-test/api/1.1/wf` — permet d'APPELER des workflows (POST), pas de
+  les lister ; il faudra les noms d'endpoints (ou captures de l'éditeur).
 
-**Prochain :** brancher les compteurs/cases sur la vraie donnée, puis module Immeuble.
+**Prochain :** brancher le dashboard sur la Data API Bubble (compteurs + cartes
+réels), puis répliquer module par module (Immeubles, fiche Bien, Estimations,
+Mandats, Recherches, Contacts, Propositions, Visites, Offres, Suivi, Objectifs,
+Datas) en téléchargeant les captures pixel de chaque module au moment voulu.

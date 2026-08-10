@@ -1,30 +1,38 @@
-// Navigation du back-office — rail calqué sur le BO Bubble actuel
-// (cf. docs/cartographie/02-dashboard.md), source unique pour le rail.
+// Navigation — réplique de la sidebar du BO Bubble actuel
+// (libellés, ordre et compteurs relevés sur les captures).
 export type NavItem = {
   href: string;
   label: string;
-  /** Compteur affiché en badge (sera alimenté par Supabase/Bubble). */
+  /** Badge rouge (compteur principal). */
   count?: number;
-  /** Affiché dans la tab bar mobile (5 max + Dashboard). */
-  mobile?: boolean;
+  /** Badge orange (compteur secondaire, ex. Visites). */
+  count2?: number;
+  /** Rangée non cliquable (outil) : "toggle" affiche un interrupteur. */
+  tool?: "toggle" | "switch-onoff";
 };
 
 export const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", mobile: true },
-  { href: "/immeubles", label: "Immeubles", count: 53, mobile: true },
-  { href: "/estimation", label: "Estimations", count: 36, mobile: true },
+  { href: "/", label: "Dashboard" },
+  { href: "/estimation", label: "Estimations", count: 36 },
+  { href: "/immeubles", label: "Immeubles", count: 53 },
   { href: "/documents", label: "Mandats", count: 5 },
   { href: "/recherches", label: "Recherches" },
-  { href: "/contacts", label: "Contacts", mobile: true },
-  { href: "/propositions", label: "Propositions", count: 1 },
-  { href: "/visites", label: "Visites", count: 9 },
-  { href: "/offres", label: "Offres", count: 31, mobile: true },
+  { href: "/contacts", label: "Contacts" },
+  { href: "/propositions", label: "Propositions" },
+  { href: "/questions", label: "Questions" },
+  { href: "/visites", label: "Visites", count: 9, count2: 1 },
+  { href: "/offres", label: "Offres", count: 31 },
   { href: "/suivi", label: "Suivi / Rappels" },
   { href: "/objectifs", label: "Objectifs" },
-  { href: "/analytics", label: "Data" },
+  { href: "/analytics", label: "Datas" },
+  { href: "#notion", label: "Notion" },
+  { href: "#onoff", label: "", tool: "switch-onoff" },
+  { href: "#mailing", label: "Mailing" },
+  { href: "#dimmax", label: "Dim_max", tool: "toggle" },
+  { href: "#debug", label: "Debug", tool: "toggle" },
 ];
 
-/** Entités créables depuis la barre de création rapide (ordre du tunnel). */
+/** Barre de création du bas (ordre du BO). */
 export const QUICK_CREATE = [
   "Contact",
   "Immeuble",
@@ -36,7 +44,6 @@ export const QUICK_CREATE = [
 ] as const;
 
 export const AGENTS = [
-  "Tous les agents",
   "Marc-Antoine",
   "Guillaume",
   "Sophie",
