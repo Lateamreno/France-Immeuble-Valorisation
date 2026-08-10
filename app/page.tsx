@@ -25,19 +25,20 @@ export default async function DashboardPage({
       agentName = live.agentName;
       enCours = live.enCours;
     } else {
-      liveError = "BUBBLE_API_TOKEN absent — affichage des données de démonstration.";
+      liveError =
+        "Mode démonstration : ajoutez SUPABASE_SERVICE_ROLE_KEY (projet france-immeuble-bo) dans les variables Vercel — scopes Production ET Preview — puis redéployez.";
     }
   } catch (e) {
-    liveError = `Lecture Bubble indisponible (${e instanceof Error ? e.message : "erreur"}) — données de démonstration.`;
+    liveError = `Lecture données indisponible (${e instanceof Error ? e.message : "erreur"}) — mode démonstration.`;
   }
 
   return (
     <>
       <TopBar title="Dashboard" enCours={enCours} agent={agentName} agentSlug={slug} />
       {liveError && (
-        <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--gray-lt)" }}>{liveError}</div>
+        <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}
-      <DashboardBlocs blocs={blocs} />
+      <DashboardBlocs blocs={blocs} mock={!!liveError} />
     </>
   );
 }

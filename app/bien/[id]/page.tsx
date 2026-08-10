@@ -23,7 +23,9 @@ export default async function BienPage({
     return (
       <div className="wrap">
         <div className="fempty" style={{ paddingTop: 60 }}>
-          {err ? `Lecture Bubble indisponible (${err}).` : "Immeuble introuvable (ou BUBBLE_API_TOKEN absent)."}
+          {err
+            ? `Lecture des données indisponible (${err}).`
+            : "Immeuble introuvable — ou aucune source de données configurée (SUPABASE_SERVICE_ROLE_KEY / BUBBLE_API_TOKEN) : en mode démonstration, les fiches ne sont pas accessibles."}
           <div style={{ marginTop: 14 }}>
             <Link href="/" className="fbtn">← Retour au dashboard</Link>
           </div>

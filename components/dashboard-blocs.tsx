@@ -23,10 +23,11 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
   flag: <><path d="M4 21V4" /><path d="M4 5c3-2 6 1 9 0s5-1 7 0v9c-2-1-4-1-7 0s-6 2-9 0" /></>,
 };
 
-function Card({ c }: { c: KCard }) {
+function Card({ c, mock }: { c: KCard; mock?: boolean }) {
+  const Top: React.ElementType = mock ? "div" : Link;
   return (
     <div className={`kard${c.wait ? " alert" : ""}`}>
-      <Link href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>
+      <Top href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>
         <div className="kthumb">
           {c.photoUrl ? (
             <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -95,7 +96,7 @@ function Card({ c }: { c: KCard }) {
             </div>
           )}
         </div>
-      </Link>
+      </Top>
 
       <div className="kact">
         <button className="kbtn" type="button" aria-label="Autres actions">
@@ -148,7 +149,7 @@ function Card({ c }: { c: KCard }) {
   );
 }
 
-function Bloc({ b }: { b: KBloc }) {
+function Bloc({ b, mock }: { b: KBloc; mock?: boolean }) {
   const [open, setOpen] = useState(b.openDefault);
   return (
     <section className="bloc">
@@ -184,7 +185,7 @@ function Bloc({ b }: { b: KBloc }) {
               </div>
               <div className="col-body">
                 {col.cards.map((c) => (
-                  <Card key={c.id} c={c} />
+                  <Card key={c.id} c={c} mock={mock} />
                 ))}
               </div>
             </div>
@@ -195,11 +196,11 @@ function Bloc({ b }: { b: KBloc }) {
   );
 }
 
-export function DashboardBlocs({ blocs }: { blocs: KBloc[] }) {
+export function DashboardBlocs({ blocs, mock }: { blocs: KBloc[]; mock?: boolean }) {
   return (
     <div className="wrap">
       {blocs.map((b) => (
-        <Bloc key={b.key} b={b} />
+        <Bloc key={b.key} b={b} mock={mock} />
       ))}
     </div>
   );
