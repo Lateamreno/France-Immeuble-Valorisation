@@ -37,15 +37,15 @@ export const AGENT_IDS: Record<string, { id: string; name: string; initials: str
 type Constraint = { key: string; constraint_type: string; value: unknown };
 
 /* ---------- Source de données : Supabase (miroir bo_*) ou Bubble ----------
-   Les 25 data types Bubble sont mirrorés dans Plein Bail (tables bo_<type>,
-   RLS sans policy → service_role uniquement). Si SUPABASE_SERVICE_ROLE_KEY
-   est présente, toutes les lectures passent par Supabase ; sinon repli sur
-   la Data API Bubble. Synchro : Edge Function `bubble-sync`. */
+   Les 25 data types Bubble sont mirrorés dans le projet Supabase DÉDIÉ
+   france-immeuble-bo (tables bo_<type>, RLS sans policy → service_role only).
+   Si SUPABASE_SERVICE_ROLE_KEY est présente, lectures via Supabase ; sinon
+   repli Data API Bubble. Synchro : Edge Function `bubble-sync`. */
 
 const SB_URL =
   process.env.SUPABASE_URL ??
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
-  "https://fkfwucqpdhbkgkouccyi.supabase.co";
+  "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const USE_SB = !!SB_KEY;
 

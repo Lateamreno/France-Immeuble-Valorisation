@@ -6,12 +6,12 @@
 //   SINCE=2026-08-10T00:00:00Z node scripts/…       # incrémental (Modified Date > SINCE)
 //
 // Variables : BUBBLE_API_TOKEN (requis), SUPABASE_ANON_KEY (facultatif,
-// défaut = clé anon de Plein Bail — sert uniquement à invoquer la fonction).
+// défaut = clé anon du projet BO france-immeuble-bo — sert uniquement à invoquer la fonction).
 
-const FN = "https://fkfwucqpdhbkgkouccyi.supabase.co/functions/v1/bubble-sync";
+const FN = "https://sojtmhdrzmdbtqborxsi.supabase.co/functions/v1/bubble-sync";
 const ANON =
   process.env.SUPABASE_ANON_KEY ??
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZnd1Y3FwZGhia2drb3VjY3lpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjEzMzAsImV4cCI6MjA5OTA5NzMzMH0.u0CS6gxMVRsoMzzaExkhXbW6oCvD3at9Fj_VH2d7A_M";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvanRtaGRyem1kYnRxYm9yeHNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MDI2NjAsImV4cCI6MjEwMTk3ODY2MH0.9HuHbGSYxPJmU9QpoM97Evgv8F8ZDzcMtAy8IvA9BuM";
 const TOKEN = process.env.BUBBLE_API_TOKEN;
 if (!TOKEN) {
   console.error("BUBBLE_API_TOKEN manquant.");

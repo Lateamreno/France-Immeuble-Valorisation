@@ -154,12 +154,17 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   Description et prix / Photos / Estimations / Mandats / Dossiers / Acheteurs.
   Sélecteur d'agents = menu déroulant orange (défaut Marc-Antoine), cartes du
   dashboard cliquables. Or de la fiche : #b6a359.
-- **MIGRATION SUPABASE (décision : ne PAS écrire dans Bubble)** :
-  - Les 25 data types Bubble sont **mirrorés dans Plein Bail** : tables
+- **MIGRATION SUPABASE (décisions : ne PAS écrire dans Bubble + projet DÉDIÉ)** :
+  - Le BO a son **propre projet Supabase** : **`france-immeuble-bo`**
+    (`sojtmhdrzmdbtqborxsi`, eu-west-1, 10 $/mois, org La Team Reno) —
+    séparé de Plein Bail pour cloisonner le CRM interne de la marketplace.
+    Les tables miroir un temps posées dans Plein Bail ont été **supprimées**
+    et l'ancienne fonction de synchro y est neutralisée (410).
+  - Les 25 data types Bubble sont mirrorés dans ce projet : tables
     `public.bo_<type>` (id Bubble en PK + `data` jsonb + bubble_created/
-    modified), **RLS activée sans policy** → service_role uniquement
-    (garde-fou §8.4). ~72 000 lignes synchronisées le 10/08/26.
-  - **Edge Function `bubble-sync`** (déployée sur Plein Bail) : upsert
+    modified), **RLS activée sans policy** → service_role uniquement.
+    ~72 000 lignes synchronisées le 10/08/26.
+  - **Edge Function `bubble-sync`** (déployée sur france-immeuble-bo) : upsert
     idempotent par type/curseur ; incrémental via `since` (Modified Date >).
     Pilotée par `scripts/sync-bubble.mjs` (BUBBLE_API_TOKEN requis).
   - **La couche de données de l'app bascule automatiquement** : si
@@ -168,10 +173,13 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
     repli Data API Bubble. Traductions : equals → `data->>k=eq.`,
     contains → `data=cs.{...}`, _id in → `id=in.(...)`, tri via
     bubble_created/modified.
-  - ⚠️ **Action requise** : coller la clé service_role (Dashboard Supabase →
-    Project Settings → API keys) en `SUPABASE_SERVICE_ROLE_KEY` dans Vercel
-    ET dans l'environnement Claude. Le token Bubble reste utile pour la
-    synchro et le proxy photos privées.
+  - ⚠️ **Action requise** : coller la clé service_role **du projet
+    france-immeuble-bo** (Dashboard Supabase → france-immeuble-bo → Project
+    Settings → API keys) en `SUPABASE_SERVICE_ROLE_KEY` dans Vercel ET dans
+    l'environnement Claude (+ `SUPABASE_URL=https://sojtmhdrzmdbtqborxsi.supabase.co`).
+    Le token Bubble reste utile pour la synchro et le proxy photos privées.
+    L'accès à Plein Bail (NEXT_PUBLIC_*) ne sert qu'à la future passerelle
+    marketplace — pont explicite entre les deux projets.
   - Écritures futures (suivis, lots, estimations, mandats…) : **dans bo_***
     uniquement ; Bubble reste en lecture. Attention au recouvrement : tant
     que le BO Bubble est utilisé en parallèle, une resynchro écrase les
