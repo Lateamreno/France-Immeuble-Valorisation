@@ -50,4 +50,27 @@ Enseignements pour la migration :
 
 ## 2. Cartographie des écrans (captures Drive)
 
-_(sections alimentées par le dépouillement des captures — voir ci-dessous)_
+144 captures dépouillées (12 sous-dossiers). Détail par module dans `docs/cartographie/` :
+
+| Fichier | Contenu |
+|---|---|
+| [`02-dashboard.md`](cartographie/02-dashboard.md) | Dashboard kanban 3 lignes × 3 colonnes (PROSPECTS / COMMERCIALISATIONS / VENTES), rail latéral, barre d'action « + » (7 modales de création détaillées champ par champ) |
+| [`03-bien-fiche-immeuble.md`](cartographie/03-bien-fiche-immeuble.md) | Fiche Bien complète (~100 captures) : Suivi, Propriétaire, Emplacement (Adresse/Parcelles-PLU/Prix du secteur), État locatif (Lots/Baux/Locataires/Charges), État technique, Description et prix, Photos, wizard Estimation 6 étapes, Mandat + numérotation, Dossiers PDF versionnés, Matching acquéreurs, Commercialisation email/SMS, Propositions, Offres, Notes |
+| [`04-listes-objectifs-data.md`](cartographie/04-listes-objectifs-data.md) | Vues listes (Immeubles, Estimations, Mandats, Visites, Offres, Suivi/Rappels) + Objectifs (5 écrans) + Data (reporting entonnoir complet, funnels, comparatif agents) |
+| [`05-contact-recherches.md`](cartographie/05-contact-recherches.md) | Fiche Contact (9 onglets + modale de suppression RGPD) et module Recherches (filtres, critères, matching → propositions) |
+
+### 2.1 Synthèse globale — comment fonctionne le BO actuel
+
+**L'ossature** : un entonnoir immeuble en 9 étapes, piloté au clic depuis un kanban 3×3
+(`FORMULAIRES A TRAITER → IMMEUBLES A ESTIMER → A TRANSFORMER → PREPARATION MANDAT ET DOSSIER → COMMERCIALISES AUX CLIENTS A ET B → COMMERCIALISES A TOUS LES CLIENTS → OFFRES ACCEPTEES → COMPROMIS SIGNES → VENDUS`), doublé d'un mécanisme transversal `En attente` (motif + date de réactivation + `Réactiver`) et d'un journal de suivis en texte libre. C'est exactement la base du **dashboard 9 cases** acté au HANDOFF.
+
+**La chaîne de valeur** : formulaire web ou saisie → fiche Bien enrichie à la main (INSEE, PLU, secteur) → wizard Estimation (PDF figé + email) → Mandat (numéro séquentiel verrouillé « 2104 », mais des mandats « Pas de numéro » traînent) → Dossier PDF versionné → Matching acquéreurs (grades A/B/C/D, filtres, 429 résultats scorés) → Commercialisation (WeTransfer manuel + SMS copiés-collés par paquets de 50) → Propositions (relances, refus motivés) → Visites → Offres (net vendeur + honos = HAI, compte à rebours) → Compromis → Vente.
+
+**Les 5 chantiers de friction récurrents (tous modules confondus)** :
+1. **Données externes recopiées à la main** (INSEE, cadastre, PLU, Seloger/Notaires) → remplacées par `dvf_benchmarks`/`loyers_benchmarks`/`villes_stats`/`geo_communes` déjà en base + API Carto IGN.
+2. **Copies désynchronisées** (immeuble vs dossier PDF vs matching vs email) → source de vérité unique + génération à la volée.
+3. **Relances = mémoire humaine** (198 propositions à relancer, offres « Expire dans -1051 jours », mandats expirés sans alerte) → moteur `tasks`/`reminders` + calendrier unifié.
+4. **Texte libre non exploité** (notes de suivi, motifs de refus, critères acquéreurs) → parsing IA en champs structurés, en migration comme à la saisie.
+5. **Ruptures manuelles** (WeTransfer, SMS copier-coller, « Marquer comme envoyés » déclaratif) → dataroom Supabase Storage loggée + envois API tracés.
+
+**Ce qui mérite d'être conservé tel quel (ça marche)** : l'entonnoir kanban au clic, le mécanisme attente/réactivation, la création rapide « + » omniprésente, la logique de complétude par section, le verrouillage du numéro de mandat, le matching par grades avec exclusions (déjà vu / agents / mandat obligatoire), la modale de suppression contact RGPD (purge vs conservation légale), le drill-down des objectifs (Réussis/Manqués nominatif).
