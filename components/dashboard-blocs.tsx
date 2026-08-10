@@ -24,10 +24,8 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
 };
 
 function Card({ c, mock }: { c: KCard; mock?: boolean }) {
-  const Top: React.ElementType = mock ? "div" : Link;
-  return (
-    <div className={`kard${c.wait ? " alert" : ""}`}>
-      <Top href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>
+  const top = (
+    <>
         <div className="kthumb">
           {c.photoUrl ? (
             <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -96,7 +94,15 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
             </div>
           )}
         </div>
-      </Top>
+    </>
+  );
+  return (
+    <div className={`kard${c.wait ? " alert" : ""}`}>
+      {mock ? (
+        <div className="kard-top" style={{ display: "flex" }}>{top}</div>
+      ) : (
+        <Link href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>{top}</Link>
+      )}
 
       <div className="kact">
         <button className="kbtn" type="button" aria-label="Autres actions">
