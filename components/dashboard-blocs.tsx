@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
+import { reactiver, setStatut } from "@/lib/bo/actions";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
   form: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
@@ -24,6 +25,14 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
 };
 
 function Card({ c, mock }: { c: KCard; mock?: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const onAction = () => {
+    if (mock || pending || !c.action) return;
+    startTransition(async () => {
+      if (c.action!.kind === "green") await reactiver(c.id);
+      else if (c.action!.next) await setStatut(c.id, c.action!.next);
+    });
+  };
   const top = (
     <>
         <div className="kthumb">
@@ -141,7 +150,13 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
           </>
         )}
         {c.action && (
-          <button className={`kgo${c.action.kind === "green" ? " green" : ""}`} type="button">
+          <button
+            className={`kgo${c.action.kind === "green" ? " green" : ""}`}
+            type="button"
+            disabled={pending}
+            style={pending ? { opacity: 0.5 } : undefined}
+            onClick={onAction}
+          >
             {c.action.kind === "green" ? (
               <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
             ) : (

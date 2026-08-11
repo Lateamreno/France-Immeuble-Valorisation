@@ -84,7 +84,7 @@ async function sbq(
       Authorization: `Bearer ${SB_KEY!}`,
       Prefer: "count=exact",
     },
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`Supabase ${res.status} sur bo_${type}`);
   const rows = (await res.json()) as { data: Record<string, unknown> }[];
@@ -216,18 +216,45 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
   // Compteurs propositions / visites / offres par immeuble commercialisé (statuts 5-7).
   const commIds = ims.filter((i) => [5, 6, 7].includes(statutOf(i))).map((i) => i._id as string);
   const countsByIm = new Map<string, { prop: number; vis: number; off: number }>();
-  const CONC = 6;
-  for (let i = 0; i < commIds.length; i += CONC) {
-    await Promise.all(
-      commIds.slice(i, i + CONC).map(async (id) => {
-        const [prop, vis, off] = await Promise.all([
-          count("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
-          count("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
-          count("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }]).catch(() => 0),
-        ]);
-        countsByIm.set(id, { prop, vis, off });
-      }),
-    );
+  commIds.forEach((id) => countsByIm.set(id, { prop: 0, vis: 0, off: 0 }));
+  if (USE_SB && commIds.length > 0) {
+    // Groupé : 3 requêtes (liste des rattachements) puis comptage local.
+    const idList = commIds.map((v) => `"${v}"`).join(",");
+    const grab = async (table: string, col: string) => {
+      const res = await fetch(
+        `${SB_URL}/rest/v1/${table}?select=data->>${col}&data->>${col}=in.(${idList})&limit=100000`,
+        { headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` }, cache: "no-store" },
+      );
+      if (!res.ok) return [] as string[];
+      return ((await res.json()) as Record<string, string>[]).map((r) => Object.values(r)[0]);
+    };
+    const [props, viss] = await Promise.all([
+      grab("bo_proposition", "IMMEUBLE"),
+      grab("bo_visite", "IMMEUBLE"),
+    ]);
+    props.forEach((id) => { const c = countsByIm.get(id); if (c) c.prop++; });
+    viss.forEach((id) => { const c = countsByIm.get(id); if (c) c.vis++; });
+    // offres : IMMEUBLEs est une liste → réutilise offreByIm complet
+    for (const o of offres) {
+      for (const id of (o.IMMEUBLEs as string[] | undefined) ?? []) {
+        const c = countsByIm.get(id);
+        if (c) c.off++;
+      }
+    }
+  } else if (commIds.length > 0) {
+    const CONC = 6;
+    for (let i = 0; i < commIds.length; i += CONC) {
+      await Promise.all(
+        commIds.slice(i, i + CONC).map(async (id) => {
+          const [prop, vis, off] = await Promise.all([
+            count("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
+            count("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }]).catch(() => 0),
+            count("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }]).catch(() => 0),
+          ]);
+          countsByIm.set(id, { prop, vis, off });
+        }),
+      );
+    }
   }
 
   const mkCard = (im: Record<string, unknown>): KCard => {
@@ -297,10 +324,10 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
       card.prix = euros(offre?.prix_hai ?? im.prix_hai);
     }
 
-    if (st === 1) card.action = { label: "Contacté" };
-    else if (st === 2) card.action = { label: "Estimer" };
-    else if (st === 3) card.action = { label: "OK pour vendre" };
-    else if (st === 7 || st === 8) card.action = { label: "Programmer le compromis" };
+    if (st === 1) card.action = { label: "Contacté", next: 2 };
+    else if (st === 2) card.action = { label: "Estimer", next: 3 };
+    else if (st === 3) card.action = { label: "OK pour vendre", next: 4 };
+    else if (st === 7 || st === 8) card.action = { label: "Programmer le compromis", next: 9 };
 
     return card;
   };

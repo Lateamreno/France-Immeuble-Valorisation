@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Image from "next/image";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
+import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
+
+const MOTIFS_STANDBY = [
+  "Attente infos",
+  "Attente documents",
+  "Temps de réflexion",
+  "Vacances",
+  "Démarche locative",
+  "Délai administratif",
+  "Autre",
+];
 
 type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
@@ -135,10 +146,7 @@ export function BienFiche({ b }: { b: BienData }) {
             <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>
           </button>
           <span className="sp" />
-          <button className="kgo green" type="button">
-            <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
-            Réactiver
-          </button>
+          <ReactiverBtn immeubleId={String(im._id)} />
         </div>
       </aside>
     </div>
@@ -187,7 +195,7 @@ function SuiviSection({ b }: { b: BienData }) {
       </div>
 
       <div className="fh2">Historique des échanges ({b.suivis.length})</div>
-      <button className="fbtn" type="button" style={{ marginBottom: 12 }}>+ Ajouter un suivi</button>
+      <AddSuiviButton b={b} />
       {b.suivis.map((s, i) => (
         <div className="hitem" key={i}>
           <div className="hav">
@@ -397,11 +405,187 @@ function PrixSection({ b }: { b: BienData }) {
         <div className="fcard"><div><div className="k">Loyers</div><div className="v">{euros(im.fin_loyers_an)}/an · max {euros(im.fin_loyers_an_max)}/an</div></div></div>
         <div className="fcard"><div><div className="k">Charges</div><div className="v">{euros(im.fin_charges_total) ?? "n.c."}/an</div></div></div>
       </div>
+      <div className="fh2">Modifier le prix</div>
+      <PrixForm b={b} />
       <div className="fh2">Descriptif</div>
-      <div className="frow" style={{ display: "block", whiteSpace: "pre-line", fontSize: 13, color: "var(--slate-2)" }}>
-        {String(im.descriptif ?? "Aucun descriptif.")}
-      </div>
+      <DescriptifForm b={b} />
     </>
+  );
+}
+
+function ReactiverBtn({ immeubleId }: { immeubleId: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      className="kgo green"
+      type="button"
+      disabled={pending}
+      style={pending ? { opacity: 0.5 } : undefined}
+      onClick={() => start(async () => { await reactiver(immeubleId); })}
+    >
+      <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
+      Réactiver
+    </button>
+  );
+}
+
+function AddSuiviButton({ b }: { b: BienData }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [canal, setCanal] = useState<"Téléphone" | "Message téléphonique" | "SMS" | "E-mail">("Téléphone");
+  const [notes, setNotes] = useState("");
+  const [standby, setStandby] = useState(false);
+  const [motif, setMotif] = useState(MOTIFS_STANDBY[0]);
+  const [dateRelance, setDateRelance] = useState("");
+  const proprio = b.proprietaire
+    ? `${String(b.proprietaire["prénom"] ?? "")} ${String(b.proprietaire.nom ?? "")}`.trim()
+    : "—";
+
+  const submit = () =>
+    start(async () => {
+      await addSuivi({
+        immeubleId: String(b.im._id),
+        agentId: String(b.im.AGENT ?? ""),
+        contactId: b.im.PROPRIETAIRE ? String(b.im.PROPRIETAIRE) : undefined,
+        canal,
+        notes,
+        standby: standby && dateRelance ? { motif, dateRelance } : undefined,
+      });
+      setOpen(false);
+      setNotes("");
+      setStandby(false);
+    });
+
+  return (
+    <>
+      <button className="fbtn" type="button" style={{ marginBottom: 12 }} onClick={() => setOpen(true)}>
+        + Ajouter un suivi
+      </button>
+      {open && (
+        <div className="modal-ov" onClick={() => !pending && setOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              <span>Suivi</span>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Fermer">✕</button>
+            </div>
+            <div className="modal-b">
+              <label className="mlab">Personne contactée</label>
+              <input className="min" value={proprio} readOnly />
+              <label className="mlab">Objet de l&apos;échange</label>
+              <input className="min" value={`${b.ville} — ${b.adresse}`} readOnly />
+              <label className="mlab">Contacté par</label>
+              <div className="mrow">
+                {(["Téléphone", "Message téléphonique", "SMS", "E-mail"] as const).map((c) => (
+                  <button key={c} type="button" className={`mopt${canal === c ? " on" : ""}`} onClick={() => setCanal(c)}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <label className="mlab">Notes</label>
+              <textarea
+                className="min"
+                rows={4}
+                placeholder="Ecrivez ici vos notes de suivi, remarques..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+              <label className="mlab">Mettre en attente</label>
+              <div className="mrow">
+                <button type="button" className={`mopt${!standby ? " on" : ""}`} onClick={() => setStandby(false)}>Non</button>
+                <button type="button" className={`mopt${standby ? " on" : ""}`} onClick={() => setStandby(true)}>Oui</button>
+              </div>
+              {standby && (
+                <div className="mrow" style={{ alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>jusqu&apos;au</span>
+                  <input className="min" type="date" style={{ width: 170 }} value={dateRelance} onChange={(e) => setDateRelance(e.target.value)} />
+                  <span style={{ fontSize: 13 }}>car</span>
+                  <select className="min" style={{ width: 210 }} value={motif} onChange={(e) => setMotif(e.target.value)}>
+                    {MOTIFS_STANDBY.map((m) => (
+                      <option key={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="modal-f">
+              <button className="fbtn" type="button" onClick={() => setOpen(false)}>Annuler</button>
+              <button
+                className="kgo"
+                type="button"
+                disabled={pending || (!notes && !standby)}
+                style={pending ? { opacity: 0.5 } : undefined}
+                onClick={submit}
+              >
+                <span className="ch">›</span> {standby ? "Mettre en attente" : "Enregistrer le suivi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PrixForm({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const [nv, setNv] = useState(typeof b.im.prix_nv === "number" ? String(b.im.prix_nv) : "");
+  const [honos, setHonos] = useState(typeof b.im.prix_honos_ttc === "number" ? String(b.im.prix_honos_ttc) : "");
+  const hai = (parseFloat(nv) || 0) + (parseFloat(honos) || 0);
+  return (
+    <div className="frow" style={{ gap: 10, flexWrap: "wrap" }}>
+      <label style={{ fontSize: 12.5 }}>Net vendeur<br />
+        <input className="min" type="number" style={{ width: 140 }} value={nv} onChange={(e) => setNv(e.target.value)} />
+      </label>
+      <label style={{ fontSize: 12.5 }}>Honoraires TTC<br />
+        <input className="min" type="number" style={{ width: 130 }} value={honos} onChange={(e) => setHonos(e.target.value)} />
+      </label>
+      <div style={{ fontSize: 12.5 }}>Prix HAI<br /><b style={{ fontSize: 15 }}>{hai > 0 ? `${Math.round(hai).toLocaleString("fr-FR")} €` : "—"}</b></div>
+      <span className="sp" style={{ flex: 1 }} />
+      <button
+        className="kgo"
+        type="button"
+        disabled={pending || hai <= 0}
+        style={pending ? { opacity: 0.5 } : undefined}
+        onClick={() =>
+          start(async () => {
+            await updateBien(String(b.im._id), {
+              prix_nv: parseFloat(nv) || undefined,
+              prix_honos_ttc: parseFloat(honos) || undefined,
+            });
+          })
+        }
+      >
+        <span className="ch">›</span> Enregistrer
+      </button>
+    </div>
+  );
+}
+
+function DescriptifForm({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const [txt, setTxt] = useState(typeof b.im.descriptif === "string" ? (b.im.descriptif as string) : "");
+  return (
+    <div className="frow" style={{ display: "block" }}>
+      <textarea
+        className="min"
+        rows={6}
+        style={{ width: "100%", fontSize: 13 }}
+        value={txt}
+        onChange={(e) => setTxt(e.target.value)}
+        placeholder="Descriptif de l'immeuble…"
+      />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+        <button
+          className="kgo"
+          type="button"
+          disabled={pending}
+          style={pending ? { opacity: 0.5 } : undefined}
+          onClick={() => start(async () => { await updateBien(String(b.im._id), { descriptif: txt }); })}
+        >
+          <span className="ch">›</span> Enregistrer
+        </button>
+      </div>
+    </div>
   );
 }
 

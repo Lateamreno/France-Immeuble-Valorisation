@@ -27,8 +27,8 @@ export type KCard = {
   wait?: { from: string; to: string; motif: string };
   prix?: string;
   fee?: string;
-  /** Bouton principal. */
-  action?: { label: string; kind?: "green" };
+  /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
+  action?: { label: string; kind?: "green"; next?: number };
   /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */
   counts?: { prop: number; vis: number; off: number };
   /** Icônes d'alerte rouges (mandat / PDF / contacts) + cadenas gris. */
