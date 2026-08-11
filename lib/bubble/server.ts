@@ -882,3 +882,38 @@ export async function listPropositions(): Promise<ListCard[]> {
     } satisfies ListCard;
   });
 }
+
+/** Volumes 12 mois pour l'écran Datas (comptés sur Created Date). */
+export async function getDatas() {
+  const since = new Date(Date.now() - 365 * 86400000).toISOString();
+  const created: Constraint[] = [{ key: "Created Date", constraint_type: "greater than", value: since }];
+  const [contacts, recherches, immeubles, estimations, mandats, visites, offresRows] = await Promise.all([
+    count("contact", created).catch(() => 0),
+    count("recherche", created).catch(() => 0),
+    count("immeuble", created).catch(() => 0),
+    fetchAll("estimation", created, 2000).catch(() => []),
+    fetchAll("mandat", created, 2000).catch(() => []),
+    fetchAll("visite", created, 2000).catch(() => []),
+    fetchAll("offre", created, 2000).catch(() => []),
+  ]);
+  const num = (v: unknown) => (typeof v === "number" ? v : 0);
+  const okOffre = ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"];
+  const formulaires = await count("immeuble", [
+    ...created,
+    { key: "Statut", constraint_type: "equals", value: "1 - FORMULAIRE" },
+  ]).catch(() => 0);
+  return {
+    contacts, recherches, immeubles, formulaires,
+    estimations: estimations.length,
+    estimationsEnvoyees: estimations.filter((e) => String(e.Statut ?? "").startsWith("3")).length,
+    mandats: mandats.length,
+    mandatsSignes: mandats.filter((m) => !!m.date_signature || ["En cours", "Vendu", "Expiré"].includes(String(m.Statut ?? ""))).length,
+    visites: visites.length,
+    visitesEffectuees: visites.filter((v) => String(v.Statut ?? "") === "Effectuée").length,
+    offres: offresRows.length,
+    offresAcceptees: offresRows.filter((o) => okOffre.includes(String(o.Statut ?? ""))).length,
+    offresHonosHt: offresRows.reduce((s, o) => s + num(o.honos_ht), 0),
+    ventes: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").length,
+    ventesHonosHt: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").reduce((s, o) => s + num(o.honos_ht), 0),
+  };
+}
