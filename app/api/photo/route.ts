@@ -8,6 +8,19 @@ const ALLOWED_HOSTS = new Set([
   "vente.france-immeuble.fr",
   "s3.amazonaws.com",
 ]);
+/** Les pièces jointes Bubble sont aussi servies depuis leur CDN. */
+const hoteAutorise = (h: string) =>
+  ALLOWED_HOSTS.has(h) || h === "cdn.bubble.io" || h.endsWith(".cdn.bubble.io");
+
+/** Pixel transparent : une image source cassée ne doit pas casser la page. */
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+const pixel = () =>
+  new Response(new Uint8Array(PIXEL), {
+    headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=300" },
+  });
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 
@@ -22,7 +35,7 @@ export async function GET(req: NextRequest) {
       headers: { Authorization: `Bearer ${key}` },
       next: { revalidate: 86400 },
     });
-    if (!upstream.ok) return new Response("upstream error", { status: 502 });
+    if (!upstream.ok) return pixel();
     return new Response(upstream.body, {
       headers: {
         "Content-Type": upstream.headers.get("Content-Type") ?? "application/octet-stream",
@@ -40,7 +53,7 @@ export async function GET(req: NextRequest) {
   } catch {
     return new Response("bad url", { status: 400 });
   }
-  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) {
+  if (url.protocol !== "https:" || !hoteAutorise(url.hostname)) {
     return new Response("host not allowed", { status: 403 });
   }
 
@@ -50,7 +63,7 @@ export async function GET(req: NextRequest) {
     redirect: "follow",
     next: { revalidate: 86400 },
   });
-  if (!upstream.ok) return new Response("upstream error", { status: 502 });
+  if (!upstream.ok) return pixel();
 
   return new Response(upstream.body, {
     headers: {
