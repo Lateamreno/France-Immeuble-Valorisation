@@ -12,6 +12,7 @@ import { EmplacementTabs } from "@/components/emplacement";
 import { TechniqueTabs } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
+import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -88,7 +89,13 @@ export function BienFiche({ b }: { b: BienData }) {
           {sect === "photos" && <PhotosSection b={b} />}
           {sect === "estimations" && <EstimationsSection b={b} />}
           {sect === "mandats" && <MandatsSection b={b} />}
-          {(sect === "dossiers" || sect === "tous-docs") && <DossiersSection b={b} />}
+          {sect === "dossiers" && <DossiersSection b={b} />}
+          {sect === "tous-docs" && (
+            <>
+              <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
+              <DocumentsCoffre b={b} />
+            </>
+          )}
           {sect === "acheteurs" && <AcheteursSection b={b} />}
           {sect === "notes" && <NotesSection b={b} />}
         </div>
@@ -513,13 +520,27 @@ function DescriptifForm({ b }: { b: BienData }) {
 }
 
 function PhotosSection({ b }: { b: BienData }) {
+  const compte = (t: string) => b.photos.filter((p) => p.type === t).length;
   return (
     <>
-      <SectTitle icon={I.cam} title="Photos" chips={<span className="fchip">{b.photos.length} photos</span>} />
+      <SectTitle
+        icon={I.cam}
+        title="Photos"
+        chips={
+          <>
+            <span className="fchip">{b.photos.length} photos</span>
+            <span className="fchip">{compte("Extérieur")} extérieure{compte("Extérieur") > 1 ? "s" : ""}</span>
+            <span className="fchip">{compte("Parties communes")} des PC</span>
+            <span className="fchip">{compte("Lot")} des lots</span>
+          </>
+        }
+      />
+      <AddPhotoButton b={b} />
       <div className="fphotos">
         {b.photos.map((p) => (
-          <div className="ph" key={p.id}>
+          <div className="ph" key={p.id} style={{ position: "relative" }}>
             {p.url && <Image src={p.url} alt="" width={320} height={240} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+            <DeletePhotoButton b={b} photoId={p.id} />
           </div>
         ))}
       </div>

@@ -9,7 +9,28 @@ const ALLOWED_HOSTS = new Set([
   "s3.amazonaws.com",
 ]);
 
+const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+
 export async function GET(req: NextRequest) {
+  // Fichiers du bucket privé Supabase (`bo-files`) : ?s=<chemin dans le bucket>
+  const s = req.nextUrl.searchParams.get("s");
+  if (s) {
+    if (s.includes("..")) return new Response("bad path", { status: 400 });
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!key) return new Response("storage indisponible", { status: 503 });
+    const upstream = await fetch(`${SB_URL}/storage/v1/object/bo-files/${s}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      next: { revalidate: 86400 },
+    });
+    if (!upstream.ok) return new Response("upstream error", { status: 502 });
+    return new Response(upstream.body, {
+      headers: {
+        "Content-Type": upstream.headers.get("Content-Type") ?? "application/octet-stream",
+        "Cache-Control": "public, max-age=86400, immutable",
+      },
+    });
+  }
+
   const u = req.nextUrl.searchParams.get("u");
   if (!u) return new Response("missing u", { status: 400 });
 

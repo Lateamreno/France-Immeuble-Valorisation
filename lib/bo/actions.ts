@@ -707,6 +707,92 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Fichiers (photos & documents, Supabase Storage privé) ---------- */
+
+async function uploadToBucket(path: string, file: File) {
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const res = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": file.type || "application/octet-stream",
+      "x-upsert": "true",
+    },
+    body: Buffer.from(await file.arrayBuffer()),
+  });
+  if (!res.ok) throw new Error(`Upload storage ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+const safeName = (name: string) =>
+  name.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(0, 120);
+
+/** Ajoute une photo (modale « Nouvelle photo » : type Extérieur / Parties communes / Lot). */
+export async function uploadPhoto(immeubleId: string, type: string, lotId: string | null, fd: FormData) {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 15 * 1024 * 1024) throw new Error("Fichier trop lourd (15 Mo max)");
+  const id = newId();
+  const now = new Date().toISOString();
+  const path = `photos/${immeubleId}/${id}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  await rpc("bo_insert_doc", {
+    p_table: "bo_photo",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      LOT: lotId ?? undefined,
+      image: `storage:${path}`,
+      Type: type,
+      format: file.type,
+      size_kB: Math.round(file.size / 1024),
+      date: now,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime une photo (ligne récupérable ; le fichier reste dans le bucket). */
+export async function deletePhoto(immeubleId: string, photoId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_photo", p_id: photoId });
+  refresh(immeubleId);
+}
+
+/** Ajoute un document au coffre de la fiche (bo_app_document). */
+export async function uploadDocument(immeubleId: string, label: string, fd: FormData) {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 25 * 1024 * 1024) throw new Error("Fichier trop lourd (25 Mo max)");
+  const id = newId();
+  const now = new Date().toISOString();
+  const path = `documents/${immeubleId}/${id}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  await rpc("bo_insert_doc", {
+    p_table: "bo_app_document",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      name: label || file.name,
+      file_name: file.name,
+      path,
+      format: file.type,
+      size_kB: Math.round(file.size / 1024),
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Retire un document du coffre (ligne récupérable, fichier conservé). */
+export async function deleteDocument(immeubleId: string, documentId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_app_document", p_id: documentId });
+  refresh(immeubleId);
+}
+
 /* ---------- Commercialisation : visites & offres ---------- */
 
 /** Programme une visite. */

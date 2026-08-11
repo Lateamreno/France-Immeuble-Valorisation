@@ -418,7 +418,9 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
 
 const photoProxy = (u?: unknown) =>
   typeof u === "string" && u
-    ? `/api/photo?u=${encodeURIComponent(u.replace(/^\/\//, "https://"))}`
+    ? u.startsWith("storage:")
+      ? `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}`
+      : `/api/photo?u=${encodeURIComponent(u.replace(/^\/\//, "https://"))}`
     : undefined;
 
 export type BienData = {
@@ -448,7 +450,8 @@ export type BienData = {
   charges: Record<string, unknown>[];
   composants: Record<string, unknown>[];
   travaux: Record<string, unknown>[];
-  photos: { id: string; url?: string }[];
+  photos: { id: string; url?: string; type?: string }[];
+  documents: Record<string, unknown>[];
   estimations: Record<string, unknown>[];
   mandats: Record<string, unknown>[];
   dossiers: Record<string, unknown>[];
@@ -466,7 +469,7 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
   const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
-  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
@@ -483,6 +486,7 @@ export async function getBien(id: string): Promise<BienData | null> {
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
+      fetchAll("app_document", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 60).catch(() => []),
       fetchAll("estimation", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
       fetchAll("mandat", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
       fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
@@ -539,7 +543,12 @@ export async function getBien(id: string): Promise<BienData | null> {
       .sort((a, b) => String(a["Created Date"]).localeCompare(String(b["Created Date"]))),
     composants,
     travaux,
-    photos: photos.map((p) => ({ id: p._id as string, url: photoProxy(p.compressed ?? p.image) })),
+    photos: photos.map((p) => ({
+      id: p._id as string,
+      url: photoProxy(p.compressed ?? p.image),
+      type: typeof p.Type === "string" ? (p.Type as string) : undefined,
+    })),
+    documents: [...documents].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     estimations: [...estimations].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     mandats: [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     dossiers: [...dossiers].sort((a, b) => Number(b.version ?? 0) - Number(a.version ?? 0)),
