@@ -360,29 +360,67 @@ function ApporteurCard({ b }: { b: BienData }) {
   );
 }
 
+/** Propriétaire — mise en page reprise du BO (retour MAV #34) : cadre doré
+ *  avec le nom en pastille, vignettes Profil / Motif de la vente, puis
+ *  l'identité (entreprise, téléphone, e-mail) en cases copiables. */
 function ProprioSection({ b }: { b: BienData }) {
   const c = b.proprietaire;
+  const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const nomComplet = c ? `${S2(c["prénom"]) ?? ""} ${S2(c.nom) ?? ""}`.trim() : "";
+  const profil = c && Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : undefined;
+  const motif = S2(b.im.Motif_vente);
+  const entreprise = c ? S2(c.entreprise_nom) : undefined;
+  const tel = c ? S2(c.portable_formatted) ?? S2(c.portable) ?? S2(c.fixe_formatted) : undefined;
+  const mail = c ? S2(c.email) : undefined;
+
   return (
     <>
-      <SectTitle icon={I.user} title="Propriétaire" />
-      {c ? (
-        <Row>
-          <span className="fic" style={{ width: 26, height: 26, color: "var(--slate-2)" }}><svg viewBox="0 0 24 24" style={{ width: "100%", height: "100%", stroke: "currentColor", fill: "none", strokeWidth: 1.8 }}>{I.user}</svg></span>
-          <div className="grow">
-            <div className="t">
-              <Link href={`/contact/${String(c._id)}`} style={{ color: "inherit" }}>
-                {String(c["prénom"] ?? "")} {String(c.nom ?? "")}
-              </Link>
+      <div className="pr-cadre">
+        <div className="pr-titre">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2" /><circle cx="12" cy="9.6" r="2.9" /><path d="M6.6 18.6c.9-2.6 2.9-3.8 5.4-3.8s4.5 1.2 5.4 3.8" /></svg>
+          Propriétaire
+        </div>
+        {c ? (
+          <Link className="pr-chip" href={`/contact/${String(c._id)}`}>
+            <svg viewBox="0 0 24 24">{I.user}</svg>
+            {(nomComplet || "—").toUpperCase()}
+          </Link>
+        ) : (
+          <span className="pr-chip off">Aucun propriétaire lié</span>
+        )}
+      </div>
+
+      <div className="pr-duo">
+        <div className="pr-case">
+          <span className="pr-ic">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+          </span>
+          <div><div className="k">Profil</div><div className="v">{profil ?? "—"}</div></div>
+        </div>
+        <div className="pr-case">
+          <span className="pr-ic">
+            <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 3 9v2H9v-2a5 5 0 0 1 3-9zM10 18h4" /></svg>
+          </span>
+          <div><div className="k">Motif de la vente</div><div className="v">{motif ?? "—"}</div></div>
+        </div>
+      </div>
+
+      {c && (
+        <>
+          <div className="pr-nom">{(nomComplet || "—").toUpperCase()}</div>
+          {entreprise && (
+            <div className="pr-case large">
+              <span className="pr-ic">
+                <svg viewBox="0 0 24 24"><path d="M3 20V9l6 3V9l6 3V4h6v16z" /></svg>
+              </span>
+              <div><div className="k">Entreprise</div><div className="v">{entreprise}</div></div>
             </div>
-            <div className="s" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!!(c.portable_formatted || c.portable) && <Copiable valeur={String(c.portable_formatted ?? c.portable)} type="tel" />}
-              {!!c.email && <Copiable valeur={String(c.email)} type="mail" />}
-            </div>
+          )}
+          <div className="pr-duo">
+            {tel ? <Copiable valeur={tel} type="tel" /> : <span className="pr-case vide">Pas de téléphone</span>}
+            {mail ? <Copiable valeur={mail} type="mail" /> : <span className="pr-case vide">Pas d&apos;e-mail</span>}
           </div>
-          {typeof b.im.Motif_vente === "string" && <span className="badge-o">Motif : {String(b.im.Motif_vente)}</span>}
-        </Row>
-      ) : (
-        <div className="fempty">Aucun propriétaire lié.</div>
+        </>
       )}
 
       <div className="fh2">Immeubles appartenant au même propriétaire</div>

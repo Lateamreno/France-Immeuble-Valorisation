@@ -14,6 +14,16 @@ import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
 
+/* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
+const IC = {
+  maison: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
+  cle: <><circle cx="8" cy="14" r="4" /><path d="M11 11 20 2M16 6l2.5 2.5M13 9l2 2" /></>,
+  lots: <><rect x="8" y="3" width="12" height="14" rx="1.6" /><path d="M16 20H5a1 1 0 0 1-1-1V7" /></>,
+  surface: <><path d="M4 9V4h5M20 15v5h-5M4 4l7 7M20 20l-7-7" /></>,
+  entree: <><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>,
+  travaux: <><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></>,
+};
+
 /* Typologies proposées selon la destination (un bureau n'est jamais un T2). */
 const TYPES_PAR_DESTINATION: Record<string, string[]> = {
   Logement: TYPES_LOT.filter((t) =>
@@ -334,20 +344,29 @@ export function LotsEditor({ b }: { b: BienData }) {
           ))}
         </div>
 
+        {/* Synthèse : cadre doré, titre doré et pastilles à picto (retour #42). */}
         <div className="lsum">
           {totaux.m2mois > 0 && (
             <div className="lsum-top">
-              <span className="fchip">{totaux.m2mois.toFixed(1).replace(".", ",")} €/m²/mois</span>
+              <span className="fchip">
+                <svg viewBox="0 0 24 24">{IC.maison}</svg>
+                <b>{totaux.m2mois.toFixed(1).replace(".", ",")}</b> €/m²/mois
+              </span>
             </div>
           )}
+          <div className="lsum-titre">
+            <svg viewBox="0 0 24 24">{IC.cle}</svg>
+            Etat locatif
+          </div>
           <div className="lsum-chips">
-            <span className="fchip">{totaux.lots} lots</span>
-            <span className="fchip">{Math.round(totaux.carrez).toLocaleString("fr-FR")} m²</span>
-            <span className="fchip">{euros(totaux.loyersAn) ?? "0 €"}/an</span>
-            <span className="fchip">{totaux.occupation} %</span>
-            <span className="fchip gold">{euros(totaux.maxAn) ?? "0 €"}/an</span>
-            <span className="fchip">
-              {euros(b.im.fin_travaux) ? `${euros(b.im.fin_travaux)} de travaux` : "Pas de travaux"}
+            <span className="fchip"><svg viewBox="0 0 24 24">{IC.lots}</svg><b>{totaux.lots}</b> lots</span>
+            <span className="fchip"><svg viewBox="0 0 24 24">{IC.surface}</svg><b>{Math.round(totaux.carrez).toLocaleString("fr-FR")}</b> m²</span>
+            <span className="fchip"><svg viewBox="0 0 24 24">{IC.entree}</svg><b>{euros(totaux.loyersAn) ?? "0 €"}</b>/an</span>
+            <span className="fchip"><svg viewBox="0 0 24 24">{IC.cle}</svg><b>{totaux.occupation}</b> %</span>
+            <span className="fchip gold"><svg viewBox="0 0 24 24">{IC.entree}</svg><b>{euros(totaux.maxAn) ?? "0 €"}</b>/an</span>
+            <span className={`fchip${euros(b.im.fin_travaux) ? "" : " off"}`}>
+              <svg viewBox="0 0 24 24">{IC.travaux}</svg>
+              {euros(b.im.fin_travaux) ? <><b>{euros(b.im.fin_travaux)}</b> de travaux</> : "Pas de travaux"}
             </span>
           </div>
         </div>

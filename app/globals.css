@@ -699,7 +699,8 @@ button { font-family: inherit; cursor: pointer; }
 :root { --gold: var(--slate); --gold-lum: var(--slate-2); --gold-deep: var(--slate); --gold-line: var(--line); --sub: var(--gray-txt); --muted: var(--gray-lt); --ink: var(--slate); --paper: #fff; }
 
 /* --- État locatif : sous-onglets Lots / Baux / Locataires / Charges --- */
-.ftabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 2px 0 12px; }
+/* Sous-onglets centrés comme dans le BO (retour #41). */
+.ftabs { display: flex; justify-content: center; gap: 2px; border-bottom: 1px solid var(--line); margin: 2px 0 12px; }
 .ftab { font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--gray-txt); background: none; border: 0; border-bottom: 2px solid transparent; padding: 7px 12px 8px; cursor: pointer; }
 .ftab:hover { color: var(--slate); }
 .ftab.on { color: var(--slate); border-bottom-color: #b6a359; }
@@ -903,8 +904,24 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ltog.on .sw2 { border-color: var(--slate); }
 .ltog.on .sw2::after { background: var(--slate); left: 13px; }
 
-.lsum { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.lsum-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+/* Synthèse encadrée d'or, comme le bandeau de l'état locatif du BO (#42). */
+.lsum { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.lsum { border: 1px solid var(--gold-bo); border-radius: 5px; padding: 12px 16px 14px; max-width: 920px; margin: 0 auto; }
+.lsum-top { margin-bottom: 4px; }
+.lsum-top .fchip { background: #ececec; border-color: #ececec; font-weight: 400; padding: 4px 12px; font-size: 13px; }
+.lsum-top .fchip b { font-weight: 700; }
+.lsum-titre {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--gold-bo); font-family: var(--font-title); font-size: 25px; font-weight: 700;
+  margin-bottom: 10px;
+}
+.lsum-titre svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.lsum-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.lsum-chips { flex-wrap: nowrap; }
+.lsum-chips .fchip { padding: 6px 11px; font-size: 12.5px; font-weight: 400; gap: 7px; white-space: nowrap; }
+.lsum-chips .fchip b { font-weight: 700; font-size: 14px; }
+.lsum-chips .fchip svg { width: 14px; height: 14px; stroke-width: 1.7; }
+.lsum-chips .fchip.off { color: var(--gray-lt); }
 
 /* Tableau : pleine largeur, en-tête sticky 2 lignes, séparateurs de groupes */
 .ltable-wrap { overflow-x: auto; overflow-y: visible; }
@@ -1344,3 +1361,36 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 }
 .sv-mini:disabled { opacity: .45; cursor: default; }
 .sv-mini svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+/* --- Propriétaire : mise en page du BO (retour #34) --- */
+.pr-cadre { border: 1px solid var(--gold-bo); border-radius: 5px; max-width: 620px; margin: 0 auto 22px; padding: 14px 10px 16px; text-align: center; }
+.pr-titre {
+  display: flex; align-items: center; justify-content: center; gap: 11px;
+  color: var(--gold-bo); font-family: var(--font-title); font-size: 26px; font-weight: 700;
+  margin-bottom: 10px;
+}
+.pr-titre svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.pr-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 7px 13px; font-size: 13px; font-weight: 600; color: var(--slate); text-decoration: none;
+}
+.pr-chip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.1; }
+.pr-chip.off { color: var(--gray-lt); }
+.pr-chip:hover { border-color: var(--slate); }
+
+.pr-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; align-items: stretch; }
+.pr-duo .cpv { width: 100%; justify-content: space-between; padding: 10px 4px 10px 14px; border-color: var(--line-lt); }
+.pr-duo .cpv .v { font-size: 15px; gap: 14px; }
+.pr-duo .cpv .v svg { width: 19px; height: 19px; stroke-width: 1.7; }
+.pr-case {
+  display: flex; align-items: center; gap: 16px;
+  border: 1px solid var(--line-lt); border-radius: 5px; background: #fff; padding: 14px 18px;
+}
+.pr-case.large { margin-bottom: 14px; }
+.pr-case.vide { color: var(--gray-lt); font-size: 13px; justify-content: center; }
+.pr-ic { flex: none; color: var(--slate); }
+.pr-ic svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.pr-case .k { font-family: var(--font-title); font-size: 14.5px; font-weight: 700; color: var(--slate); }
+.pr-case .v { font-size: 14.5px; color: var(--slate); margin-top: 2px; }
+.pr-nom { font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--slate); margin: 4px 0 10px; }
