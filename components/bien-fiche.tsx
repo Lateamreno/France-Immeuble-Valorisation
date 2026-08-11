@@ -11,6 +11,7 @@ import { AddMandatButton } from "@/components/mandat-create";
 import { EmplacementTabs } from "@/components/emplacement";
 import { TechniqueTabs } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
+import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -660,22 +661,31 @@ function AcheteursSection({ b }: { b: BienData }) {
         </Row>
       ))}
       {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
-      <div className="fh2">Visites</div>
+      <div className="fh2" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        Visites <span style={{ flex: 1 }} /> <AddVisiteButton b={b} />
+      </div>
       {b.visites.map((v) => (
         <Row key={v._id as string}>
-          <div className="grow"><div className="t">Visite du {dmy(v.date)}</div><div className="s">{String(v.rex_fi ?? "")}</div></div>
-          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : "badge-o"}>{String(v.Statut ?? "")}</span>
+          <div className="grow">
+            <div className="t">Visite du {dmy(v.date)}{v.visiteur_nom ? ` — ${String(v.visiteur_nom)}` : ""}</div>
+            <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
+          </div>
+          <VisiteActions b={b} v={v} />
+          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
         </Row>
       ))}
       {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
-      <div className="fh2">Offres</div>
+      <div className="fh2" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        Offres <span style={{ flex: 1 }} /> <AddOffreButton b={b} />
+      </div>
       {b.offres.map((o) => (
         <Row key={o._id as string}>
           <div className="grow">
-            <div className="t">Offre du {dmy(o.date)}</div>
-            <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI</div>
+            <div className="t">Offre du {dmy(o.date)}{o.acheteur_nom ? ` — ${String(o.acheteur_nom)}` : ""}</div>
+            <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
           </div>
-          <span className={["Acceptée", "Vendu"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+          <OffreActions b={b} o={o} />
+          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
         </Row>
       ))}
       {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}

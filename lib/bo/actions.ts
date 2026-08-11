@@ -707,6 +707,111 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Commercialisation : visites & offres ---------- */
+
+/** Programme une visite. */
+export async function addVisite(
+  immeubleId: string,
+  agentId: string,
+  input: { date: string; visiteur?: string; commentaire_interne?: string; source?: string },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_visite",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      AGENT: agentId,
+      date: new Date(input.date).toISOString(),
+      Statut: "Confirmée",
+      visiteur_nom: input.visiteur,
+      commentaire_interne: input.commentaire_interne,
+      source: input.source,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Change le statut d'une visite (Effectuée avec REX, Annulée avec motif…). */
+export async function setVisiteStatut(
+  immeubleId: string,
+  visiteId: string,
+  statut: "En attente" | "Confirmée" | "Effectuée" | "Annulée",
+  extra?: { rex_fi?: string; motif_annulation?: string },
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_visite",
+    p_id: visiteId,
+    p_patch: cleanPatch({ Statut: statut, ...extra }),
+  });
+  refresh(immeubleId);
+}
+
+/** Enregistre une offre d'achat. */
+export async function addOffre(
+  immeubleId: string,
+  input: {
+    acheteur?: string;
+    prix_nv: number;
+    honos_ht?: number;
+    date_expiration?: string;
+    commentaire?: string;
+    source?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const honosTtc = input.honos_ht !== undefined ? Math.round(input.honos_ht * 1.2) : undefined;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_offre",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLEs: [immeubleId],
+      Statut: "En cours",
+      date: now,
+      acheteur_nom: input.acheteur,
+      prix_nv: input.prix_nv,
+      honos_ht: input.honos_ht,
+      honos_ttc: honosTtc,
+      prix_hai: input.prix_nv + (honosTtc ?? 0),
+      date_expiration: input.date_expiration ? new Date(input.date_expiration).toISOString() : undefined,
+      commentaire: input.commentaire,
+      source: input.source,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Fait avancer une offre (Acceptée / Refusée / Compromis / Vendu…). */
+export async function setOffreStatut(
+  immeubleId: string,
+  offreId: string,
+  statut:
+    | "En cours" | "Contre offre" | "Acceptée" | "Refusée"
+    | "Compromis programmé" | "Compromis signé" | "Vente prévue" | "Vendu",
+  extra?: { motif_refus?: string; date_compromis?: string; date_acte?: string },
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_offre",
+    p_id: offreId,
+    p_patch: cleanPatch({
+      Statut: statut,
+      motif_refus: extra?.motif_refus,
+      date_compromis: extra?.date_compromis ? new Date(extra.date_compromis).toISOString() : undefined,
+      date_acte: extra?.date_acte ? new Date(extra.date_acte).toISOString() : undefined,
+      ...(statut === "Vendu" ? { date_cloture: new Date().toISOString() } : {}),
+    }),
+  });
+  refresh(immeubleId);
+}
+
 /* ---------- Dossiers de commercialisation (versionnés) ---------- */
 
 /** Génère un dossier complet versionné (V1, V2…) — snapshot chiffré. */
