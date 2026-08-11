@@ -1540,3 +1540,82 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .dt-c-t { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); margin-bottom: 7px; }
 .dt-l { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--gray-txt); padding: 3px 0; border-top: 1px solid var(--line-lt); }
 .dt-l b { color: var(--slate); }
+
+/* --- Acheteurs : historique des matchings --- */
+.mt-h { border: 1px solid var(--line-lt); border-radius: 6px; background: #fff; padding: 11px 14px; margin-bottom: 9px; }
+.mt-h.co { border-left: 3px solid var(--gold-bo); }
+.mt-h-t { display: flex; align-items: center; gap: 9px; font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); }
+.mt-src { font-family: var(--font-body); font-size: 12px; font-weight: 400; color: var(--gray-lt); }
+.mt-crit { font-size: 12.5px; color: var(--gray-txt); margin-top: 3px; }
+.mt-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.mt-tags span { border: 1px solid var(--line); border-radius: 3px; padding: 1px 7px; font-size: 11px; color: var(--gray-txt); }
+.mt-res { font-size: 13px; color: var(--slate); margin-top: 7px; }
+.mt-res b { font-family: var(--font-title); font-size: 15px; }
+.mt-n { color: var(--gray-lt); font-size: 12px; margin-left: 10px; }
+.mt-lien { margin-left: 10px; font-size: 12px; color: var(--gold-bo); }
+.mt-geo { font-size: 12.5px; color: var(--gray-txt); margin-top: 6px; }
+.mt-apercu { margin-top: 12px; padding: 9px 12px; border-radius: 5px; background: #f6f4ef; font-size: 13px; color: var(--slate); }
+.mt-apercu b { font-family: var(--font-title); font-size: 16px; }
+
+/* --- Acheteurs : vues, filtres et cartes --- */
+.ac-vues { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 11px; }
+.ac-vues button {
+  border: 0; background: none; padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--gray-txt);
+}
+.ac-vues button.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
+.ac-vues button b { margin-left: 5px; color: var(--gray-lt); }
+.ac-vues button.on b { color: var(--gold-bo); }
+.ac-filtres { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 11px; }
+.ac-tri { border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 6px 11px; font-size: 12px; color: var(--gray-txt); cursor: pointer; }
+.ac-tri.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.ac-n { font-size: 12.5px; color: var(--gray-lt); }
+
+.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.ac-c { border: 1px solid var(--line-lt); border-radius: 6px; background: #fff; padding: 11px 13px; }
+.ac-c.off { opacity: .5; }
+.ac-h { display: flex; align-items: center; gap: 7px; }
+.ac-nom { flex: 1; font-family: var(--font-title); font-size: 13.5px; font-weight: 700; color: var(--slate); }
+.ac-auto { flex: none; font-size: 10.5px; color: var(--gold-bo); border: 1px solid var(--gold-bo); border-radius: 3px; padding: 1px 5px; }
+.ac-s { font-size: 12px; color: var(--gray-txt); margin-top: 3px; }
+.ac-crit { font-size: 12px; color: var(--slate); margin-top: 5px; }
+.ac-canaux { display: flex; flex-direction: column; gap: 1px; margin-top: 6px; font-size: 11.5px; color: var(--gray-txt); }
+.ac-canaux .off { color: var(--gray-lt); font-style: italic; }
+.ac-com { margin-top: 7px; padding: 7px 9px; border-radius: 4px; background: #faf9f6; font-size: 12px; color: var(--slate); white-space: pre-wrap; }
+.ac-f { display: flex; gap: 6px; margin-top: 9px; }
+
+/* --- Assistant de commercialisation --- */
+.asst { border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.asst-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-lt); }
+.asst-t { font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--slate); }
+.asst-steps { display: flex; gap: 0; padding: 0 16px; border-bottom: 1px solid var(--line-lt); }
+.asst-steps button {
+  border: 0; background: none; padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--gray-lt);
+}
+.asst-steps button i { display: inline-block; width: 17px; height: 17px; line-height: 17px; border-radius: 50%; background: #ececec; color: var(--gray-txt); font-style: normal; font-size: 10.5px; text-align: center; margin-right: 5px; }
+.asst-steps button.ok { color: var(--gray-txt); }
+.asst-steps button.ok i { background: var(--green); color: #fff; }
+.asst-steps button.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
+.asst-steps button.on i { background: var(--gold-bo); color: #fff; }
+.asst-steps button:disabled { opacity: .45; cursor: default; }
+.asst-b { padding: 15px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+.asst-b .min { width: 100%; }
+.asst-b .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+.asst-note { font-size: 12px; color: var(--gray-lt); margin-top: 6px; line-height: 1.5; }
+.asst-ok { border-left: 3px solid var(--green); background: #f3f9f3; padding: 8px 12px; font-size: 13px; color: var(--slate); margin-bottom: 8px; }
+.asst-alerte { margin: 12px 16px 0; border-left: 3px solid var(--red); background: #fdf5f5; padding: 9px 13px; font-size: 12.5px; color: var(--slate); }
+.asst-cmp { display: flex; gap: 16px; margin-top: 5px; font-size: 12px; color: var(--gray-txt); }
+.asst-rec { display: flex; gap: 18px; padding: 10px 13px; border-radius: 5px; background: #f6f4ef; font-size: 13px; color: var(--slate); margin-bottom: 8px; }
+.asst-rec b { font-family: var(--font-title); font-size: 17px; }
+.asst-rec .off { color: var(--gray-lt); }
+.asst-lot { margin-top: 8px; }
+.asst-lot-h { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray-txt); margin-bottom: 3px; }
+
+.fsub-nav { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 13px; }
+.fsub-nav button {
+  border: 0; background: none; padding: 8px 15px; cursor: pointer; border-bottom: 2px solid transparent;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--gray-txt);
+}
+.fsub-nav button.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
+.modal.lg { max-width: 720px; }

@@ -1466,3 +1466,64 @@ export async function getObjectifs(periode?: string): Promise<ObjectifsData> {
 
   return { objectifs, libelles, periodes };
 }
+
+/* ===================== Acheteurs : matching & commercialisation ===================== */
+
+export type AcheteursData = {
+  /** Toutes les recherches actives, servant de vivier au matching. */
+  recherches: Record<string, unknown>[];
+  contacts: Map<string, Record<string, unknown>>;
+  matchs: Record<string, unknown>[];
+  commercialisations: Record<string, unknown>[];
+  criteres: import("@/lib/bo/matching").CriteresBien;
+};
+
+/** Vivier acquéreurs + historique des campagnes d'un immeuble. */
+export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | null> {
+  const one = await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: immeubleId }], limit: 1 });
+  const im = one.results[0];
+  if (!im) return null;
+
+  const [recherches, matchs, commercialisations, adresses] = await Promise.all([
+    fetchAll("recherche", [{ key: "archived", constraint_type: "equals", value: "false" }], 4000).catch(() => []),
+    fetchAll("match", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
+    fetchAll("commercialisation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
+    fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 2).catch(() => []),
+  ]);
+
+  // Les recherches pointent 1 900 contacts : les charger d'un bloc coûte
+  // moins qu'une vingtaine de requêtes « id in (…) » à la chaîne.
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (const c of await fetchAll("contact", undefined, 6000).catch(() => [])) {
+    contacts.set(String(c._id), c);
+  }
+
+  // La ville et le code postal vivent sur l'enregistrement « adresse ».
+  const adr = adresses[0];
+  const cp = String(adr?.zipcode ?? "");
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  // « Mixte » ne désigne pas une destination attendue par les acquéreurs :
+  // c'est l'absence de destination unique, donc aucune contrainte.
+  const dest = String(im.Destination_principale ?? "");
+
+  return {
+    recherches,
+    contacts,
+    matchs: [...matchs].sort((a, b) => String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? ""))),
+    commercialisations: [...commercialisations].sort((a, b) =>
+      String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
+    ),
+    criteres: {
+      immeubleId,
+      prix: num(im.prix_hai),
+      surface: num(im.surface_carrez),
+      occupation: num(im.occupation_lots),
+      renta: num(im.fin_renta_ba),
+      travaux: num(im.travaux_total),
+      ville: String(adr?.ville_name ?? ""),
+      departement: cp.slice(0, 2),
+      destinations: dest && dest !== "Mixte" ? [dest] : [],
+      cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+    },
+  };
+}

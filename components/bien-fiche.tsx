@@ -4,9 +4,9 @@ import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
-import type { BienData } from "@/lib/bubble/server";
+import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
-import { reactiver, setApporteur, updateBien } from "@/lib/bo/actions";
+import { chargerAcheteurs, reactiver, setApporteur, setPropositionStatut, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -14,6 +14,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
+import { Acheteurs } from "@/components/acheteurs";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 import { ContactPicker } from "@/components/contact-picker";
 
@@ -750,17 +751,86 @@ function NotesSection({ b }: { b: BienData }) {
 }
 
 function AcheteursSection({ b }: { b: BienData }) {
+  // Sous-onglets du BO : le matching et les campagnes vivent à côté du
+  // pipeline (propositions, visites, offres).
+  const [onglet, setOnglet] = useState<"acquereurs" | "pipeline">("acquereurs");
+  const [ach, setAch] = useState<AcheteursData | null>(null);
+  const [chargement, setChargement] = useState(false);
+
+  const charger = () => {
+    if (ach || chargement) return;
+    setChargement(true);
+    chargerAcheteurs(String(b.im._id)).then((d) => { setAch(d); setChargement(false); });
+  };
+
   return (
     <>
       <SectTitle icon={I.users} title="Acheteurs" chips={<><span className="fchip">{b.propositions.total} propositions</span><span className="fchip">{b.visites.length} visites</span><span className="fchip">{b.offres.length} offres</span></>} />
+
+      <div className="fsub-nav">
+        <button type="button" className={onglet === "acquereurs" ? "on" : ""}
+          onClick={() => { setOnglet("acquereurs"); charger(); }}>Matching et commercialisation</button>
+        <button type="button" className={onglet === "pipeline" ? "on" : ""} onClick={() => setOnglet("pipeline")}>
+          Propositions, visites et offres
+        </button>
+      </div>
+
+      {onglet === "acquereurs" && (
+        <>
+          {!ach && !chargement && (
+            <div className="fempty">
+              <button className="fadd" type="button" onClick={charger}>Charger le vivier acquéreurs</button>
+            </div>
+          )}
+          {chargement && <div className="fempty">Chargement du vivier acquéreurs…</div>}
+          {ach && <Acheteurs b={b} d={ach} />}
+        </>
+      )}
+
+      {onglet === "pipeline" && <Pipeline b={b} />}
+    </>
+  );
+}
+
+/** Relance, refus motivé et réactivation d'une proposition. */
+function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> }) {
+  const [pending, start] = useTransition();
+  const immeubleId = String(b.im._id);
+  const id = String(p._id);
+  const refusee = String(p.Statut ?? "").startsWith("Refus");
+  return (
+    <span className="mrow" style={{ gap: 4 }}>
+      {refusee ? (
+        <button className="fadd" type="button" disabled={pending}
+          onClick={() => start(() => setPropositionStatut(immeubleId, id, "reactiver"))}>Réactiver</button>
+      ) : (
+        <>
+          <button className="fadd" type="button" disabled={pending}
+            onClick={() => start(() => setPropositionStatut(immeubleId, id, "relancer"))}>Relancer</button>
+          <button className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+            onClick={() => {
+              const motif = prompt("Motif du refus ?");
+              if (motif === null) return;
+              start(() => setPropositionStatut(immeubleId, id, "refuser", motif || undefined));
+            }}>Refuser</button>
+        </>
+      )}
+    </span>
+  );
+}
+
+function Pipeline({ b }: { b: BienData }) {
+  return (
+    <>
       <div className="fh2">Dernières propositions</div>
       {b.propositions.rows.map((p) => (
         <Row key={p._id as string}>
           <div className="grow">
             <div className="t">{String(p.mail_adresse ?? "Proposition")}</div>
-            <div className="s">Envoyée le {dmy(p.date_envoi)} · {String(p.Source_proposition ?? "")}</div>
+            <div className="s">Envoyée le {dmy(p.date_envoi)} · {String(p.Source_proposition ?? "")}{p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}</div>
           </div>
-          <span className="badge-o">{String(p.Statut ?? "")}</span>
+          <PropositionActions b={b} p={p} />
+          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
         </Row>
       ))}
       {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}

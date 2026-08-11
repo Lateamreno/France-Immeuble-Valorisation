@@ -1314,3 +1314,231 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
     email: typeof c.email === "string" ? c.email : undefined,
   }));
 }
+
+/* ===================== Matching, commercialisation, propositions ===================== */
+
+export type MatchInput = {
+  immeubleId: string;
+  agentId?: string;
+  /** D'où viennent les critères : estimation, prix saisi, ou dossier. */
+  source: "from_est" | "from_imm" | "from_doss";
+  dossierId?: string;
+  estimationId?: string;
+  prix?: number;
+  surface?: number;
+  occupation?: number;
+  renta?: number;
+  travaux?: number;
+  ville?: string;
+  departement?: string;
+  cibles?: string[];
+  destinations?: string[];
+  notes: string[];
+  exclureDejaVus: boolean;
+  exclureAgents: boolean;
+  mandatObligatoire: boolean;
+  /** Résultat : recherches retenues, contacts, e-mails, téléphones. */
+  rechercheIds: string[];
+  contactIds: string[];
+  emails: string[];
+  telephones: string[];
+};
+
+/** Enregistre un matching dans l'historique de l'immeuble. */
+export async function saveMatch(input: MatchInput) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_match",
+    p_id: id,
+    p_doc: {
+      in_IMMEUBLE: input.immeubleId,
+      Source_mode: input.source,
+      in_DOSSIER: input.dossierId ?? null,
+      in_ESTIMATION: input.estimationId ?? null,
+      in_prix: input.prix ?? null,
+      in_surface: input.surface ?? null,
+      in_occup: input.occupation ?? null,
+      in_renta: input.renta ?? null,
+      in_travaux: input.travaux ?? null,
+      in_ville: input.ville ?? null,
+      in_dpt: input.departement ?? null,
+      in_Cibles: input.cibles ?? [],
+      in_Destinations: input.destinations ?? [],
+      in_Notes: input.notes,
+      in_proposed: input.exclureDejaVus,
+      in_agents: input.exclureAgents,
+      in_man_only: input.mandatObligatoire,
+      RECHs_matched: input.rechercheIds,
+      RECHERCHEs_FINAL: input.rechercheIds,
+      CONTACTs: input.contactIds,
+      mails: input.emails,
+      tels: input.telephones,
+      mails_count: input.emails.length,
+      tels_count: input.telephones.length,
+      contacts_count: input.contactIds.length,
+      recherches_count: input.rechercheIds.length,
+      rechs_matched_nb: input.rechercheIds.length,
+      locked: false,
+      date_start: now,
+      date_end: now,
+      "Created By": input.agentId ?? null,
+      "Created Date": now,
+      "Modified Date": now,
+    },
+  });
+  revalidatePath(`/bien/${input.immeubleId}`);
+  return id;
+}
+
+/** Fige la sélection d'un matching (acquéreurs ajoutés / retirés à la main). */
+export async function setMatchSelection(immeubleId: string, matchId: string, rechercheIds: string[]) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_match",
+    p_id: matchId,
+    p_patch: {
+      RECHERCHEs_FINAL: rechercheIds,
+      recherches_count: rechercheIds.length,
+      "Modified Date": new Date().toISOString(),
+    },
+  });
+  revalidatePath(`/bien/${immeubleId}`);
+}
+
+export type CommercialisationInput = {
+  immeubleId: string;
+  agentId?: string;
+  matchId: string;
+  dossierId?: string;
+  mandatId?: string;
+  lienPartage?: string;
+  objet: string;
+  message: string;
+  smsTexte?: string;
+  /** Acquéreurs ciblés : une proposition sera créée pour chacun. */
+  cibles: { rechercheId: string; contactId?: string; email?: string; telephone?: string }[];
+};
+
+/** Crée la commercialisation et une proposition par acquéreur ciblé.
+ *  Rien n'est envoyé : le BO prépare, l'agent envoie (doctrine §7.1). */
+export async function createCommercialisation(input: CommercialisationInput) {
+  if (input.cibles.length === 0) throw new Error("Aucun acquéreur ciblé");
+  const now = new Date().toISOString();
+  const commId = newId();
+
+  const propositions = input.cibles.map((c) => ({
+    id: newId(),
+    doc: {
+      IMMEUBLE: input.immeubleId,
+      COMMERCIALISATION: commId,
+      DOSSIER: input.dossierId ?? null,
+      ACHETEUR: c.contactId ?? null,
+      RECHERCHEs: [c.rechercheId],
+      AGENTs: input.agentId ? [input.agentId] : [],
+      Statut: "Envoyée",
+      Source_proposition: "Commercialisation",
+      date_envoi: now,
+      date_modif: now,
+      mail_adresse: c.email ?? null,
+      mail_subject: input.objet,
+      mail_text: input.message,
+      portable: c.telephone ?? null,
+      stop_relances_yn: false,
+      "Created By": input.agentId ?? null,
+      "Created Date": now,
+      "Modified Date": now,
+    },
+  }));
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_commercialisation",
+    p_id: commId,
+    p_doc: {
+      IMMEUBLE: input.immeubleId,
+      MATCH: input.matchId,
+      DOSSIER: input.dossierId ?? null,
+      MANDAT: input.mandatId ?? null,
+      AGENT: input.agentId ?? null,
+      wetransfer_link: input.lienPartage ?? null,
+      prop_mail_objet: input.objet,
+      prop_mail_text: input.message,
+      prop_sms_text: input.smsTexte ?? null,
+      prop_date: now,
+      prop_sent: false,
+      prop_sms_sent: false,
+      ok_acheteurs: true,
+      diffusion_offmarket: true,
+      PROPOSITIONs: propositions.map((p) => p.id),
+      "Created By": input.agentId ?? null,
+      "Created Date": now,
+      "Modified Date": now,
+    },
+  });
+
+  // Insertions en série : le RPC prend un document à la fois.
+  for (const p of propositions) {
+    await rpc("bo_insert_doc", { p_table: "bo_proposition", p_id: p.id, p_doc: p.doc });
+  }
+
+  // Chaque recherche mémorise l'immeuble proposé : il sortira des prochains
+  // matchings tant que « déjà vus exclus » est actif.
+  for (const c of input.cibles) {
+    await rpc("bo_append_ref", {
+      p_table: "bo_recherche",
+      p_id: c.rechercheId,
+      p_key: "IMMEUBLEs_proposed",
+      p_value: input.immeubleId,
+    }).catch(() => undefined);
+  }
+
+  revalidatePath(`/bien/${input.immeubleId}`);
+  revalidatePath("/propositions");
+  return { commercialisationId: commId, propositions: propositions.length };
+}
+
+/** Marque les e-mails ou les SMS d'une commercialisation comme envoyés. */
+export async function markCommercialisationSent(
+  immeubleId: string,
+  commId: string,
+  canal: "mail" | "sms",
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_commercialisation",
+    p_id: commId,
+    p_patch: {
+      [canal === "mail" ? "prop_sent" : "prop_sms_sent"]: true,
+      "Modified Date": new Date().toISOString(),
+    },
+  });
+  revalidatePath(`/bien/${immeubleId}`);
+}
+
+/** Relance, refus motivé ou réactivation d'une proposition. */
+export async function setPropositionStatut(
+  immeubleId: string,
+  propositionId: string,
+  action: "relancer" | "refuser" | "reactiver",
+  motif?: string,
+) {
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> =
+    action === "relancer"
+      ? { date_last_relance: now, Statut: "Envoyée" }
+      : action === "refuser"
+        ? { Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now, stop_relances_yn: true }
+        : { Statut: "Envoyée", motif_refus: null, date_fin: null, stop_relances_yn: false };
+  await rpc("bo_patch_doc", {
+    p_table: "bo_proposition",
+    p_id: propositionId,
+    p_patch: { ...patch, date_modif: now, "Modified Date": now },
+  });
+  revalidatePath(`/bien/${immeubleId}`);
+  revalidatePath("/propositions");
+}
+
+/** Charge le vivier acquéreurs à la demande : 1 900 recherches et leurs
+ *  contacts n'ont pas à être chargés à l'ouverture de chaque fiche. */
+export async function chargerAcheteurs(immeubleId: string) {
+  const { getAcheteurs } = await import("@/lib/bubble/server");
+  return getAcheteurs(immeubleId);
+}
