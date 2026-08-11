@@ -15,6 +15,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
+import { ContactPicker } from "@/components/contact-picker";
 
 
 
@@ -326,24 +327,36 @@ function SuiviSection({ b }: { b: BienData }) {
 }
 
 /** Apporteur d'affaire — cliquable pour le renseigner (retour MAV #7). */
+/** Apporteur d'affaire : sélection ou création d'un contact (retour #31). */
 function ApporteurCard({ b }: { b: BienData }) {
   const [pending, start] = useTransition();
+  const [ouvert, setOuvert] = useState(false);
   const nom = typeof b.im.apporteur_nom === "string" ? (b.im.apporteur_nom as string) : "";
   return (
-    <button
-      type="button"
-      className={`fcard${nom ? "" : " off"}`}
-      style={{ textAlign: "left", font: "inherit", cursor: "pointer" }}
-      disabled={pending}
-      onClick={() => {
-        const v = prompt("Apporteur d'affaire (laisser vide pour retirer) :", nom);
-        if (v === null) return;
-        start(() => setApporteur(String(b.im._id), v.trim() || null));
-      }}
-    >
-      <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
-      <div><div className="k">Apporteur</div><div className="v">{nom || "Non"}</div></div>
-    </button>
+    <>
+      <button
+        type="button"
+        className={`fcard${nom ? "" : " off"}`}
+        style={{ textAlign: "left", font: "inherit", cursor: "pointer" }}
+        disabled={pending}
+        onClick={() => setOuvert(true)}
+      >
+        <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
+        <div><div className="k">Apporteur</div><div className="v">{nom || "Non"}</div></div>
+      </button>
+      {ouvert && (
+        <ContactPicker
+          titre="Sélectionner un apporteur"
+          libelleValider="Modifier l'apporteur"
+          valeurActuelle={nom || undefined}
+          onAnnuler={() => setOuvert(false)}
+          onValider={(c) => {
+            setOuvert(false);
+            start(() => setApporteur(String(b.im._id), c.nom, c.id));
+          }}
+        />
+      )}
+    </>
   );
 }
 

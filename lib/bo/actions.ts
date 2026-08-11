@@ -123,12 +123,14 @@ export async function reculerStatut(immeubleId: string, statutActuel: number) {
   await setStatut(immeubleId, cible);
 }
 
-/** Renseigne l'apporteur d'affaire (retour MAV #7). */
-export async function setApporteur(immeubleId: string, nom: string | null) {
+/** Renseigne l'apporteur d'affaire, choisi ou créé en base (retours #7 et #31). */
+export async function setApporteur(immeubleId: string, nom: string | null, contactId?: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
-    p_patch: nom ? { apporteur_yn: true, apporteur_nom: nom } : { apporteur_yn: false, apporteur_nom: null },
+    p_patch: nom
+      ? { apporteur_yn: true, apporteur_nom: nom, APPORTEUR: contactId ?? null }
+      : { apporteur_yn: false, apporteur_nom: null, APPORTEUR: null },
   });
   refresh(immeubleId);
 }
@@ -1258,4 +1260,33 @@ export async function ajouterTypologie(
 
   refresh();
   return { ok: true, message: `« ${propre} » ajoutée aux typologies ${destination}.` };
+}
+
+/* ---------- Recherche de contacts (modales de sélection, retours #31/#32) ---------- */
+
+export type ContactTrouve = {
+  id: string; nom: string; type?: string; tel?: string; email?: string;
+};
+
+/** Recherche un contact par nom, e-mail ou téléphone (searchfield du BO). */
+export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
+  const terme = q.trim().toLowerCase();
+  if (terme.length < 2 || !SB_KEY) return [];
+  const motif = `*${terme.replace(/[%*]/g, "")}*`;
+  const p = new URLSearchParams({ select: "data", limit: "12" });
+  p.append("or", `(data->>searchfield.ilike.${motif},data->>nom.ilike.${motif},data->>email.ilike.${motif},data->>portable.ilike.${motif})`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  return rows.map(({ data: c }) => ({
+    id: String(c._id),
+    nom: `${c["prénom"] ?? ""} ${c.nom ?? ""}`.trim() || String(c.email ?? "Sans nom"),
+    type: Array.isArray(c.Types) ? String(c.Types[0] ?? "") : undefined,
+    tel: typeof c.portable_formatted === "string" ? c.portable_formatted
+      : typeof c.portable === "string" ? c.portable : undefined,
+    email: typeof c.email === "string" ? c.email : undefined,
+  }));
 }

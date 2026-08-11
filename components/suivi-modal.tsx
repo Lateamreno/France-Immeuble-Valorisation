@@ -6,7 +6,9 @@
 // bascule Oui/Non. Utilisée depuis la bulle des cartes du dashboard ET depuis
 // la fiche bien.
 import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { addSuivi } from "@/lib/bo/actions";
+import { ContactPicker } from "@/components/contact-picker";
 import { MOTIFS_STANDBY } from "@/lib/referentiels";
 
 const CANAUX = [
@@ -39,6 +41,7 @@ export function SuiviModal({
   const [date, setDate] = useState(dansUnMois());
   const [motif, setMotif] = useState("");
   const [personne, setPersonne] = useState(contactNom ?? "");
+  const [personneId, setPersonneId] = useState(contactId);
   const [changePersonne, setChangePersonne] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -57,7 +60,7 @@ export function SuiviModal({
       setErr(null);
       try {
         await addSuivi({
-          immeubleId, agentId, contactId,
+          immeubleId, agentId, contactId: personneId,
           canaux: canaux.length ? canaux : ["Téléphone"],
           notes,
           standby: attente && motif ? { motif, dateRelance: date } : undefined,
@@ -68,7 +71,19 @@ export function SuiviModal({
       }
     });
 
-  return (
+  if (changePersonne) {
+    return (
+      <ContactPicker
+        titre="Sélectionner la personne contactée"
+        libelleValider="Choisir cette personne"
+        valeurActuelle={personne || undefined}
+        onAnnuler={() => setChangePersonne(false)}
+        onValider={(c) => { setPersonne(c.nom); setPersonneId(c.id); setChangePersonne(false); }}
+      />
+    );
+  }
+
+  return createPortal(
     <div className="modal-ov" onClick={onClose}>
       <div className="modal sv" onClick={(e) => e.stopPropagation()}>
         <div className="sv-head">
@@ -82,30 +97,29 @@ export function SuiviModal({
             Personne contactée
           </span>
           <span className="sv-val">
-            {changePersonne ? (
-              <input className="min" style={{ width: 200 }} autoFocus value={personne}
-                onChange={(e) => setPersonne(e.target.value)} placeholder="Nom de la personne" />
-            ) : (
-              <span className="sv-chip">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                {personne || "—"}
-              </span>
-            )}
+            <span className="sv-chip">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+              {personne || "—"}
+            </span>
             <button className="sv-swap" type="button" title="Changer la personne contactée"
-              onClick={() => setChangePersonne((v) => !v)}>⇄</button>
+              onClick={() => setChangePersonne(true)}>⇄</button>
           </span>
         </div>
 
         <div className="sv-row">
           <span className="sv-lab">
-            <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>
+            <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 3 9v2H9v-2a5 5 0 0 1 3-9zM10 18h4" /></svg>
             Objet de l&apos;échange
+            <button className="sv-mini" type="button" title="Ajouter un autre objet" disabled>+</button>
           </span>
           <span className="sv-val">
             <span className="sv-chip">
               <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2" /></svg>
               {objet}
             </span>
+            <button className="sv-mini" type="button" title="Retirer cet objet" disabled>
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg>
+            </button>
           </span>
         </div>
 
@@ -134,26 +148,35 @@ export function SuiviModal({
             value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
+        {/* Replié par défaut sur « Non » : la date et le motif n'apparaissent
+            qu'une fois « Oui » choisi, comme dans le BO (retour #33). */}
         <div className="sv-row">
           <span className="sv-lab">
             <svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 8 5 8 9s-8 5-8 9" /></svg>
-            Mettre en attente jusqu&apos;au
+            Mettre en attente
           </span>
           <span className="sv-val">
-            <input className="min" type="date" style={{ width: 130 }} value={date}
-              onChange={(e) => { setDate(e.target.value); setAttente(true); }} />
-            <span style={{ fontSize: 12.5, color: "var(--gray-txt)" }}>car</span>
-            <select className="min" style={{ width: 190 }} value={motif}
-              onChange={(e) => { setMotif(e.target.value); setAttente(true); }}>
-              <option value="">Sélectionnez un motif</option>
-              {MOTIFS_STANDBY.map((m) => <option key={m}>{m}</option>)}
-            </select>
             <span className="sv-yn">
               <button type="button" className={attente ? "on" : ""} onClick={() => setAttente(true)}>Oui</button>
-              <button type="button" className={!attente ? "on" : ""} onClick={() => setAttente(false)}>Non</button>
+              <button type="button" className={!attente ? "on non" : "non"} onClick={() => setAttente(false)}>Non</button>
             </span>
           </span>
         </div>
+        {attente && (
+          <div className="sv-row">
+            <span className="sv-lab dim">jusqu&apos;au</span>
+            <span className="sv-val">
+              <input className="min" type="date" style={{ width: 140 }} value={date}
+                onChange={(e) => setDate(e.target.value)} />
+              <span style={{ fontSize: 12.5, color: "var(--gray-txt)" }}>car</span>
+              <select className="min" style={{ width: 220 }} value={motif}
+                onChange={(e) => setMotif(e.target.value)}>
+                <option value="">Sélectionnez un motif</option>
+                {MOTIFS_STANDBY.map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </span>
+          </div>
+        )}
 
         {err && <div className="warnbox" style={{ margin: "0 18px", color: "var(--red)", borderColor: "var(--red)" }}>{err}</div>}
 
@@ -170,6 +193,7 @@ export function SuiviModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

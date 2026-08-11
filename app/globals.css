@@ -966,13 +966,13 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .lots-full .ltools.v2 { position: fixed; left: 18px; right: 18px; bottom: 14px; }
 
 /* --- Modale « Suivi » (réplique de la capture du BO) --- */
-.modal.sv { width: 700px; max-width: calc(100vw - 32px); padding: 0; }
+.modal.sv { width: min(880px, 95vw); padding: 0; }
 .sv-head {
   display: flex; align-items: center; justify-content: center; gap: 9px;
-  background: #5a6773; color: #fff; border-radius: 7px 7px 0 0;
-  padding: 12px; font-family: var(--font-title); font-size: 16px; font-weight: 600;
+  background: #414750; color: #fff; border-radius: 7px 7px 0 0;
+  padding: 14px; font-family: var(--font-title); font-size: 20px; font-weight: 700;
 }
-.sv-head svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+.sv-head svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
 .sv-row {
   display: flex; align-items: center; gap: 12px;
   padding: 11px 18px; border-bottom: 1px solid var(--line-lt);
@@ -1015,7 +1015,8 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   color: var(--gray-lt); font-family: var(--font-body);
 }
 .sv-yn button.on:first-child { color: var(--green); }
-.sv-yn button.on:last-child { background: var(--pill-gray); color: #fff; }
+.sv-yn button.on:last-child { background: #fff; color: var(--red); font-weight: 700; }
+.sv-yn button:not(.on) { background: var(--pill-gray); color: #fff; }
 .sv-foot { display: flex; align-items: center; padding: 12px 18px; }
 .sv-annuler { border: 0; background: none; color: var(--gray-txt); font-size: 13px; text-decoration: underline; }
 .sv-go {
@@ -1300,3 +1301,46 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }
 .carte-drop:hover { background: #fff; }
+
+/* --- Modale de sélection / création de contact (retours #31 et #32) --- */
+.modal.cp { width: min(660px, 95vw); }
+.cp-head {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--slate); color: #fff; border-radius: 7px 7px 0 0;
+  font-family: var(--font-title); font-size: 20px; font-weight: 700; padding: 14px;
+}
+.cp-head svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cp-rappel { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line-lt); }
+.cp-alerte { flex: 1; display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--red); }
+.cp-alerte svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cp-val { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; font-size: 13.5px; color: var(--gray-lt); }
+.cp-val.on { color: var(--slate); font-weight: 600; }
+.cp-val svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.cp-search { display: flex; align-items: stretch; gap: 8px; padding: 14px 16px 10px; }
+.cp-search input { flex: 1; border: 1px solid var(--red); border-radius: 4px; padding: 10px 12px; font-size: 14px; color: var(--slate); }
+.cp-search input:focus { outline: 0; border-color: var(--slate); }
+.cp-plus { border: 0; background: none; cursor: pointer; color: var(--gray-lt); padding: 0 4px; margin-left: -44px; z-index: 1; }
+.cp-plus:hover { color: var(--slate); }
+.cp-plus svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.cp-loupe { display: grid; place-items: center; width: 46px; border: 1px solid var(--line); border-radius: 4px; background: #ececec; color: var(--slate); }
+.cp-loupe svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cp-list { max-height: 260px; overflow: auto; padding: 0 16px 8px; }
+.cp-item { display: block; width: 100%; text-align: left; border: 1px solid var(--line-lt); border-radius: 4px; background: #fff; padding: 8px 11px; margin-bottom: 5px; cursor: pointer; }
+.cp-item b { display: block; font-size: 13.5px; font-weight: 700; color: var(--slate); }
+.cp-item i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
+.cp-item:hover { background: #f7f7f6; }
+.cp-item.on { border-color: var(--slate); background: #f1f3f5; }
+.cp-vide { padding: 4px 16px 14px; font-size: 12.5px; color: var(--gray-lt); }
+.cp-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 16px; }
+.cp-foot { display: flex; align-items: center; padding: 12px 16px; background: #e6e6e6; border-radius: 0 0 7px 7px; }
+
+/* Modale Suivi : mise en attente repliée (#33) */
+.sv-yn button.non.on { color: var(--red); background: #fff; border-color: var(--red); }
+.sv-lab.dim { color: var(--gray-lt); }
+.sv-mini {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 8px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer;
+  font-size: 14px; color: var(--slate);
+}
+.sv-mini:disabled { opacity: .45; cursor: default; }
+.sv-mini svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
