@@ -221,10 +221,49 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   Mirroré : table `bo_prix_secteur`, Edge Function v2, `bo_run_sync()` étendu,
   backfill 1 824 lignes, `scripts/sync-bubble.mjs` à jour (26 types).
 
-**Prochain :** wizard estimation 6 étapes (Immeuble → Secteur → Prix → Analyse
-→ PDF → Envoi ; shapes relevées : `bo_estimation` = snapshot imm_*/ref_*/
-travaux/charges + statuts `1 - PDF manquant` → `2 - A envoyer` → `3 - Envoyée`
-/ `4 - Interne` ; `bo_prix` = objet de calcul in_*/out_*) → mandat (numérotation
-séquentielle verrouillée) → dossier → commercialisation, puis réplique des
-modules liste restants (Immeubles, Estimations, Mandats, Recherches, Contacts,
-Propositions, Visites, Offres, Suivi, Objectifs, Datas).
+**Fait (11/08/26, session autonome ~3 h) — le parcours complet de la fiche
+et les vues listes :**
+- **Wizard estimation 6 étapes** (`components/estimation-wizard.tsx`,
+  `/bien/[id]/estimation`) : Immeuble → Secteur (prérempli `prix_secteur`) →
+  Prix (4 méthodes + prix auto, NV + honos 5 % = HAI, comparateur avec
+  rendements brut/net/**acte en main ×1,075** vérifiés sur bo_prix réels) →
+  Analyse (scores, cibles, 900 car.) → génération figée (bo_estimation
+  snapshot + bo_prix in_/out_ + patch immeuble + suivi « Estimation (x €) »)
+  → Envoi (mailto préparé, statuts 3-Envoyée/4-Interne) + page imprimable.
+- **Mandats** (`/mandat/[id]`) : modale création, onglets Mandants/Objet/
+  Prix/Conditions, **RPC `bo_reserve_mandat_numero`** (advisory lock,
+  séquence sans trou, immuable — testé : #2105 attribué puis purgé,
+  registre revenu à 2104), infos reçues, annulation motivée, verrou signé.
+- **Emplacement** : Adresse (liens Google/INSEE/LOCservice + POI + data
+  externe), Parcelles & PLU (bo_parcelle + RPC bo_append_ref/bo_remove_ref),
+  Prix du secteur (tableau Secteur/Actuel/Potentiel + modales par
+  destination → bo_prix_secteur, globaux pondérés par surface via RPC
+  `bo_secteur_recompute_globals`).
+- **État technique** : composants (référentiels complets du BO) + travaux
+  par urgence (lots OU composants), RPC `bo_recompute_travaux` → fin_travaux.
+- **Notes** (champ notes immeuble) ; **Dossiers versionnés** (stepper
+  Immeuble → Prix → PDF, bo_dossier V1/V2 + `bo_dossier_demote_others`,
+  page imprimable type « DOSSIER COMPLET ») ; **commercialisation** :
+  visites (REX/annulation) et offres (cycle En cours → … → Vendu).
+- **Uploads** : bucket Storage privé `bo-files` (projet dédié), proxy
+  `/api/photo?s=`, modale « Nouvelle photo » (3 types), coffre documentaire
+  `bo_app_document`, Server Actions 26 Mo.
+- **Vues listes** (`components/liste.tsx` + pages) : Immeubles (En cours/
+  En attente/Archivés), Estimations, Mandats, Visites, Offres (compte à
+  rebours d'expiration), Suivi, Contacts (300 récents/~42 800), Recherches,
+  Questions, Propositions — recherche + onglets + pagination 10/page.
+  Nav `/mandats` corrigée, plus aucun lien mort.
+- **Datas** : entonnoir 12 mois (volumes + taux) — cohérent avec les
+  captures (42 mandats créés / 21 signés).
+- Chaque jalon : build vert, **E2E Playwright + vérification SQL** sur
+  immeuble jetable `app_test_claude_0XX`, données purgées, commit poussé.
+
+**Reste à faire (notés aussi dans le bilan Word du 11/08) :**
+- Fiche Contact complète (typologie, projets, sous-onglets) ; création
+  rapide barre du bas (+ Contact, + Immeuble… seuls Mandat/Visite/Offre
+  passent par la fiche) ; création d'immeuble ex nihilo.
+- Propositions : envoi en masse (mailing) + matching recherches ↔ immeubles ;
+  commercialisations (diffusion) ; module Objectifs ; funnels Datas par
+  population ; recherche globale (searchfield) ; badges sidebar dynamiques
+  (sémantique à confirmer par MAV) ; import/export CSV des lots ; baux :
+  IRL auto (indices INSEE) ; PDF serveur (aujourd'hui impression navigateur).
