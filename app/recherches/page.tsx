@@ -9,6 +9,7 @@ export default async function RecherchesPage() {
     <div className="lst-page">
       <h1 className="lst-title">Recherches</h1>
       <ListeShell
+        filtres
         rows={rows}
         searchPlaceholder="Recherchez une recherche acquéreur..."
         tabs={[

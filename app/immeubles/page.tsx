@@ -9,6 +9,7 @@ export default async function ImmeublesPage() {
     <div className="lst-page">
       <h1 className="lst-title">Immeubles</h1>
       <ListeShell
+        filtres
         rows={rows}
         searchPlaceholder="Recherchez un immeuble..."
         tabs={[

@@ -1444,3 +1444,27 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .note.nB { background: #2f8ed6; }
 .note.nC { background: var(--orange); }
 .note.nD { background: var(--pill-gray); }
+
+/* --- Colonne de filtres des listes (reprise du BO) --- */
+.lst-avec-filtres { display: flex; gap: 22px; align-items: flex-start; }
+.lst-col { flex: 1; min-width: 0; }
+.fltr { flex: none; width: 268px; display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.fltr-l { display: flex; flex-direction: column; gap: 5px; }
+.fltr-l > span { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gray-txt); }
+.fltr-l > span svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; flex: none; }
+.fltr-l select, .fltr-r input {
+  border: 0; border-bottom: 1px solid var(--line); background: none;
+  padding: 5px 2px; font-size: 13px; color: var(--slate); width: 100%;
+}
+.fltr-l select:focus, .fltr-r input:focus { outline: 0; border-color: var(--slate); }
+.fltr-r { display: flex; align-items: center; gap: 5px; }
+.fltr-r input { min-width: 0; }
+.fltr-r i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
+.fltr-r em { font-style: normal; font-size: 12px; color: var(--gray-lt); padding: 0 2px; }
+.fltr-raz {
+  align-self: flex-end; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 6px 12px; font-size: 12.5px; color: var(--gray-txt); cursor: pointer; margin-top: 6px;
+}
+.fltr-raz:hover:not(:disabled) { background: #f4f4f4; color: var(--slate); }
+.fltr-raz:disabled { opacity: .45; cursor: default; }
+@media (max-width: 1100px) { .lst-avec-filtres { flex-direction: column; } .fltr { width: 100%; } }

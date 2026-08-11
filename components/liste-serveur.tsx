@@ -63,13 +63,16 @@ export function ListeServeur({
               <div className="lt">{r.title}{r.note && <span className="lnote"> · {r.note}</span>}</div>
               {r.sub && <div className="ls">{r.sub}</div>}
             </div>
-            {(r.acquereur || r.grade) && (
+            {r.acquereur ? (
               <span className="lcont">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
                 {r.acquereur}
                 {r.grade && <b className={`note n${r.grade}`}>{r.grade}</b>}
               </span>
-            )}
+            ) : r.grade ? (
+              // Le nom est déjà dans le sous-titre : seule la note est ajoutée.
+              <b className={`note n${r.grade}`} title={`Classement acquéreur ${r.grade}`}>{r.grade}</b>
+            ) : null}
             {r.right && r.right.length > 0 && (
               <div className="lright">{r.right.map((x, i) => <span key={i}>{x}</span>)}</div>
             )}

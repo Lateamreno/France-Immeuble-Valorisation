@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ListCard } from "@/lib/bubble/server";
+import { appliquerFiltres, FILTRES_VIDES, PanneauFiltres, type Filtres } from "@/components/filtres-liste";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -12,30 +13,35 @@ export function ListeShell({
   rows,
   tabs,
   searchPlaceholder,
+  /** Affiche la colonne de filtres du BO (Immeubles, Recherches). */
+  filtres = false,
 }: {
   rows: ListCard[];
   tabs: { key: string; label: string }[];
   searchPlaceholder: string;
+  filtres?: boolean;
 }) {
   const [tab, setTab] = useState(tabs[0]?.key ?? "");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [taille, setTaille] = useState(10);
+  const [f, setF] = useState<Filtres>(FILTRES_VIDES);
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return rows.filter(
+    const base = rows.filter(
       (r) =>
         r.group === tab &&
-        (!qq || `${r.title} ${r.sub ?? ""} ${r.note ?? ""}`.toLowerCase().includes(qq)),
+        (!qq || `${r.title} ${r.sub ?? ""} ${r.note ?? ""} ${r.acquereur ?? ""}`.toLowerCase().includes(qq)),
     );
-  }, [rows, tab, q]);
+    return filtres ? appliquerFiltres(base, f) : base;
+  }, [rows, tab, q, filtres, f]);
   const pages = Math.max(1, Math.ceil(filtered.length / taille));
   const cur = Math.min(page, pages);
   const slice = filtered.slice((cur - 1) * taille, cur * taille);
   const countOf = (k: string) => rows.filter((r) => r.group === k).length;
 
-  return (
+  const contenu = (
     <div className="lst">
       <div className="lst-bar">
         <div className="lst-search">
@@ -60,13 +66,16 @@ export function ListeShell({
               <div className="lt">{r.title}{r.note && <span className="lnote"> · {r.note}</span>}</div>
               {r.sub && <div className="ls">{r.sub}</div>}
             </div>
-            {(r.acquereur || r.grade) && (
+            {r.acquereur ? (
               <span className="lcont">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
                 {r.acquereur}
                 {r.grade && <b className={`note n${r.grade}`}>{r.grade}</b>}
               </span>
-            )}
+            ) : r.grade ? (
+              // Le nom est déjà dans le sous-titre : seule la note est ajoutée.
+              <b className={`note n${r.grade}`} title={`Classement acquéreur ${r.grade}`}>{r.grade}</b>
+            ) : null}
             {r.right && r.right.length > 0 && (
               <div className="lright">{r.right.map((x, i) => <span key={i}>{x}</span>)}</div>
             )}
@@ -101,6 +110,15 @@ export function ListeShell({
         </select>
         <span className="pgl">éléments par page</span>
       </div>
+    </div>
+  );
+
+  if (!filtres) return contenu;
+  return (
+    <div className="lst-avec-filtres">
+      <PanneauFiltres rows={rows.filter((r) => r.group === tab)} f={f}
+        onChange={(nf) => { setF(nf); setPage(1); }} />
+      <div className="lst-col">{contenu}</div>
     </div>
   );
 }

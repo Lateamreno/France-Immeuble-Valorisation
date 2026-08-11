@@ -709,6 +709,10 @@ export type ListCard = {
   right?: string[];
   /** Nom de l'acquéreur rattaché (offres, visites). */
   acquereur?: string;
+  /** Valeurs numériques exploitées par le panneau de filtres du BO. */
+  mesures?: { surface?: number; renta?: number; occupation?: number; prix?: number };
+  /** Facettes filtrables (listes déroulantes du panneau). */
+  facettes?: { ideal?: string; destination?: string; statut?: string };
   /** Note A/B/C/D du contact — le classement acquéreur du BO, affiché
    *  partout à côté du nom (il pilote « Commercialisés aux clients A et B »). */
   grade?: string;
@@ -790,6 +794,19 @@ export async function listImmeubles(): Promise<ListCard[]> {
       euros(im.prix_hai) ?? "",
     ].filter(Boolean),
     note: typeof im.standby_Statut === "string" && im.standby_Statut !== "Traité" ? String(im.standby_Statut) : undefined,
+    grade: gradeOf(contacts.get(String(im.PROPRIETAIRE ?? ""))),
+    mesures: {
+      surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
+      occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
+      renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+      prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+    },
+    facettes: {
+      // « Idéal pour » du BO = liste des cibles acquéreur de l'immeuble.
+      ideal: Array.isArray(im.Cibles) ? String((im.Cibles as string[])[0] ?? "") || undefined : undefined,
+      destination: typeof im.Destination_principale === "string" ? (im.Destination_principale as string) : undefined,
+      statut: String(im.Statut ?? "").replace(/^\d+ - /, "") || undefined,
+    },
     group,
     date: typeof im["Modified Date"] === "string" ? (im["Modified Date"] as string) : undefined,
   });
@@ -991,6 +1008,15 @@ export async function listRecherches(): Promise<ListCard[]> {
       sub: c ? contactLabel(c) : undefined,
       grade: gradeOf(c),
       note: [prix, typeof r.renta === "number" ? `≥ ${(r.renta as number).toLocaleString("fr-FR")} %` : ""].filter(Boolean).join(" · ") || undefined,
+      mesures: {
+        renta: typeof r.renta === "number" ? (r.renta as number) : undefined,
+        prix: typeof r.prix_max === "number" ? (r.prix_max as number) : undefined,
+        surface: typeof r.surface_min === "number" ? (r.surface_min as number) : undefined,
+      },
+      facettes: {
+        ideal: typeof r.Cible === "string" ? (r.Cible as string) : undefined,
+        destination: Array.isArray(r.Destinations) ? String((r.Destinations as string[])[0] ?? "") : undefined,
+      },
       badge: r.standby === true ? { label: "En attente", tone: "orange" } : undefined,
       group: r.archived === true ? "archivees" : "en_cours",
       date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
