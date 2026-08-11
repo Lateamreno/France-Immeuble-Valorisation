@@ -24,7 +24,7 @@ const ALL = [
   "immeuble", "lot", "bail", "locataire", "contact", "suivi", "estimation", "mandat",
   "offre", "visite", "proposition", "recherche", "question", "download",
   "commercialisation", "dossier", "photo", "parcelle", "composant", "charge",
-  "prix", "travaux", "adresse", "objectif", "user",
+  "prix", "prix_secteur", "travaux", "adresse", "objectif", "user",
 ];
 const TYPES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const SINCE = process.env.SINCE;

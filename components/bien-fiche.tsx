@@ -5,7 +5,7 @@ import Image from "next/image";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
-import { LotsEditor } from "@/components/lots-editor";
+import { LocatifTabs } from "@/components/locatif";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -317,7 +317,7 @@ function LocatifSection({ b }: { b: BienData }) {
           </>
         }
       />
-      <LotsEditor key={`${String(im.app_modified ?? "")}-${lots.length}`} b={b} />
+      <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} />
     </>
   );
 }

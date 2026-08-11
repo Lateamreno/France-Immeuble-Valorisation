@@ -184,6 +184,157 @@ export async function deleteLot(immeubleId: string, lotId: string) {
   refresh(immeubleId);
 }
 
+/* ---------- Baux / Locataires / Charges (État locatif) ---------- */
+
+/** Crée un bail (réplique de la modale « Nouveau bail »). */
+export async function addBail(
+  immeubleId: string,
+  input: {
+    lotIds: string[];
+    locataireIds: string[];
+    Type_bail?: string;
+    bailleur_pm: boolean;
+    loyer_init?: number;
+    date_start?: string; // yyyy-mm-dd
+    date_end?: string;
+    indice_init?: number;
+    indice_actuel?: number;
+    statut: "en_cours" | "impayes" | "preavis" | "expulsion";
+    commentaire?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const loyer_revised =
+    input.loyer_init && input.indice_init && input.indice_actuel && input.indice_init > 0
+      ? Math.round((input.loyer_init * input.indice_actuel) / input.indice_init)
+      : undefined;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_bail",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      LOTs: input.lotIds,
+      LOCATAIREs: input.locataireIds,
+      Type_bail: input.Type_bail,
+      bailleur_pm: input.bailleur_pm,
+      loyer_init: input.loyer_init,
+      indice_init: input.indice_init,
+      indice_actuel: input.indice_actuel,
+      loyer_revised,
+      date_start: input.date_start ? new Date(input.date_start).toISOString() : undefined,
+      date_end: input.date_end ? new Date(input.date_end).toISOString() : undefined,
+      activ: true,
+      impayes: input.statut === "impayes",
+      preavis: input.statut === "preavis",
+      expulsion: input.statut === "expulsion",
+      commentaire: input.commentaire,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime un bail (récupérable dans bo_trash). */
+export async function deleteBail(immeubleId: string, bailId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_bail", p_id: bailId });
+  refresh(immeubleId);
+}
+
+/** Crée un locataire (réplique de la modale « Nouveau locataire »). */
+export async function addLocataire(
+  immeubleId: string,
+  input: {
+    pm: boolean;
+    pm_nom?: string;
+    pp_civilite?: string;
+    pp_prenom?: string;
+    pp_nom?: string;
+    phone?: string;
+    email?: string;
+    lotIds: string[];
+    commentaire?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const formatted = input.pm
+    ? input.pm_nom ?? ""
+    : [input.pp_prenom, input.pp_nom].filter(Boolean).join(" ");
+  await rpc("bo_insert_doc", {
+    p_table: "bo_locataire",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      LOTs: input.lotIds,
+      pm: input.pm,
+      pm_nom: input.pm_nom,
+      "pp_civilité": input.pp_civilite,
+      "pp_prénom": input.pp_prenom,
+      pp_nom: input.pp_nom,
+      phone: input.phone,
+      email: input.email,
+      formatted_name: formatted,
+      commentaire: input.commentaire,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime un locataire (récupérable dans bo_trash). */
+export async function deleteLocataire(immeubleId: string, locataireId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_locataire", p_id: locataireId });
+  refresh(immeubleId);
+}
+
+/** Crée une charge annuelle et recalcule les totaux de charges du bien. */
+export async function addCharge(
+  immeubleId: string,
+  input: {
+    Type_charge: string;
+    type_autre?: string;
+    total_an?: number;
+    recup_an?: number;
+    non_recup_an?: number;
+    commentaire?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const total =
+    input.total_an ?? ((input.recup_an ?? 0) + (input.non_recup_an ?? 0) || undefined);
+  await rpc("bo_insert_doc", {
+    p_table: "bo_charge",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      Type_charge: input.Type_charge,
+      type_autre: input.type_autre,
+      total_an: total,
+      recup_an: input.recup_an,
+      non_recup_an: input.non_recup_an ?? (total !== undefined ? total - (input.recup_an ?? 0) : undefined),
+      commentaire: input.commentaire,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime une charge (récupérable) puis recalcule les totaux. */
+export async function deleteCharge(immeubleId: string, chargeId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_charge", p_id: chargeId });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
 /** Met à jour des champs simples du bien (descriptif, prix…). */
 export async function updateBien(
   immeubleId: string,

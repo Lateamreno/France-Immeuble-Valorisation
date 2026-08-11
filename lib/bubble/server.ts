@@ -439,6 +439,9 @@ export type BienData = {
     relance?: string;
   }[];
   lots: Record<string, unknown>[];
+  baux: Record<string, unknown>[];
+  locataires: Record<string, unknown>[];
+  charges: Record<string, unknown>[];
   composants: Record<string, unknown>[];
   travaux: Record<string, unknown>[];
   photos: { id: string; url?: string }[];
@@ -457,10 +460,17 @@ export async function getBien(id: string): Promise<BienData | null> {
   const im = one.results[0];
   if (!im) return null;
 
-  const [suivisR, lots, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
+  const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
+      fetchAll("bail", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 100).catch(() => []),
+      fetchAll("locataire", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 100).catch(() => []),
+      chargeIds.length
+        ? fetchAll("charge", [{ key: "_id", constraint_type: "in", value: chargeIds }], 100).catch(() => [])
+        : Promise.resolve([] as Record<string, unknown>[]),
+      fetchAll("charge", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 100).catch(() => []),
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
@@ -512,6 +522,10 @@ export async function getBien(id: string): Promise<BienData | null> {
         relance: dmy(s.date_relance),
       })),
     lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
+    baux: [...baux].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
+    locataires: [...locataires].sort((a, b) => String(a.formatted_name ?? "").localeCompare(String(b.formatted_name ?? ""))),
+    charges: [...chargesById, ...chargesByIm.filter((c) => !chargesById.some((d) => d._id === c._id))]
+      .sort((a, b) => String(a["Created Date"]).localeCompare(String(b["Created Date"]))),
     composants,
     travaux,
     photos: photos.map((p) => ({ id: p._id as string, url: photoProxy(p.compressed ?? p.image) })),

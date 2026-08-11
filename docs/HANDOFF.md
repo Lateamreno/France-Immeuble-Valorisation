@@ -196,7 +196,35 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
     que le BO Bubble est utilisé en parallèle, une resynchro écrase les
     lignes modifiées des deux côtés (dernier Modified Date gagne côté sync).
 
-**Prochain :** écritures Supabase (ajouter un suivi, éditer les lots/infos du
-bien, wizard estimation → mandat → dossier → commercialisation), puis
-réplique des modules liste restants (Immeubles, Estimations, Mandats,
-Recherches, Contacts, Propositions, Visites, Offres, Suivi, Objectifs, Datas).
+**Fait (11/08/26) — État locatif complet sur la fiche Bien :**
+- **Éditeur de lots** (`components/lots-editor.tsx`) : tableau éditable fidèle
+  (ajout / duplication / suppression avec corbeille `bo_trash` / enregistrement),
+  agrégats recalculés par `bo_recompute_immeuble()`.
+- **Sous-onglets Lots · Baux · Locataires · Charges** (`components/locatif.tsx`),
+  bandeau synthèse par destination + loyers moyens €/m²/mois :
+  - Baux : compteurs actifs/impayés/expulsions/préavis, tableau, modale
+    « Nouveau bail » (locataires + lots multi, conditions, **indice IRL avec
+    loyer révisé théorique calculé**, statut) → `bo_bail`.
+  - Locataires : compteurs pp/pm, modale « Nouveau locataire » (civilité,
+    personne morale, lots) → `bo_locataire` (noms jamais exposés côté public).
+  - Charges : « Taxes et impôts » vs « Charges », modale avec référentiel de
+    types du BO, total/récupérable/non-récupérable → `bo_charge` ;
+    `bo_recompute_immeuble()` v2 recalcule aussi `fin_charges_*` (liaison par
+    tableau `CHARGEs` de l'immeuble **ou** champ `IMMEUBLE` de la charge pour
+    les créations app).
+- Lecture : `getBien` charge aussi baux, locataires, charges (charges via
+  `CHARGEs` + `IMMEUBLE`, dédupliquées).
+- Testé de bout en bout (Playwright + SQL) sur un immeuble jetable, données
+  de test purgées.
+- **Type Bubble découvert : `prix_secteur`** (benchmarks loyer/prix/renta par
+  destination, saisis à la main dans le BO — base du futur wizard estimation).
+  Mirroré : table `bo_prix_secteur`, Edge Function v2, `bo_run_sync()` étendu,
+  backfill 1 824 lignes, `scripts/sync-bubble.mjs` à jour (26 types).
+
+**Prochain :** wizard estimation 6 étapes (Immeuble → Secteur → Prix → Analyse
+→ PDF → Envoi ; shapes relevées : `bo_estimation` = snapshot imm_*/ref_*/
+travaux/charges + statuts `1 - PDF manquant` → `2 - A envoyer` → `3 - Envoyée`
+/ `4 - Interne` ; `bo_prix` = objet de calcul in_*/out_*) → mandat (numérotation
+séquentielle verrouillée) → dossier → commercialisation, puis réplique des
+modules liste restants (Immeubles, Estimations, Mandats, Recherches, Contacts,
+Propositions, Visites, Offres, Suivi, Objectifs, Datas).
