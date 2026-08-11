@@ -51,7 +51,8 @@ export async function addSuivi(input: {
   immeubleId: string;
   agentId: string;
   contactId?: string;
-  canal: "Téléphone" | "Message téléphonique" | "SMS" | "E-mail";
+  /** Plusieurs canaux possibles (retour MAV : on peut tout sélectionner). */
+  canaux: string[];
   notes: string;
   standby?: { motif: string; dateRelance: string }; // dateRelance: yyyy-mm-dd
 }) {
@@ -65,7 +66,7 @@ export async function addSuivi(input: {
       AGENT: input.agentId,
       CONTACT: input.contactId ?? null,
       IMMEUBLEs: [input.immeubleId],
-      Canals: [input.canal],
+      Canals: input.canaux,
       notes: input.notes,
       date_start: now,
       "Created Date": now,
@@ -79,14 +80,48 @@ export async function addSuivi(input: {
         : {}),
     },
   });
-  if (input.standby) {
-    await rpc("bo_patch_doc", {
-      p_table: "bo_immeuble",
-      p_id: input.immeubleId,
-      p_patch: { standby_Statut: "En attente" },
-    });
-  }
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: input.immeubleId,
+    p_patch: input.standby
+      ? { standby_Statut: "En attente" }
+      : { standby_Statut: "Traité" },
+  });
   refresh(input.immeubleId);
+}
+
+/* ---------- Actions du menu « … » des cartes (retour MAV #3) ---------- */
+
+/** Archive un immeuble avec le motif du référentiel. */
+export async function archiverImmeuble(immeubleId: string, motif: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: { archived: true, Motif_archivage: motif, date_archivage: new Date().toISOString() },
+  });
+  refresh(immeubleId);
+}
+
+/** Transfère le suivi du dossier à un autre agent. */
+export async function transfererImmeuble(immeubleId: string, agentId: string) {
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { AGENT: agentId } });
+  refresh(immeubleId);
+}
+
+/** Renvoie le dossier à l'étape précédente du pipeline. */
+export async function reculerStatut(immeubleId: string, statutActuel: number) {
+  const cible = Math.max(1, statutActuel - 1);
+  await setStatut(immeubleId, cible);
+}
+
+/** Renseigne l'apporteur d'affaire (retour MAV #7). */
+export async function setApporteur(immeubleId: string, nom: string | null) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: nom ? { apporteur_yn: true, apporteur_nom: nom } : { apporteur_yn: false, apporteur_nom: null },
+  });
+  refresh(immeubleId);
 }
 
 /** Réactive un dossier en attente / à relancer. */

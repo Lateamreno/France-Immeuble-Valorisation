@@ -34,6 +34,14 @@ export type KCard = {
   counts?: { prop: number; vis: number; off: number };
   /** Icônes d'alerte rouges (mandat / PDF / contacts) + cadenas gris. */
   redIcons?: boolean;
+  /** Derniers suivis (repliés sous la carte, retour MAV #4). */
+  historique?: { date: string; motif: string; note: string }[];
+  /** Statut pipeline courant (pour « renvoyer à l'étape précédente »). */
+  statutNum?: number;
+  /** Contact lié (personne contactée par défaut dans la modale Suivi). */
+  contactId?: string;
+  /** Objet de l'échange affiché dans la modale Suivi. */
+  objet?: string;
   /** Bouton historique visible. */
   history?: boolean;
 };

@@ -957,3 +957,87 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   padding: 16px 18px 90px; overflow: auto;
 }
 .lots-full .ltools.v2 { position: fixed; left: 18px; right: 18px; bottom: 14px; }
+
+/* --- Modale « Suivi » (réplique de la capture du BO) --- */
+.modal.sv { width: 700px; max-width: calc(100vw - 32px); padding: 0; }
+.sv-head {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: #5a6773; color: #fff; border-radius: 7px 7px 0 0;
+  padding: 12px; font-family: var(--font-title); font-size: 16px; font-weight: 600;
+}
+.sv-head svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+.sv-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 18px; border-bottom: 1px solid var(--line-lt);
+}
+.sv-row.col { flex-direction: column; align-items: stretch; gap: 7px; }
+.sv-lab {
+  display: flex; align-items: center; gap: 9px; flex: none; min-width: 220px;
+  font-family: var(--font-title); font-size: 13.5px; font-weight: 600; color: var(--slate);
+}
+.sv-lab svg { width: 16px; height: 16px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; flex: none; }
+.sv-val { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+.sv-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 5px 11px; font-size: 13px; color: var(--slate);
+}
+.sv-chip svg { width: 14px; height: 14px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; }
+.sv-swap {
+  border: 1px solid var(--line); background: #fff; border-radius: 4px;
+  width: 30px; height: 30px; color: var(--slate-2); font-size: 14px;
+}
+.sv-swap:hover { border-color: var(--slate-2); }
+.sv-canaux { justify-content: flex-end; }
+.sv-canal {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--red); border-radius: 4px; background: #fff;
+  padding: 5px 11px; font-size: 13px; color: var(--slate); font-family: var(--font-body);
+}
+.sv-canal svg { width: 15px; height: 15px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; }
+.sv-canal.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.sv-canal.on svg { stroke: #fff; }
+.sv-notes {
+  width: 100%; border: 1px solid var(--red); border-radius: 4px;
+  padding: 9px 11px; font: inherit; font-size: 13.5px; color: var(--slate); outline: none; resize: vertical;
+}
+.sv-notes::placeholder { color: var(--gray-lt); }
+.sv-yn { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.sv-yn button {
+  border: 0; background: #fff; padding: 6px 12px; font-size: 13px; font-weight: 700;
+  color: var(--gray-lt); font-family: var(--font-body);
+}
+.sv-yn button.on:first-child { color: var(--green); }
+.sv-yn button.on:last-child { background: var(--pill-gray); color: #fff; }
+.sv-foot { display: flex; align-items: center; padding: 12px 18px; }
+.sv-annuler { border: 0; background: none; color: var(--gray-txt); font-size: 13px; text-decoration: underline; }
+.sv-go {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); background: #f4f4f4; border-radius: 4px;
+  padding: 9px 16px; font-family: var(--font-title); font-size: 14px; font-weight: 600; color: var(--slate);
+}
+.sv-go svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+.sv-go:hover { background: #ececec; }
+
+/* --- Menu « … » des cartes --- */
+.kmenu-wrap { position: relative; }
+.kmenu {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 60;
+  min-width: 230px; background: #fff; border: 1px solid var(--line);
+  border-radius: 5px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); overflow: hidden;
+}
+.kmenu button {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  border: 0; background: #fff; padding: 10px 14px;
+  font-size: 13.5px; color: var(--slate); text-align: left; font-family: var(--font-body);
+  border-bottom: 1px solid var(--line-lt);
+}
+.kmenu button:last-child { border-bottom: 0; }
+.kmenu button:hover { background: #f6f6f4; }
+.kmenu svg { width: 16px; height: 16px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; flex: none; }
+
+/* --- Historique replié sur la carte --- */
+.khist { border-top: 1px solid var(--line-lt); background: #fafafa; padding: 8px 12px; }
+.khist .l { display: flex; gap: 8px; font-size: 12.5px; padding: 3px 0; color: var(--slate); }
+.khist .l .d { color: var(--gray-lt); flex: none; }
+.khist .l .m { color: var(--gray-txt); }

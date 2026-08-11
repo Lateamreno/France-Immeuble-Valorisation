@@ -7,7 +7,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
-import { MOTIFS_STANDBY } from "@/lib/referentiels";
+import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
 import { EmplacementTabs } from "@/components/emplacement";
 import { TechniqueTabs } from "@/components/technique";
@@ -344,96 +344,19 @@ function ReactiverBtn({ immeubleId }: { immeubleId: string }) {
 
 function AddSuiviButton({ b }: { b: BienData }) {
   const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-  const [canal, setCanal] = useState<"Téléphone" | "Message téléphonique" | "SMS" | "E-mail">("Téléphone");
-  const [notes, setNotes] = useState("");
-  const [standby, setStandby] = useState(false);
-  const [motif, setMotif] = useState(MOTIFS_STANDBY[0]);
-  const [dateRelance, setDateRelance] = useState("");
-  const proprio = b.proprietaire
-    ? `${String(b.proprietaire["prénom"] ?? "")} ${String(b.proprietaire.nom ?? "")}`.trim()
-    : "—";
-
-  const submit = () =>
-    start(async () => {
-      await addSuivi({
-        immeubleId: String(b.im._id),
-        agentId: String(b.im.AGENT ?? ""),
-        contactId: b.im.PROPRIETAIRE ? String(b.im.PROPRIETAIRE) : undefined,
-        canal,
-        notes,
-        standby: standby && dateRelance ? { motif, dateRelance } : undefined,
-      });
-      setOpen(false);
-      setNotes("");
-      setStandby(false);
-    });
-
+  const c = b.proprietaire;
   return (
     <>
-      <button className="fbtn" type="button" style={{ marginBottom: 12 }} onClick={() => setOpen(true)}>
-        + Ajouter un suivi
-      </button>
+      <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un suivi</button>
       {open && (
-        <div className="modal-ov" onClick={() => !pending && setOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              <span>Suivi</span>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Fermer">✕</button>
-            </div>
-            <div className="modal-b">
-              <label className="mlab">Personne contactée</label>
-              <input className="min" value={proprio} readOnly />
-              <label className="mlab">Objet de l&apos;échange</label>
-              <input className="min" value={`${b.ville} — ${b.adresse}`} readOnly />
-              <label className="mlab">Contacté par</label>
-              <div className="mrow">
-                {(["Téléphone", "Message téléphonique", "SMS", "E-mail"] as const).map((c) => (
-                  <button key={c} type="button" className={`mopt${canal === c ? " on" : ""}`} onClick={() => setCanal(c)}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <label className="mlab">Notes</label>
-              <textarea
-                className="min"
-                rows={4}
-                placeholder="Ecrivez ici vos notes de suivi, remarques..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-              <label className="mlab">Mettre en attente</label>
-              <div className="mrow">
-                <button type="button" className={`mopt${!standby ? " on" : ""}`} onClick={() => setStandby(false)}>Non</button>
-                <button type="button" className={`mopt${standby ? " on" : ""}`} onClick={() => setStandby(true)}>Oui</button>
-              </div>
-              {standby && (
-                <div className="mrow" style={{ alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13 }}>jusqu&apos;au</span>
-                  <input className="min" type="date" style={{ width: 170 }} value={dateRelance} onChange={(e) => setDateRelance(e.target.value)} />
-                  <span style={{ fontSize: 13 }}>car</span>
-                  <select className="min" style={{ width: 210 }} value={motif} onChange={(e) => setMotif(e.target.value)}>
-                    {MOTIFS_STANDBY.map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            <div className="modal-f">
-              <button className="fbtn" type="button" onClick={() => setOpen(false)}>Annuler</button>
-              <button
-                className="kgo"
-                type="button"
-                disabled={pending || (!notes && !standby)}
-                style={pending ? { opacity: 0.5 } : undefined}
-                onClick={submit}
-              >
-                <span className="ch">›</span> {standby ? "Mettre en attente" : "Enregistrer le suivi"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SuiviModal
+          immeubleId={String(b.im._id)}
+          agentId={String(b.im.AGENT ?? "")}
+          objet={`${b.ville} - ${b.adresse}`}
+          contactNom={c ? `${c["prénom"] ?? ""} ${c.nom ?? ""}`.trim() : undefined}
+          contactId={c ? String(c._id) : undefined}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );

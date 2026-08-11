@@ -39,7 +39,7 @@ export default async function DashboardPage({
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}
-      <DashboardBlocs blocs={blocs} mock={!!liveError} />
+      <DashboardBlocs blocs={blocs} mock={!!liveError} agents={agentList.map((a) => ({ id: a.id, name: a.name }))} />
     </>
   );
 }

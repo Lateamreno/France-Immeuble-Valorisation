@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
-import { reactiver, setStatut } from "@/lib/bo/actions";
+import { archiverImmeuble, reactiver, reculerStatut, setStatut, transfererImmeuble } from "@/lib/bo/actions";
+import { SuiviModal } from "@/components/suivi-modal";
+import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
   form: <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1.6 3v2.4h5V7h-5zm7 .4v1.6h5.8V7.4h-5.8zM5.6 11.6v1.6h12.2v-1.6H5.6zm0 3.6V17h12.2v-1.8H5.6z" />,
@@ -24,14 +27,42 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
   flag: <><path d="M4 21V4" /><path d="M4 5c3-2 6 1 9 0s5-1 7 0v9c-2-1-4-1-7 0s-6 2-9 0" /></>,
 };
 
-function Card({ c, mock }: { c: KCard; mock?: boolean }) {
+function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { id: string; name: string }[] }) {
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  const [suiviOpen, setSuiviOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [hist, setHist] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [menu]);
+
+  // « Contacté » : on note d'abord par quel biais, puis on ouvre la fiche sur
+  // l'état locatif pour enchaîner l'estimation (retour MAV #5).
   const onAction = () => {
     if (mock || pending || !c.action) return;
+    if (c.action.kind !== "green" && c.action.next === 2) { setSuiviOpen(true); return; }
     startTransition(async () => {
       if (c.action!.kind === "green") await reactiver(c.id);
       else if (c.action!.next) await setStatut(c.id, c.action!.next);
     });
+  };
+
+  const apresSuivi = () => {
+    setSuiviOpen(false);
+    if (c.action?.next) {
+      startTransition(async () => {
+        await setStatut(c.id, c.action!.next!);
+        router.push(`/bien/${c.id}?section=locatif`);
+      });
+    }
   };
   const top = (
     <>
@@ -114,11 +145,52 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
       )}
 
       <div className="kact">
-        <button className="kbtn" type="button" aria-label="Autres actions">
-          <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>
-        </button>
+        <div className="kmenu-wrap" ref={menuRef}>
+          <button className="kbtn" type="button" aria-label="Autres actions" onClick={() => setMenu((v) => !v)}>
+            {menu
+              ? <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></svg>
+              : <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>}
+          </button>
+          {menu && (
+            <div className="kmenu">
+              <button type="button" onClick={() => { setMenu(false); setSuiviOpen(true); }}>
+                <svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
+                Appeler
+              </button>
+              <button type="button" onClick={() => { setMenu(false); setSuiviOpen(true); }}>
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
+                Envoyer un e-mail
+              </button>
+              <button type="button" onClick={() => {
+                setMenu(false);
+                const motif = prompt(`Motif d'archivage ?\n\n${MOTIFS_ARCHIVAGE.join(" · ")}`, "Ne souhaite pas vendre");
+                if (motif) startTransition(() => archiverImmeuble(c.id, motif));
+              }}>
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
+                Archiver
+              </button>
+              <button type="button" onClick={() => {
+                setMenu(false);
+                const noms = agents.map((a, i) => `${i + 1}. ${a.name}`).join("\n");
+                const r = prompt(`Transférer à :\n${noms}\n\nNuméro ?`);
+                const idx = r ? parseInt(r, 10) - 1 : -1;
+                if (agents[idx]) startTransition(() => transfererImmeuble(c.id, agents[idx].id));
+              }}>
+                <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
+                Transférer à un collègue
+              </button>
+              <button type="button" onClick={() => {
+                setMenu(false);
+                if (c.statutNum) startTransition(() => reculerStatut(c.id, c.statutNum!));
+              }}>
+                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
+                Renvoyer à l&apos;étape précédente
+              </button>
+            </div>
+          )}
+        </div>
         {c.history && (
-          <button className="kbtn" type="button" aria-label="Historique">
+          <button className={`kbtn${hist ? " on" : ""}`} type="button" aria-label="Historique" onClick={() => setHist((v) => !v)}>
             <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></svg>
           </button>
         )}
@@ -139,7 +211,7 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
           </>
         )}
         <span className="sp" />
-        <button className="kbtn msg" type="button" aria-label="Messages">
+        <button className="kbtn msg" type="button" aria-label="Messages" onClick={() => setSuiviOpen(true)}>
           <svg viewBox="0 0 24 24"><path d="M8.4 3h9.2A3.4 3.4 0 0 1 21 6.4v4.4a3.4 3.4 0 0 1-3.4 3.4h-.6v2.5c0 .5-.6.8-1 .5l-3.6-3H8.4A3.4 3.4 0 0 1 5 10.8V6.4A3.4 3.4 0 0 1 8.4 3z" /><path d="M3.2 8.6v4.6a4.2 4.2 0 0 0 4.2 4.2h.6v1.4c0 .5.6.8 1 .4l1.2-1H7.4a4.9 4.9 0 0 1-4.2-4.9V8.6z" /></svg>
         </button>
         {c.counts && (
@@ -166,11 +238,34 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
           </button>
         )}
       </div>
+
+      {hist && c.historique && c.historique.length > 0 && (
+        <div className="khist">
+          {c.historique.map((h, i) => (
+            <div className="l" key={i}>
+              <span className="d">{h.date}</span>
+              <span className="m">{h.motif}</span>
+              <span>{h.note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {suiviOpen && (
+        <SuiviModal
+          immeubleId={c.id}
+          agentId=""
+          objet={c.objet ?? c.ville}
+          contactNom={c.contact}
+          contactId={c.contactId}
+          onClose={c.action?.next === 2 ? apresSuivi : () => setSuiviOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Bloc({ b, mock }: { b: KBloc; mock?: boolean }) {
+function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(b.openDefault);
   return (
     <section className="bloc">
@@ -206,7 +301,7 @@ function Bloc({ b, mock }: { b: KBloc; mock?: boolean }) {
               </div>
               <div className="col-body">
                 {col.cards.map((c) => (
-                  <Card key={c.id} c={c} mock={mock} />
+                  <Card key={c.id} c={c} mock={mock} agents={agents} />
                 ))}
               </div>
             </div>
@@ -217,11 +312,11 @@ function Bloc({ b, mock }: { b: KBloc; mock?: boolean }) {
   );
 }
 
-export function DashboardBlocs({ blocs, mock }: { blocs: KBloc[]; mock?: boolean }) {
+export function DashboardBlocs({ blocs, mock, agents }: { blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[] }) {
   return (
     <div className="wrap">
       {blocs.map((b) => (
-        <Bloc key={b.key} b={b} mock={mock} />
+        <Bloc key={b.key} b={b} mock={mock} agents={agents} />
       ))}
     </div>
   );

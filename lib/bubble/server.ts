@@ -202,11 +202,13 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     .filter((i) => i.AGENT === agent.id)
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
-  // Dernier suivi par immeuble (les suivis récents d'abord).
+  // Dernier suivi par immeuble + historique complet (les récents d'abord).
   const suiviByIm = new Map<string, Record<string, unknown>>();
+  const suivisParIm = new Map<string, Record<string, unknown>[]>();
   for (const s of [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
     for (const id of (s.IMMEUBLEs as string[] | undefined) ?? []) {
       if (!suiviByIm.has(id)) suiviByIm.set(id, s);
+      suivisParIm.set(id, [...(suivisParIm.get(id) ?? []), s]);
     }
   }
 
@@ -302,6 +304,14 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
       rv: true,
       rvText: agent.initials,
       history: !!suivi,
+      statutNum: statutOf(im),
+      contactId: typeof im.PROPRIETAIRE === "string" ? (im.PROPRIETAIRE as string) : undefined,
+      objet: `${im.adresse_ville ?? ""} - ${[im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ")}`,
+      historique: (suivisParIm.get(id) ?? []).slice(0, 6).map((s2) => ({
+        date: dmy(s2.date_start ?? s2["Created Date"]) ?? "",
+        motif: String(s2.Motif_standby ?? s2.Type ?? ""),
+        note: typeof s2.notes === "string" ? (s2.notes as string).slice(0, 160) : "",
+      })),
     };
 
     if (enAttente && suivi) {
