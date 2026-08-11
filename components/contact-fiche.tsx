@@ -7,10 +7,22 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { ContactData } from "@/lib/bubble/server";
 import { dmy, euros } from "@/lib/format";
-import { updateContact } from "@/lib/bo/actions";
+import { archiverContact, updateContact } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
-import { CIBLES as PROFILS, SOURCES_CONTACT as SOURCES } from "@/lib/referentiels";
+import { CIBLES as PROFILS, MOTIFS_ARCHIVAGE, SOURCES_CONTACT as SOURCES } from "@/lib/referentiels";
+
+const NOTES = ["A", "B", "C", "D"];
+
+/** Le BO propose « + Ajouter … » dans chaque onglet ; la création passe par
+ *  la barre d'actions du bas, qui pré-remplit le contact. */
+function AjouterDepuisBarre({ quoi }: { quoi: string }) {
+  return (
+    <div className="cf-add">
+      + Ajouter {quoi} — via la barre d&apos;actions en bas de l&apos;écran
+    </div>
+  );
+}
 
 export function ContactFiche({ d }: { d: ContactData }) {
   const c = d.c;
@@ -30,6 +42,13 @@ export function ContactFiche({ d }: { d: ContactData }) {
   const [source, setSource] = useState(S(c.Source));
   const [remarques, setRemarques] = useState(S(c.remarques));
   const [entreprise, setEntreprise] = useState(S(c.entreprise_nom));
+  const [note, setNote] = useState(S(c.Note));
+  const [naissance, setNaissance] = useState(S(c.date_naissance).slice(0, 10));
+  const [lieuNaissance, setLieuNaissance] = useState(S(c.lieu_naissance_geo));
+  const [adresse, setAdresse] = useState(S(c.adresse_geo));
+  const [notifSms, setNotifSms] = useState(c.notif_sms === true);
+  const [notifMail, setNotifMail] = useState(c.notif_email === true);
+  const [interagence, setInteragence] = useState(c.interagence === true);
 
   const fullName = [civ === "Monsieur" ? "M." : civ === "Madame" ? "Mme" : civ, prenom, nom.toUpperCase()].filter(Boolean).join(" ");
 
@@ -40,6 +59,11 @@ export function ContactFiche({ d }: { d: ContactData }) {
         email: email || undefined, portable: portable || undefined, fixe: fixe || undefined,
         acheteur, vendeur, Types: types, Source: source || undefined,
         remarques: remarques || undefined, entreprise_nom: entreprise || undefined,
+        Note: note || undefined,
+        date_naissance: naissance || undefined,
+        lieu_naissance_geo: lieuNaissance || undefined,
+        adresse_geo: adresse || undefined,
+        notif_sms: notifSms, notif_email: notifMail, interagence,
       }),
     );
 
@@ -47,6 +71,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
     { key: "infos", label: "Informations", n: 0 },
     { key: "immeubles", label: "Immeubles", n: d.immeubles.length },
     { key: "recherches", label: "Recherches", n: d.recherches.length },
+    { key: "mandats", label: "Mandats", n: d.mandats.length },
     { key: "propositions", label: "Propositions", n: d.propositions.length },
     { key: "questions", label: "Questions", n: d.questions.length },
     { key: "visites", label: "Visites", n: d.visites.length },
@@ -65,8 +90,14 @@ export function ContactFiche({ d }: { d: ContactData }) {
         {vendeur && <span className="badge-o">VENDEUR</span>}
         {types.map((t) => <span key={t} className="chip">{t}</span>)}
         <span className="sp" style={{ flex: 1 }} />
+        {note && <span className={`note n${note}`} title={`Classement acquéreur ${note}`}>{note}</span>}
         {portable && <a className="fadd" href={`tel:${portable}`}>Appeler</a>}
         {email && <a className="fadd" href={`mailto:${email}`}>Envoyer un e-mail</a>}
+        <button type="button" className="fadd" disabled={pending}
+          onClick={() => {
+            const motif = prompt(`Motif d'archivage ?\n\n${MOTIFS_ARCHIVAGE.join(" · ")}`, "Doublon");
+            if (motif) start(() => archiverContact(id, motif));
+          }}>Archiver ce contact</button>
       </div>
 
       <div className="ftabs">
@@ -81,9 +112,22 @@ export function ContactFiche({ d }: { d: ContactData }) {
         {tab === "infos" && (
           <>
             <div className="fsub">Typologie</div>
+            {d.agentNom && (
+              <div style={{ fontSize: 12.5, color: "var(--gray-txt)", marginBottom: 8 }}>
+                Suivi par <b style={{ color: "var(--slate)" }}>{d.agentNom}</b>
+              </div>
+            )}
             <div className="mrow" style={{ marginBottom: 6 }}>
               <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
               <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
+              <button type="button" className={`mopt${interagence ? " on" : ""}`} onClick={() => setInteragence(!interagence)}>Interagence</button>
+            </div>
+            <div className="mrow" style={{ marginBottom: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 12.5, color: "var(--gray-txt)" }}>Classement</span>
+              {NOTES.map((x) => (
+                <button key={x} type="button" className={`mopt${note === x ? " on" : ""}`}
+                  onClick={() => setNote(note === x ? "" : x)}>{x}</button>
+              ))}
             </div>
             <div className="mrow">
               {PROFILS.map((p) => (
@@ -105,15 +149,30 @@ export function ContactFiche({ d }: { d: ContactData }) {
               <input className="min" style={{ width: 140 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
               <input className="min" style={{ width: 160 }} placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
             </div>
+            <div className="mrow" style={{ alignItems: "center", marginTop: 6 }}>
+              <label style={{ fontSize: 12 }}>Date de naissance <input className="min" type="date" style={{ width: 140 }} value={naissance} onChange={(e) => setNaissance(e.target.value)} /></label>
+              <input className="min" style={{ width: 190 }} placeholder="Lieu de naissance" value={lieuNaissance} onChange={(e) => setLieuNaissance(e.target.value)} />
+              <input className="min" style={{ flex: 1, minWidth: 220 }} placeholder="Adresse" value={adresse} onChange={(e) => setAdresse(e.target.value)} />
+            </div>
             <div className="fsub" style={{ marginTop: 14 }}>Société</div>
             <input className="min" style={{ maxWidth: 280 }} placeholder="Raison sociale" value={entreprise} onChange={(e) => setEntreprise(e.target.value)} />
             <div className="fsub" style={{ marginTop: 14 }}>Notes et remarques</div>
             <textarea className="min" rows={3} placeholder="Ecrivez ici..." value={remarques} onChange={(e) => setRemarques(e.target.value)} />
+            <div className="fsub" style={{ marginTop: 14 }}>Notifications</div>
+            <div className="mrow">
+              <button type="button" className={`mopt${notifSms ? " on" : ""}`} onClick={() => setNotifSms(!notifSms)}>SMS : {notifSms ? "Oui" : "Non"}</button>
+              <button type="button" className={`mopt${notifMail ? " on" : ""}`} onClick={() => setNotifMail(!notifMail)}>E-mail : {notifMail ? "Oui" : "Non"}</button>
+            </div>
             <div className="fsub" style={{ marginTop: 14 }}>Source</div>
             <select className="min" style={{ maxWidth: 260 }} value={source} onChange={(e) => setSource(e.target.value)}>
               <option value="">—</option>
               {[...new Set([source, ...SOURCES])].filter(Boolean).map((s) => <option key={s}>{s}</option>)}
             </select>
+            <div style={{ fontSize: 12, color: "var(--gray-lt)", marginTop: 14 }}>
+              Créé le {dmy(c["Created Date"]) ?? "?"}
+              {d.agentNom ? ` par ${d.agentNom}` : ""}
+              {S(c.Source) ? ` (source : ${S(c.Source)})` : ""}
+            </div>
             <div className="wnav">
               <span className="sp" style={{ flex: 1 }} />
               <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={save}>
@@ -125,6 +184,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "immeubles" && (
           <>
+            <AjouterDepuisBarre quoi="un immeuble" />
             {d.immeubles.length === 0 && <div className="fempty">Aucun immeuble.</div>}
             {d.immeubles.map((im) => (
               <Link key={String(im._id)} href={`/bien/${im._id}`} className="chrow" style={{ textDecoration: "none" }}>
@@ -139,6 +199,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "recherches" && (
           <>
+            <AjouterDepuisBarre quoi="une recherche" />
             {d.recherches.length === 0 && <div className="fempty">Aucune recherche.</div>}
             {d.recherches.map((r) => (
               <div key={String(r._id)} className="chrow">
@@ -152,8 +213,26 @@ export function ContactFiche({ d }: { d: ContactData }) {
           </>
         )}
 
+        {tab === "mandats" && (
+          <>
+            <AjouterDepuisBarre quoi="un mandat" />
+            {d.mandats.length === 0 && <div className="fempty">Aucun mandat.</div>}
+            {d.mandats.map((m) => (
+              <Link key={String(m._id)} href={`/mandat/${m._id}`} className="chrow" style={{ textDecoration: "none" }}>
+                <span className="t">{S(m.Type)} {S(m.Type_exclu)}</span>
+                <span className="c">{m.numero ? `#${m.numero}` : "Pas de numéro"}</span>
+                <span className="c">{dmy(m.date_effet)}{m.date_fin ? ` → ${dmy(m.date_fin)}` : ""}</span>
+                <span className="sp" style={{ flex: 1 }} />
+                <span className="v">{euros(m.prix_hai) ?? ""}</span>
+                {S(m.Statut) && <span className="badge-o">{S(m.Statut)}</span>}
+              </Link>
+            ))}
+          </>
+        )}
+
         {tab === "propositions" && (
           <>
+            <AjouterDepuisBarre quoi="une proposition" />
             {d.propositions.length === 0 && <div className="fempty">Aucune proposition.</div>}
             {d.propositions.map((p) => (
               <div key={String(p._id)} className="chrow">
@@ -168,6 +247,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "questions" && (
           <>
+            <AjouterDepuisBarre quoi="une question" />
             {d.questions.length === 0 && <div className="fempty">Aucune question.</div>}
             {d.questions.map((q) => (
               <div key={String(q._id)} className="chrow">
@@ -182,6 +262,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "visites" && (
           <>
+            <AjouterDepuisBarre quoi="une visite" />
             {d.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
             {d.visites.map((v) => (
               <div key={String(v._id)} className="chrow">
@@ -196,6 +277,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "offres" && (
           <>
+            <AjouterDepuisBarre quoi="une offre" />
             {d.offres.length === 0 && <div className="fempty">Aucune offre.</div>}
             {d.offres.map((o) => (
               <div key={String(o._id)} className="chrow">
@@ -212,6 +294,7 @@ export function ContactFiche({ d }: { d: ContactData }) {
 
         {tab === "suivis" && (
           <>
+            <AjouterDepuisBarre quoi="un suivi" />
             {d.suivis.length === 0 && <div className="fempty">Aucun suivi.</div>}
             {d.suivis.map((s) => (
               <div key={String(s._id)} className="chrow">

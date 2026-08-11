@@ -1113,13 +1113,16 @@ export type ContactData = {
   visites: Record<string, unknown>[];
   offres: Record<string, unknown>[];
   suivis: Record<string, unknown>[];
+  mandats: Record<string, unknown>[];
+  /** Agent qui suit le contact, pour l'afficher en clair. */
+  agentNom?: string;
 };
 
 export async function getContact(id: string): Promise<ContactData | null> {
   const one = await bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
   const c = one.results[0];
   if (!c) return null;
-  const [immeubles, recherches, propositions, questions, visites, offres, suivis] = await Promise.all([
+  const [immeubles, recherches, propositions, questions, visites, offres, suivis, mandats] = await Promise.all([
     fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 50).catch(() => []),
     fetchAll("recherche", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
     fetchAll("proposition", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
@@ -1127,9 +1130,12 @@ export async function getContact(id: string): Promise<ContactData | null> {
     fetchAll("visite", [{ key: "VISITEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
     fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
     fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 100).catch(() => []),
+    fetchAll("mandat", [{ key: "MANDANTs", constraint_type: "contains", value: id }], 50).catch(() => []),
   ]);
+  const agent = (await agents()).find((a) => a.id === c.agent);
   return {
-    c, immeubles, recherches, propositions, questions, visites, offres,
+    c, immeubles, recherches, propositions, questions, visites, offres, mandats,
+    agentNom: agent?.name,
     suivis: [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
   };
 }

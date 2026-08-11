@@ -805,7 +805,31 @@ export type ContactPatch = Partial<{
   remarques: string;
   entreprise_nom: string;
   entreprise_siren: string;
+  /** Classement acquéreur A/B/C/D du BO. */
+  Note: string;
+  date_naissance: string;
+  lieu_naissance_geo: string;
+  adresse_geo: string;
+  notif_sms: boolean;
+  notif_email: boolean;
+  /** Agent France Immeuble qui suit le contact. */
+  agent: string;
+  interagence: boolean;
+  archived: boolean;
+  motif_archivage: string;
+  date_archivage: string;
 }>;
+
+/** Archive un contact (le BO n'efface pas, il archive). */
+export async function archiverContact(contactId: string, motif: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_contact",
+    p_id: contactId,
+    p_patch: { archived: true, motif_archivage: motif, date_archivage: new Date().toISOString() },
+  });
+  revalidatePath("/contacts");
+  revalidatePath(`/contact/${contactId}`);
+}
 
 /** Met à jour une fiche contact. */
 export async function updateContact(contactId: string, patch: ContactPatch) {
