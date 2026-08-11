@@ -83,17 +83,17 @@ button { font-family: inherit; cursor: pointer; }
 }
 .side::-webkit-scrollbar { display: none; }
 .side a, .side .srow {
-  display: flex; align-items: center; gap: 11px;
+  display: flex; align-items: center; gap: 12px;
   padding: 13px 16px;
   font-size: 14.5px; font-weight: 500;
-  color: #cdd0d3;
+  color: #9d9da2;
   border-bottom: 1px solid rgba(255, 255, 255, .06);
   white-space: nowrap;
 }
 .side a:hover { background: #393940; color: #fff; }
 .side a.sel { background: #333338; color: #fff; }
-.side .sic { width: 17px; height: 17px; flex: none; display: grid; place-items: center; }
-.side .sic svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.side .sic { width: 19px; height: 19px; flex: none; display: grid; place-items: center; }
+.side .sic svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
 .side .nred, .side .norange {
   margin-left: auto;
   min-width: 21px; height: 21px;
@@ -245,13 +245,14 @@ button { font-family: inherit; cursor: pointer; }
 .kthumb {
   width: 82px; height: 76px; flex: none;
   border-radius: 3px;
-  background: #dfe3e6;
   position: relative;
   display: grid; place-items: center;
-  color: #aab3ba;
+  color: var(--slate);
   overflow: hidden;
 }
-.kthumb svg { width: 34px; height: 34px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+/* fond gris uniquement derrière une vraie photo */
+.kthumb.has-photo { background: #dfe3e6; }
+.kthumb svg { width: 34px; height: 34px; fill: currentColor; stroke: none; }
 .kthumb img { width: 100%; height: 100%; object-fit: cover; }
 .kthumb .rv {
   position: absolute; left: 0; bottom: 0;
@@ -315,6 +316,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 .kwait .mid { flex: 1; position: relative; height: 16px; }
 .kwait .mid::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 3px; background: var(--red); }
+.kwait.soon .d { background: var(--chip); color: var(--slate); }
+.kwait.soon .mid::before { background: #d9d9d9; }
+.kwait.soon .mid .lbl { color: var(--gray-txt); font-weight: 600; }
+.kwait.soon .mid .ar { color: var(--gray-lt); }
 .kwait .mid .lbl {
   position: absolute; left: 50%; transform: translateX(-50%); top: -9px;
   color: var(--red); font-size: 12px; font-weight: 700;
@@ -337,6 +342,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 .kbtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
 .kbtn.redic { color: var(--red); border-color: var(--red); }
+/* bulle de messages : bouton gris plein, sans bordure (comme le BO) */
+.kbtn.msg { border: 0; background: #eceff1; color: var(--slate-2); border-radius: 5px; }
+.kbtn.msg svg { width: 17px; height: 17px; fill: currentColor; stroke: none; }
 .kact .sp { flex: 1; }
 .kcount {
   display: inline-flex; align-items: center; gap: 5px;

@@ -7,8 +7,8 @@ import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
 import { reactiver, setStatut } from "@/lib/bo/actions";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
-  form: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
-  building: <><rect x="5" y="3" width="14" height="18" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" /></>,
+  form: <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1.6 3v2.4h5V7h-5zm7 .4v1.6h5.8V7.4h-5.8zM5.6 11.6v1.6h12.2v-1.6H5.6zm0 3.6V17h12.2v-1.8H5.6z" />,
+  building: <path d="M5 2h11a1 1 0 0 1 1 1v18h3v2H4v-2h1V3a1 1 0 0 1 0-1zm2.5 3v2h2V5h-2zm4 0v2h2V5h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-2 3.8V21h4v-5h-4z" />,
   flame: <><path d="M12 3c1 3-3 4.5-3 8a3 3 0 0 0 6 0c0-1.5-.8-2.5-.8-2.5S17 10 17 13a5 5 0 0 1-10 0c0-4.5 4-6 5-10z" /></>,
   pdf: <><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></>,
   spread: <><path d="M12 3v7M12 10l-6 8M12 10l6 8" /><circle cx="12" cy="3" r="1.6" /><circle cx="6" cy="19" r="1.6" /><circle cx="18" cy="19" r="1.6" /></>,
@@ -35,13 +35,13 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
   };
   const top = (
     <>
-        <div className="kthumb">
+        <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
           {c.photoUrl ? (
             <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : c.photo ? (
-            <svg viewBox="0 0 24 24"><path d="M4 20h16M6 20V9l6-4 6 4v11" /><path d="M10 20v-4h4v4M10 12h1.5M13 12h1.5" /></svg>
+            <svg viewBox="0 0 24 24">{COL_IC.building}</svg>
           ) : (
-            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 9h8M8 13h8M8 17h4" /></svg>
+            <svg viewBox="0 0 24 24">{COL_IC.form}</svg>
           )}
           {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
         </div>
@@ -85,7 +85,7 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
           )}
 
           {c.wait && (
-            <div className="kwait">
+            <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
                 <span className="lbl">{c.wait.motif}</span>
@@ -139,8 +139,8 @@ function Card({ c, mock }: { c: KCard; mock?: boolean }) {
           </>
         )}
         <span className="sp" />
-        <button className="kbtn" type="button" aria-label="Messages" style={{ border: 0 }}>
-          <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z" /><path d="M17 9a6 6 0 0 1-8.5 8" /></svg>
+        <button className="kbtn msg" type="button" aria-label="Messages">
+          <svg viewBox="0 0 24 24"><path d="M8.4 3h9.2A3.4 3.4 0 0 1 21 6.4v4.4a3.4 3.4 0 0 1-3.4 3.4h-.6v2.5c0 .5-.6.8-1 .5l-3.6-3H8.4A3.4 3.4 0 0 1 5 10.8V6.4A3.4 3.4 0 0 1 8.4 3z" /><path d="M3.2 8.6v4.6a4.2 4.2 0 0 0 4.2 4.2h.6v1.4c0 .5.6.8 1 .4l1.2-1H7.4a4.9 4.9 0 0 1-4.2-4.9V8.6z" /></svg>
         </button>
         {c.counts && (
           <>

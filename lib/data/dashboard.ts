@@ -24,7 +24,8 @@ export type KCard = {
   /** Note repliable (chevron ˅). */
   chevron?: boolean;
   /** Carte « en attente » : bordure rouge + frise date → motif → date. */
-  wait?: { from: string; to: string; motif: string };
+  /** late=false ⇒ frise grise (échéance à venir), true ⇒ rouge (dépassée). */
+  wait?: { from: string; to: string; motif: string; late?: boolean };
   prix?: string;
   fee?: string;
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */

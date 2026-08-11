@@ -305,10 +305,13 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     };
 
     if (enAttente && suivi) {
+      const relance = typeof suivi.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
       card.wait = {
         from: dmy(suivi.date_start ?? suivi["Created Date"]) ?? "",
         to: dmy(suivi.date_relance) ?? "",
         motif: String(suivi.Motif_standby ?? im.standby_Statut ?? ""),
+        // Dans le BO la frise passe au rouge quand la date de relance est dépassée.
+        late: relance ? relance.getTime() <= Date.now() : true,
       };
       card.prix = euros(im.prix_hai);
       card.action = { label: "Réactiver", kind: "green" };
