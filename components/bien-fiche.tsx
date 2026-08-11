@@ -9,6 +9,7 @@ import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
 import { AddMandatButton } from "@/components/mandat-create";
 import { EmplacementTabs } from "@/components/emplacement";
+import { TechniqueTabs } from "@/components/technique";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -302,26 +303,17 @@ function LocatifSection({ b }: { b: BienData }) {
 function TechniqueSection({ b }: { b: BienData }) {
   return (
     <>
-      <SectTitle icon={I.tech} title="Etat technique" chips={<><span className="fchip">Construit en {String(b.im.year_constru ?? "n.c.")}</span></>} />
-      <div className="fh2">Composants</div>
-      {b.composants.length === 0 && <div className="fempty">Aucun composant saisi.</div>}
-      {b.composants.map((c) => (
-        <Row key={c._id as string}>
-          <div className="grow">
-            <div className="t">{String(c.Type_composant ?? "?")}</div>
-            <div className="s">{String(c["Type_matériau"] ?? "Matériau à préciser")}</div>
-          </div>
-          <span className="badge-o">{String(c.Etat ?? "Etat à préciser")}</span>
-        </Row>
-      ))}
-      <div className="fh2">Travaux</div>
-      {b.travaux.length === 0 && <div className="fempty">Aucuns travaux saisis.</div>}
-      {b.travaux.map((t) => (
-        <Row key={t._id as string}>
-          <div className="grow"><div className="t">{String(t.description ?? "Travaux")}</div></div>
-          <span className="money">{euros(t.montant)}</span>
-        </Row>
-      ))}
+      <SectTitle
+        icon={I.tech}
+        title="Etat technique"
+        chips={
+          <>
+            <span className="fchip">Construit en {String(b.im.year_constru ?? "n.c.")}</span>
+            {euros(b.im.fin_travaux) && <span className="fchip">{euros(b.im.fin_travaux)} de travaux</span>}
+          </>
+        }
+      />
+      <TechniqueTabs key={`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`} b={b} />
     </>
   );
 }

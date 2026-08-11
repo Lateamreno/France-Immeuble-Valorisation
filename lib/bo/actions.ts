@@ -421,6 +421,107 @@ export async function saveSecteurDest(
   refresh(immeubleId);
 }
 
+/* ---------- État technique (composants / travaux) ---------- */
+
+/** Année de construction + état général du bâti. */
+export async function updateTechnique(
+  immeubleId: string,
+  patch: Partial<{ year_constru: number; Etat: string }>,
+) {
+  const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Object.keys(clean).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: clean });
+  refresh(immeubleId);
+}
+
+/** Crée un composant du bâti (modale « Nouveau composant »). */
+export async function addComposant(
+  immeubleId: string,
+  input: {
+    Type_composant: string;
+    type_composant_autre?: string;
+    Type_materiau?: string;
+    type_materiau_autre?: string;
+    Etat?: string;
+    renov_year?: number;
+    renov_txt?: string;
+    commentaire?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_composant",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      Type_composant: input.Type_composant,
+      type_composant_autre: input.type_composant_autre,
+      "Type_matériau": input.Type_materiau,
+      "type_matériau_autre": input.type_materiau_autre,
+      Etat: input.Etat,
+      renov_year: input.renov_year,
+      renov_txt: input.renov_txt,
+      commentaire: input.commentaire,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "COMPOSANTs", p_value: id });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime un composant (corbeille + retrait du tableau COMPOSANTs). */
+export async function deleteComposant(immeubleId: string, composantId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_composant", p_id: composantId });
+  await rpc("bo_remove_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "COMPOSANTs", p_value: composantId });
+  refresh(immeubleId);
+}
+
+/** Crée des travaux (sur lots OU sur composants du bâti) + total immeuble. */
+export async function addTravaux(
+  immeubleId: string,
+  input: {
+    lotIds: string[];
+    composantIds: string[];
+    description?: string;
+    commentaire?: string;
+    montant?: number;
+    urgence?: "Haute" | "Moyenne" | "Basse";
+    devis?: boolean;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_travaux",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      LOTs: input.lotIds.length ? input.lotIds : undefined,
+      COMPOSANTs: input.composantIds.length ? input.composantIds : undefined,
+      description: input.description,
+      commentaire: input.commentaire,
+      montant: input.montant,
+      Urgence: input.urgence,
+      YN_devis: input.devis ?? false,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_recompute_travaux", { p_id: immeubleId });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Supprime des travaux (corbeille) et recalcule le total. */
+export async function deleteTravaux(immeubleId: string, travauxId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_travaux", p_id: travauxId });
+  await rpc("bo_recompute_travaux", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
 /* ---------- Estimations (wizard 6 étapes) ---------- */
 
 export type EstimationPayload = {
