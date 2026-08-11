@@ -1146,3 +1146,102 @@ export async function globalSearch(q: string): Promise<{
     })),
   };
 }
+
+/* ===================== Listes paginées côté serveur =====================
+   Les tables volumineuses (42 800 contacts, 27 500 propositions) ne peuvent
+   pas être chargées entièrement dans le navigateur : on demande à Supabase la
+   tranche voulue et le total exact, et la recherche se fait en base. */
+
+export type PageListe = { rows: ListCard[]; total: number };
+
+/** Une tranche de table avec total exact, recherche et tri. */
+async function sbPage(
+  type: string,
+  opts: {
+    q?: string;
+    /** Colonnes jsonb interrogées par la recherche. */
+    champs: string[];
+    page: number;
+    taille: number;
+    tri?: string;
+    /** Filtres supplémentaires `clé=valeur` sur le jsonb. */
+    egal?: Record<string, string>;
+  },
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  if (!SB_KEY) return { rows: [], total: 0 };
+  const p = new URLSearchParams({ select: "data" });
+  const terme = (opts.q ?? "").trim().toLowerCase();
+  if (terme) {
+    const motif = `*${terme.replace(/[%*(),]/g, "")}*`;
+    p.append("or", `(${opts.champs.map((c) => `data->>${c}.ilike.${motif}`).join(",")})`);
+  }
+  for (const [k, v] of Object.entries(opts.egal ?? {})) {
+    p.append(`data->>${/^\w+$/.test(k) ? k : `"${k}"`}`, `eq.${v}`);
+  }
+  p.set("order", `${opts.tri ?? "bubble_modified"}.desc`);
+  p.set("limit", String(opts.taille));
+  p.set("offset", String((opts.page - 1) * opts.taille));
+  const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, Prefer: "count=exact" },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return { rows: [], total: 0 };
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  const range = res.headers.get("content-range"); // « 0-9/42793 »
+  return { rows: rows.map((r) => r.data), total: range ? parseInt(range.split("/")[1], 10) || 0 : rows.length };
+}
+
+/** Contacts : la table fait 42 800 lignes, tout passe par la base. */
+export async function listContactsPage(q: string, page: number, taille: number): Promise<PageListe> {
+  await loadInitials();
+  const { rows, total } = await sbPage("contact", {
+    q, page, taille,
+    champs: ["searchfield", "nom", '"prénom"', "email", "portable", "entreprise_nom"],
+  });
+  return {
+    total,
+    rows: rows.map((c) => {
+      const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
+      const types = Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : "";
+      return {
+        id: String(c._id),
+        href: `/contact/${c._id}`,
+        avatar: initialsOf(c.agent),
+        title: nom || String(c.entreprise_nom ?? "Contact"),
+        sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
+        note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
+        grade: gradeOf(c),
+        group: "tous",
+      } satisfies ListCard;
+    }),
+  };
+}
+
+/** Propositions : ~27 500 lignes, même traitement. */
+export async function listPropositionsPage(q: string, page: number, taille: number): Promise<PageListe> {
+  await loadInitials();
+  const { rows, total } = await sbPage("proposition", {
+    q, page, taille,
+    champs: ["searchfield", "mail_adresse", "Statut"],
+  });
+  const ims = await imLabelMap(rows.map((p) => String(p.IMMEUBLE ?? "")));
+  const contacts = await contactMap(rows.map((p) => String(p.ACHETEUR ?? p.CONTACT ?? "")));
+  return {
+    total,
+    rows: rows.map((p) => {
+      const st = String(p.Statut ?? "");
+      const c = contacts.get(String(p.ACHETEUR ?? p.CONTACT ?? ""));
+      return {
+        id: String(p._id),
+        href: p.IMMEUBLE ? `/bien/${p.IMMEUBLE}` : undefined,
+        avatar: initialsOf(p.AGENT),
+        title: `Proposition du ${dmy(p.date_envoi ?? p["Created Date"]) ?? "?"}`,
+        sub: imLabel(ims.get(String(p.IMMEUBLE ?? ""))) || undefined,
+        acquereur: contactLabel(c) || undefined,
+        grade: gradeOf(c),
+        badge: st ? { label: st, tone: st === "Acceptée" ? "green" : st === "Refusée" ? "red" : "orange" } : undefined,
+        group: "toutes",
+      } satisfies ListCard;
+    }),
+  };
+}

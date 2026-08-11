@@ -1,24 +1,24 @@
-import { listPropositions } from "@/lib/bubble/server";
-import { ListeShell } from "@/components/liste";
+import { listPropositionsPage } from "@/lib/bubble/server";
+import { ListeServeur } from "@/components/liste-serveur";
 
 export const dynamic = "force-dynamic";
 
-export default async function PropositionsPage() {
-  const rows = await listPropositions().catch(() => []);
+export default async function PropositionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string; per?: string }>;
+}) {
+  const sp = await searchParams;
+  const q = sp.q ?? "";
+  const taille = Math.min(100, Math.max(10, parseInt(sp.per ?? "10", 10) || 10));
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const { rows, total } = await listPropositionsPage(q, page, taille).catch(() => ({ rows: [], total: 0 }));
+
   return (
     <div className="lst-page">
       <h1 className="lst-title">Propositions</h1>
-      <div style={{ fontSize: 12, color: "var(--gray-txt)", marginBottom: 8 }}>
-        Les 300 propositions les plus récentes (la base en compte ~27 500).
-      </div>
-      <ListeShell
-        rows={rows}
-        searchPlaceholder="Recherchez une proposition..."
-        tabs={[
-          { key: "en_cours", label: "En cours" },
-          { key: "terminees", label: "Terminées" },
-        ]}
-      />
+      <ListeServeur rows={rows} total={total} page={page} taille={taille} q={q}
+        searchPlaceholder="Recherchez une proposition..." />
     </div>
   );
 }
