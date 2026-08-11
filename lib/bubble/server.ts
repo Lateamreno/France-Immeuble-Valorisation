@@ -707,10 +707,33 @@ export type ListCard = {
   note?: string;
   badge?: { label: string; tone: "green" | "red" | "orange" };
   right?: string[];
+  /** Nom de l'acquéreur rattaché (offres, visites). */
+  acquereur?: string;
+  /** Note A/B/C/D du contact — le classement acquéreur du BO, affiché
+   *  partout à côté du nom (il pilote « Commercialisés aux clients A et B »). */
+  grade?: string;
   /** Clé d'onglet (en_cours / termines / archives…). */
   group: string;
   date?: string;
 };
+
+const premier = (v: unknown) => (Array.isArray(v) ? String((v as unknown[])[0] ?? "") : typeof v === "string" ? v : "");
+
+/** Charge des contacts par identifiant, par paquets de 100. */
+async function contactMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+  const uniques = [...new Set(ids.filter(Boolean))];
+  const m = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < uniques.length; i += 100) {
+    const chunk = uniques.slice(i, i + 100);
+    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []);
+    rows.forEach((c) => m.set(String(c._id), c));
+  }
+  return m;
+}
+
+/** Classement acquéreur (champ `Note` du contact). */
+export const gradeOf = (c?: Record<string, unknown>) =>
+  typeof c?.Note === "string" && /^[A-D]$/.test(c.Note as string) ? (c.Note as string) : undefined;
 
 let initialsMap: Record<string, string> = {};
 const initialsOf = (agentId: unknown) => initialsMap[String(agentId ?? "")] ?? "FI";
@@ -808,9 +831,14 @@ export async function listMandats(): Promise<ListCard[]> {
   await loadInitials();
   const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((m) => (Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "")));
+  const props = await contactMap(rows.map((m) => premier(m.MANDANTs)));
   return rows.map((m) => {
     const st = String(m.Statut ?? "");
     const im = ims.get(Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "");
+    const proprio = props.get(premier(m.MANDANTs));
+    // Repli sur les noms saisis dans le mandat quand le mandant n'est pas lié.
+    const mandant = contactLabel(proprio)
+      || `${m["prénom_m1"] ? `${String(m["prénom_m1"])[0]}. ` : ""}${String(m.nom_m1 ?? "").toUpperCase()}`.trim();
     return {
       id: String(m._id),
       href: `/mandat/${m._id}`,
@@ -818,11 +846,18 @@ export async function listMandats(): Promise<ListCard[]> {
       title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${dmy(m.date_effet) ?? ""}${m.date_fin ? `-${dmy(m.date_fin)}` : ""}`.trim(),
       sub: imLabel(im) || undefined,
       note: m.numero ? `#${m.numero}` : "Pas de numéro",
+      acquereur: mandant || undefined,
+      grade: gradeOf(proprio),
       badge: st
         ? { label: st, tone: ["En cours", "Vendu"].includes(st) ? "green" : ["Annulé", "Expiré"].includes(st) ? "red" : "orange" }
         : undefined,
       right: [euros(m.prix_hai) ?? ""].filter(Boolean),
-      group: ["En cours", "A rédiger", "Attente infos", "Attente signature"].includes(st) ? "en_cours" : "termines",
+      // Le BO isole les mandats « A signer » dans leur propre onglet.
+      group: ["A rédiger", "Attente infos", "Attente signature", "A signer"].includes(st)
+        ? "a_signer"
+        : st === "En cours"
+          ? "en_cours"
+          : "termines",
       date: typeof m["Modified Date"] === "string" ? (m["Modified Date"] as string) : undefined,
     } satisfies ListCard;
   });
@@ -832,6 +867,7 @@ export async function listVisites(): Promise<ListCard[]> {
   await loadInitials();
   const rows = await fetchAll("visite", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((v) => String(v.IMMEUBLE ?? "")));
+  const visiteurs = await contactMap(rows.map((v) => premier(v.VISITEURs)));
   return rows.map((v) => {
     const st = String(v.Statut ?? "");
     const d = typeof v.date === "string" ? new Date(v.date as string) : undefined;
@@ -845,6 +881,8 @@ export async function listVisites(): Promise<ListCard[]> {
       title: `Visite du ${dmy(v.date) ?? "?"}${heure ? ` - ${heure}` : ""}`,
       sub: imLabel(ims.get(String(v.IMMEUBLE ?? ""))) || undefined,
       note: typeof v.visiteur_nom === "string" ? (v.visiteur_nom as string) : undefined,
+      acquereur: contactLabel(visiteurs.get(premier(v.VISITEURs))) || undefined,
+      grade: gradeOf(visiteurs.get(premier(v.VISITEURs))),
       badge: st
         ? { label: st, tone: st === "Effectuée" ? "green" : st === "Annulée" ? "red" : "orange" }
         : undefined,
@@ -858,6 +896,7 @@ export async function listOffres(): Promise<ListCard[]> {
   await loadInitials();
   const rows = await fetchAll("offre", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((o) => (Array.isArray(o.IMMEUBLEs) ? String((o.IMMEUBLEs as string[])[0] ?? "") : "")));
+  const acq = await contactMap(rows.map((o) => premier(o.ACHETEURs)));
   const today = Date.now();
   return rows.map((o) => {
     const st = String(o.Statut ?? "");
@@ -873,6 +912,8 @@ export async function listOffres(): Promise<ListCard[]> {
         joursRestants !== undefined && !["Vendu", "Refusée", "Acceptée"].includes(st)
           ? `Expire dans ${joursRestants} jours`
           : undefined,
+      acquereur: contactLabel(acq.get(premier(o.ACHETEURs))) || undefined,
+      grade: gradeOf(acq.get(premier(o.ACHETEURs))),
       badge: st
         ? { label: st, tone: ["Acceptée", "Vendu", "Compromis signé"].includes(st) ? "green" : st === "Refusée" ? "red" : "orange" }
         : undefined,
@@ -919,6 +960,7 @@ export async function listContacts(): Promise<ListCard[]> {
       title: nom || String(c.entreprise_nom ?? "Contact"),
       sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
       note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
+      grade: gradeOf(c),
       group: "tous",
       date: typeof c["Modified Date"] === "string" ? (c["Modified Date"] as string) : undefined,
     } satisfies ListCard;
@@ -947,6 +989,7 @@ export async function listRecherches(): Promise<ListCard[]> {
       avatar: initialsOf(r.agent),
       title: [Array.isArray(r.dpts) ? (r.dpts as string[]).join(", ") : String(r.dpts ?? ""), String(r.Cible ?? "")].filter(Boolean).join(" · ") || "Recherche",
       sub: c ? contactLabel(c) : undefined,
+      grade: gradeOf(c),
       note: [prix, typeof r.renta === "number" ? `≥ ${(r.renta as number).toLocaleString("fr-FR")} %` : ""].filter(Boolean).join(" · ") || undefined,
       badge: r.standby === true ? { label: "En attente", tone: "orange" } : undefined,
       group: r.archived === true ? "archivees" : "en_cours",

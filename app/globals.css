@@ -802,7 +802,21 @@ a.lrow:hover { border-color: var(--gray-lt); }
 .lmid .lnote { font-family: var(--font-body); font-weight: 400; color: var(--gray-txt); font-size: 12.5px; }
 .lmid .ls { font-size: 12.5px; color: var(--gray-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lright { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12.5px; font-weight: 700; color: var(--slate); white-space: nowrap; }
-.lst-pager { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray-txt); margin-top: 10px; }
+/* Barre de pagination collée en bas, comme dans le BO. */
+.lst-pager {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-txt);
+  position: sticky; bottom: 0; margin: 12px -20px -14px; padding: 9px 20px;
+  background: #f2f2f2; border-top: 1px solid var(--line);
+}
+.lst-res { color: var(--green); font-weight: 700; }
+.pgb {
+  min-width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 4px;
+  background: #fff; color: var(--slate); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.pgb:hover:not(:disabled) { background: #ececec; }
+.pgb:disabled { opacity: .35; cursor: default; }
+.pgn { font-weight: 600; color: var(--slate); }
+.pgs { border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 3px 6px; font-size: 12.5px; color: var(--slate); }
 
 /* --- Mode Revue (retours de recette posés sur les écrans) --- */
 body.rv-armed, body.rv-armed * { cursor: crosshair !important; user-select: none !important; }
@@ -1413,3 +1427,20 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .destic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .destic i { font-style: normal; color: var(--gray-lt); }
 .ltable .lcell.inv { position: absolute; inset: 0; width: 100% !important; opacity: 0; cursor: pointer; }
+
+/* --- Contact et note A/B/C/D sur les cartes de liste (comme le BO) --- */
+.lcont {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 4px 9px; font-size: 12.5px; font-weight: 600; color: var(--slate);
+  max-width: 230px; overflow: hidden; white-space: nowrap;
+}
+.lcont svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; flex: none; }
+.note {
+  display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 3px;
+  font-size: 11px; font-weight: 700; color: #fff;
+}
+.note.nA { background: var(--green); }
+.note.nB { background: #2f8ed6; }
+.note.nC { background: var(--orange); }
+.note.nD { background: var(--pill-gray); }

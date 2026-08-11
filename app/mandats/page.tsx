@@ -12,6 +12,7 @@ export default async function MandatsPage() {
         rows={rows}
         searchPlaceholder="Recherchez un mandat..."
         tabs={[
+          { key: "a_signer", label: "A signer" },
           { key: "en_cours", label: "En cours" },
           { key: "termines", label: "Terminés" },
         ]}
