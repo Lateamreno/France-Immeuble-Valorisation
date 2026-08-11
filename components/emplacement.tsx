@@ -4,11 +4,11 @@
 // (réplique BO). Les POI/data INSEE se saisissent à la main via les liens de
 // recherche pré-construits ; les valeurs de secteur alimentent estimations
 // et grilles (bo_prix_secteur).
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import {
-  addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, uploadPhoto, type EmplacementPatch,
+  addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
 
@@ -27,10 +27,11 @@ const PICTOS: Record<string, React.ReactNode> = {
   autre: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.6 2.6 0 1 1 3.3 2.5c-.6.2-.8.7-.8 1.3v.4M12 17v.2" /></>,
   population: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
   revenus: <><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>,
-  tendue: <><path d="M12 3v9l5 3" /><circle cx="12" cy="12" r="9" /></>,
+  tendue: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v6M12 16.4v.2" /></>,
+  tension: <><path d="M15.5 4.5 18 2l.8 2.2 2.2.8-2.5 2.5" /><circle cx="10" cy="14" r="6.5" /></>,
 };
-const Picto = ({ k }: { k: string }) => (
-  <svg className="pic" viewBox="0 0 24 24">{PICTOS[k]}</svg>
+const Picto = ({ k, gros }: { k: string; gros?: boolean }) => (
+  <svg className={`pic${gros ? " gros" : ""}`} viewBox="0 0 24 24">{PICTOS[k]}</svg>
 );
 
 const POIS = [
@@ -84,6 +85,17 @@ function AdresseTab({ b }: { b: BienData }) {
   const [sugg, setSugg] = useState<Enrichissement | null>(null);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  /** Photo des valeurs avant remplissage automatique, pour pouvoir l'annuler. */
+  const [avant, setAvant] = useState<{ poi: Record<string, string>; pop: string; rev: string } | null>(null);
+
+  const annulerAuto = () => {
+    if (!avant) return;
+    setPoi(avant.poi);
+    setPop(avant.pop);
+    setRev(avant.rev);
+    setSugg(null);
+    setAvant(null);
+  };
 
   const remplirPoi = (k: CleP, p: Suggestion) =>
     setPoi((prev) => ({ ...prev, [`${k}_name`]: p.nom, [`${k}_time`]: String(p.minutes), [`${k}_moyen`]: p.moyen }));
@@ -91,6 +103,7 @@ function AdresseTab({ b }: { b: BienData }) {
   const enrichir = async () => {
     setChargement(true);
     setErreur(null);
+    setAvant({ poi, pop, rev });
     try {
       const r = await fetch(
         `/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`,
@@ -135,90 +148,125 @@ function AdresseTab({ b }: { b: BienData }) {
       return updateEmplacement(immeubleId, patch as EmplacementPatch);
     });
 
+  const adresseComplete = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`;
+  const mapsLien = S(b.adr?.maps_url) || `https://www.google.com/maps/search/${encodeURIComponent(adresseComplete)}`;
+
   return (
     <>
-      <div className="fsub">Adresse</div>
-      <div style={{ fontSize: 13.5, marginBottom: 10 }}>
-        {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, {S(im.adresse_zipcode)} {S(im.adresse_ville)}
-        {" · "}
-        <a className="lnk" href={S(b.adr?.maps_url) || `https://www.google.com/maps/search/${encodeURIComponent(`${S(im.adresse_numero_rue)} ${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">Google Maps ↗</a>
-      </div>
-
-      {lat !== undefined && lon !== undefined ? (
-        <CartesSituation lat={lat} lon={lon} ville={S(im.adresse_ville)}
-          onCapture={<CaptureCarte immeubleId={immeubleId} />} />
-      ) : (
-        <div className="fempty">Adresse non géocodée : les cartes de situation apparaîtront dès que la géolocalisation sera renseignée.</div>
-      )}
-
-      <div className="fsub" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        A proximité
-        {lat !== undefined && lon !== undefined && (
-          <button type="button" className="fadd" disabled={chargement} onClick={enrichir}>
-            {chargement ? "Recherche…" : "⟳ Remplir automatiquement"}
+      <div className="emp-cadre">
+        <div className="emp-titre">
+          <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>
+          Emplacement
+        </div>
+        <div className="emp-adr">
+          <button type="button" className="emp-ic" title="Copier l'adresse"
+            onClick={() => navigator.clipboard?.writeText(adresseComplete)}>
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="12" rx="1.5" /><path d="M5 15V4h11" /></svg>
           </button>
+          <a className="emp-chip" href={mapsLien} target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" className="gmaps"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>
+            {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, <b>{S(im.adresse_zipcode)} {S(im.adresse_ville)}</b>
+          </a>
+          <a className="emp-ic" href={mapsLien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps">
+            <svg viewBox="0 0 24 24"><path d="M4 20l4-1L20 7l-3-3L5 16z" /></svg>
+          </a>
+        </div>
+        {lat !== undefined && lon !== undefined ? (
+          <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} immeubleId={immeubleId} />
+        ) : (
+          <div className="fempty">Adresse non géocodée : les cartes de situation apparaîtront dès que la géolocalisation sera renseignée.</div>
         )}
       </div>
-      {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
-      <div className="mrow" style={{ marginBottom: 8 }}>
-        {POIS.map(([k, label]) => (
-          <a key={k} className="mopt" href={gLink(label, b)} target="_blank" rel="noreferrer">Google-{label} ↗</a>
-        ))}
-      </div>
-      {POIS.map(([k, label]) => (
-        <div key={k} style={{ marginBottom: 6 }}>
-          <div className="mrow" style={{ alignItems: "center" }}>
-            <span className="poilab"><Picto k={k} />{label}</span>
-            <input className="min" style={{ width: 210 }} placeholder={`Nom (${label.toLowerCase()})`} value={poi[`${k}_name`]} onChange={(e) => setPoi({ ...poi, [`${k}_name`]: e.target.value })} />
-            <input className="min" style={{ width: 52 }} placeholder="min" value={poi[`${k}_time`]} onChange={(e) => setPoi({ ...poi, [`${k}_time`]: e.target.value })} />
-            <select className="min" style={{ width: 100 }} value={poi[`${k}_moyen`]} onChange={(e) => setPoi({ ...poi, [`${k}_moyen`]: e.target.value })}>
-              <option>à pied</option><option>en voiture</option>
-            </select>
-          </div>
-          {!!sugg?.poi?.[k]?.length && (
-            <div className="vgts">
-              {sugg.poi[k]!.map((p) => (
-                <button key={p.nom} type="button" title={`${p.distance} m`}
-                  className={`vgt${poi[`${k}_name`] === p.nom ? " on" : ""}`}
-                  onClick={() => remplirPoi(k, p)}>
-                  <b>{p.nom}</b>
-                  <i>{[p.sous, `${p.minutes} min ${p.moyen}`].filter(Boolean).join(" · ")}</i>
-                </button>
-              ))}
-            </div>
+
+      <div className="emp-sect">
+        <h3>A proximité</h3>
+        <div className="emp-liens">
+          {POIS.map(([k, label]) => (
+            <a key={k} className="emp-lien" href={gLink(label, b)} target="_blank" rel="noreferrer">
+              <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8" /><path d="M18 13v6H5V6h6" /></svg>
+              Google - {label}
+            </a>
+          ))}
+          {lat !== undefined && lon !== undefined && (
+            <button type="button" className="emp-lien auto" disabled={chargement} onClick={enrichir}>
+              {chargement ? "Recherche…" : "⟳ Remplir automatiquement"}
+            </button>
+          )}
+          {avant && (
+            <button type="button" className="emp-lien" onClick={annulerAuto}>↩ Annuler le remplissage</button>
           )}
         </div>
-      ))}
+      </div>
+      {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
 
-      <div className="fsub" style={{ marginTop: 14 }}>Data externe</div>
-      <div className="mrow" style={{ marginBottom: 8 }}>
-        <a className="mopt" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(S(im.adresse_ville))}`} target="_blank" rel="noreferrer">INSEE - Population ↗</a>
-        <a className="mopt" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(`revenus ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">INSEE - Revenus ↗</a>
-        <a className="mopt" href="https://www.service-public.fr/simulateur/calcul/zones-tendues" target="_blank" rel="noreferrer">Service Public - Zones tendues ↗</a>
-        <a className="mopt" href="https://www.locservice.fr/tensiometre/" target="_blank" rel="noreferrer">LOCservice - Tensiomètre ↗</a>
+      <div className="poi-grid">
+        {POIS.map(([k, label]) => (
+          <PoiVignette
+            key={k} cle={k} label={label}
+            nom={poi[`${k}_name`]} minutes={poi[`${k}_time`]} moyen={poi[`${k}_moyen`]}
+            suggestions={sugg?.poi?.[k] ?? []}
+            onChange={(champ, v) => setPoi((prev) => ({ ...prev, [`${k}_${champ}`]: v }))}
+            onChoisir={(s2) => remplirPoi(k, s2)}
+          />
+        ))}
       </div>
-      <div className="mrow" style={{ alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}><Picto k="population" />Habitants INSEE <input className="min" style={{ width: 90 }} value={pop} onChange={(e) => setPop(e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}><Picto k="revenus" />Revenus médian €/an <input className="min" style={{ width: 90 }} value={rev} onChange={(e) => setRev(e.target.value)} /></label>
-        {lat !== undefined && lon !== undefined && (
-          <button type="button" className="fadd" disabled={chargement} onClick={enrichir}>
-            {chargement ? "…" : "⟳ INSEE"}
-          </button>
-        )}
-        <button type="button" className={`mopt${zt ? " on" : ""}`} onClick={() => setZt(!zt)}><Picto k="tendue" />Zone tendue : {zt ? "Oui" : "Non"}</button>
-        <select className="min" style={{ width: 130 }} value={tension} onChange={(e) => setTension(e.target.value)}>
-          <option value="">Tension locative…</option>
-          <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
-        </select>
-      </div>
-      {sugg?.commune && (
-        <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 6 }}>
-          {sugg.commune.nom} (INSEE {sugg.commune.code}) — {sugg.commune.population.toLocaleString("fr-FR")} habitants
-          {sugg.revenus !== undefined && ` · niveau de vie médian ${sugg.revenus.toLocaleString("fr-FR")} €/an`}
-          {sugg.chomage !== undefined && ` · chômage ${fr1(sugg.chomage)} %`}
-          {sugg.delinquance !== undefined && ` · délinquance ${fr1(sugg.delinquance)} ‰`}
+
+      <div className="emp-sect">
+        <h3>Ville</h3>
+        <div className="emp-liens">
+          <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(S(im.adresse_ville))}`} target="_blank" rel="noreferrer">INSEE - Population</a>
+          <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(`revenus ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">INSEE - Revenus</a>
+          <a className="emp-lien" href="https://www.service-public.fr/simulateur/calcul/zones-tendues" target="_blank" rel="noreferrer">Service Public - Zones tendues</a>
+          <a className="emp-lien" href="https://www.locservice.fr/tensiometre/" target="_blank" rel="noreferrer">LOCservice - Tensiomètre</a>
         </div>
-      )}
+      </div>
+
+      <div className="ville-card">
+        <div className="ville-h">
+          {sugg?.commune
+            ? `${sugg.commune.nom} — INSEE ${sugg.commune.code}`
+            : `${S(im.adresse_ville)} (${S(im.adresse_zipcode)})`}
+        </div>
+        <div className="ville-g">
+          <div className="ville-c">
+            <Picto k="population" gros />
+            <div className="t">Habitants</div>
+            <div className="s">INSEE</div>
+            <input className="v" value={pop} onChange={(e) => setPop(e.target.value)} placeholder="—" />
+          </div>
+          <div className="ville-c">
+            <Picto k="revenus" gros />
+            <div className="t">Revenus médian</div>
+            <div className="s">INSEE</div>
+            <span className="v-wrap">
+              <input className="v" value={rev} onChange={(e) => setRev(e.target.value)} placeholder="—" />
+              <i>€/an</i>
+            </span>
+          </div>
+          <div className="ville-c">
+            <Picto k="tendue" gros />
+            <div className="t">Zone tendue</div>
+            <div className="s">Service Public</div>
+            <button type="button" className="v bt" onClick={() => setZt(!zt)}>{zt ? "Oui" : "Non"}</button>
+          </div>
+          <div className="ville-c">
+            <Picto k="tension" gros />
+            <div className="t">Tension locative</div>
+            <div className="s">LOCservice</div>
+            <select className="v bt" value={tension} onChange={(e) => setTension(e.target.value)}>
+              <option value="">—</option>
+              <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
+            </select>
+          </div>
+        </div>
+        {(sugg?.chomage !== undefined || sugg?.delinquance !== undefined) && (
+          <div className="ville-f">
+            {sugg?.chomage !== undefined && <span>Chômage {fr1(sugg.chomage)} %</span>}
+            {sugg?.delinquance !== undefined && <span>Délinquance {fr1(sugg.delinquance)} ‰</span>}
+          </div>
+        )}
+      </div>
+
       <div className="wnav">
         <span className="sp" style={{ flex: 1 }} />
         <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={save}>
@@ -229,47 +277,54 @@ function AdresseTab({ b }: { b: BienData }) {
   );
 }
 
-/** Import d'une capture de carte : elle rejoint les photos de l'immeuble
- *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
-function CaptureCarte({ immeubleId }: { immeubleId: string }) {
-  const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
-  const [ok, setOk] = useState(false);
-
-  const envoyer = (f: File) =>
-    start(async () => {
-      const fd = new FormData();
-      fd.set("file", f);
-      await uploadPhoto(immeubleId, "Carte", null, fd);
-      setOk(true);
-    });
-
+/** Vignette d'un point d'intérêt : affichage du BO (picto, nom, moyen, durée)
+ *  et édition au clic, avec les propositions automatiques dessous. */
+function PoiVignette({
+  cle, label, nom, minutes, moyen, suggestions, onChange, onChoisir,
+}: {
+  cle: string; label: string;
+  nom: string; minutes: string; moyen: string;
+  suggestions: Suggestion[];
+  onChange: (champ: "name" | "time" | "moyen", v: string) => void;
+  onChoisir: (s: Suggestion) => void;
+}) {
+  const [edition, setEdition] = useState(false);
   return (
-    <div className="carte-cap">
-      <p>
-        Collez (Ctrl+V) ou déposez une capture de carte : elle est enregistrée
-        dans les photos de l&apos;immeuble et reprise dans le dossier de vente.
-      </p>
-      <div
-        className="carte-drop"
-        onPaste={(e) => {
-          const f = [...e.clipboardData.files][0];
-          if (f) envoyer(f);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files[0];
-          if (f) envoyer(f);
-        }}
-        onClick={() => input.current?.click()}
-        tabIndex={0}
-        role="button"
-      >
-        {pending ? "Envoi…" : ok ? "✓ Capture enregistrée — recommencer" : "Cliquer, coller ou déposer une image"}
+    <div className={`poi${edition ? " edit" : ""}`}>
+      <div className="poi-l" role="button" tabIndex={0}
+        title="Modifier"
+        onClick={() => setEdition((v) => !v)}
+        onKeyDown={(e) => { if (e.key === "Enter") setEdition((v) => !v); }}>
+        <Picto k={cle} gros />
+        <div className="poi-txt">
+          <b>{nom || label}</b>
+          <i>{moyen || "à pied"}</i>
+        </div>
+        <span className="poi-min">{minutes ? `${minutes} min` : "—"}</span>
       </div>
-      <input ref={input} type="file" accept="image/*" hidden
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) envoyer(f); }} />
+      {edition && (
+        <div className="poi-edit">
+          <input className="min" placeholder={`Nom (${label.toLowerCase()})`} value={nom}
+            onChange={(e) => onChange("name", e.target.value)} />
+          <input className="min" style={{ width: 60 }} placeholder="min" value={minutes}
+            onChange={(e) => onChange("time", e.target.value)} />
+          <select className="min" style={{ width: 105 }} value={moyen || "à pied"}
+            onChange={(e) => onChange("moyen", e.target.value)}>
+            <option>à pied</option><option>en voiture</option>
+          </select>
+          {suggestions.length > 0 && (
+            <div className="vgts">
+              {suggestions.map((s2) => (
+                <button key={s2.nom} type="button" title={`${s2.distance} m`}
+                  className={`vgt${nom === s2.nom ? " on" : ""}`} onClick={() => onChoisir(s2)}>
+                  <b>{s2.nom}</b>
+                  <i>{[s2.sous, `${s2.minutes} min ${s2.moyen}`].filter(Boolean).join(" · ")}</i>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

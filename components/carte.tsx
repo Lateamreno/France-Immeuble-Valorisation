@@ -9,7 +9,8 @@
 // facturée et un domaine autorisé. Si une clé Google est fournie un jour
 // (NEXT_PUBLIC_GOOGLE_MAPS_KEY), la vue rapprochée bascule automatiquement sur
 // Google Static Maps, plus proche des captures actuelles du dossier.
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { uploadPhoto } from "@/lib/bo/actions";
 
 const TAILLE = 256;
 
@@ -86,24 +87,97 @@ export function Carte({
   );
 }
 
-/** Les deux cartes du BO : situation régionale + quartier. */
+/**
+ * Les deux cartes du BO, collées l'une à l'autre pour que la capture d'écran
+ * de l'agent soit d'un seul tenant (retour MAV #35) : à gauche la France, à
+ * droite le quartier. On reste sur Google Maps comme demandé — l'embed public
+ * ne demande aucune clé ; avec NEXT_PUBLIC_GOOGLE_MAPS_KEY on bascule sur les
+ * cartes statiques officielles, plus propres pour une capture (pas de
+ * contrôles ni de bandeau).
+ */
 export function CartesSituation({
-  lat, lon, ville, onCapture,
+  lat, lon, adresse, immeubleId,
 }: {
   lat: number;
   lon: number;
-  ville: string;
-  /** Rendu du bouton d'import de capture (alimente le BO et le dossier). */
-  onCapture?: React.ReactNode;
+  adresse: string;
+  /** Permet d'enregistrer la capture dans les photos de l'immeuble. */
+  immeubleId?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const q = `${lat},${lon}`;
+  const vues: { titre: string; zoom: number }[] = [
+    { titre: `La France — ${adresse}`, zoom: 5 },
+    { titre: `Le quartier — ${adresse}`, zoom: 14 },
+  ];
+
   return (
-    <div className="cartes" ref={ref}>
-      <Carte lat={lat} lon={lon} zoom={9} largeur={310} hauteur={210} fond="clair"
-        titre={`Situation — ${ville} et sa région`} />
-      <Carte lat={lat} lon={lon} zoom={16} largeur={310} hauteur={210}
-        titre="Le quartier (rayon ~500 m)" />
-      {onCapture}
+    <div className="emp-maps">
+      {vues.map((v) => (
+        <div className="emp-map" key={v.zoom}>
+          {/* Repli visuel : si Google ne se charge pas (réseau d'entreprise,
+              extension qui bloque), la carte OpenStreetMap reste visible
+              dessous plutôt qu'un rectangle vide. */}
+          <span className="emp-map-fond">
+            <Carte lat={lat} lon={lon} zoom={v.zoom} largeur={340} hauteur={210}
+              titre={v.titre} fond={v.zoom < 8 ? "clair" : "osm"} />
+          </span>
+          {cle ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img alt={v.titre}
+              src={`https://maps.googleapis.com/maps/api/staticmap?center=${q}&zoom=${v.zoom}&size=400x300&scale=2&markers=${q}&key=${cle}`} />
+          ) : (
+            <iframe title={v.titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${v.zoom}&output=embed`} />
+          )}
+        </div>
+      ))}
+      {immeubleId && <CaptureCarte immeubleId={immeubleId} />}
+    </div>
+  );
+}
+
+/** Import d'une capture de carte : elle rejoint les photos de l'immeuble
+ *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
+function CaptureCarte({ immeubleId }: { immeubleId: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [pending, start] = useTransition();
+  const [ok, setOk] = useState(false);
+
+  const envoyer = (f: File) =>
+    start(async () => {
+      const fd = new FormData();
+      fd.set("file", f);
+      await uploadPhoto(immeubleId, "Carte", null, fd);
+      setOk(true);
+    });
+
+  return (
+    <div className="carte-cap">
+      <p>
+        Collez (Ctrl+V) ou déposez une capture de carte : elle est enregistrée
+        dans les photos de l&apos;immeuble et reprise dans le dossier de vente.
+      </p>
+      <div
+        className="carte-drop"
+        onPaste={(e) => {
+          const f = [...e.clipboardData.files][0];
+          if (f) envoyer(f);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const f = e.dataTransfer.files[0];
+          if (f) envoyer(f);
+        }}
+        onClick={() => input.current?.click()}
+        tabIndex={0}
+        role="button"
+      >
+        {pending ? "Envoi…" : ok ? "✓ Capture enregistrée — recommencer" : "Cliquer, coller ou déposer une image"}
+      </div>
+      <input ref={input} type="file" accept="image/*" hidden
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) envoyer(f); }} />
     </div>
   );
 }

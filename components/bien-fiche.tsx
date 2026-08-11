@@ -391,7 +391,8 @@ type PropsOnglet = { b: BienData; tab?: string; onTab?: (t: string) => void };
 function EmplacementSection({ b, tab, onTab }: PropsOnglet) {
   return (
     <>
-      <SectTitle icon={I.pin} title="Emplacement" />
+      {/* Le titre de section fait partie du cadre doré de l'onglet Adresse
+          (comme dans le BO) : pas de bandeau séparé ici. */}
       <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} tab={tab} onTab={onTab} />
     </>
   );

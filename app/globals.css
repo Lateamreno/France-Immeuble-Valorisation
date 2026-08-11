@@ -31,7 +31,9 @@
   --red: #d60000;
   --orange: #e3790d;
   --green: #3db327;
-  --gold: #b6a359;        /* cadres et titres de section, mise en attente */
+  /* Doré des cadres et titres de section du BO. Nom distinct de --gold, que
+     le wizard d'estimation redéfinit plus bas sur l'ardoise. */
+  --gold-bo: #b6a359;
   --bg: #fafafa;
   --band: #e3e3e3;
   --cols: #f0f0f0;
@@ -319,12 +321,12 @@ button { font-family: inherit; cursor: pointer; }
 .kwait .mid::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 3px; background: var(--red); }
 /* Mise en attente en cours : frise dorée avec barre d'avancement (BO). */
 .kwait.soon .d { background: var(--chip); color: var(--slate); }
-.kwait.soon .d:first-child { background: var(--gold, #b6a359); color: #fff; }
+.kwait.soon .d:first-child { background: var(--gold-bo); color: #fff; }
 .kwait.soon .mid::before { background: #d9d9d9; }
-.kwait.soon .mid .lbl { color: var(--gold, #b6a359); font-weight: 700; }
-.kwait.soon .mid .ar { color: var(--gold, #b6a359); }
+.kwait.soon .mid .lbl { color: var(--gold-bo); font-weight: 700; }
+.kwait.soon .mid .ar { color: var(--gold-bo); }
 .kwait .mid .bar { position: absolute; left: 0; right: 0; top: 7px; height: 3px; }
-.kwait .mid .bar i { display: block; height: 100%; background: var(--gold, #b6a359); }
+.kwait .mid .bar i { display: block; height: 100%; background: var(--gold-bo); }
 .kwait .mid .lbl {
   position: absolute; left: 50%; transform: translateX(-50%); top: -9px;
   color: var(--red); font-size: 12px; font-weight: 700;
@@ -1054,26 +1056,6 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .cpv button { border: 0; border-left: 1px solid var(--line); background: #f7f7f5; color: var(--gray-txt); padding: 4px 8px; font-size: 12px; }
 .cpv button:hover { background: #eee; color: var(--slate); }
 
-/* --- Cartes de situation + vignettes de points d'intérêt (retours #13 et #14) --- */
-.cartes { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 16px; align-items: flex-start; }
-.carte { margin: 0; }
-.carte-vue { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #eceae5; }
-.carte-vue img { display: block; max-width: none; }
-.carte-pin { position: absolute; left: 50%; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px #fff, 0 1px 4px rgba(0,0,0,.4); }
-.carte-credit { position: absolute; right: 3px; bottom: 2px; font-size: 9.5px; color: #555; background: rgba(255,255,255,.75); padding: 0 3px; border-radius: 2px; }
-.carte figcaption { font-size: 11.5px; color: var(--gray-txt); margin-top: 4px; text-align: center; }
-.carte-cap { width: 210px; font-size: 11.5px; color: var(--gray-txt); }
-.carte-cap p { margin: 0 0 6px; line-height: 1.35; }
-.carte-drop { border: 1px dashed #cfcfcf; border-radius: 6px; padding: 22px 8px; text-align: center; cursor: pointer; background: #fafafa; font-size: 11.5px; }
-.carte-drop:hover { background: #f2f2f2; border-color: #b5b5b5; }
-
-.vgts { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 0 84px; }
-.vgt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 1px solid #e0e0e0; background: #fff; border-radius: 4px; padding: 3px 7px; cursor: pointer; text-align: left; max-width: 190px; }
-.vgt b { font-size: 11.5px; font-weight: 600; color: var(--slate-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 176px; }
-.vgt i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
-.vgt:hover { background: #f6f6f6; }
-.vgt.on { border-color: var(--slate-2); background: #f1f3f5; }
-
 /* --- Rail : sous-onglets et accès Google Maps (retour #12) --- */
 .sic2.dot { display: inline-flex; align-items: center; justify-content: center; }
 .sic2.dot::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--gray-lt); }
@@ -1119,7 +1101,7 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .rv-zone.trace b, .rv-zone.draft b { background: var(--red); white-space: nowrap; }
 
 /* --- Dashboard : fiche contact, note dépliée, modales (retours #24 à #30) --- */
-.kard.hold { border: 2px solid var(--gold); }
+.kard.hold { border: 2px solid var(--gold-bo); }
 .kcontact-wrap { position: relative; display: inline-flex; }
 .kcontact { cursor: pointer; }
 .kcontact:hover { border-color: var(--slate); }
@@ -1222,3 +1204,99 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .tr-radios i { width: 15px; height: 15px; border: 2px solid var(--gray-lt); border-radius: 50%; }
 .tr-radios button.on i { border-color: var(--orange); box-shadow: inset 0 0 0 3px var(--orange), inset 0 0 0 4px #fff; }
 .tr-foot { display: flex; align-items: center; padding: 12px 18px; background: #f2f2f2; border-radius: 0 0 7px 7px; }
+
+/* --- Emplacement : cadre, cartes collées, vignettes POI, bloc Ville --- */
+/* Réplique de l'onglet Adresse du BO (retours #13, #14, #35, #36, #37). */
+.emp-cadre { border: 1px solid var(--gold-bo); border-radius: 5px; max-width: 680px; margin: 0 auto 22px; }
+.emp-titre {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 10px 8px; color: var(--gold-bo);
+  font-family: var(--font-title); font-size: 26px; font-weight: 700;
+}
+.emp-titre svg { width: 24px; height: 24px; fill: currentColor; stroke: none; }
+.emp-cadre .emp-titre { color: var(--gold-bo); }
+.emp-adr { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 10px 12px; }
+.emp-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 5px; background: #fff;
+  padding: 7px 13px; font-size: 14px; color: var(--slate); text-decoration: none;
+}
+.emp-chip b { font-weight: 700; }
+.emp-chip .gmaps { fill: var(--red); stroke: none; }
+.emp-chip svg { width: 15px; height: 15px; }
+.emp-ic { border: 0; background: none; cursor: pointer; color: var(--gray-lt); padding: 4px; }
+.emp-ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.emp-ic:hover { color: var(--slate); }
+/* Les deux cartes sont collées : la capture de l'agent est d'un seul tenant. */
+.emp-maps { display: flex; border-top: 1px solid var(--gold-bo); position: relative; }
+.emp-map { flex: 1 1 0; min-width: 0; height: 210px; background: #eceae5; }
+.emp-map + .emp-map { border-left: 1px solid var(--gold-bo); }
+.emp-map { position: relative; }
+.emp-map iframe, .emp-map > img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+.emp-map-fond { position: absolute; inset: 0; overflow: hidden; }
+.emp-map-fond .carte { width: 100% !important; }
+.emp-map-fond .carte-vue { width: 100% !important; height: 210px !important; border: 0; border-radius: 0; }
+.emp-map-fond figcaption { display: none; }
+
+.emp-sect { display: flex; align-items: center; gap: 14px; margin: 18px 0 8px; flex-wrap: wrap; }
+.emp-sect h3 { margin: 0; font-family: var(--font-title); font-size: 20px; font-weight: 600; color: var(--slate); }
+.emp-liens { display: flex; gap: 8px; flex-wrap: wrap; }
+.emp-lien {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 6px 11px; font-size: 12.5px; color: var(--gray-txt); text-decoration: none; cursor: pointer;
+}
+.emp-lien svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.emp-lien:hover { background: #f6f6f6; color: var(--slate); }
+.emp-lien.auto { color: var(--slate); font-weight: 600; }
+
+.poi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.poi { border: 1px solid var(--line-lt); border-radius: 5px; background: #fff; }
+.poi.edit { border-color: var(--slate); }
+.poi-l { display: flex; align-items: center; gap: 14px; padding: 13px 16px; cursor: pointer; }
+.poi-l:hover { background: #fafafa; }
+.poi-txt { flex: 1; min-width: 0; }
+.poi-txt b { display: block; font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poi-txt i { font-style: normal; font-size: 12.5px; color: var(--gray-lt); }
+.poi-min { flex: none; font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); }
+.poi-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 12px; }
+.poi-edit .min { flex: 1; min-width: 120px; }
+.poi-edit .vgts { flex-basis: 100%; margin: 2px 0 0; }
+
+.pic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -2.5px; margin-right: 5px; opacity: .65; }
+.pic.gros { width: 27px; height: 27px; stroke-width: 1.4; opacity: 1; color: var(--slate); margin: 0; flex: none; }
+
+.vgts { display: flex; flex-wrap: wrap; gap: 5px; }
+.vgt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 1px solid #e0e0e0; background: #fff; border-radius: 4px; padding: 3px 7px; cursor: pointer; text-align: left; max-width: 200px; }
+.vgt b { font-size: 11.5px; font-weight: 600; color: var(--slate-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 186px; }
+.vgt i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
+.vgt:hover { background: #f6f6f6; }
+.vgt.on { border-color: var(--slate-2); background: #f1f3f5; }
+
+.ville-card { border: 1px solid var(--line-lt); border-radius: 5px; background: #fff; }
+.ville-h { text-align: center; padding: 13px; font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); border-bottom: 1px solid var(--line-lt); }
+.ville-g { display: grid; grid-template-columns: repeat(4, 1fr); }
+.ville-c { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 8px 20px; }
+.ville-c + .ville-c { border-left: 1px solid var(--line-lt); }
+.ville-c .t { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); margin-top: 6px; }
+.ville-c .s { font-size: 12px; color: var(--gray-lt); }
+.ville-c .v {
+  margin-top: 8px; width: 100%; max-width: 150px; border: 0; background: none; text-align: center;
+  font-family: var(--font-title); font-size: 21px; font-weight: 700; color: var(--slate);
+}
+.ville-c .v:focus { outline: 0; border-bottom: 1px solid var(--gold-bo); }
+.ville-c .v.bt { cursor: pointer; appearance: none; }
+.ville-c .v-wrap { display: inline-flex; align-items: baseline; }
+.ville-c .v-wrap .v { width: auto; text-align: right; }
+.ville-c .v-wrap i { font-style: normal; font-size: 13px; color: var(--gray-lt); margin-left: 3px; }
+.ville-f { display: flex; gap: 18px; justify-content: center; padding: 0 0 14px; font-size: 12.5px; color: var(--gray-txt); }
+
+/* Import d'une capture de carte */
+.carte-cap { position: absolute; right: 8px; top: 8px; }
+.carte-cap p { display: none; }
+.carte-drop {
+  border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.94);
+  padding: 6px 9px; font-size: 11.5px; color: var(--slate); cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.carte-drop:hover { background: #fff; }
