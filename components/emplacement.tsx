@@ -338,15 +338,22 @@ function PoiVignette({
         onKeyDown={(e) => { if (e.key === "Enter") setEdition((v) => !v); }}>
         <Picto k={cle} gros />
         <div className="poi-txt">
-          <b>{nom || label}</b>
+          {/* Le titre est le nom du point d'intérêt, saisi par l'agent : il
+              s'édite d'un clic dessus, sans passer par le panneau de détail
+              (retour #47). Le libellé de catégorie n'est qu'un repère. */}
+          <input
+            className="poi-nom" value={nom} placeholder={label}
+            aria-label={`Nom du point d'intérêt (${label.toLowerCase()})`}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onChange={(e) => onChange("name", e.target.value)}
+          />
           <i>{moyen || "à pied"}</i>
         </div>
         <span className="poi-min">{minutes ? `${minutes} min` : "—"}</span>
       </div>
       {edition && (
         <div className="poi-edit">
-          <input className="min" placeholder={`Nom (${label.toLowerCase()})`} value={nom}
-            onChange={(e) => onChange("name", e.target.value)} />
           <input className="min" style={{ width: 60 }} placeholder="min" value={minutes}
             onChange={(e) => onChange("time", e.target.value)} />
           <select className="min" style={{ width: 105 }} value={moyen || "à pied"}
