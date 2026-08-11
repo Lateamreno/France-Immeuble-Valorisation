@@ -48,6 +48,7 @@
   --side-w: 176px;
   --topbar-h: 62px;
   --bottbar-h: 56px;
+  --brail-w: 248px;      /* rail droit de la fiche bien */
 }
 
 * { box-sizing: border-box; }
@@ -549,7 +550,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* rail de sections à droite */
 .brail {
-  width: 248px; flex: none;
+  width: var(--brail-w); flex: none;
   background: #fff;
   border-left: 1px solid var(--line);
   display: flex; flex-direction: column;
@@ -959,21 +960,32 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ltable.v2 select.lcell.vide { border-color: var(--red); }
 
 /* Barre d'outils sticky en bas, au-dessus de la barre d'action */
+/* Barre d'outils des lots : collée à la barre d'actions du bas, d'une
+   sidebar à l'autre, sans espace — comme dans le BO (retour #38). */
 .ltools.v2 {
-  position: sticky; bottom: calc(var(--bottbar-h) + 6px); z-index: 20;
-  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-  background: var(--dark); border-radius: 5px; padding: 8px 10px; margin-top: 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  position: fixed; z-index: 25;
+  left: var(--side-w); right: var(--brail-w); bottom: var(--bottbar-h);
+  display: flex; align-items: center; gap: 8px;
+  background: #e6e6e6; border-top: 1px solid #d3d3d3;
+  border-radius: 0; padding: 7px 14px; margin: 0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, .07);
 }
+.lots-full .ltools.v2 { right: 0; }
+/* La zone de saisie laisse la place à la barre d'outils. */
+.fiche-inner.wide { padding-bottom: 58px; }
 .ltb.lbl {
   display: inline-flex; align-items: center; gap: 7px;
-  width: auto; padding: 0 12px; height: 32px;
-  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  width: auto; height: 32px; padding: 0 13px;
+  border: 1px solid #cfcfcf; background: #fff; color: var(--slate);
+  font-family: var(--font-title); font-size: 13.5px; font-weight: 600; cursor: pointer;
 }
+.ltb.lbl:hover:not(:disabled) { background: #f4f4f4; }
+.ltb.lbl.red { background: var(--red); border-color: var(--red); color: #fff; }
+.ltools.v2 .kgo { background: #d9d9d9; color: #fff; border: 0; }
+.ltools.v2 .kgo:not(:disabled) { background: var(--slate); }
 .ltb.lbl svg { width: 15px; height: 15px; }
 .ltb.lbl.gold { background: #e8b21f; border-color: #e8b21f; color: #3a2f05; }
 .ltb.lbl.gold:hover { background: #f0bd35; }
-.ltools.v2 .kgo { background: #fff; }
 
 /* Plein écran du tableau */
 .lots-full {
@@ -1394,3 +1406,10 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .pr-case .k { font-family: var(--font-title); font-size: 14.5px; font-weight: 700; color: var(--slate); }
 .pr-case .v { font-size: 14.5px; color: var(--slate); margin-top: 2px; }
 .pr-nom { font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--slate); margin: 4px 0 10px; }
+
+/* Colonne « Dest. » : pictogramme visible, sélecteur invisible par-dessus. */
+.ltable td.dest { position: relative; text-align: center; }
+.destic { display: inline-grid; place-items: center; color: var(--slate-2); }
+.destic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.destic i { font-style: normal; color: var(--gray-lt); }
+.ltable .lcell.inv { position: absolute; inset: 0; width: 100% !important; opacity: 0; cursor: pointer; }

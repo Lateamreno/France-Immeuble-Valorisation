@@ -24,6 +24,17 @@ const IC = {
   travaux: <><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></>,
 };
 
+/* Pictogramme de destination affiché dans la colonne « Dest. » du BO. */
+const IC_DEST: Record<string, React.ReactNode> = {
+  Logement: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
+  Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+  Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
+  Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
+  Cave: <><path d="M4 20V8l8-4 8 4v12z" /><path d="M9 20v-7h6v7" /></>,
+  Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
+  Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
+};
+
 /* Typologies proposées selon la destination (un bureau n'est jamais un T2). */
 const TYPES_PAR_DESTINATION: Record<string, string[]> = {
   Logement: TYPES_LOT.filter((t) =>
@@ -383,6 +394,29 @@ export function LotsEditor({ b }: { b: BienData }) {
 
       <div className="ltable-wrap" style={pending ? { opacity: 0.6 } : undefined}>
         <table className="ltable v2">
+          {/* Largeurs fixes : les colonnes de repère (bâtiment, étage, numéro)
+              ne prennent que la place de leur titre, comme dans le BO. */}
+          <colgroup>
+            <col style={{ width: 26 }} />
+            {on("batiment") && <><col style={{ width: 38 }} /><col style={{ width: 38 }} /></>}
+            <col style={{ width: 40 }} />
+            <col style={{ width: 40 }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "7%" }} />
+            {on("sol") && <col style={{ width: "7%" }} />}
+            <col style={{ width: "7%" }} />
+            {on("baux") && <><col style={{ width: 46 }} /><col style={{ width: 46 }} /></>}
+            <col style={{ width: "8%" }} />
+            {on("m2") && <col style={{ width: "5.5%" }} />}
+            <col style={{ width: "8%" }} />
+            {on("m2") && <col style={{ width: "5.5%" }} />}
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "5.5%" }} />
+            {on("commentaire") && <col />}
+            <col style={{ width: 44 }} />
+          </colgroup>
           <thead>
             <tr>
               <th className="grp brd" rowSpan={2} style={{ width: 26 }} />
@@ -424,8 +458,13 @@ export function LotsEditor({ b }: { b: BienData }) {
                     </>
                   )}
                   <td className={on("batiment") ? "" : "brd"}><input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} /></td>
-                  <td className="brd">
-                    <select className="lcell" value={r.Destination}
+                  <td className="brd dest" title={r.Destination}>
+                    <span className="destic">
+                      {r.Destination
+                        ? <svg viewBox="0 0 24 24">{IC_DEST[r.Destination] ?? IC_DEST.Annexe}</svg>
+                        : <i>—</i>}
+                    </span>
+                    <select className="lcell inv" value={r.Destination}
                       onChange={(e) => { edit(r.id, "Destination", e.target.value); edit(r.id, "Type_lot", ""); }}>
                       <option value="" />{DESTINATIONS.map((o) => <option key={o}>{o}</option>)}
                     </select>
