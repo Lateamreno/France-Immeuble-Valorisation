@@ -15,8 +15,12 @@ export type Feedback = {
   page_titre: string | null;
   selecteur: string | null;
   element_texte: string | null;
+  /** Coin haut-gauche de la zone si w_pct/h_pct sont renseignés,
+   *  centre de l'épingle sinon (retours antérieurs au tracé rectangulaire). */
   x_pct: number | null;
   y_pct: number | null;
+  w_pct: number | null;
+  h_pct: number | null;
   gravite: "bloquant" | "ecart" | "detail" | "idee";
   commentaire: string;
   capture_path: string | null;
@@ -79,6 +83,8 @@ export async function addFeedback(fd: FormData) {
       element_texte: str("element_texte")?.slice(0, 300) ?? null,
       x_pct: num("x_pct"),
       y_pct: num("y_pct"),
+      w_pct: num("w_pct"),
+      h_pct: num("h_pct"),
       viewport_w: num("viewport_w"),
       gravite: str("gravite") ?? "ecart",
       commentaire: str("commentaire") ?? "",

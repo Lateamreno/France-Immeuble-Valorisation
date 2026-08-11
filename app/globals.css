@@ -796,9 +796,9 @@ a.lrow:hover { border-color: var(--gray-lt); }
 .lst-pager { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray-txt); margin-top: 10px; }
 
 /* --- Mode Revue (retours de recette posés sur les écrans) --- */
-body.rv-armed, body.rv-armed * { cursor: crosshair !important; }
+body.rv-armed, body.rv-armed * { cursor: crosshair !important; user-select: none !important; }
 body.rv-armed::after {
-  content: "Mode Revue — cliquez sur la zone concernée (Échap pour annuler)";
+  content: "Mode Revue — entourez la zone concernée en glissant la souris, ou cliquez pour une épingle (Échap pour annuler)";
   position: fixed; inset: 0 0 auto 0; z-index: 998;
   background: rgba(214, 0, 0, .92); color: #fff;
   font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
@@ -1090,3 +1090,25 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 /* --- Pictogrammes des libellés Emplacement (retour #15) --- */
 .pic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -2.5px; margin-right: 5px; opacity: .65; }
 .poilab { display: inline-flex; align-items: center; width: 84px; font-size: 12.5px; color: var(--gray-txt); }
+
+/* --- Mode Revue : sélection rectangulaire libre --- */
+.rv-zone {
+  position: absolute; z-index: 997; pointer-events: auto;
+  border: 2px solid var(--orange); border-radius: 3px;
+  background: rgba(227, 121, 13, .10);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .55) inset;
+  cursor: help;
+}
+.rv-zone b {
+  position: absolute; left: -2px; top: -2px;
+  min-width: 20px; height: 18px; padding: 0 5px;
+  display: grid; place-items: center;
+  background: var(--orange); color: #fff;
+  font-size: 11px; font-weight: 700; font-family: var(--font-body);
+  border-radius: 3px 0 3px 0;
+}
+.rv-zone.trace, .rv-zone.draft {
+  z-index: 1001; border-color: var(--red); background: rgba(214, 0, 0, .10);
+  pointer-events: none;
+}
+.rv-zone.trace b, .rv-zone.draft b { background: var(--red); white-space: nowrap; }
