@@ -1068,37 +1068,130 @@ export async function listPropositions(): Promise<ListCard[]> {
 }
 
 /** Volumes 12 mois pour l'écran Datas (comptés sur Created Date). */
+/** Étapes de l'entonnoir du BO, dans l'ordre, avec le statut pipeline atteint. */
+const ETAPES: { cle: string; label: string; seuil: number }[] = [
+  { cle: "immeubles", label: "Immeubles", seuil: 0 },
+  { cle: "estime", label: "Estimé", seuil: 2 },
+  { cle: "propose", label: "Proposé", seuil: 5 },
+  { cle: "offre_recue", label: "Offre reçue", seuil: 7 },
+  { cle: "offre_acceptee", label: "Offre acceptée", seuil: 8 },
+  { cle: "compromis", label: "Compromis signé", seuil: 9 },
+  { cle: "vente", label: "Vente signée", seuil: 11 },
+];
+
+export type DatasData = Awaited<ReturnType<typeof getDatas>>;
+
+/** Reporting « Datas » : volumes sur 12 mois, entonnoir et taux, par agent. */
 export async function getDatas() {
   const since = new Date(Date.now() - 365 * 86400000).toISOString();
   const created: Constraint[] = [{ key: "Created Date", constraint_type: "greater than", value: since }];
-  const [contacts, recherches, immeubles, estimations, mandats, visites, offresRows] = await Promise.all([
-    count("contact", created).catch(() => 0),
-    count("recherche", created).catch(() => 0),
-    count("immeuble", created).catch(() => 0),
-    fetchAll("estimation", created, 2000).catch(() => []),
-    fetchAll("mandat", created, 2000).catch(() => []),
-    fetchAll("visite", created, 2000).catch(() => []),
-    fetchAll("offre", created, 2000).catch(() => []),
-  ]);
+  const [contacts, recherches, immeublesRows, estimations, mandats, visites, offresRows, propositions] =
+    await Promise.all([
+      count("contact", created).catch(() => 0),
+      count("recherche", created).catch(() => 0),
+      fetchAll("immeuble", undefined, 4000).catch(() => []),
+      fetchAll("estimation", created, 4000).catch(() => []),
+      fetchAll("mandat", created, 2000).catch(() => []),
+      fetchAll("visite", created, 4000).catch(() => []),
+      fetchAll("offre", created, 2000).catch(() => []),
+      fetchAll("proposition", created, 20000).catch(() => []),
+    ]);
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
   const okOffre = ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"];
-  const formulaires = await count("immeuble", [
-    ...created,
-    { key: "Statut", constraint_type: "equals", value: "1 - FORMULAIRE" },
-  ]).catch(() => 0);
+
+  await loadInitials();
+  const initiales = (id: unknown) => initialsOf(id);
+  const recents = immeublesRows.filter((i) => String(i["Created Date"] ?? "") > since);
+
+  // Entonnoir : un immeuble compte dans une étape dès qu'il l'a atteinte.
+  const actifs = immeublesRows.filter((i) => i.archived !== true);
+  const total = actifs.length || 1;
+  const entonnoir = ETAPES.map((e) => {
+    const lot = actifs.filter((i) => statutOf(i) >= e.seuil);
+    const parAgent: Record<string, number> = {};
+    for (const i of lot) {
+      const k = initiales(i.AGENT);
+      parAgent[k] = (parAgent[k] ?? 0) + 1;
+    }
+    return { cle: e.cle, label: e.label, n: lot.length, pct: Math.round((lot.length / total) * 1000) / 10, parAgent };
+  });
+
+  const portefeuille = {
+    enCours: actifs.filter((i) => String(i.standby_Statut ?? "Traité") === "Traité").length,
+    enAttente: actifs.filter((i) => String(i.standby_Statut ?? "Traité") !== "Traité").length,
+    archives: immeublesRows.filter((i) => i.archived === true).length,
+  };
+
+  const pourcent = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
+  const etape = (cle: string) => entonnoir.find((e) => e.cle === cle)?.n ?? 0;
+  const immeublesVisites = new Set(
+    visites.filter((v) => String(v.Statut ?? "") === "Effectuée").map((v) => String(v.IMMEUBLE ?? "")),
+  ).size;
+
+  const propsEnvoyees = propositions.length;
+  const propsRefusees = propositions.filter((p) => String(p.Statut ?? "").startsWith("Refus")).length;
+  const propsRetour = propositions.filter((p) => String(p.Statut ?? "") !== "Envoyée").length;
+  const visitesEffectuees = visites.filter((v) => String(v.Statut ?? "") === "Effectuée").length;
+  const offresAcceptees = offresRows.filter((o) => okOffre.includes(String(o.Statut ?? ""))).length;
+  const ventes = offresRows.filter((o) => String(o.Statut ?? "") === "Vendu");
+  const compromis = offresRows.filter((o) => ["Compromis signé", "Vente prévue", "Vendu"].includes(String(o.Statut ?? "")));
+
+  // Répartition par agent des jalons commerciaux. Les offres ne portent pas
+  // d'agent : on les rattache à celui qui suit l'immeuble concerné.
+  const agentDeLim = new Map(immeublesRows.map((i) => [String(i._id), i.AGENT] as const));
+  const parAgent = (rows: Record<string, unknown>[], cle = "AGENT") => {
+    const m: Record<string, number> = {};
+    for (const r of rows) {
+      const via = cle === "IMMEUBLE"
+        ? agentDeLim.get(Array.isArray(r.IMMEUBLEs) ? String((r.IMMEUBLEs as string[])[0] ?? "") : String(r.IMMEUBLE ?? ""))
+        : r[cle];
+      const k = initiales(via);
+      m[k] = (m[k] ?? 0) + 1;
+    }
+    return m;
+  };
+
+  const mandatsSignes = mandats.filter(
+    (m) => !!m.date_signature || ["En cours", "Vendu", "Expiré"].includes(String(m.Statut ?? "")),
+  );
+
   return {
-    contacts, recherches, immeubles, formulaires,
+    // Volumes bruts (12 derniers mois)
+    contacts, recherches,
+    immeubles: recents.length,
+    formulaires: recents.filter((i) => statutOf(i) === 1).length,
+    formulairesValides: recents.filter((i) => statutOf(i) >= 2).length,
+    immeublesArchives: recents.filter((i) => i.archived === true).length,
     estimations: estimations.length,
     estimationsEnvoyees: estimations.filter((e) => String(e.Statut ?? "").startsWith("3")).length,
     mandats: mandats.length,
-    mandatsSignes: mandats.filter((m) => !!m.date_signature || ["En cours", "Vendu", "Expiré"].includes(String(m.Statut ?? ""))).length,
+    mandatsSignes: mandatsSignes.length,
+    mandatsParAgent: parAgent(mandatsSignes),
+    propositions: propsEnvoyees,
+    propositionsRefusees: propsRefusees,
     visites: visites.length,
-    visitesEffectuees: visites.filter((v) => String(v.Statut ?? "") === "Effectuée").length,
+    visitesEffectuees,
     offres: offresRows.length,
-    offresAcceptees: offresRows.filter((o) => okOffre.includes(String(o.Statut ?? ""))).length,
+    offresAcceptees,
+    offresParAgent: parAgent(offresRows, "IMMEUBLE"),
     offresHonosHt: offresRows.reduce((s, o) => s + num(o.honos_ht), 0),
-    ventes: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").length,
-    ventesHonosHt: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").reduce((s, o) => s + num(o.honos_ht), 0),
+    compromis: compromis.length,
+    compromisHonosHt: compromis.reduce((s, o) => s + num(o.honos_ht), 0),
+    ventes: ventes.length,
+    ventesHonosHt: ventes.reduce((s, o) => s + num(o.honos_ht), 0),
+    // Taux de conversion : calculés sur les mêmes cohortes d'immeubles que
+    // l'entonnoir, pour qu'ils restent comparables et bornés à 100 %.
+    taux: {
+      retour: pourcent(propsRetour, propsEnvoyees),
+      visite: pourcent(immeublesVisites, etape("propose")),
+      offre: pourcent(etape("offre_recue"), immeublesVisites),
+      offreAcceptee: pourcent(etape("offre_acceptee"), etape("offre_recue")),
+      compromis: pourcent(etape("compromis"), etape("offre_acceptee")),
+      vente: pourcent(etape("vente"), etape("compromis")),
+    },
+    immeublesVisites,
+    entonnoir,
+    portefeuille,
   };
 }
 
