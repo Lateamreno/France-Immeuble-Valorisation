@@ -950,3 +950,41 @@ export async function getContact(id: string): Promise<ContactData | null> {
     suivis: [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
   };
 }
+
+/** Recherche globale (searchfield ilike) : immeubles, contacts, mandats. */
+export async function globalSearch(q: string): Promise<{
+  immeubles: ListCard[]; contacts: ListCard[]; mandats: ListCard[];
+}> {
+  const term = q.trim().toLowerCase();
+  if (!term || !USE_SB) return { immeubles: [], contacts: [], mandats: [] };
+  const like = `*${term.replace(/[%*]/g, "")}*`;
+  const search = async (type: string) => {
+    const p = new URLSearchParams({ select: "data", limit: "20" });
+    p.append("data->>searchfield", `ilike.${like}`);
+    const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
+      headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return [] as Record<string, unknown>[];
+    return ((await res.json()) as { data: Record<string, unknown> }[]).map((r) => r.data);
+  };
+  const [ims, cts, mds] = await Promise.all([search("immeuble"), search("contact"), search("mandat")]);
+  return {
+    immeubles: ims.map((im) => ({
+      id: String(im._id), href: `/bien/${im._id}`, avatar: initialsOf(im.AGENT),
+      title: imLabel(im), sub: String(im.Statut ?? "").replace(/^\d+ - /, "") || undefined,
+      right: [euros(im.prix_hai) ?? ""].filter(Boolean), group: "r",
+    })),
+    contacts: cts.map((c) => ({
+      id: String(c._id), href: `/contact/${c._id}`, avatar: initialsOf(c.agent),
+      title: [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ") || String(c.entreprise_nom ?? "Contact"),
+      sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
+      group: "r",
+    })),
+    mandats: mds.map((m) => ({
+      id: String(m._id), href: `/mandat/${m._id}`, avatar: initialsOf(m.AGENT),
+      title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${m.numero ? `#${m.numero}` : "· Pas de numéro"}`,
+      sub: String(m.Statut ?? "") || undefined, group: "r",
+    })),
+  };
+}

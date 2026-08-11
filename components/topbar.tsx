@@ -36,15 +36,22 @@ export function TopBar({
         </svg>
         {title}
       </div>
-      <div className="search">
+      <form
+        className="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = new FormData(e.currentTarget).get("q");
+          if (typeof q === "string" && q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+        }}
+      >
         <label className="in">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
-          <input placeholder="Recherchez un immeuble..." aria-label="Recherche immeuble" />
+          <input name="q" placeholder="Recherchez un immeuble..." aria-label="Recherche immeuble" />
         </label>
-        <button className="go" type="button" aria-label="Rechercher">
+        <button className="go" type="submit" aria-label="Rechercher">
           <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></svg>
         </button>
-      </div>
+      </form>
       <div className="pills">
         <button className="pill" type="button">
           <span className="dotg" /> En cours <span className="cnt">{enCours}</span>
