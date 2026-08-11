@@ -1277,3 +1277,99 @@ export async function listPropositionsPage(q: string, page: number, taille: numb
     }),
   };
 }
+
+/* ===================== Objectifs ===================== */
+
+/** Libellés du BO et répartition prioritaires / secondaires (relevés sur les
+ *  captures : les prioritaires sont les 5 objectifs de la chaîne de vente). */
+const OBJECTIFS_META: Record<string, { label: string; unite: "nb" | "pct"; priorite: "prioritaire" | "secondaire" }> = {
+  "Formulaires": { label: "Formulaires transformés", unite: "pct", priorite: "prioritaire" },
+  "Immeubles": { label: "Immeubles créés", unite: "nb", priorite: "prioritaire" },
+  "Estimations": { label: "Immeubles estimés", unite: "nb", priorite: "prioritaire" },
+  "Mandats (%)": { label: "Mandats signés (%)", unite: "pct", priorite: "prioritaire" },
+  "Offres": { label: "Offres", unite: "nb", priorite: "prioritaire" },
+  "Recherches": { label: "Recherches créées", unite: "nb", priorite: "secondaire" },
+  "Mandats (nb)": { label: "Mandats signés", unite: "nb", priorite: "secondaire" },
+  "Retours A/B": { label: "Retour des propositions A et B", unite: "pct", priorite: "secondaire" },
+  "Retours C/D": { label: "Retour des propositions C et D", unite: "pct", priorite: "secondaire" },
+};
+
+export type Objectif = {
+  id: string;
+  type: string;
+  label: string;
+  unite: "nb" | "pct";
+  priorite: "prioritaire" | "secondaire";
+  ordre: number;
+  /** Agent concerné, absent pour l'objectif France Immeuble. */
+  agent?: string;
+  periode: string;
+  debut: string;
+  fin: string;
+  cible: number;
+  valeur: number;
+  avancement: number;
+  /** Éléments comptabilisés : réussis, manqués, total. */
+  reussis: string[];
+  manques: string[];
+  tous: string[];
+};
+
+export type ObjectifsData = {
+  objectifs: Objectif[];
+  /** Libellé des éléments listés au dépliage (immeuble, contact…). */
+  libelles: Record<string, string>;
+  periodes: string[];
+};
+
+/** Objectifs d'une période (mois), tous agents confondus. */
+export async function getObjectifs(periode?: string): Promise<ObjectifsData> {
+  const rows = await fetchAll("objectif", undefined, 4000).catch(() => []);
+  const noms = new Map((await agents()).map((a) => [a.id, a.name] as const));
+
+  const mois = (d: unknown) => (typeof d === "string" ? d.slice(0, 7) : "");
+  const periodes = [...new Set(rows.map((o) => mois(o.start)).filter(Boolean))].sort().reverse();
+  const cible = periode && periodes.includes(periode) ? periode : periodes[0];
+
+  const objectifs = rows
+    .filter((o) => mois(o.start) === cible)
+    .map((o) => {
+      const type = String(o.Type ?? "");
+      const meta = OBJECTIFS_META[type] ?? { label: type, unite: "nb" as const, priorite: "secondaire" as const };
+      const liste = (k: string) => (Array.isArray(o[k]) ? (o[k] as string[]) : []);
+      return {
+        id: String(o._id),
+        type,
+        label: meta.label,
+        unite: meta.unite,
+        priorite: meta.priorite,
+        ordre: typeof o.ordre === "number" ? (o.ordre as number) : 99,
+        agent: typeof o.AGENT === "string" ? (noms.get(o.AGENT as string) ?? "Agent") : undefined,
+        periode: cible,
+        debut: String(o.start ?? ""),
+        fin: String(o.end ?? ""),
+        cible: typeof o.objectif === "number" ? (o.objectif as number) : 0,
+        valeur: typeof o.out_front_value === "number" ? (o.out_front_value as number) : 0,
+        avancement: typeof o["completion_%"] === "number" ? (o["completion_%"] as number) : 0,
+        reussis: liste("out_done_ids"),
+        manques: liste("out_failed_ids"),
+        tous: liste("out_all_ids"),
+      } satisfies Objectif;
+    })
+    .sort((a, b) => a.ordre - b.ordre || (a.agent ?? "").localeCompare(b.agent ?? ""));
+
+  // Libellés des éléments comptés : immeubles d'abord, contacts ensuite.
+  const ids = [...new Set(objectifs.flatMap((o) => o.tous))].slice(0, 400);
+  const libelles: Record<string, string> = {};
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const [ims, cts] = await Promise.all([
+      fetchAll("immeuble", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []),
+      fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []),
+    ]);
+    ims.forEach((im) => { libelles[String(im._id)] = imLabel(im); });
+    cts.forEach((c) => { libelles[String(c._id)] = contactLabel(c) || String(c.email ?? ""); });
+  }
+
+  return { objectifs, libelles, periodes };
+}

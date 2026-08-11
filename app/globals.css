@@ -1475,3 +1475,38 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   padding: 9px 12px; margin-bottom: 10px; font-size: 12.5px; color: var(--gray-txt);
 }
 .mhband .note { width: 20px; height: 20px; font-size: 12px; }
+
+/* --- Module Objectifs --- */
+.obj-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.obj-per select { border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 6px 10px; font-size: 13px; color: var(--slate); }
+.obj-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: #fff; }
+.obj-seg button {
+  border: 0; background: none; padding: 6px 12px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--gray-txt);
+}
+.obj-seg button + button { border-left: 1px solid var(--line); }
+.obj-seg button.on { background: var(--slate); color: #fff; }
+.obj-seg button:hover:not(.on) { background: #f4f4f4; }
+
+.obj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(292px, 1fr)); gap: 12px; }
+.obj-c { border: 1px solid var(--line-lt); border-radius: 6px; background: #fff; padding: 13px 15px 11px; }
+.obj-c.ok { border-color: var(--green); }
+.obj-h { display: flex; align-items: baseline; gap: 8px; }
+.obj-t { flex: 1; font-family: var(--font-title); font-size: 14.5px; font-weight: 700; color: var(--slate); }
+.obj-ag { flex: none; border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; font-size: 11px; font-weight: 700; color: var(--gray-txt); }
+.obj-ag.fi { color: var(--gold-bo); border-color: var(--gold-bo); }
+.obj-p { font-size: 12px; color: var(--gray-lt); margin-top: 2px; }
+.obj-v { font-size: 14px; color: var(--gray-txt); margin: 8px 0 5px; }
+.obj-v b { font-family: var(--font-title); font-size: 21px; font-weight: 700; color: var(--slate); }
+.obj-jauge { height: 6px; border-radius: 3px; background: #ececec; overflow: hidden; }
+.obj-jauge i { display: block; height: 100%; background: var(--gold-bo); }
+.obj-c.ok .obj-jauge i { background: var(--green); }
+.obj-f { display: flex; gap: 6px; margin-top: 9px; }
+.obj-f button {
+  flex: 1; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 4px 6px; font-size: 11.5px; color: var(--gray-txt); cursor: pointer;
+}
+.obj-f button.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.obj-l { list-style: none; margin: 9px 0 0; padding: 0; max-height: 190px; overflow: auto; font-size: 12px; color: var(--slate); }
+.obj-l li { padding: 4px 0; border-top: 1px solid var(--line-lt); }
+.obj-l li.vide { color: var(--gray-lt); }
