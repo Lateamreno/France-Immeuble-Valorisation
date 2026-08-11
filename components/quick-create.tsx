@@ -1,6 +1,10 @@
 "use client";
 
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { QUICK_CREATE } from "@/lib/nav";
+import { AGENT_IDS_CLIENT } from "@/lib/agents";
+import { createContact, createImmeuble } from "@/lib/bo/actions";
 
 // Icônes des 7 entités (entité + petit « + », comme le BO).
 const IC: Record<string, React.ReactNode> = {
@@ -13,16 +17,150 @@ const IC: Record<string, React.ReactNode> = {
   Offre: <><path d="M11 4 4 11l3 3 5.5-5.5M9.5 10.5l5.5 5.5M12.5 13.5l3.5 3.5" /><path d="M17.5 5.5h4M19.5 3.5v4" /></>,
 };
 
+const VIA_FICHE = new Set(["Mandat", "Recherche", "Proposition", "Visite", "Offre"]);
+
 // Barre de création rapide fixe en bas — 7 cellules égales (réplique).
+// + Contact et + Immeuble sont actifs ; les autres se créent depuis les fiches.
 export function QuickCreate() {
+  const [modal, setModal] = useState<"Contact" | "Immeuble" | null>(null);
   return (
-    <div className="bottbar">
-      {QUICK_CREATE.map((label) => (
-        <button key={label} type="button" title={`Créer : ${label}`}>
-          <svg viewBox="0 0 24 24">{IC[label]}</svg>
-          {label}
-        </button>
-      ))}
+    <>
+      <div className="bottbar">
+        {QUICK_CREATE.map((label) => (
+          <button
+            key={label}
+            type="button"
+            title={VIA_FICHE.has(label) ? `${label} : se crée depuis la fiche du bien` : `Créer : ${label}`}
+            onClick={() => {
+              if (label === "Contact" || label === "Immeuble") setModal(label);
+              else alert(`« + ${label} » se crée depuis la fiche du bien concerné (section Mandats / Acheteurs).`);
+            }}
+          >
+            <svg viewBox="0 0 24 24">{IC[label]}</svg>
+            {label}
+          </button>
+        ))}
+      </div>
+      {modal === "Contact" && <NewContactModal onClose={() => setModal(null)} />}
+      {modal === "Immeuble" && <NewImmeubleModal onClose={() => setModal(null)} />}
+    </>
+  );
+}
+
+function NewContactModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [civ, setCiv] = useState("Monsieur");
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [email, setEmail] = useState("");
+  const [portable, setPortable] = useState("");
+  const [acheteur, setAcheteur] = useState(false);
+  const [vendeur, setVendeur] = useState(false);
+  const [agent, setAgent] = useState("marc-antoine");
+  return (
+    <div className="modal-ov" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">Nouveau contact<button type="button" onClick={onClose}>✕</button></div>
+        <div className="modal-b">
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <select className="min" style={{ width: 110 }} value={civ} onChange={(e) => setCiv(e.target.value)}>
+              <option>Monsieur</option><option>Madame</option>
+            </select>
+            <input className="min" style={{ width: 130 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+            <input className="min" style={{ width: 150 }} placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <div className="mrow" style={{ marginTop: 6 }}>
+            <input className="min" style={{ width: 200 }} placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
+          </div>
+          <span className="mlab">Projet</span>
+          <div className="mrow">
+            <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
+            <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
+          </div>
+          <span className="mlab">Suivi par</span>
+          <div className="mrow">
+            {Object.entries(AGENT_IDS_CLIENT).map(([slug, a]) => (
+              <button key={slug} type="button" className={`mopt${agent === slug ? " on" : ""}`} onClick={() => setAgent(slug)}>{a.name}</button>
+            ))}
+          </div>
+        </div>
+        <div className="modal-f">
+          <button
+            className="kgo" type="button" disabled={pending || !nom.trim()}
+            style={pending || !nom.trim() ? { opacity: 0.5 } : undefined}
+            onClick={() =>
+              start(async () => {
+                const id = await createContact({
+                  "Civilité": civ, "prénom": prenom || undefined, nom,
+                  email: email || undefined, portable: portable || undefined,
+                  acheteur, vendeur,
+                  agentId: AGENT_IDS_CLIENT[agent]?.id,
+                });
+                onClose();
+                router.push(`/contact/${id}`);
+              })
+            }
+          ><span className="ch">›</span> Créer le contact</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewImmeubleModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [numero, setNumero] = useState("");
+  const [rue, setRue] = useState("");
+  const [ville, setVille] = useState("");
+  const [cp, setCp] = useState("");
+  const [agent, setAgent] = useState("marc-antoine");
+  return (
+    <div className="modal-ov" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">Nouvel immeuble<button type="button" onClick={onClose}>✕</button></div>
+        <div className="modal-b">
+          <span className="mlab">Adresse</span>
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <input className="min" style={{ width: 60 }} placeholder="N°" value={numero} onChange={(e) => setNumero(e.target.value)} />
+            <input className="min" style={{ flex: 1, minWidth: 180 }} placeholder="Rue" value={rue} onChange={(e) => setRue(e.target.value)} />
+          </div>
+          <div className="mrow" style={{ marginTop: 6 }}>
+            <input className="min" style={{ width: 90 }} placeholder="CP" value={cp} onChange={(e) => setCp(e.target.value)} />
+            <input className="min" style={{ width: 180 }} placeholder="Ville" value={ville} onChange={(e) => setVille(e.target.value)} />
+          </div>
+          <span className="mlab">Suivi par</span>
+          <div className="mrow">
+            {Object.entries(AGENT_IDS_CLIENT).map(([slug, a]) => (
+              <button key={slug} type="button" className={`mopt${agent === slug ? " on" : ""}`} onClick={() => setAgent(slug)}>{a.name}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
+            L&apos;immeuble est créé en statut « Estimation » ; propriétaire, lots et
+            suivi se complètent ensuite sur la fiche.
+          </div>
+        </div>
+        <div className="modal-f">
+          <button
+            className="kgo" type="button" disabled={pending || !ville.trim()}
+            style={pending || !ville.trim() ? { opacity: 0.5 } : undefined}
+            onClick={() =>
+              start(async () => {
+                const id = await createImmeuble({
+                  agentId: AGENT_IDS_CLIENT[agent]?.id ?? "",
+                  ville: ville.trim(), zipcode: cp || undefined,
+                  rue: rue || undefined, numero_rue: numero || undefined,
+                  source: "BO",
+                });
+                onClose();
+                router.push(`/bien/${id}`);
+              })
+            }
+          ><span className="ch">›</span> Créer l&apos;immeuble</button>
+        </div>
+      </div>
     </div>
   );
 }

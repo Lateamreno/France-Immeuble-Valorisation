@@ -707,6 +707,42 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Création d'immeuble (sourcing) ---------- */
+
+/** Crée un immeuble (barre de création rapide « + Immeuble »). */
+export async function createImmeuble(input: {
+  agentId: string;
+  ville: string;
+  zipcode?: string;
+  rue?: string;
+  numero_rue?: string;
+  proprietaireId?: string;
+  source?: string;
+}) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_immeuble",
+    p_id: id,
+    p_doc: cleanPatch({
+      Statut: "2 - Estimation",
+      archived: false,
+      standby_Statut: "Traité",
+      AGENT: input.agentId,
+      adresse_ville: input.ville,
+      adresse_zipcode: input.zipcode,
+      adresse_rue: input.rue,
+      adresse_numero_rue: input.numero_rue,
+      PROPRIETAIRE: input.proprietaireId,
+      Source: input.source,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(id);
+  return id;
+}
+
 /* ---------- Contacts ---------- */
 
 export type ContactPatch = Partial<{
