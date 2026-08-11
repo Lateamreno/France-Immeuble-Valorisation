@@ -765,3 +765,21 @@ a.kgo { text-decoration: none; display: inline-flex; align-items: center; gap: 7
 .mhband .chip { background: var(--chip); color: var(--slate-2); border-radius: 3px; font-size: 12px; font-weight: 600; padding: 3px 9px; }
 
 .lnk { color: #2f6fb1; text-decoration: underline; }
+
+/* --- Vues listes (modules sidebar) --- */
+.lst-page { max-width: 1040px; margin: 0 auto; padding: 22px 26px 60px; }
+.lst-title { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--slate); margin-bottom: 14px; }
+.lst-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.lst-search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 4px; background: #fff; height: 38px; padding: 0 12px; color: var(--gray-lt); }
+.lst-search svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; flex: none; }
+.lst-search input { border: 0; outline: 0; width: 100%; font: inherit; font-size: 13.5px; color: var(--slate); background: transparent; }
+.lst-count { font-size: 12.5px; color: var(--gray-txt); white-space: nowrap; }
+.lrow { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line-lt); border-radius: 5px; padding: 10px 14px; margin-bottom: 7px; color: inherit; }
+a.lrow:hover { border-color: var(--gray-lt); }
+.lav { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--orange); color: #fff; font-family: var(--font-title); font-size: 11.5px; font-weight: 700; display: grid; place-items: center; }
+.lmid { flex: 1; min-width: 0; }
+.lmid .lt { font-family: var(--font-title); font-size: 13.5px; font-weight: 600; color: var(--slate); }
+.lmid .lnote { font-family: var(--font-body); font-weight: 400; color: var(--gray-txt); font-size: 12.5px; }
+.lmid .ls { font-size: 12.5px; color: var(--gray-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lright { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12.5px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+.lst-pager { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray-txt); margin-top: 10px; }

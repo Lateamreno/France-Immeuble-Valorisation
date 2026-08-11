@@ -586,3 +586,203 @@ export async function getMandat(id: string): Promise<{
     : null;
   return { m, im };
 }
+
+/* ---------- Vues listes (réplique des modules de la sidebar) ---------- */
+
+export type ListCard = {
+  id: string;
+  href?: string;
+  avatar: string;
+  title: string;
+  sub?: string;
+  note?: string;
+  badge?: { label: string; tone: "green" | "red" | "orange" };
+  right?: string[];
+  /** Clé d'onglet (en_cours / termines / archives…). */
+  group: string;
+  date?: string;
+};
+
+const initialsOf = (agentId: unknown) =>
+  Object.values(AGENT_IDS).find((a) => a.id === agentId)?.initials ?? "FI";
+
+async function imLabelMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>();
+  const uniq = [...new Set(ids)].filter(Boolean);
+  for (let i = 0; i < uniq.length; i += 100) {
+    const chunk = uniq.slice(i, i + 100);
+    const rows = await fetchAll("immeuble", [{ key: "_id", constraint_type: "in", value: chunk }]).catch(() => []);
+    for (const r of rows) map.set(String(r._id), r);
+  }
+  return map;
+}
+
+const imLabel = (im?: Record<string, unknown>) =>
+  im
+    ? `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""}) - ${[im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ")}`
+    : "";
+
+export async function listImmeubles(): Promise<ListCard[]> {
+  const ims = await fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]);
+  const archived = await bq("immeuble", {
+    constraints: [{ key: "archived", constraint_type: "equals", value: "true" }],
+    limit: 100, sort: "Modified Date", desc: true,
+  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
+  const contactIds = [...ims, ...archived.results].map((i) => String(i.PROPRIETAIRE ?? "")).filter(Boolean);
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < contactIds.length; i += 100) {
+    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: [...new Set(contactIds)].slice(i, i + 100) }]).catch(() => []);
+    for (const r of rows) contacts.set(String(r._id), r);
+  }
+  const card = (im: Record<string, unknown>, group: string): ListCard => ({
+    id: String(im._id),
+    href: `/bien/${im._id}`,
+    avatar: initialsOf(im.AGENT),
+    title: imLabel(im),
+    sub: contactLabel(contacts.get(String(im.PROPRIETAIRE ?? ""))) || undefined,
+    badge: (() => {
+      const st = String(im.Statut ?? "").replace(/^\d+ - /, "");
+      if (!st) return undefined;
+      const n = statutOf(im);
+      return { label: st, tone: n >= 11 ? "green" : n <= 1 ? "orange" : "orange" } as ListCard["badge"];
+    })(),
+    right: [
+      typeof im.surface_carrez === "number" && im.surface_carrez > 0 ? `${Math.round(im.surface_carrez as number)} m²` : "",
+      typeof im.occupation_lots === "number" ? `${Math.round(im.occupation_lots as number)} %` : "",
+      typeof im.fin_renta_ba === "number" ? `${(im.fin_renta_ba as number).toLocaleString("fr-FR")} %` : "",
+      euros(im.prix_hai) ?? "",
+    ].filter(Boolean),
+    note: typeof im.standby_Statut === "string" && im.standby_Statut !== "Traité" ? String(im.standby_Statut) : undefined,
+    group,
+    date: typeof im["Modified Date"] === "string" ? (im["Modified Date"] as string) : undefined,
+  });
+  return [
+    ...ims.filter((i) => String(i.standby_Statut ?? "Traité") === "Traité").map((i) => card(i, "en_cours")),
+    ...ims.filter((i) => String(i.standby_Statut ?? "Traité") !== "Traité").map((i) => card(i, "en_attente")),
+    ...archived.results.map((i) => card(i, "archives")),
+  ].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+}
+
+export async function listEstimations(): Promise<ListCard[]> {
+  const rows = await fetchAll("estimation", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  return rows.map((e) => {
+    const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
+    const hai = typeof e.prix_hai === "number" ? (e.prix_hai as number) : 0;
+    const loyers = typeof e.imm_loyer_hc_tot === "number" ? (e.imm_loyer_hc_tot as number) : 0;
+    const carrez = typeof e.imm_carrez_tot_tot === "number" ? (e.imm_carrez_tot_tot as number) : 0;
+    return {
+      id: String(e._id),
+      href: e.IMMEUBLE ? `/bien/${e.IMMEUBLE}` : undefined,
+      avatar: initialsOf(e.ESTIMATOR),
+      title: `${dmy(e["Created Date"]) ?? ""} ${e.adresse_ville ?? ""} - ${[e["adresse_numéro_rue"], e.adresse_rue].filter(Boolean).join(" ")}`,
+      badge: st
+        ? { label: st, tone: st === "Envoyée" ? "green" : st === "PDF manquant" ? "red" : "orange" }
+        : undefined,
+      right: [
+        euros(hai) ?? "",
+        hai > 0 && loyers > 0 ? `${((loyers / hai) * 100).toFixed(1).replace(".", ",")} %` : "",
+        hai > 0 && carrez > 0 ? `${Math.round(hai / carrez).toLocaleString("fr-FR")} €/m²` : "",
+      ].filter(Boolean),
+      group: ["Envoyée", "Interne"].includes(st) ? "terminees" : "en_cours",
+      date: typeof e["Created Date"] === "string" ? (e["Created Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}
+
+export async function listMandats(): Promise<ListCard[]> {
+  const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  const ims = await imLabelMap(rows.map((m) => (Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "")));
+  return rows.map((m) => {
+    const st = String(m.Statut ?? "");
+    const im = ims.get(Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "");
+    return {
+      id: String(m._id),
+      href: `/mandat/${m._id}`,
+      avatar: initialsOf(m.AGENT),
+      title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${dmy(m.date_effet) ?? ""}${m.date_fin ? `-${dmy(m.date_fin)}` : ""}`.trim(),
+      sub: imLabel(im) || undefined,
+      note: m.numero ? `#${m.numero}` : "Pas de numéro",
+      badge: st
+        ? { label: st, tone: ["En cours", "Vendu"].includes(st) ? "green" : ["Annulé", "Expiré"].includes(st) ? "red" : "orange" }
+        : undefined,
+      right: [euros(m.prix_hai) ?? ""].filter(Boolean),
+      group: ["En cours", "A rédiger", "Attente infos", "Attente signature"].includes(st) ? "en_cours" : "termines",
+      date: typeof m["Modified Date"] === "string" ? (m["Modified Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}
+
+export async function listVisites(): Promise<ListCard[]> {
+  const rows = await fetchAll("visite", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  const ims = await imLabelMap(rows.map((v) => String(v.IMMEUBLE ?? "")));
+  return rows.map((v) => {
+    const st = String(v.Statut ?? "");
+    const d = typeof v.date === "string" ? new Date(v.date as string) : undefined;
+    const heure = d
+      ? new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(d).replace(":", "h")
+      : "";
+    return {
+      id: String(v._id),
+      href: v.IMMEUBLE ? `/bien/${v.IMMEUBLE}` : undefined,
+      avatar: initialsOf(v.AGENT),
+      title: `Visite du ${dmy(v.date) ?? "?"}${heure ? ` - ${heure}` : ""}`,
+      sub: imLabel(ims.get(String(v.IMMEUBLE ?? ""))) || undefined,
+      note: typeof v.visiteur_nom === "string" ? (v.visiteur_nom as string) : undefined,
+      badge: st
+        ? { label: st, tone: st === "Effectuée" ? "green" : st === "Annulée" ? "red" : "orange" }
+        : undefined,
+      group: ["Effectuée", "Annulée"].includes(st) ? "terminees" : "prevues",
+      date: typeof v.date === "string" ? (v.date as string) : undefined,
+    } satisfies ListCard;
+  }).sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+}
+
+export async function listOffres(): Promise<ListCard[]> {
+  const rows = await fetchAll("offre", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  const ims = await imLabelMap(rows.map((o) => (Array.isArray(o.IMMEUBLEs) ? String((o.IMMEUBLEs as string[])[0] ?? "") : "")));
+  const today = Date.now();
+  return rows.map((o) => {
+    const st = String(o.Statut ?? "");
+    const exp = typeof o.date_expiration === "string" ? new Date(o.date_expiration as string).getTime() : undefined;
+    const joursRestants = exp !== undefined ? Math.round((exp - today) / 86400000) : undefined;
+    return {
+      id: String(o._id),
+      href: Array.isArray(o.IMMEUBLEs) && (o.IMMEUBLEs as string[])[0] ? `/bien/${(o.IMMEUBLEs as string[])[0]}` : undefined,
+      avatar: "FI",
+      title: `Offre du ${dmy(o.date) ?? "?"}`,
+      sub: imLabel(ims.get(Array.isArray(o.IMMEUBLEs) ? String((o.IMMEUBLEs as string[])[0] ?? "") : "")) || undefined,
+      note:
+        joursRestants !== undefined && !["Vendu", "Refusée", "Acceptée"].includes(st)
+          ? `Expire dans ${joursRestants} jours`
+          : undefined,
+      badge: st
+        ? { label: st, tone: ["Acceptée", "Vendu", "Compromis signé"].includes(st) ? "green" : st === "Refusée" ? "red" : "orange" }
+        : undefined,
+      right: [
+        `${euros(o.prix_nv) ?? "?"} + ${euros(o.honos_ttc) ?? "?"} = ${euros(o.prix_hai) ?? "?"} HAI`,
+      ],
+      group: st === "En cours" || st === "Contre offre" ? "en_cours" : st === "Acceptée" ? "acceptees" : "termines",
+      date: typeof o.date === "string" ? (o.date as string) : undefined,
+    } satisfies ListCard;
+  });
+}
+
+export async function listSuivis(): Promise<ListCard[]> {
+  const rows = await fetchAll("suivi", undefined, 300, { field: "Created Date", desc: true }).catch(() => []);
+  const ims = await imLabelMap(rows.map((s) => (Array.isArray(s.IMMEUBLEs) ? String((s.IMMEUBLEs as string[])[0] ?? "") : "")));
+  return rows.map((s) => {
+    const st = String(s.Statut ?? "");
+    const imId = Array.isArray(s.IMMEUBLEs) ? String((s.IMMEUBLEs as string[])[0] ?? "") : "";
+    return {
+      id: String(s._id),
+      href: imId ? `/bien/${imId}` : undefined,
+      avatar: initialsOf(s.AGENT),
+      title: `${dmy(s.date_start ?? s["Created Date"]) ?? ""}${s.date_relance ? ` → ${dmy(s.date_relance)}` : ""} · ${s.Motif_standby ?? s.Type ?? ""}`,
+      sub: imLabel(ims.get(imId)) || undefined,
+      note: typeof s.notes === "string" ? (s.notes as string).slice(0, 220) : undefined,
+      badge: st ? { label: st, tone: st === "Traité" ? "green" : "orange" } : undefined,
+      group: st === "Traité" ? "termines" : "en_cours",
+      date: typeof s["Created Date"] === "string" ? (s["Created Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}

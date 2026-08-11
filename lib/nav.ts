@@ -15,7 +15,7 @@ export const NAV: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/estimation", label: "Estimations", count: 36 },
   { href: "/immeubles", label: "Immeubles", count: 53 },
-  { href: "/documents", label: "Mandats", count: 5 },
+  { href: "/mandats", label: "Mandats", count: 5 },
   { href: "/recherches", label: "Recherches" },
   { href: "/contacts", label: "Contacts" },
   { href: "/propositions", label: "Propositions" },

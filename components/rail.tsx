@@ -9,7 +9,7 @@ const IC: Record<string, React.ReactNode> = {
   "/": <><circle cx="12" cy="12" r="9" /><path d="M12 3v4M12 12l5 3" /></>,
   "/estimation": <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h4" /></>,
   "/immeubles": <><rect x="5" y="3" width="14" height="18" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" /></>,
-  "/documents": <><path d="M4 8h16v11H4z" /><path d="M8 8V6a4 4 0 0 1 8 0v2" /></>,
+  "/mandats": <><path d="M4 8h16v11H4z" /><path d="M8 8V6a4 4 0 0 1 8 0v2" /></>,
   "/recherches": <><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></>,
   "/contacts": <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
   "/propositions": <><path d="M21 4 3 11l7 3 3 7z" /></>,
