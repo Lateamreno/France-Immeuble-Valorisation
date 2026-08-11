@@ -5,8 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
-import { archiverImmeuble, reactiver, reculerStatut, setStatut, transfererImmeuble } from "@/lib/bo/actions";
+import { addSuivi, archiverImmeuble, reactiver, reculerStatut, setStatut, transfererImmeuble } from "@/lib/bo/actions";
 import { SuiviModal } from "@/components/suivi-modal";
+import { FicheContact, ModaleMoyenContact, ModaleTransfert } from "@/components/dashboard-modales";
 import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
@@ -27,12 +28,23 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
   flag: <><path d="M4 21V4" /><path d="M4 5c3-2 6 1 9 0s5-1 7 0v9c-2-1-4-1-7 0s-6 2-9 0" /></>,
 };
 
-function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { id: string; name: string }[] }) {
+function Card({
+  c, mock, agents = [], peutTransferer = true,
+}: {
+  c: KCard; mock?: boolean;
+  agents?: { id: string; name: string }[];
+  /** Un agent ne transfère que ses propres biens ; l'admin transfère tout. */
+  peutTransferer?: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const [suiviOpen, setSuiviOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const [hist, setHist] = useState(false);
+  const [moyen, setMoyen] = useState(false);
+  const [transfert, setTransfert] = useState(false);
+  const [fiche, setFiche] = useState(false);
+  const [note, setNote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,25 +56,26 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
     return () => document.removeEventListener("mousedown", away);
   }, [menu]);
 
-  // « Contacté » : on note d'abord par quel biais, puis on ouvre la fiche sur
-  // l'état locatif pour enchaîner l'estimation (retour MAV #5).
+  // « Contacté » : on demande d'abord par quel moyen le contact a été joint
+  // (statistiques), puis on avance le statut et on ouvre la fiche sur l'état
+  // locatif pour enchaîner l'estimation (retours MAV #5 et #25).
+  // Annuler ne déclenche aucune action et ne navigue nulle part (#28).
   const onAction = () => {
     if (mock || pending || !c.action) return;
-    if (c.action.kind !== "green" && c.action.next === 2) { setSuiviOpen(true); return; }
+    if (c.action.kind !== "green" && c.action.next === 2) { setMoyen(true); return; }
     startTransition(async () => {
       if (c.action!.kind === "green") await reactiver(c.id);
       else if (c.action!.next) await setStatut(c.id, c.action!.next);
     });
   };
 
-  const apresSuivi = () => {
-    setSuiviOpen(false);
-    if (c.action?.next) {
-      startTransition(async () => {
-        await setStatut(c.id, c.action!.next!);
-        router.push(`/bien/${c.id}?section=locatif`);
-      });
-    }
+  const confirmerMoyen = (m: string) => {
+    setMoyen(false);
+    startTransition(async () => {
+      await addSuivi({ immeubleId: c.id, agentId: "", contactId: c.contactId, canaux: [m], notes: "" });
+      await setStatut(c.id, c.action!.next!);
+      router.push(`/bien/${c.id}?section=locatif`);
+    });
   };
   const top = (
     <>
@@ -79,9 +92,20 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
         <div className="kbody">
           <div className="krow1">
             <span className="kt">{c.ville}</span>
-            <span className="kcontact">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-              {c.contact}
+            <span className="kcontact-wrap">
+              <span className="kcontact" role="button" tabIndex={0}
+                title="Voir les coordonnées"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFiche((v) => !v); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setFiche((v) => !v); } }}>
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+                {c.contact}
+              </span>
+              {fiche && (
+                <FicheContact
+                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText }}
+                  onClose={() => setFiche(false)}
+                />
+              )}
             </span>
           </div>
 
@@ -110,16 +134,24 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
                 </span>
               )}
               {c.chevron && (
-                <span className="kchev"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg></span>
+                <span className={`kchev${note ? " on" : ""}`} role="button" tabIndex={0}
+                  title={note ? "Replier la note" : "Dérouler la note"}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setNote((v) => !v); } }}>
+                  <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
               )}
             </div>
           )}
+
+          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
 
           {c.wait && (
             <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
                 <span className="lbl">{c.wait.motif}</span>
+                {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
                 <span className="ar">▾</span>
               </span>
               <span className="d">{c.wait.to}</span>
@@ -137,7 +169,7 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
     </>
   );
   return (
-    <div className={`kard${c.wait ? " alert" : ""}`}>
+    <div className={`kard${c.wait ? (c.wait.late === false ? " hold" : " alert") : ""}`}>
       {mock ? (
         <div className="kard-top" style={{ display: "flex" }}>{top}</div>
       ) : (
@@ -169,13 +201,7 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
                 Archiver
               </button>
-              <button type="button" onClick={() => {
-                setMenu(false);
-                const noms = agents.map((a, i) => `${i + 1}. ${a.name}`).join("\n");
-                const r = prompt(`Transférer à :\n${noms}\n\nNuméro ?`);
-                const idx = r ? parseInt(r, 10) - 1 : -1;
-                if (agents[idx]) startTransition(() => transfererImmeuble(c.id, agents[idx].id));
-              }}>
+              <button type="button" onClick={() => { setMenu(false); setTransfert(true); }}>
                 <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
                 Transférer à un collègue
               </button>
@@ -251,6 +277,23 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
         </div>
       )}
 
+      {moyen && (
+        <ModaleMoyenContact onAnnuler={() => setMoyen(false)} onConfirmer={confirmerMoyen} />
+      )}
+
+      {transfert && (
+        <ModaleTransfert
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, note: c.note }}
+          agents={agents}
+          peutTransferer={peutTransferer}
+          onAnnuler={() => setTransfert(false)}
+          onTransferer={(agentId, avecProprio) => {
+            setTransfert(false);
+            startTransition(() => transfererImmeuble(c.id, agentId, avecProprio ? c.contactId ?? null : null));
+          }}
+        />
+      )}
+
       {suiviOpen && (
         <SuiviModal
           immeubleId={c.id}
@@ -258,7 +301,7 @@ function Card({ c, mock, agents = [] }: { c: KCard; mock?: boolean; agents?: { i
           objet={c.objet ?? c.ville}
           contactNom={c.contact}
           contactId={c.contactId}
-          onClose={c.action?.next === 2 ? apresSuivi : () => setSuiviOpen(false)}
+          onClose={() => setSuiviOpen(false)}
         />
       )}
     </div>

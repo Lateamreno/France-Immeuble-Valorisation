@@ -103,8 +103,17 @@ export async function archiverImmeuble(immeubleId: string, motif: string) {
 }
 
 /** Transfère le suivi du dossier à un autre agent. */
-export async function transfererImmeuble(immeubleId: string, agentId: string) {
+export async function transfererImmeuble(
+  immeubleId: string,
+  agentId: string,
+  /** Le propriétaire suit l'immeuble : c'est ce qui fait foi en cas de
+   *  contestation d'appartenance du client (retour MAV #29). */
+  proprietaireId?: string | null,
+) {
   await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { AGENT: agentId } });
+  if (proprietaireId) {
+    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: proprietaireId, p_patch: { agent: agentId } });
+  }
   refresh(immeubleId);
 }
 

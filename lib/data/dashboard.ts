@@ -23,9 +23,13 @@ export type KCard = {
   estimation?: boolean;
   /** Note repliable (chevron ˅). */
   chevron?: boolean;
+  /** Texte complet du dernier suivi, affiché quand la note est dépliée (#27). */
+  noteComplete?: string;
   /** Carte « en attente » : bordure rouge + frise date → motif → date. */
-  /** late=false ⇒ frise grise (échéance à venir), true ⇒ rouge (dépassée). */
-  wait?: { from: string; to: string; motif: string; late?: boolean };
+  /** late=false ⇒ frise dorée avec barre d'avancement (échéance à venir),
+   *  true ⇒ frise rouge (échéance dépassée, le bien est réactivé d'office).
+   *  pct = part du délai déjà écoulée, pour la barre d'avancement du BO. */
+  wait?: { from: string; to: string; motif: string; late?: boolean; pct?: number };
   prix?: string;
   fee?: string;
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
@@ -40,6 +44,11 @@ export type KCard = {
   statutNum?: number;
   /** Contact lié (personne contactée par défaut dans la modale Suivi). */
   contactId?: string;
+  /** Coordonnées affichées dans la fiche de survol du contact (retour #26). */
+  contactInfo?: {
+    nom: string; type?: string; tel?: string; email?: string;
+    nbImmeubles?: number; nbRecherches?: number;
+  };
   /** Objet de l'échange affiché dans la modale Suivi. */
   objet?: string;
   /** Bouton historique visible. */

@@ -9,17 +9,24 @@ import { useRouter } from "next/navigation";
 export function TopBar({
   title = "Dashboard",
   enCours = 5,
+  enAttente = 0,
+  vue = "cours",
   agentSlug = "",
   agents = [],
 }: {
   title?: string;
   enCours?: number;
+  /** Biens mis en attente dont la date de relance n'est pas atteinte. */
+  enAttente?: number;
+  vue?: "cours" | "attente";
   agent?: string;
   agentSlug?: string;
   /** Agents réels du BO (table agentfi). */
   agents?: { slug: string; name: string }[];
 }) {
   const router = useRouter();
+  const va = (v: "cours" | "attente") =>
+    router.push(`/?agent=${agentSlug}${v === "attente" ? "&vue=attente" : ""}`);
 
   return (
     <div className="topbar">
@@ -48,12 +55,12 @@ export function TopBar({
         </button>
       </form>
       <div className="pills">
-        <button className="pill" type="button">
+        <button className={`pill${vue === "attente" ? " off" : ""}`} type="button" onClick={() => va("cours")}>
           <span className="dotg" /> En cours <span className="cnt">{enCours}</span>
         </button>
-        <button className="pill off" type="button">
+        <button className={`pill${vue === "cours" ? " off" : ""}`} type="button" onClick={() => va("attente")}>
           <svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 8 8 6 8 11M16 3c0 8-8 6-8 11M8 21c0-4 8-4 8 0" /></svg>
-          En attente
+          En attente{enAttente > 0 && <span className="cnt">{enAttente}</span>}
         </button>
       </div>
       <select

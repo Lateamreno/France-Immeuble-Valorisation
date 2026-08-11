@@ -94,7 +94,9 @@ async function sbq(
   opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
 ): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
   const p = sbParams(opts.constraints);
-  p.set("limit", String(opts.limit ?? 100));
+  // Supabase n'a pas la limite de 100 de la Data API Bubble : on pagine large
+  // pour éviter des dizaines d'allers-retours sur les grosses tables.
+  p.set("limit", String(opts.limit ?? 1000));
   p.set("offset", String(opts.cursor ?? 0));
   if (opts.sort) p.set("order", `${SORT_COL[opts.sort] ?? "bubble_modified"}.${opts.desc ? "desc" : "asc"}`);
   const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
@@ -181,9 +183,21 @@ export type DashboardLive = {
   agentSlug: string;
   agentName: string;
   enCours: number;
+  enAttente: number;
 };
 
-export async function getDashboardLive(agentSlug: string): Promise<DashboardLive | null> {
+/** Un bien est « en attente » tant que la date de relance n'est pas atteinte :
+ *  passé cette date le BO le réactive d'office et il revient dans le flux. */
+function attenteEnCours(im: Record<string, unknown>, suivi?: Record<string, unknown>) {
+  if (!im.standby_Statut || im.standby_Statut === "Traité") return false;
+  const relance = typeof suivi?.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
+  return relance ? relance.getTime() > Date.now() : false;
+}
+
+export async function getDashboardLive(
+  agentSlug: string,
+  vue: "cours" | "attente" = "cours",
+): Promise<DashboardLive | null> {
   if (!TOKEN && !USE_SB) return null;
   const all = await agents();
   const agent = all.find((a) => a.slug === agentSlug) ?? all[0];
@@ -193,12 +207,14 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
   const [imsAll, suivis, offres, mandats] = await Promise.all([
     fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]),
-    fetchAll("suivi", undefined, 600, { field: "Created Date", desc: true }).catch(() => []),
+    // Tous les suivis : en n'en chargeant que 600, les immeubles au suivi
+    // ancien perdaient leur historique sur le dashboard (retour MAV #23).
+    fetchAll("suivi", undefined, 20000, { field: "Created Date", desc: true }).catch(() => []),
     fetchAll("offre"),
     fetchAll("mandat"),
   ]);
 
-  const ims = imsAll
+  const imsAgent = imsAll
     .filter((i) => i.AGENT === agent.id)
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
@@ -211,6 +227,13 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
       suivisParIm.set(id, [...(suivisParIm.get(id) ?? []), s]);
     }
   }
+
+  // Retour MAV #30 : les biens dont la date de relance n'est pas atteinte
+  // vivent dans la vue « En attente » ; les autres restent dans le flux.
+  const enAttenteIds = new Set(
+    imsAgent.filter((i) => attenteEnCours(i, suiviByIm.get(i._id as string))).map((i) => i._id as string),
+  );
+  const ims = imsAgent.filter((i) => enAttenteIds.has(i._id as string) === (vue === "attente"));
 
   // Offre la plus récente par immeuble (pour les k€ HT des VENTES).
   const offreByIm = new Map<string, Record<string, unknown>>();
@@ -306,6 +329,21 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
       history: !!suivi,
       statutNum: statutOf(im),
       contactId: typeof im.PROPRIETAIRE === "string" ? (im.PROPRIETAIRE as string) : undefined,
+      contactInfo: (() => {
+        const p = contacts.get(im.PROPRIETAIRE as string);
+        if (!p) return undefined;
+        const liste = (k: string) => (Array.isArray(p[k]) ? (p[k] as unknown[]).length : 0);
+        return {
+          nom: `${p["prénom"] ?? ""} ${p.nom ?? ""}`.trim(),
+          type: Array.isArray(p.Types) ? String(p.Types[0] ?? "") : undefined,
+          tel: typeof p.portable_formatted === "string" ? p.portable_formatted
+            : typeof p.portable === "string" ? p.portable
+            : typeof p.fixe_formatted === "string" ? p.fixe_formatted : undefined,
+          email: typeof p.email === "string" ? p.email : undefined,
+          nbImmeubles: liste("IMMEUBLES"),
+          nbRecherches: liste("RECHERCHEs"),
+        };
+      })(),
       objet: `${im.adresse_ville ?? ""} - ${[im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ")}`,
       historique: (suivisParIm.get(id) ?? []).slice(0, 6).map((s2) => ({
         date: dmy(s2.date_start ?? s2["Created Date"]) ?? "",
@@ -315,13 +353,18 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     };
 
     if (enAttente && suivi) {
+      const debut = new Date(String(suivi.date_start ?? suivi["Created Date"] ?? ""));
       const relance = typeof suivi.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
+      const total = relance ? relance.getTime() - debut.getTime() : 0;
       card.wait = {
         from: dmy(suivi.date_start ?? suivi["Created Date"]) ?? "",
         to: dmy(suivi.date_relance) ?? "",
         motif: String(suivi.Motif_standby ?? im.standby_Statut ?? ""),
         // Dans le BO la frise passe au rouge quand la date de relance est dépassée.
         late: relance ? relance.getTime() <= Date.now() : true,
+        pct: total > 0
+          ? Math.min(100, Math.max(0, Math.round(((Date.now() - debut.getTime()) / total) * 100)))
+          : undefined,
       };
       card.prix = euros(im.prix_hai);
       card.action = { label: "Réactiver", kind: "green" };
@@ -332,6 +375,7 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     if (suivi && typeof suivi.notes === "string" && suivi.notes) {
       card.date = dmy(suivi.date_start ?? suivi["Created Date"]);
       card.note = (suivi.notes as string).split("\n")[0];
+      card.noteComplete = suivi.notes as string;
       card.chevron = (suivi.notes as string).length > 40;
     } else if (st === 1) {
       card.date = dmy(im.date_contact_form ?? im["Created Date"]);
@@ -443,7 +487,8 @@ export async function getDashboardLive(agentSlug: string): Promise<DashboardLive
     blocs,
     agentSlug,
     agentName: agent.name,
-    enCours: byStatut([1]).length,
+    enCours: imsAgent.length - enAttenteIds.size,
+    enAttente: enAttenteIds.size,
   };
 }
 
