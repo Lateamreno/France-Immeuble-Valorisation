@@ -3,9 +3,8 @@
 export type NavItem = {
   href: string;
   label: string;
-  /** Badge rouge (compteur principal). */
+  /** Badges retirés : MAV ne s'en servait pas (décision du 11/08). */
   count?: number;
-  /** Badge orange (compteur secondaire, ex. Visites). */
   count2?: number;
   /** Rangée non cliquable (outil) : "toggle" affiche un interrupteur. */
   tool?: "toggle" | "switch-onoff";
@@ -13,15 +12,15 @@ export type NavItem = {
 
 export const NAV: NavItem[] = [
   { href: "/", label: "Dashboard" },
-  { href: "/estimation", label: "Estimations", count: 36 },
-  { href: "/immeubles", label: "Immeubles", count: 53 },
-  { href: "/mandats", label: "Mandats", count: 5 },
+  { href: "/estimation", label: "Estimations" },
+  { href: "/immeubles", label: "Immeubles" },
+  { href: "/mandats", label: "Mandats" },
   { href: "/recherches", label: "Recherches" },
   { href: "/contacts", label: "Contacts" },
   { href: "/propositions", label: "Propositions" },
   { href: "/questions", label: "Questions" },
-  { href: "/visites", label: "Visites", count: 9, count2: 1 },
-  { href: "/offres", label: "Offres", count: 31 },
+  { href: "/visites", label: "Visites" },
+  { href: "/offres", label: "Offres" },
   { href: "/suivi", label: "Suivi / Rappels" },
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },

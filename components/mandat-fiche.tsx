@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros } from "@/lib/format";
+import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import {
   cancelMandat, mandatInfosRecues, reserveMandatNumero, updateMandat, type MandatPatch,
 } from "@/lib/bo/actions";
@@ -221,7 +222,7 @@ function PrixTab({ m, mandatId, immeubleId, locked }: { m: Record<string, unknow
       </div>
       <div className="fsub" style={{ marginTop: 14 }}>Charge des honoraires</div>
       <div className="mrow">
-        {["Vendeur", "Acheteur"].map((c) => (
+        {CHARGES_HONOS.map((c) => (
           <button key={c} type="button" className={`mopt${charge === c ? " on" : ""}`} onClick={() => !locked && setCharge(c)}>{c}</button>
         ))}
       </div>
@@ -271,7 +272,7 @@ function ConditionsTab({ m, mandatId, immeubleId, locked }: { m: Record<string, 
       </div>
       <div className="fsub" style={{ marginTop: 14 }}>Exclusivité</div>
       <div className="mrow" style={{ alignItems: "center" }}>
-        {["Simple", "Semi-exclusif", "Exclusif"].map((t) => (
+        {TYPES_EXCLU.map((t) => (
           <button key={t} type="button" className={`mopt${exclu === t ? " on" : ""}`} onClick={() => !locked && setExclu(t)}>{t}</button>
         ))}
         <label style={{ fontSize: 12 }}>Durée exclu (j) <input className="min" style={{ width: 60 }} value={dExclu} onChange={(e) => setDExclu(e.target.value)} disabled={locked} /></label>

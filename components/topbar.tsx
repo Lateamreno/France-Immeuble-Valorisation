@@ -2,14 +2,6 @@
 
 import { useRouter } from "next/navigation";
 
-// Ordre du menu déroulant du BO (capture « Selection Agent »).
-const AGENTS: [slug: string, name: string][] = [
-  ["marc-antoine", "Marc-Antoine"],
-  ["guillaume", "Guillaume"],
-  ["sophie", "Sophie"],
-  ["francois", "François"],
-  ["romain", "Romain"],
-];
 
 // Barre haute — réplique : titre + recherche immeuble + filtres
 // « En cours / En attente » + sélecteur orange « Immeubles suivis par X »
@@ -17,12 +9,15 @@ const AGENTS: [slug: string, name: string][] = [
 export function TopBar({
   title = "Dashboard",
   enCours = 5,
-  agentSlug = "marc-antoine",
+  agentSlug = "",
+  agents = [],
 }: {
   title?: string;
   enCours?: number;
   agent?: string;
   agentSlug?: string;
+  /** Agents réels du BO (table agentfi). */
+  agents?: { slug: string; name: string }[];
 }) {
   const router = useRouter();
 
@@ -68,7 +63,7 @@ export function TopBar({
         aria-label="Filtrer par agent"
         style={{ cursor: "pointer", appearance: "none" }}
       >
-        {AGENTS.map(([slug, name]) => (
+        {agents.map(({ slug, name }) => (
           <option key={slug} value={slug}>
             Immeubles suivis par {name}
           </option>

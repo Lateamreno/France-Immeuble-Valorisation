@@ -7,15 +7,9 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { addLot, deleteLot, duplicateLot, updateLots, type LotPatch } from "@/lib/bo/actions";
 
-const DESTINATIONS = ["Logement", "Commerce", "Bureau", "Logistique", "Cave", "Parking", "Annexe", "Autre"];
-const TYPES_LOT = [
-  "Studio", "T1", "T2", "T3", "T4", "T5", "T6", "T7",
-  "Duplex Studio", "Duplex T1", "Duplex T2", "Duplex T3", "Duplex T4",
-  "Maison", "Boutique", "Bureaux", "Atelier", "Entrepôt", "Cave", "Box", "Parking", "Autre",
-];
-const TYPES_BAIL = ["Nu", "Meuble", "Airbnb", "3/6/9", "Précaire", "Loi 48", "Loi 89", "Civil", "COP", "Ferme", "Tourisme", "n.c.", "Vide"];
-const ETATS = ["Neuf", "Renove", "Bon etat", "Etat d'usage", "Travaux", "n.c."];
-const DPES = ["n.c.", "A", "B", "C", "D", "E", "F", "G"];
+import {
+  DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
+} from "@/lib/referentiels";
 
 type Row = {
   id: string;

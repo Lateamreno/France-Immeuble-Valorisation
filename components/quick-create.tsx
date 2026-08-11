@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { QUICK_CREATE } from "@/lib/nav";
-import { AGENT_IDS_CLIENT } from "@/lib/agents";
+import type { Agent } from "@/lib/bubble/server";
 import { createContact, createImmeuble } from "@/lib/bo/actions";
 
 // Icônes des 7 entités (entité + petit « + », comme le BO).
@@ -21,7 +21,7 @@ const VIA_FICHE = new Set(["Mandat", "Recherche", "Proposition", "Visite", "Offr
 
 // Barre de création rapide fixe en bas — 7 cellules égales (réplique).
 // + Contact et + Immeuble sont actifs ; les autres se créent depuis les fiches.
-export function QuickCreate() {
+export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
   const [modal, setModal] = useState<"Contact" | "Immeuble" | null>(null);
   return (
     <>
@@ -41,13 +41,13 @@ export function QuickCreate() {
           </button>
         ))}
       </div>
-      {modal === "Contact" && <NewContactModal onClose={() => setModal(null)} />}
-      {modal === "Immeuble" && <NewImmeubleModal onClose={() => setModal(null)} />}
+      {modal === "Contact" && <NewContactModal agents={agents} onClose={() => setModal(null)} />}
+      {modal === "Immeuble" && <NewImmeubleModal agents={agents} onClose={() => setModal(null)} />}
     </>
   );
 }
 
-function NewContactModal({ onClose }: { onClose: () => void }) {
+function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [civ, setCiv] = useState("Monsieur");
@@ -57,7 +57,7 @@ function NewContactModal({ onClose }: { onClose: () => void }) {
   const [portable, setPortable] = useState("");
   const [acheteur, setAcheteur] = useState(false);
   const [vendeur, setVendeur] = useState(false);
-  const [agent, setAgent] = useState("marc-antoine");
+  const [agent, setAgent] = useState(agents[0]?.slug ?? "");
   return (
     <div className="modal-ov" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -81,8 +81,8 @@ function NewContactModal({ onClose }: { onClose: () => void }) {
           </div>
           <span className="mlab">Suivi par</span>
           <div className="mrow">
-            {Object.entries(AGENT_IDS_CLIENT).map(([slug, a]) => (
-              <button key={slug} type="button" className={`mopt${agent === slug ? " on" : ""}`} onClick={() => setAgent(slug)}>{a.name}</button>
+            {agents.map((a) => (
+              <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
             ))}
           </div>
         </div>
@@ -96,7 +96,7 @@ function NewContactModal({ onClose }: { onClose: () => void }) {
                   "Civilité": civ, "prénom": prenom || undefined, nom,
                   email: email || undefined, portable: portable || undefined,
                   acheteur, vendeur,
-                  agentId: AGENT_IDS_CLIENT[agent]?.id,
+                  agentId: agents.find((a) => a.slug === agent)?.id,
                 });
                 onClose();
                 router.push(`/contact/${id}`);
@@ -109,14 +109,14 @@ function NewContactModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function NewImmeubleModal({ onClose }: { onClose: () => void }) {
+function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [numero, setNumero] = useState("");
   const [rue, setRue] = useState("");
   const [ville, setVille] = useState("");
   const [cp, setCp] = useState("");
-  const [agent, setAgent] = useState("marc-antoine");
+  const [agent, setAgent] = useState(agents[0]?.slug ?? "");
   return (
     <div className="modal-ov" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -133,8 +133,8 @@ function NewImmeubleModal({ onClose }: { onClose: () => void }) {
           </div>
           <span className="mlab">Suivi par</span>
           <div className="mrow">
-            {Object.entries(AGENT_IDS_CLIENT).map(([slug, a]) => (
-              <button key={slug} type="button" className={`mopt${agent === slug ? " on" : ""}`} onClick={() => setAgent(slug)}>{a.name}</button>
+            {agents.map((a) => (
+              <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
             ))}
           </div>
           <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
@@ -149,7 +149,7 @@ function NewImmeubleModal({ onClose }: { onClose: () => void }) {
             onClick={() =>
               start(async () => {
                 const id = await createImmeuble({
-                  agentId: AGENT_IDS_CLIENT[agent]?.id ?? "",
+                  agentId: agents.find((a) => a.slug === agent)?.id ?? "",
                   ville: ville.trim(), zipcode: cp || undefined,
                   rue: rue || undefined, numero_rue: numero || undefined,
                   source: "BO",

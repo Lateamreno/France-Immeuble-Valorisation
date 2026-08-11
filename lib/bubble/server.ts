@@ -24,15 +24,32 @@ const ROOT = (process.env.BUBBLE_APP_URL || "https://vente.france-immeuble.fr")
 
 const REVALIDATE = 120; // secondes de cache par requête
 
-export const AGENT_IDS: Record<string, { id: string; name: string; initials: string }> = {
-  // Mapping vérifié : MAV = 106 immeubles actifs ; Romain = compteurs 5/15/16 des captures.
-  "marc-antoine": { id: "1565404488771x470475486480623740", name: "Marc-Antoine", initials: "MAV" },
-  romain: { id: "1774279722391x446415073281754000", name: "Romain", initials: "RV" },
-  // TODO: confirmer les 3 mappings suivants (noms du sélecteur d'agent du BO).
-  guillaume: { id: "1677062113544x976734254041606900", name: "Guillaume", initials: "G" },
-  francois: { id: "1565404520377x697816437227848800", name: "François", initials: "F" },
-  sophie: { id: "1630466502391x893427918358294500", name: "Sophie", initials: "S" },
-};
+export type Agent = { id: string; slug: string; name: string; initials: string; color?: string };
+
+/** Agents chargés depuis la table réelle `agentfi` du BO (initiales, couleur). */
+export async function getAgents(): Promise<Agent[]> {
+  const rows = await fetchAll("agentfi", undefined, 50).catch(() => []);
+  const slugify = (s: string) =>
+    s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return rows
+    .filter((a) => a.activ !== false)
+    .map((a) => ({
+      id: String(a._id),
+      slug: slugify(String(a["prénom"] ?? a.nom ?? a._id)),
+      name: `${a["prénom"] ?? ""} ${a.nom ?? ""}`.trim(),
+      initials: String(a.initiales ?? "FI"),
+      color: typeof a.color_main === "string" ? (a.color_main as string) : undefined,
+    }))
+    .sort((x, y) => x.name.localeCompare(y.name));
+}
+
+let agentCache: { at: number; rows: Agent[] } | null = null;
+async function agents(): Promise<Agent[]> {
+  if (agentCache && Date.now() - agentCache.at < 300_000) return agentCache.rows;
+  const rows = await getAgents();
+  if (rows.length) agentCache = { at: Date.now(), rows };
+  return rows;
+}
 
 type Constraint = { key: string; constraint_type: string; value: unknown };
 
@@ -168,7 +185,10 @@ export type DashboardLive = {
 
 export async function getDashboardLive(agentSlug: string): Promise<DashboardLive | null> {
   if (!TOKEN && !USE_SB) return null;
-  const agent = AGENT_IDS[agentSlug] ?? AGENT_IDS["romain"];
+  const all = await agents();
+  const agent = all.find((a) => a.slug === agentSlug) ?? all[0];
+  if (!agent) return null;
+  await loadInitials();
 
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
   const [imsAll, suivis, offres, mandats] = await Promise.all([
@@ -505,7 +525,8 @@ export async function getBien(id: string): Promise<BienData | null> {
       ], 20).catch(() => [])
     : [];
 
-  const agentEntry = Object.values(AGENT_IDS).find((a) => a.id === im.AGENT);
+  await loadInitials();
+  const agentEntry = (await agents()).find((a) => a.id === im.AGENT);
 
   return {
     im,
@@ -612,8 +633,12 @@ export type ListCard = {
   date?: string;
 };
 
-const initialsOf = (agentId: unknown) =>
-  Object.values(AGENT_IDS).find((a) => a.id === agentId)?.initials ?? "FI";
+let initialsMap: Record<string, string> = {};
+const initialsOf = (agentId: unknown) => initialsMap[String(agentId ?? "")] ?? "FI";
+async function loadInitials() {
+  const rows = await agents();
+  initialsMap = Object.fromEntries(rows.map((a) => [a.id, a.initials]));
+}
 
 async function imLabelMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
   const map = new Map<string, Record<string, unknown>>();
@@ -632,6 +657,7 @@ const imLabel = (im?: Record<string, unknown>) =>
     : "";
 
 export async function listImmeubles(): Promise<ListCard[]> {
+  await loadInitials();
   const ims = await fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]);
   const archived = await bq("immeuble", {
     constraints: [{ key: "archived", constraint_type: "equals", value: "true" }],
@@ -673,6 +699,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
 }
 
 export async function listEstimations(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("estimation", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   return rows.map((e) => {
     const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
@@ -699,6 +726,7 @@ export async function listEstimations(): Promise<ListCard[]> {
 }
 
 export async function listMandats(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((m) => (Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "")));
   return rows.map((m) => {
@@ -722,6 +750,7 @@ export async function listMandats(): Promise<ListCard[]> {
 }
 
 export async function listVisites(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("visite", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((v) => String(v.IMMEUBLE ?? "")));
   return rows.map((v) => {
@@ -747,6 +776,7 @@ export async function listVisites(): Promise<ListCard[]> {
 }
 
 export async function listOffres(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("offre", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((o) => (Array.isArray(o.IMMEUBLEs) ? String((o.IMMEUBLEs as string[])[0] ?? "") : "")));
   const today = Date.now();
@@ -777,6 +807,7 @@ export async function listOffres(): Promise<ListCard[]> {
 }
 
 export async function listSuivis(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("suivi", undefined, 300, { field: "Created Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((s) => (Array.isArray(s.IMMEUBLEs) ? String((s.IMMEUBLEs as string[])[0] ?? "") : "")));
   return rows.map((s) => {
@@ -797,6 +828,7 @@ export async function listSuivis(): Promise<ListCard[]> {
 }
 
 export async function listContacts(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("contact", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   return rows.map((c) => {
     const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
@@ -815,6 +847,7 @@ export async function listContacts(): Promise<ListCard[]> {
 }
 
 export async function listRecherches(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("recherche", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const acheteurIds = rows.map((r) => String(r.ACHETEUR ?? "")).filter(Boolean);
   const contacts = new Map<string, Record<string, unknown>>();
@@ -844,6 +877,7 @@ export async function listRecherches(): Promise<ListCard[]> {
 }
 
 export async function listQuestions(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("question", undefined, 300, { field: "Created Date", desc: true }).catch(() => []);
   const imIds = rows.map((q) => String(q.IMMEUBLE ?? "")).filter(Boolean);
   const ims = await imLabelMap(imIds);
@@ -861,6 +895,7 @@ export async function listQuestions(): Promise<ListCard[]> {
 }
 
 export async function listPropositions(): Promise<ListCard[]> {
+  await loadInitials();
   const rows = await fetchAll("proposition", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const ims = await imLabelMap(rows.map((p) => String(p.IMMEUBLE ?? "")));
   return rows.map((p) => {
@@ -955,6 +990,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
 export async function globalSearch(q: string): Promise<{
   immeubles: ListCard[]; contacts: ListCard[]; mandats: ListCard[];
 }> {
+  await loadInitials();
   const term = q.trim().toLowerCase();
   if (!term || !USE_SB) return { immeubles: [], contacts: [], mandats: [] };
   const like = `*${term.replace(/[%*]/g, "")}*`;

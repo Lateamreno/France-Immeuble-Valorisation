@@ -7,6 +7,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
+import { MOTIFS_STANDBY } from "@/lib/referentiels";
 import { AddMandatButton } from "@/components/mandat-create";
 import { EmplacementTabs } from "@/components/emplacement";
 import { TechniqueTabs } from "@/components/technique";
@@ -14,15 +15,7 @@ import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 
-const MOTIFS_STANDBY = [
-  "Attente infos",
-  "Attente documents",
-  "Temps de réflexion",
-  "Vacances",
-  "Démarche locative",
-  "Délai administratif",
-  "Autre",
-];
+
 
 type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"

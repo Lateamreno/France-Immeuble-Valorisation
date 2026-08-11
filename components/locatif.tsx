@@ -11,13 +11,10 @@ import {
   deleteBail, deleteCharge, deleteLocataire,
 } from "@/lib/bo/actions";
 
-const TYPES_BAIL = ["Nu", "Meuble", "Airbnb", "3/6/9", "Précaire", "Loi 48", "Loi 89", "Civil", "COP", "Ferme", "Tourisme"];
-const TYPES_CHARGE = [
-  "Taxe Foncière", "Taxe Bureau", "Poubelles", "Ménage", "Internet", "Gaz", "Fuel",
-  "Entretien", "Electricité", "Eau", "Assurance", "Ascenseur",
-  "Cotisation Foncière des Entreprises", "CRL", "Autre",
-];
-const TAXES = new Set(["Taxe Foncière", "Taxe Bureau", "Cotisation Foncière des Entreprises", "CRL"]);
+import { TAXES, TYPES_BAIL as TYPES_BAIL_ALL, TYPES_CHARGE } from "@/lib/referentiels";
+
+// Un bail ne peut pas être « Vide » / « n.c. » (ce sont des états de lot).
+const TYPES_BAIL = TYPES_BAIL_ALL.filter((t) => t !== "Vide" && t !== "n.c.");
 const STATUTS_BAIL = [
   { key: "en_cours", label: "Bail en cours" },
   { key: "impayes", label: "Impayés" },

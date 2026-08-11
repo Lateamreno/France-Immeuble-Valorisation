@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Rail } from "@/components/rail";
+import { getAgents } from "@/lib/bubble/server";
 import { QuickCreate } from "@/components/quick-create";
 
 export const metadata: Metadata = {
@@ -15,7 +16,7 @@ export const viewport: Viewport = {
   themeColor: "#121110",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -25,7 +26,7 @@ export default function RootLayout({
           <Rail />
           <div className="main">
             {children}
-            <QuickCreate />
+            <QuickCreate agents={await getAgents().catch(() => [])} />
           </div>
         </div>
       </body>

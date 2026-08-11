@@ -10,12 +10,7 @@ import { dmy, euros } from "@/lib/format";
 import { updateContact } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
-const PROFILS = ["Investisseur", "Marchand de biens", "Patrimonial", "Promoteur"];
-const SOURCES = [
-  "Site web", "Site - Formulaire Vendre", "Site - Formulaire Estimer", "Appel à l'agence",
-  "Linkedin", "Relationnel", "SeLoger", "Prospection", "Facebook", "LeBonCoin",
-  "Interragence", "Parrainage", "Autre",
-];
+import { CIBLES as PROFILS, SOURCES_CONTACT as SOURCES } from "@/lib/referentiels";
 
 export function ContactFiche({ d }: { d: ContactData }) {
   const c = d.c;

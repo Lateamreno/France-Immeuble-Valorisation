@@ -14,19 +14,10 @@ const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 
-const TYPES_COMPOSANT = [
-  "Parties communes", "Ascenseur", "Assainissement", "Charpente", "Chauffage", "Combles",
-  "Electricité", "Façade", "Fenêtres", "Plomberie", "Toiture", "Ventilation", "Volets", "Autre",
-];
-const MATERIAUX: Record<string, string[]> = {
-  "Façade": ["Crépi", "Briques", "Béton", "Peinture", "Pierres", "Bois", "Double peau", "Enduit", "Colombages", "Autre"],
-  "Toiture": ["Tuiles", "Ardoises", "Zinc", "Bac acier", "Terrasse", "Autre"],
-  "Fenêtres": ["Simple vitrage", "Double vitrage", "Double et Simple vitrage", "PVC", "Bois", "Alu", "Autre"],
-  "Chauffage": ["Central gaz", "Central fuel", "Individuel électrique", "Individuel gaz", "Pompe à chaleur", "Autre"],
-  "Charpente": ["Bois", "Métal", "Béton", "Autre"],
-};
-const ETATS_COMPOSANT = ["Neuf", "Rénové", "Bon", "Moyen", "Travaux", "n.c.", "Constructible", "PC purgé"];
-const ETATS_GENERAL = ["Neuf", "Rénové", "Bon état", "Etat d'usage", "Travaux", "n.c."];
+import { ETATS_BATI, MATERIAUX, TYPES_COMPOSANT, URGENCES as URGENCES_REF } from "@/lib/referentiels";
+
+const ETATS_COMPOSANT = ETATS_BATI;
+const ETATS_GENERAL = ETATS_BATI;
 const URGENCES = [
   ["Haute", "Travaux très urgents"],
   ["Moyenne", "Travaux moyennement urgents"],

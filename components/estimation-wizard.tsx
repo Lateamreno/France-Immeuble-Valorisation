@@ -11,7 +11,7 @@ import { euros } from "@/lib/format";
 import { createEstimation, setEstimationStatut, type EstimationPayload } from "@/lib/bo/actions";
 
 const STEPS = ["Immeuble", "Secteur", "Prix", "Analyse", "PDF", "Envoi"] as const;
-const CIBLES = ["Investisseur", "Marchand", "Patrimonial", "Promotion"];
+import { CIBLES } from "@/lib/referentiels";
 const SCORES = ["1", "2", "3", "4", "5"];
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
