@@ -477,6 +477,8 @@ export type BienData = {
   }[];
   lots: Record<string, unknown>[];
   parcelles: Record<string, unknown>[];
+  /** Adresse géocodée (type Bubble « adresse ») : geo.lat / geo.lng / maps_url. */
+  adr: Record<string, unknown> | null;
   secteur: Record<string, unknown> | null;
   baux: Record<string, unknown>[];
   locataires: Record<string, unknown>[];
@@ -502,7 +504,7 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
   const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
-  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, adresses, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
@@ -516,6 +518,7 @@ export async function getBien(id: string): Promise<BienData | null> {
         ? fetchAll("parcelle", [{ key: "_id", constraint_type: "in", value: parcelleIds }], 50).catch(() => [])
         : Promise.resolve([] as Record<string, unknown>[]),
       getPrixSecteur(id),
+      fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 2).catch(() => []),
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
@@ -570,6 +573,7 @@ export async function getBien(id: string): Promise<BienData | null> {
       })),
     lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
     parcelles,
+    adr: adresses[0] ?? null,
     secteur,
     baux: [...baux].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     locataires: [...locataires].sort((a, b) => String(a.formatted_name ?? "").localeCompare(String(b.formatted_name ?? ""))),

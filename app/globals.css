@@ -1041,3 +1041,30 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .khist .l { display: flex; gap: 8px; font-size: 12.5px; padding: 3px 0; color: var(--slate); }
 .khist .l .d { color: var(--gray-lt); flex: none; }
 .khist .l .m { color: var(--gray-txt); }
+
+/* Téléphone / e-mail : deux blocs distincts, copiables (retour MAV #11) */
+.cpv { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #fff; }
+.cpv .v { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px; font-size: 12.5px; color: var(--slate); }
+.cpv .v svg { width: 13px; height: 13px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; }
+.cpv button { border: 0; border-left: 1px solid var(--line); background: #f7f7f5; color: var(--gray-txt); padding: 4px 8px; font-size: 12px; }
+.cpv button:hover { background: #eee; color: var(--slate); }
+
+/* --- Cartes de situation + vignettes de points d'intérêt (retours #13 et #14) --- */
+.cartes { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 16px; align-items: flex-start; }
+.carte { margin: 0; }
+.carte-vue { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #eceae5; }
+.carte-vue img { display: block; max-width: none; }
+.carte-pin { position: absolute; left: 50%; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px #fff, 0 1px 4px rgba(0,0,0,.4); }
+.carte-credit { position: absolute; right: 3px; bottom: 2px; font-size: 9.5px; color: #555; background: rgba(255,255,255,.75); padding: 0 3px; border-radius: 2px; }
+.carte figcaption { font-size: 11.5px; color: var(--gray-txt); margin-top: 4px; text-align: center; }
+.carte-cap { width: 210px; font-size: 11.5px; color: var(--gray-txt); }
+.carte-cap p { margin: 0 0 6px; line-height: 1.35; }
+.carte-drop { border: 1px dashed #cfcfcf; border-radius: 6px; padding: 22px 8px; text-align: center; cursor: pointer; background: #fafafa; font-size: 11.5px; }
+.carte-drop:hover { background: #f2f2f2; border-color: #b5b5b5; }
+
+.vgts { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 0 84px; }
+.vgt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 1px solid #e0e0e0; background: #fff; border-radius: 4px; padding: 3px 7px; cursor: pointer; text-align: left; max-width: 190px; }
+.vgt b { font-size: 11.5px; font-weight: 600; color: var(--slate-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 176px; }
+.vgt i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
+.vgt:hover { background: #f6f6f6; }
+.vgt.on { border-color: var(--slate-2); background: #f1f3f5; }

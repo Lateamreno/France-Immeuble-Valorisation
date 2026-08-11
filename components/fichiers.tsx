@@ -7,7 +7,8 @@ import type { BienData } from "@/lib/bubble/server";
 import { dmy } from "@/lib/format";
 import { deleteDocument, deletePhoto, uploadDocument, uploadPhoto } from "@/lib/bo/actions";
 
-const TYPES_PHOTO = ["Extérieur", "Parties communes", "Lot"];
+// « Carte » : captures de situation importées depuis l'onglet Emplacement.
+const TYPES_PHOTO = ["Extérieur", "Parties communes", "Lot", "Carte"];
 
 export function AddPhotoButton({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);

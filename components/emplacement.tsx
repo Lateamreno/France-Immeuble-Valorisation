@@ -4,12 +4,13 @@
 // (réplique BO). Les POI/data INSEE se saisissent à la main via les liens de
 // recherche pré-construits ; les valeurs de secteur alimentent estimations
 // et grilles (bo_prix_secteur).
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import {
-  addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, type EmplacementPatch,
+  addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, uploadPhoto, type EmplacementPatch,
 } from "@/lib/bo/actions";
+import { CartesSituation } from "@/components/carte";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -17,8 +18,20 @@ const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", "
 const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
 
 const POIS = [
-  ["gare", "Gares"], ["bus", "Bus"], ["route", "Routes"], ["school", "Ecoles"], ["com", "Commerces"],
+  ["gare", "Gares"], ["bus", "Bus"], ["route", "Routes"], ["school", "Ecoles"],
+  ["com", "Commerces"], ["autre", "Autre"],
 ] as const;
+type CleP = (typeof POIS)[number][0];
+
+/** Points d'intérêt proposés par /api/geo (l'agent garde la main). */
+type Suggestion = { nom: string; sous?: string; distance: number; minutes: number; moyen: string };
+type Enrichissement = {
+  commune?: { nom: string; code: string; population: number } | null;
+  revenus?: number;
+  chomage?: number;
+  delinquance?: number;
+  poi?: Partial<Record<CleP, Suggestion[]>>;
+};
 const DEST_PREFIX: Record<string, string> = {
   Logement: "hab", Commerce: "com", Bureau: "bur", Parking: "parking", Cave: "cave",
 };
@@ -48,6 +61,50 @@ function AdresseTab({ b }: { b: BienData }) {
   const [zt, setZt] = useState(im.emp_zone_tendue === true);
   const [tension, setTension] = useState(S(im.emp_tension_locative));
 
+  // Enrichissement automatique (retours #14 et #15).
+  const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
+  const lat = num(geo?.lat);
+  const lon = num(geo?.lng);
+  const [sugg, setSugg] = useState<Enrichissement | null>(null);
+  const [chargement, setChargement] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const remplirPoi = (k: CleP, p: Suggestion) =>
+    setPoi((prev) => ({ ...prev, [`${k}_name`]: p.nom, [`${k}_time`]: String(p.minutes), [`${k}_moyen`]: p.moyen }));
+
+  const enrichir = async () => {
+    setChargement(true);
+    setErreur(null);
+    try {
+      const r = await fetch(
+        `/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`,
+      );
+      if (!r.ok) throw new Error(`Récupération impossible (${r.status})`);
+      const d = (await r.json()) as Enrichissement;
+      setSugg(d);
+      // On pré-remplit uniquement ce qui est vide : jamais d'écrasement d'une
+      // saisie de l'agent.
+      if (d.commune?.population && !pop) setPop(String(d.commune.population));
+      if (d.revenus && !rev) setRev(String(d.revenus));
+      setPoi((prev) => {
+        const next = { ...prev };
+        for (const [k] of POIS) {
+          const first = d.poi?.[k]?.[0];
+          if (first && !next[`${k}_name`]) {
+            next[`${k}_name`] = first.nom;
+            next[`${k}_time`] = String(first.minutes);
+            next[`${k}_moyen`] = first.moyen;
+          }
+        }
+        return next;
+      });
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setChargement(false);
+    }
+  };
+
   const save = () =>
     start(() => {
       const patch: Record<string, unknown> = {
@@ -68,23 +125,52 @@ function AdresseTab({ b }: { b: BienData }) {
       <div style={{ fontSize: 13.5, marginBottom: 10 }}>
         {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, {S(im.adresse_zipcode)} {S(im.adresse_ville)}
         {" · "}
-        <a className="lnk" href={`https://www.google.com/maps/search/${encodeURIComponent(`${S(im.adresse_numero_rue)} ${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">Google Maps ↗</a>
+        <a className="lnk" href={S(b.adr?.maps_url) || `https://www.google.com/maps/search/${encodeURIComponent(`${S(im.adresse_numero_rue)} ${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">Google Maps ↗</a>
       </div>
 
-      <div className="fsub">A proximité</div>
+      {lat !== undefined && lon !== undefined ? (
+        <CartesSituation lat={lat} lon={lon} ville={S(im.adresse_ville)}
+          onCapture={<CaptureCarte immeubleId={immeubleId} />} />
+      ) : (
+        <div className="fempty">Adresse non géocodée : les cartes de situation apparaîtront dès que la géolocalisation sera renseignée.</div>
+      )}
+
+      <div className="fsub" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        A proximité
+        {lat !== undefined && lon !== undefined && (
+          <button type="button" className="fadd" disabled={chargement} onClick={enrichir}>
+            {chargement ? "Recherche…" : "⟳ Remplir automatiquement"}
+          </button>
+        )}
+      </div>
+      {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
       <div className="mrow" style={{ marginBottom: 8 }}>
         {POIS.map(([k, label]) => (
           <a key={k} className="mopt" href={gLink(label, b)} target="_blank" rel="noreferrer">Google-{label} ↗</a>
         ))}
       </div>
       {POIS.map(([k, label]) => (
-        <div key={k} className="mrow" style={{ alignItems: "center", marginBottom: 5 }}>
-          <span style={{ width: 84, fontSize: 12.5, color: "var(--gray-txt)" }}>{label}</span>
-          <input className="min" style={{ width: 210 }} placeholder={`Nom (${label.toLowerCase()})`} value={poi[`${k}_name`]} onChange={(e) => setPoi({ ...poi, [`${k}_name`]: e.target.value })} />
-          <input className="min" style={{ width: 52 }} placeholder="min" value={poi[`${k}_time`]} onChange={(e) => setPoi({ ...poi, [`${k}_time`]: e.target.value })} />
-          <select className="min" style={{ width: 100 }} value={poi[`${k}_moyen`]} onChange={(e) => setPoi({ ...poi, [`${k}_moyen`]: e.target.value })}>
-            <option>à pied</option><option>en voiture</option>
-          </select>
+        <div key={k} style={{ marginBottom: 6 }}>
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <span style={{ width: 84, fontSize: 12.5, color: "var(--gray-txt)" }}>{label}</span>
+            <input className="min" style={{ width: 210 }} placeholder={`Nom (${label.toLowerCase()})`} value={poi[`${k}_name`]} onChange={(e) => setPoi({ ...poi, [`${k}_name`]: e.target.value })} />
+            <input className="min" style={{ width: 52 }} placeholder="min" value={poi[`${k}_time`]} onChange={(e) => setPoi({ ...poi, [`${k}_time`]: e.target.value })} />
+            <select className="min" style={{ width: 100 }} value={poi[`${k}_moyen`]} onChange={(e) => setPoi({ ...poi, [`${k}_moyen`]: e.target.value })}>
+              <option>à pied</option><option>en voiture</option>
+            </select>
+          </div>
+          {!!sugg?.poi?.[k]?.length && (
+            <div className="vgts">
+              {sugg.poi[k]!.map((p) => (
+                <button key={p.nom} type="button" title={`${p.distance} m`}
+                  className={`vgt${poi[`${k}_name`] === p.nom ? " on" : ""}`}
+                  onClick={() => remplirPoi(k, p)}>
+                  <b>{p.nom}</b>
+                  <i>{[p.sous, `${p.minutes} min ${p.moyen}`].filter(Boolean).join(" · ")}</i>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ))}
 
@@ -98,12 +184,25 @@ function AdresseTab({ b }: { b: BienData }) {
       <div className="mrow" style={{ alignItems: "center" }}>
         <label style={{ fontSize: 12 }}>Habitants INSEE <input className="min" style={{ width: 90 }} value={pop} onChange={(e) => setPop(e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Revenus médian €/an <input className="min" style={{ width: 90 }} value={rev} onChange={(e) => setRev(e.target.value)} /></label>
+        {lat !== undefined && lon !== undefined && (
+          <button type="button" className="fadd" disabled={chargement} onClick={enrichir}>
+            {chargement ? "…" : "⟳ INSEE"}
+          </button>
+        )}
         <button type="button" className={`mopt${zt ? " on" : ""}`} onClick={() => setZt(!zt)}>Zone tendue : {zt ? "Oui" : "Non"}</button>
         <select className="min" style={{ width: 130 }} value={tension} onChange={(e) => setTension(e.target.value)}>
           <option value="">Tension locative…</option>
           <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
         </select>
       </div>
+      {sugg?.commune && (
+        <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 6 }}>
+          {sugg.commune.nom} (INSEE {sugg.commune.code}) — {sugg.commune.population.toLocaleString("fr-FR")} habitants
+          {sugg.revenus !== undefined && ` · niveau de vie médian ${sugg.revenus.toLocaleString("fr-FR")} €/an`}
+          {sugg.chomage !== undefined && ` · chômage ${fr1(sugg.chomage)} %`}
+          {sugg.delinquance !== undefined && ` · délinquance ${fr1(sugg.delinquance)} ‰`}
+        </div>
+      )}
       <div className="wnav">
         <span className="sp" style={{ flex: 1 }} />
         <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={save}>
@@ -111,6 +210,51 @@ function AdresseTab({ b }: { b: BienData }) {
         </button>
       </div>
     </>
+  );
+}
+
+/** Import d'une capture de carte : elle rejoint les photos de l'immeuble
+ *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
+function CaptureCarte({ immeubleId }: { immeubleId: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [pending, start] = useTransition();
+  const [ok, setOk] = useState(false);
+
+  const envoyer = (f: File) =>
+    start(async () => {
+      const fd = new FormData();
+      fd.set("file", f);
+      await uploadPhoto(immeubleId, "Carte", null, fd);
+      setOk(true);
+    });
+
+  return (
+    <div className="carte-cap">
+      <p>
+        Collez (Ctrl+V) ou déposez une capture de carte : elle est enregistrée
+        dans les photos de l&apos;immeuble et reprise dans le dossier de vente.
+      </p>
+      <div
+        className="carte-drop"
+        onPaste={(e) => {
+          const f = [...e.clipboardData.files][0];
+          if (f) envoyer(f);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const f = e.dataTransfer.files[0];
+          if (f) envoyer(f);
+        }}
+        onClick={() => input.current?.click()}
+        tabIndex={0}
+        role="button"
+      >
+        {pending ? "Envoi…" : ok ? "✓ Capture enregistrée — recommencer" : "Cliquer, coller ou déposer une image"}
+      </div>
+      <input ref={input} type="file" accept="image/*" hidden
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) envoyer(f); }} />
+    </div>
   );
 }
 

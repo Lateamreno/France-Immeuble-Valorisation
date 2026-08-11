@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
-import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
+import { reactiver, setApporteur, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -39,6 +39,24 @@ const I = {
   phone: <><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></>,
 };
+
+/** Valeur copiable en un clic (retour MAV #11 : tel et e-mail séparés). */
+function Copiable({ valeur, type }: { valeur: string; type: "tel" | "mail" }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <span className="cpv">
+      <a href={`${type === "tel" ? "tel:" : "mailto:"}${valeur}`} className="v">
+        <svg viewBox="0 0 24 24">{type === "tel" ? I.phone : I.mail}</svg>{valeur}
+      </a>
+      <button type="button" title="Copier" onClick={(e) => {
+        e.preventDefault();
+        navigator.clipboard?.writeText(valeur);
+        setOk(true);
+        setTimeout(() => setOk(false), 1200);
+      }}>{ok ? "✓" : "⧉"}</button>
+    </span>
+  );
+}
 
 function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
@@ -165,6 +183,7 @@ function SectTitle({ icon, title, chips }: { icon: React.ReactNode; title: strin
 }
 
 function SuiviSection({ b }: { b: BienData }) {
+  const [tousSuivis, setTousSuivis] = useState(false);
   const im = b.im;
   return (
     <>
@@ -190,15 +209,12 @@ function SuiviSection({ b }: { b: BienData }) {
           <span className="fic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" /></svg></span>
           <div><div className="k">Source</div><div className="v">{String(im.source ?? "—")}</div></div>
         </div>
-        <div className="fcard off">
-          <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
-          <div><div className="k">Apporteur</div><div className="v">Non</div></div>
-        </div>
+        <ApporteurCard b={b} />
       </div>
 
       <div className="fh2">Historique des échanges ({b.suivis.length})</div>
       <AddSuiviButton b={b} />
-      {b.suivis.map((s, i) => (
+      {(tousSuivis ? b.suivis : b.suivis.slice(0, 3)).map((s, i) => (
         <div className="hitem" key={i}>
           <div className="hav">
             <span className="ava">{b.agentInitials}</span>
@@ -223,8 +239,36 @@ function SuiviSection({ b }: { b: BienData }) {
           </div>
         </div>
       ))}
+      {b.suivis.length > 3 && (
+        <button className="fadd" type="button" style={{ margin: "6px auto 0", display: "block" }}
+          onClick={() => setTousSuivis((v) => !v)}>
+          {tousSuivis ? "Réduire l'historique" : `Voir les ${b.suivis.length - 3} échanges précédents`}
+        </button>
+      )}
       {b.suivis.length === 0 && <div className="fempty">Aucun échange enregistré.</div>}
     </>
+  );
+}
+
+/** Apporteur d'affaire — cliquable pour le renseigner (retour MAV #7). */
+function ApporteurCard({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const nom = typeof b.im.apporteur_nom === "string" ? (b.im.apporteur_nom as string) : "";
+  return (
+    <button
+      type="button"
+      className={`fcard${nom ? "" : " off"}`}
+      style={{ textAlign: "left", font: "inherit", cursor: "pointer" }}
+      disabled={pending}
+      onClick={() => {
+        const v = prompt("Apporteur d'affaire (laisser vide pour retirer) :", nom);
+        if (v === null) return;
+        start(() => setApporteur(String(b.im._id), v.trim() || null));
+      }}
+    >
+      <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
+      <div><div className="k">Apporteur</div><div className="v">{nom || "Non"}</div></div>
+    </button>
   );
 }
 
@@ -242,7 +286,10 @@ function ProprioSection({ b }: { b: BienData }) {
                 {String(c["prénom"] ?? "")} {String(c.nom ?? "")}
               </Link>
             </div>
-            <div className="s">{String(c.portable_formatted ?? c.portable ?? "")} · {String(c.email ?? "")}</div>
+            <div className="s" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!!(c.portable_formatted || c.portable) && <Copiable valeur={String(c.portable_formatted ?? c.portable)} type="tel" />}
+              {!!c.email && <Copiable valeur={String(c.email)} type="mail" />}
+            </div>
           </div>
           {typeof b.im.Motif_vente === "string" && <span className="badge-o">Motif : {String(b.im.Motif_vente)}</span>}
         </Row>
