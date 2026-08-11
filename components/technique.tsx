@@ -5,6 +5,7 @@
 // OU à des composants du bâti, groupés par urgence.
 import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
+import { Picto } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
   addComposant, addTravaux, deleteComposant, deleteTravaux, updateTechnique,
@@ -348,10 +349,10 @@ export function TechniqueTabs({ b, tab: pilote, onTab }: {
       <EnTete b={b} />
       <div className="ftabs">
         <button type="button" className={`ftab${tab === "composants" ? " on" : ""}`} onClick={() => setTab("composants")}>
-          Composants{b.composants.length > 0 && <span className="n">{b.composants.length}</span>}
+          <Picto nom="composants" className="ftab-ic" />Composants{b.composants.length > 0 && <span className="n">{b.composants.length}</span>}
         </button>
         <button type="button" className={`ftab${tab === "travaux" ? " on" : ""}`} onClick={() => setTab("travaux")}>
-          Travaux{b.travaux.length > 0 && <span className="n">{b.travaux.length}</span>}
+          <Picto nom="travaux" className="ftab-ic" />Travaux{b.travaux.length > 0 && <span className="n">{b.travaux.length}</span>}
         </button>
       </div>
       {tab === "composants" && <ComposantsTab b={b} />}

@@ -1272,7 +1272,7 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .emp-ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .emp-ic:hover { color: var(--slate); }
 /* Les deux cartes sont collées : la capture de l'agent est d'un seul tenant. */
-.emp-maps { display: flex; border-top: 1px solid var(--gold-bo); position: relative; }
+.emp-maps { display: flex; flex-wrap: wrap; border-top: 1px solid var(--gold-bo); position: relative; }
 .emp-map { flex: 1 1 0; min-width: 0; height: 210px; background: #eceae5; }
 .emp-map + .emp-map { border-left: 1px solid var(--gold-bo); }
 .emp-map { position: relative; }
@@ -1336,8 +1336,13 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ville-f { display: flex; gap: 18px; justify-content: center; padding: 0 0 14px; font-size: 12.5px; color: var(--gray-txt); }
 
 /* Import d'une capture de carte */
-.carte-cap { position: absolute; right: 8px; top: 8px; }
-.carte-cap p { display: none; }
+/* Dépôt de la capture : bandeau sous les cartes plutôt que pastille posée
+   dessus, pour que la consigne se lise (retour #44). */
+.carte-cap {
+  flex: 0 0 100%; order: 9; display: flex; align-items: center; gap: 12px;
+  border-top: 1px solid var(--line); background: #faf9f6; padding: 9px 12px;
+}
+.carte-cap p { margin: 0; flex: 1; font-size: 12px; color: var(--gray-txt); line-height: 1.45; }
 .carte-drop {
   border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.94);
   padding: 6px 9px; font-size: 11.5px; color: var(--slate); cursor: pointer; white-space: nowrap;
@@ -1619,3 +1624,67 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 }
 .fsub-nav button.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
 .modal.lg { max-width: 720px; }
+
+/* Pictos des onglets de section (retour #51 : mêmes dessins que le rail). */
+.ftab-ic { display: inline-flex; width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; }
+.ftab-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ftab-ic.dot { display: none; }
+
+/* Tableau des lots collé aux deux sidebars : il sort des gouttières de la
+   fiche pour toucher 0 px de part et d'autre (retour #49). */
+.ltable-wrap.bord-a-bord {
+  margin-left: -30px; margin-right: -30px;
+  border-left: 0; border-right: 0; border-radius: 0;
+}
+/* La colonne Commentaire porte du texte long : elle seule s'enroule. */
+.ltable.v2 td.com, .ltable.v2 th.com { white-space: normal; }
+.ltable.v2 td.com .lcell { white-space: nowrap; }
+@media (max-width: 900px) { .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -14px; } }
+
+/* --- Contrôles de carte : satellite et croix directionnelle (retour #43) --- */
+.emp-map { position: relative; }
+.map-croix {
+  position: absolute; top: 8px; left: 8px; z-index: 3;
+  display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 22px);
+  border-radius: 4px; overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+}
+.map-croix button {
+  border: 0; background: rgba(255, 255, 255, .94); color: var(--slate-2);
+  font-size: 9px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0;
+}
+.map-croix button:hover { background: #fff; color: var(--slate); }
+.map-croix .h { grid-area: 1 / 2; }
+.map-croix .g { grid-area: 2 / 1; }
+.map-croix .c { grid-area: 2 / 2; font-size: 7px; }
+.map-croix .d { grid-area: 2 / 3; }
+.map-croix .b { grid-area: 3 / 2; }
+.map-sat {
+  position: absolute; bottom: 8px; left: 8px; z-index: 3;
+  width: 58px; height: 44px; padding: 0; cursor: pointer;
+  border: 2px solid #fff; border-radius: 3px; box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+  background: #6b6f76 url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 44'>\
+<rect width='60' height='44' fill='%23556'/>\
+<path d='M0 30l14-11 10 8 12-13 24 18v12H0z' fill='%236b7a52'/>\
+<circle cx='46' cy='11' r='6' fill='%238a9ba8'/></svg>") center/cover;
+  display: grid; align-items: end;
+}
+.map-sat span {
+  display: block; background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: 9px; font-weight: 700; padding: 1px 0; text-align: center;
+}
+.map-sat.on { border-color: var(--gold-bo); }
+.emp-capture { margin: 0; }
+.emp-capture img { max-width: 100%; border: 1px solid var(--line); border-radius: 5px; display: block; }
+.emp-capture figcaption {
+  display: flex; align-items: center; gap: 10px; margin-top: 7px;
+  font-size: 12.5px; color: var(--gray-txt);
+}
+
+/* Valeurs officielles non modifiables (retour #46) : elles viennent de la
+   source et sont rafraîchies à chaque ouverture de la fiche. */
+.ville-c .v.fige {
+  display: block; border: 0; background: none; padding: 0;
+  font-family: var(--font-title); font-weight: 700; color: var(--slate); cursor: default;
+}
+.ville-c .v.fige.oui { color: var(--red); }

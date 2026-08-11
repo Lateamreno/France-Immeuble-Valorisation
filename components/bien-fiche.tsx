@@ -15,6 +15,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
+import { Picto } from "@/components/pictos";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 import { ContactPicker } from "@/components/contact-picker";
 
@@ -160,7 +161,7 @@ export function BienFiche({ b }: { b: BienData }) {
                 <button key={o.key} type="button"
                   className={`srow2 sub${(sous[s.key] ?? SOUS_ONGLETS[s.key]![0].key) === o.key ? " on" : ""}`}
                   onClick={() => setSous((p) => ({ ...p, [s.key]: o.key }))}>
-                  <span className="sic2 dot" />
+                  <Picto nom={o.key} />
                   {o.label}
                 </button>
               ))}

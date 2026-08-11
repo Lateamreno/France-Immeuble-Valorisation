@@ -4,6 +4,7 @@
 // avec bandeau de synthèse par destination.
 import { useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
+import { Picto } from "@/components/pictos";
 import { dmy, euros } from "@/lib/format";
 import { LotsEditor } from "@/components/lots-editor";
 import {
@@ -477,7 +478,7 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
       <div className="ftabs">
         {tabs.map((t) => (
           <button key={t.key} type="button" className={`ftab${tab === t.key ? " on" : ""}`} onClick={() => setTab(t.key)}>
-            {t.label}{t.n > 0 ? <span className="n">{t.n}</span> : null}
+            <Picto nom={t.key} className="ftab-ic" />{t.label}{t.n > 0 ? <span className="n">{t.n}</span> : null}
           </button>
         ))}
       </div>

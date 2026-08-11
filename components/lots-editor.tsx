@@ -208,6 +208,15 @@ export function LotsEditor({ b }: { b: BienData }) {
     return m;
   }, [rows]);
 
+  /* Le BO n'affiche que les types de lots réellement présents : les zéros ne
+     prennent pas la place (retour #48). Un type décoché reste listé tant que
+     l'écran est ouvert, sinon on ne pourrait plus le rétablir — et un type
+     ajouté en cours de saisie apparaît dès le premier lot. */
+  const destVisibles = useMemo(
+    () => DESTINATIONS.filter((d) => (parDest.get(d) ?? 0) > 0 || destOff.has(d)),
+    [parDest, destOff],
+  );
+
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
 
   const totaux = useMemo(() => {
@@ -383,7 +392,7 @@ export function LotsEditor({ b }: { b: BienData }) {
         </div>
 
         <div className="ldest">
-          {DESTINATIONS.map((d) => (
+          {destVisibles.map((d) => (
             <button key={d} type="button" className={`ltog${destOff.has(d) ? "" : " on"}`} onClick={() => toggleDest(d)}>
               <span className="sw2" />
               <b>{parDest.get(d) ?? 0}</b> {PLURIEL[d] ?? d}
@@ -392,30 +401,33 @@ export function LotsEditor({ b }: { b: BienData }) {
         </div>
       </div>
 
-      <div className="ltable-wrap" style={pending ? { opacity: 0.6 } : undefined}>
+      {/* Bord à bord : le tableau sort du gouttières de la fiche pour toucher
+          les deux sidebars, comme dans le BO (retour #49). */}
+      <div className="ltable-wrap bord-a-bord" style={pending ? { opacity: 0.6 } : undefined}>
         <table className="ltable v2">
-          {/* Largeurs fixes : les colonnes de repère (bâtiment, étage, numéro)
-              ne prennent que la place de leur titre, comme dans le BO. */}
+          {/* Largeurs relevées au pixel sur la capture du BO (retour #49) :
+              les colonnes de repère restent étroites, Locataire et Commentaire
+              prennent la place — c'est là que se trouve l'information utile. */}
           <colgroup>
-            <col style={{ width: 26 }} />
-            {on("batiment") && <><col style={{ width: 38 }} /><col style={{ width: 38 }} /></>}
-            <col style={{ width: 40 }} />
-            <col style={{ width: 40 }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "7%" }} />
-            {on("sol") && <col style={{ width: "7%" }} />}
-            <col style={{ width: "7%" }} />
-            {on("baux") && <><col style={{ width: 46 }} /><col style={{ width: 46 }} /></>}
-            <col style={{ width: "8%" }} />
-            {on("m2") && <col style={{ width: "5.5%" }} />}
-            <col style={{ width: "8%" }} />
-            {on("m2") && <col style={{ width: "5.5%" }} />}
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "5.5%" }} />
-            {on("commentaire") && <col />}
-            <col style={{ width: 44 }} />
+            <col style={{ width: 22 }} />
+            {on("batiment") && <><col style={{ width: "2.1%" }} /><col style={{ width: "2.0%" }} /></>}
+            <col style={{ width: "2.1%" }} />
+            <col style={{ width: "2.3%" }} />
+            <col style={{ width: "6.8%" }} />
+            <col style={{ width: "5.2%" }} />
+            {on("sol") && <col style={{ width: "5.5%" }} />}
+            <col style={{ width: "5.2%" }} />
+            {on("baux") && <><col style={{ width: "4.6%" }} /><col style={{ width: "8.8%" }} /></>}
+            <col style={{ width: "4.9%" }} />
+            {on("m2") && <col style={{ width: "3.8%" }} />}
+            <col style={{ width: "4.9%" }} />
+            {on("m2") && <col style={{ width: "4.0%" }} />}
+            <col style={{ width: "5.2%" }} />
+            <col style={{ width: "6.1%" }} />
+            <col style={{ width: "2.7%" }} />
+            <col style={{ width: "3.6%" }} />
+            {on("commentaire") && <col style={{ width: "17.3%" }} />}
+            <col style={{ width: "2.9%" }} />
           </colgroup>
           <thead>
             <tr>

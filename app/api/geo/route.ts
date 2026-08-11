@@ -136,11 +136,12 @@ export async function GET(req: NextRequest) {
   let revenus: number | undefined;
   let chomage: number | undefined;
   let delinquance: number | undefined;
+  let zoneTendue: boolean | undefined;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const base = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
   if (commune?.code && key) {
     const r = await fetch(
-      `${base}/rest/v1/bo_villes_stats?select=niveau_vie_median_eur,taux_chomage_pct,crimes_pour_mille&code_insee=eq.${commune.code}`,
+      `${base}/rest/v1/bo_villes_stats?select=niveau_vie_median_eur,taux_chomage_pct,crimes_pour_mille,zone_tendue&code_insee=eq.${commune.code}`,
       { headers: { apikey: key, Authorization: `Bearer ${key}` }, next: { revalidate: 604800 } },
     ).catch(() => null);
     if (r?.ok) {
@@ -148,10 +149,12 @@ export async function GET(req: NextRequest) {
         niveau_vie_median_eur: number | null;
         taux_chomage_pct: number | null;
         crimes_pour_mille: number | null;
+        zone_tendue: boolean | null;
       }[];
       revenus = rows[0]?.niveau_vie_median_eur ?? undefined;
       chomage = rows[0]?.taux_chomage_pct ?? undefined;
       delinquance = rows[0]?.crimes_pour_mille ?? undefined;
+      zoneTendue = rows[0]?.zone_tendue ?? undefined;
     }
   }
 
@@ -160,6 +163,9 @@ export async function GET(req: NextRequest) {
     revenus,
     chomage,
     delinquance,
+    // Zone tendue au sens de la taxe sur les logements vacants : c'est elle
+    // qui commande le préavis d'un mois et l'encadrement à la relocation.
+    zoneTendue,
     // Clés alignées sur les champs emp_*_name du BO.
     poi: {
       gare: top([...idfmGares, ...sncf]),

@@ -4,8 +4,9 @@
 // (réplique BO). Les POI/data INSEE se saisissent à la main via les liens de
 // recherche pré-construits ; les valeurs de secteur alimentent estimations
 // et grilles (bo_prix_secteur).
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
+import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, type EmplacementPatch,
@@ -47,6 +48,7 @@ type Enrichissement = {
   revenus?: number;
   chomage?: number;
   delinquance?: number;
+  zoneTendue?: boolean;
   poi?: Partial<Record<CleP, Suggestion[]>>;
 };
 const DEST_PREFIX: Record<string, string> = {
@@ -96,6 +98,38 @@ function AdresseTab({ b }: { b: BienData }) {
     setSugg(null);
     setAvant(null);
   };
+
+  /* Les chiffres officiels (habitants, revenus, zone tendue) sont rafraîchis
+     à chaque ouverture de la fiche : ils changent au fil des millésimes INSEE
+     et une fiche ouverte des mois plus tard ne doit pas afficher une valeur
+     périmée (retour #46). Ils deviennent alors non modifiables — c'est la
+     source qui fait foi, pas la saisie. */
+  const officiel = useRef<{ pop?: number; rev?: number; zt?: boolean }>({});
+  const [verrou, setVerrou] = useState<{ pop: boolean; rev: boolean; zt: boolean }>({
+    pop: false, rev: false, zt: false,
+  });
+
+  useEffect(() => {
+    if (lat === undefined || lon === undefined) return;
+    let vivant = true;
+    fetch(`/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: Enrichissement | null) => {
+        if (!vivant || !d) return;
+        officiel.current = { pop: d.commune?.population, rev: d.revenus, zt: d.zoneTendue };
+        if (d.commune?.population) { setPop(String(d.commune.population)); }
+        if (d.revenus) { setRev(String(d.revenus)); }
+        if (d.zoneTendue !== undefined) { setZt(d.zoneTendue); }
+        setVerrou({
+          pop: !!d.commune?.population,
+          rev: d.revenus !== undefined,
+          zt: d.zoneTendue !== undefined,
+        });
+      })
+      .catch(() => undefined);
+    return () => { vivant = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lon]);
 
   const remplirPoi = (k: CleP, p: Suggestion) =>
     setPoi((prev) => ({ ...prev, [`${k}_name`]: p.nom, [`${k}_time`]: String(p.minutes), [`${k}_moyen`]: p.moyen }));
@@ -172,7 +206,8 @@ function AdresseTab({ b }: { b: BienData }) {
           </a>
         </div>
         {lat !== undefined && lon !== undefined ? (
-          <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} immeubleId={immeubleId} />
+          <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} immeubleId={immeubleId}
+            captures={b.photos.filter((p) => p.type === "Carte")} />
         ) : (
           <div className="fempty">Adresse non géocodée : les cartes de situation apparaîtront dès que la géolocalisation sera renseignée.</div>
         )}
@@ -232,14 +267,18 @@ function AdresseTab({ b }: { b: BienData }) {
             <Picto k="population" gros />
             <div className="t">Habitants</div>
             <div className="s">INSEE</div>
-            <input className="v" value={pop} onChange={(e) => setPop(e.target.value)} placeholder="—" />
+            {verrou.pop
+              ? <span className="v fige" title="Donnée INSEE, remise à jour à chaque ouverture">{Number(pop).toLocaleString("fr-FR")}</span>
+              : <input className="v" value={pop} onChange={(e) => setPop(e.target.value)} placeholder="—" />}
           </div>
           <div className="ville-c">
             <Picto k="revenus" gros />
             <div className="t">Revenus médian</div>
             <div className="s">INSEE</div>
             <span className="v-wrap">
-              <input className="v" value={rev} onChange={(e) => setRev(e.target.value)} placeholder="—" />
+              {verrou.rev
+                ? <span className="v fige" title="Donnée INSEE, remise à jour à chaque ouverture">{Number(rev).toLocaleString("fr-FR")}</span>
+                : <input className="v" value={rev} onChange={(e) => setRev(e.target.value)} placeholder="—" />}
               <i>€/an</i>
             </span>
           </div>
@@ -247,7 +286,9 @@ function AdresseTab({ b }: { b: BienData }) {
             <Picto k="tendue" gros />
             <div className="t">Zone tendue</div>
             <div className="s">Service Public</div>
-            <button type="button" className="v bt" onClick={() => setZt(!zt)}>{zt ? "Oui" : "Non"}</button>
+            {verrou.zt
+              ? <span className={`v fige${zt ? " oui" : ""}`} title="Zonage officiel de la taxe sur les logements vacants">{zt ? "Oui" : "Non"}</span>
+              : <button type="button" className="v bt" onClick={() => setZt(!zt)}>{zt ? "Oui" : "Non"}</button>}
           </div>
           <div className="ville-c">
             <Picto k="tension" gros />
@@ -588,7 +629,9 @@ export function EmplacementTabs({ b, tab: pilote, onTab }: {
     <>
       <div className="ftabs">
         {ONGLETS_EMPLACEMENT.map(({ key: k, label: l }) => (
-          <button key={k} type="button" className={`ftab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>{l}</button>
+          <button key={k} type="button" className={`ftab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
+            <PictoOnglet nom={k} className="ftab-ic" />{l}
+          </button>
         ))}
       </div>
       {tab === "adresse" && <AdresseTab b={b} />}

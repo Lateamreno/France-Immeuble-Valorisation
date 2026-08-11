@@ -96,50 +96,105 @@ export function Carte({
  * contrôles ni de bandeau).
  */
 export function CartesSituation({
-  lat, lon, adresse, immeubleId,
+  lat, lon, adresse, immeubleId, captures = [],
 }: {
   lat: number;
   lon: number;
   adresse: string;
   /** Permet d'enregistrer la capture dans les photos de l'immeuble. */
   immeubleId?: string;
+  /** Captures de carte déjà enregistrées : la plus récente remplace la carte
+   *  vivante, comme le veut le BO (retour #44). */
+  captures?: { id: string; url?: string }[];
 }) {
-  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  const q = `${lat},${lon}`;
-  const vues: { titre: string; zoom: number }[] = [
-    { titre: `La France — ${adresse}`, zoom: 5 },
-    { titre: `Le quartier — ${adresse}`, zoom: 14 },
-  ];
+  const capture = captures.find((c) => c.url);
+  const [vivante, setVivante] = useState(!capture);
+
+  if (capture && !vivante) {
+    return (
+      <div className="emp-maps">
+        <figure className="emp-capture">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={capture.url} alt={`Carte de situation — ${adresse}`} />
+          <figcaption>
+            Capture enregistrée
+            <button type="button" className="fadd" onClick={() => setVivante(true)}>
+              Reprendre la carte
+            </button>
+          </figcaption>
+        </figure>
+      </div>
+    );
+  }
 
   return (
     <div className="emp-maps">
-      {vues.map((v) => (
-        <div className="emp-map" key={v.zoom}>
-          {/* Repli visuel : si Google ne se charge pas (réseau d'entreprise,
-              extension qui bloque), la carte OpenStreetMap reste visible
-              dessous plutôt qu'un rectangle vide. */}
-          <span className="emp-map-fond">
-            <Carte lat={lat} lon={lon} zoom={v.zoom} largeur={340} hauteur={210}
-              titre={v.titre} fond={v.zoom < 8 ? "clair" : "osm"} />
-          </span>
-          {cle ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img alt={v.titre}
-              src={`https://maps.googleapis.com/maps/api/staticmap?center=${q}&zoom=${v.zoom}&size=400x300&scale=2&markers=${q}&key=${cle}`} />
-          ) : (
-            <iframe title={v.titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-              src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${v.zoom}&output=embed`} />
-          )}
-        </div>
-      ))}
-      {immeubleId && <CaptureCarte immeubleId={immeubleId} />}
+      <VueCarte titre={`La France — ${adresse}`} lat={lat} lon={lon} zoom={5} />
+      <VueCarte titre={`Le quartier — ${adresse}`} lat={lat} lon={lon} zoom={14} />
+      {immeubleId && <CaptureCarte immeubleId={immeubleId} dejaCapturee={!!capture} />}
+    </div>
+  );
+}
+
+/** Une carte avec ses contrôles : carré satellite et croix directionnelle,
+ *  comme dans le BO (retour #43). Ils agissent réellement sur la vue —
+ *  la croix décale le centre, le carré bascule en vue aérienne. */
+function VueCarte({
+  titre, lat, lon, zoom,
+}: {
+  titre: string; lat: number; lon: number; zoom: number;
+}) {
+  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const [sat, setSat] = useState(false);
+  const [dLat, setDLat] = useState(0);
+  const [dLon, setDLon] = useState(0);
+
+  // Un cran de déplacement vaut environ un quart de la vue au zoom courant.
+  const pas = 360 / 2 ** zoom / 4;
+  const cLat = lat + dLat;
+  const cLon = lon + dLon;
+  const q = `${cLat},${cLon}`;
+  const recentrer = () => { setDLat(0); setDLon(0); };
+
+  return (
+    <div className="emp-map">
+      {/* Repli visuel : si Google ne se charge pas (réseau d'entreprise,
+          extension qui bloque), la carte OpenStreetMap reste visible
+          dessous plutôt qu'un rectangle vide. */}
+      <span className="emp-map-fond">
+        <Carte lat={cLat} lon={cLon} zoom={zoom} largeur={340} hauteur={210}
+          titre={titre} fond={zoom < 8 ? "clair" : "osm"} />
+      </span>
+      {cle ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt={titre}
+          src={`https://maps.googleapis.com/maps/api/staticmap?center=${q}&zoom=${zoom}&size=400x300&scale=2&maptype=${sat ? "hybrid" : "roadmap"}&markers=${lat},${lon}&key=${cle}`} />
+      ) : (
+        <iframe title={titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
+          src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&t=${sat ? "k" : "m"}&output=embed`} />
+      )}
+
+      {/* Croix directionnelle */}
+      <div className="map-croix" aria-label="Déplacer la carte">
+        <button type="button" className="h" onClick={() => setDLat(dLat + pas)} aria-label="Vers le nord">▲</button>
+        <button type="button" className="g" onClick={() => setDLon(dLon - pas)} aria-label="Vers l&apos;ouest">◀</button>
+        <button type="button" className="c" onClick={recentrer} aria-label="Recentrer sur le bien">●</button>
+        <button type="button" className="d" onClick={() => setDLon(dLon + pas)} aria-label="Vers l&apos;est">▶</button>
+        <button type="button" className="b" onClick={() => setDLat(dLat - pas)} aria-label="Vers le sud">▼</button>
+      </div>
+
+      {/* Carré de bascule plan / satellite */}
+      <button type="button" className={`map-sat${sat ? " on" : ""}`} onClick={() => setSat(!sat)}
+        title={sat ? "Revenir au plan" : "Vue satellite"}>
+        <span>{sat ? "Plan" : "Satellite"}</span>
+      </button>
     </div>
   );
 }
 
 /** Import d'une capture de carte : elle rejoint les photos de l'immeuble
  *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
-function CaptureCarte({ immeubleId }: { immeubleId: string }) {
+function CaptureCarte({ immeubleId, dejaCapturee }: { immeubleId: string; dejaCapturee?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
   const [ok, setOk] = useState(false);
@@ -155,8 +210,9 @@ function CaptureCarte({ immeubleId }: { immeubleId: string }) {
   return (
     <div className="carte-cap">
       <p>
-        Collez (Ctrl+V) ou déposez une capture de carte : elle est enregistrée
-        dans les photos de l&apos;immeuble et reprise dans le dossier de vente.
+        {dejaCapturee
+          ? "Une capture existe déjà : en déposer une nouvelle la remplacera dans le dossier de vente."
+          : "La capture de la carte n'est pas encore faite. Collez (Ctrl+V) ou déposez-la : elle remplacera la carte ici et sera reprise dans le dossier de vente."}
       </p>
       <div
         className="carte-drop"
