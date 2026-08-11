@@ -589,6 +589,36 @@ button { font-family: inherit; cursor: pointer; }
   .fphotos { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* Édition inline du tableau des lots */
+.lcell {
+  border: 1px solid transparent; border-radius: 3px;
+  background: transparent;
+  font: inherit; font-size: 12.5px; color: var(--slate);
+  padding: 2px 4px;
+  width: 100%;
+  outline: none;
+}
+.lcell:hover { border-color: var(--line); background: #fff; }
+.lcell:focus { border-color: var(--red); background: #fff; }
+.lcell.red { color: var(--red); font-weight: 700; }
+.ltools {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--dark);
+  border-radius: 0 0 5px 5px;
+  padding: 8px 12px;
+  margin-top: -1px;
+}
+.ltb {
+  width: 34px; height: 30px;
+  border: 1px solid #5c5c61; border-radius: 4px;
+  background: #4c4c51; color: #e8e8ea;
+  display: grid; place-items: center;
+  font-size: 17px; font-weight: 700; line-height: 1;
+}
+.ltb svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+.ltb:disabled { opacity: .4; }
+.ltb.red { background: var(--red); border-color: var(--red); color: #fff; }
+
 /* ============================ Modales ============================ */
 .modal-ov {
   position: fixed; inset: 0; z-index: 60;

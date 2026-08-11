@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
+import { LotsEditor } from "@/components/lots-editor";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -316,51 +317,7 @@ function LocatifSection({ b }: { b: BienData }) {
           </>
         }
       />
-      <div className="ltable-wrap">
-        <table className="ltable">
-          <thead>
-            <tr>
-              <th className="grp" colSpan={3}>Référence</th>
-              <th className="grp" colSpan={3}>Général</th>
-              <th className="grp" colSpan={4}>Loyer</th>
-              <th className="grp" colSpan={2}>Etat</th>
-              <th className="grp" colSpan={2}>Autres</th>
-            </tr>
-            <tr>
-              <th>N°</th><th>Dest.</th><th>Type</th>
-              <th>Carrez</th><th>Au sol</th><th>Type bail</th>
-              <th>HC actuel</th><th>€/m²</th><th>HC max</th><th>€/m²</th>
-              <th>Etat</th><th>Travaux</th>
-              <th>DPE</th><th>Commentaire</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lots.map((l) => {
-              const bail = String(l.Type_bail ?? "n.c.");
-              const p1 = pct(l.loyer, l.loyer_max);
-              return (
-                <tr key={l._id as string}>
-                  <td>{String(l.numero ?? "")}</td>
-                  <td>{String(l.Destination ?? "")}</td>
-                  <td>{String(l.Type_lot ?? "")}</td>
-                  <td>{String(l.surface_carrez ?? "")} m²</td>
-                  <td>{String(l.surface_sol ?? "")} m²</td>
-                  <td className={bail === "Vide" ? "red" : undefined}>{bail}</td>
-                  <td>{euros(l.loyer) ?? <span className="na">n.a.</span>}</td>
-                  <td>{typeof l.loyer_vol_mois === "number" ? `${l.loyer_vol_mois} €` : <span className="na">n.a.</span>}</td>
-                  <td>{euros(l.loyer_max) ?? <span className="na">n.a.</span>}</td>
-                  <td>{p1 ? <span className="pct">{p1}</span> : <span className="na">—</span>}</td>
-                  <td className={String(l.Etat ?? "") === "Travaux" ? "red" : undefined}>{String(l.Etat ?? "n.c.")}</td>
-                  <td>{typeof l.travaux_m2 === "number" && l.travaux_m2 > 0 ? euros((l.travaux_m2 as number) * Number(l.surface_carrez ?? 0)) : <span className="na">n.a.</span>}</td>
-                  <td><span className="na">n.c.</span></td>
-                  <td style={{ whiteSpace: "normal", maxWidth: 180 }}>{""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {lots.length === 0 && <div className="fempty">Aucun lot saisi.</div>}
+      <LotsEditor key={`${String(im.app_modified ?? "")}-${lots.length}`} b={b} />
     </>
   );
 }

@@ -111,6 +111,79 @@ export async function setStatut(immeubleId: string, statutNum: number) {
   refresh(immeubleId);
 }
 
+/* ---------- Lots (État locatif) ---------- */
+
+export type LotPatch = Partial<{
+  batiment: string;
+  etage: string | number;
+  numero: number;
+  Destination: string;
+  Type_lot: string;
+  surface_carrez: number;
+  surface_sol: number;
+  Type_bail: string;
+  loyer: number;
+  loyer_max: number;
+  Etat: string;
+  Type_dpe: string;
+  renov_year: number;
+  commentaire: string;
+}>;
+
+const cleanPatch = (p: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== ""));
+
+/** Crée un lot pour un immeuble (numéro fourni par l'appelant). */
+export async function addLot(immeubleId: string, lot: LotPatch) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_lot",
+    p_id: id,
+    p_doc: { IMMEUBLE: immeubleId, "Created Date": now, "Modified Date": now, ...cleanPatch(lot) },
+  });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Met à jour un lot de lots modifiés (patch par lot). */
+export async function updateLots(immeubleId: string, patches: { id: string; patch: LotPatch }[]) {
+  for (const { id, patch } of patches) {
+    const clean = cleanPatch(patch);
+    if (Object.keys(clean).length === 0) continue;
+    await rpc("bo_patch_doc", { p_table: "bo_lot", p_id: id, p_patch: clean });
+  }
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
+/** Duplique un lot existant (copie des champs, nouveau numéro). */
+export async function duplicateLot(immeubleId: string, sourceLot: Record<string, unknown>, numero: number) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const copy = { ...sourceLot };
+  delete copy._id;
+  delete copy["Created Date"];
+  delete copy["Modified Date"];
+  delete copy.app_created;
+  delete copy.app_modified;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_lot",
+    p_id: id,
+    p_doc: { ...copy, IMMEUBLE: immeubleId, numero, "Created Date": now, "Modified Date": now },
+  });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
+/** Supprime un lot (copié dans bo_trash, récupérable). */
+export async function deleteLot(immeubleId: string, lotId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_lot", p_id: lotId });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
 /** Met à jour des champs simples du bien (descriptif, prix…). */
 export async function updateBien(
   immeubleId: string,
