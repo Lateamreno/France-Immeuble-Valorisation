@@ -803,6 +803,7 @@ export async function listContacts(): Promise<ListCard[]> {
     const types = Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : "";
     return {
       id: String(c._id),
+      href: `/contact/${c._id}`,
       avatar: initialsOf(c.agent),
       title: nom || String(c.entreprise_nom ?? "Contact"),
       sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
@@ -915,5 +916,37 @@ export async function getDatas() {
     offresHonosHt: offresRows.reduce((s, o) => s + num(o.honos_ht), 0),
     ventes: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").length,
     ventesHonosHt: offresRows.filter((o) => String(o.Statut ?? "") === "Vendu").reduce((s, o) => s + num(o.honos_ht), 0),
+  };
+}
+
+/* ---------- Fiche Contact ---------- */
+
+export type ContactData = {
+  c: Record<string, unknown>;
+  immeubles: Record<string, unknown>[];
+  recherches: Record<string, unknown>[];
+  propositions: Record<string, unknown>[];
+  questions: Record<string, unknown>[];
+  visites: Record<string, unknown>[];
+  offres: Record<string, unknown>[];
+  suivis: Record<string, unknown>[];
+};
+
+export async function getContact(id: string): Promise<ContactData | null> {
+  const one = await bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
+  const c = one.results[0];
+  if (!c) return null;
+  const [immeubles, recherches, propositions, questions, visites, offres, suivis] = await Promise.all([
+    fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 50).catch(() => []),
+    fetchAll("recherche", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
+    fetchAll("proposition", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
+    fetchAll("question", [{ key: "CONTACT", constraint_type: "equals", value: id }], 50).catch(() => []),
+    fetchAll("visite", [{ key: "VISITEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
+    fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
+    fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 100).catch(() => []),
+  ]);
+  return {
+    c, immeubles, recherches, propositions, questions, visites, offres,
+    suivis: [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
   };
 }

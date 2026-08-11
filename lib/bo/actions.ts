@@ -707,6 +707,52 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Contacts ---------- */
+
+export type ContactPatch = Partial<{
+  "Civilité": string;
+  "prénom": string;
+  nom: string;
+  email: string;
+  portable: string;
+  fixe: string;
+  acheteur: boolean;
+  vendeur: boolean;
+  Types: string[];
+  Source: string;
+  remarques: string;
+  entreprise_nom: string;
+  entreprise_siren: string;
+}>;
+
+/** Met à jour une fiche contact. */
+export async function updateContact(contactId: string, patch: ContactPatch) {
+  const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Object.keys(clean).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: clean });
+  revalidatePath(`/contact/${contactId}`);
+  revalidatePath("/contacts");
+}
+
+/** Crée un contact (barre de création rapide / modale). */
+export async function createContact(input: ContactPatch & { agentId?: string }) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const { agentId, ...rest } = input;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_contact",
+    p_id: id,
+    p_doc: cleanPatch({
+      ...rest,
+      agent: agentId,
+      "Created Date": now,
+      "Modified Date": now,
+    } as Record<string, unknown>),
+  });
+  revalidatePath("/contacts");
+  return id;
+}
+
 /* ---------- Fichiers (photos & documents, Supabase Storage privé) ---------- */
 
 async function uploadToBucket(path: string, file: File) {

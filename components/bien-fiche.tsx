@@ -244,7 +244,11 @@ function ProprioSection({ b }: { b: BienData }) {
         <Row>
           <span className="fic" style={{ width: 26, height: 26, color: "var(--slate-2)" }}><svg viewBox="0 0 24 24" style={{ width: "100%", height: "100%", stroke: "currentColor", fill: "none", strokeWidth: 1.8 }}>{I.user}</svg></span>
           <div className="grow">
-            <div className="t">{String(c["prénom"] ?? "")} {String(c.nom ?? "")}</div>
+            <div className="t">
+              <Link href={`/contact/${String(c._id)}`} style={{ color: "inherit" }}>
+                {String(c["prénom"] ?? "")} {String(c.nom ?? "")}
+              </Link>
+            </div>
             <div className="s">{String(c.portable_formatted ?? c.portable ?? "")} · {String(c.email ?? "")}</div>
           </div>
           {typeof b.im.Motif_vente === "string" && <span className="badge-o">Motif : {String(b.im.Motif_vente)}</span>}
