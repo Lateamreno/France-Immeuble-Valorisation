@@ -63,7 +63,9 @@ function sbParams(constraints?: Constraint[]) {
       p.append("id", `in.(${(c.value as string[]).map((v) => `"${v}"`).join(",")})`);
     else if (c.constraint_type === "greater than" && SORT_COL[c.key])
       p.append(SORT_COL[c.key], `gt.${c.value}`);
-    else if (c.constraint_type === "equals") p.append(`data->>${c.key}`, `eq.${c.value}`);
+    else if (c.constraint_type === "equals")
+      // Les clés Bubble exotiques (espaces, « 0 - IMMEUBLE ») doivent être citées côté PostgREST.
+      p.append(`data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`, `eq.${c.value}`);
     else if (c.constraint_type === "contains")
       p.append("data", `cs.${JSON.stringify({ [c.key]: [c.value] })}`);
   }
@@ -536,4 +538,24 @@ export async function getBien(id: string): Promise<BienData | null> {
     visites: [...visites].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
     offres: [...offres].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
   };
+}
+
+/** Dernier relevé « Prix du secteur » (type Bubble prix_secteur) pour un immeuble. */
+export async function getPrixSecteur(immeubleId: string): Promise<Record<string, unknown> | null> {
+  const r = await bq("prix_secteur", {
+    constraints: [{ key: "0 - IMMEUBLE", constraint_type: "equals", value: immeubleId }],
+    limit: 1,
+    sort: "Modified Date",
+    desc: true,
+  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
+  return r.results[0] ?? null;
+}
+
+/** Une estimation par id (pour la page imprimable). */
+export async function getEstimation(id: string): Promise<Record<string, unknown> | null> {
+  const r = await bq("estimation", {
+    constraints: [{ key: "_id", constraint_type: "equals", value: id }],
+    limit: 1,
+  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
+  return r.results[0] ?? null;
 }

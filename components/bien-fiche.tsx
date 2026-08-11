@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
@@ -566,14 +567,20 @@ function EstimationsSection({ b }: { b: BienData }) {
   return (
     <>
       <SectTitle icon={I.calc} title="Estimations" chips={<span className="fchip gold">{euros(b.im.prix_hai_estim) ?? euros(b.im.prix_hai)} HAI</span>} />
-      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}>+ Estimer</button>
+      <Link className="fbtn" href={`/bien/${String(b.im._id)}/estimation`} style={{ margin: "0 auto 14px", display: "flex", textDecoration: "none", width: "fit-content" }}>+ Estimer</Link>
       {b.estimations.map((e) => {
         const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
+        const isApp = String(e._id).startsWith("app_");
         return (
           <Row key={e._id as string}>
             <div className="grow">
-              <div className="t">{String(e.titre ?? "Estimation")}</div>
-              <div className="s">{dmy(e["Created Date"])}</div>
+              <div className="t">{String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}</div>
+              <div className="s">
+                {dmy(e["Created Date"])}
+                {isApp && (
+                  <> · <Link href={`/bien/${String(b.im._id)}/estimation/${String(e._id)}/imprimer`} target="_blank">version imprimable</Link></>
+                )}
+              </div>
             </div>
             <span className={st === "Envoyée" ? "badge-g" : st === "PDF manquant" ? "badge-r" : "badge-o"}>{st}</span>
           </Row>

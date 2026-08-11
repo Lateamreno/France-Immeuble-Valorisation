@@ -335,6 +335,191 @@ export async function deleteCharge(immeubleId: string, chargeId: string) {
   refresh(immeubleId);
 }
 
+/* ---------- Estimations (wizard 6 étapes) ---------- */
+
+export type EstimationPayload = {
+  titre: string;
+  // Snapshot immeuble (calculé côté wizard depuis la fiche)
+  adresse: {
+    rue?: string; numero_rue?: string; ville?: string; zipcode?: string; departement?: string;
+  };
+  imm: {
+    nb_lots_tot: number; nb_lots_hab: number; nb_lots_com: number; nb_lots_bur: number;
+    carrez_tot: number; carrez_occ: number; occupation: number;
+    loyer_hc_tot: number; loyer_hc_max_tot: number; // €/an
+    destinations: string[];
+  };
+  emp: { gare_name?: string; gare_time?: number; com_name?: string; com_time?: number };
+  charges: { tf_non_recup?: number; autres_non_recup?: number };
+  travaux: { bati?: number; lots?: number };
+  // Secteur retenu
+  ref: { loyer?: number; prix?: number; renta?: number };
+  // Prix estimé
+  prix: { hai: number; honos_pct: number };
+  // Analyse
+  scores: { emp?: string; lot?: string; bati?: string };
+  cibles: string[];
+  analyse?: string;
+  photo?: string;
+};
+
+/** Crée l'estimation figée (bo_estimation + objet de calcul bo_prix + suivi). */
+export async function createEstimation(immeubleId: string, agentId: string, p: EstimationPayload) {
+  const estId = newId();
+  const prixId = newId();
+  const now = new Date().toISOString();
+
+  const loyers = p.imm.loyer_hc_tot;
+  const loyersMax = p.imm.loyer_hc_max_tot;
+  const charges = (p.charges.tf_non_recup ?? 0) + (p.charges.autres_non_recup ?? 0);
+  const travaux = (p.travaux.bati ?? 0) + (p.travaux.lots ?? 0);
+  const hai = p.prix.hai;
+  const nv = Math.round(hai / (1 + p.prix.honos_pct / 100));
+  const honos = hai - nv;
+  const haiTravaux = hai + travaux;
+  const pc = (x: number) => Math.round(x * 1000) / 10; // % à 1 décimale
+  const out = {
+    out_rba: hai > 0 ? pc(loyers / hai) : 0,
+    out_rbm: haiTravaux > 0 ? pc(loyersMax / haiTravaux) : 0,
+    out_rna: hai > 0 ? pc((loyers - charges) / hai) : 0,
+    out_rnm: haiTravaux > 0 ? pc((loyersMax - charges) / haiTravaux) : 0,
+    out_rnaema: hai > 0 ? pc((loyers - charges) / (hai * 1.075)) : 0,
+    out_rnaemm: haiTravaux > 0 ? pc((loyersMax - charges) / (haiTravaux * 1.075)) : 0,
+    out_prix_m2: p.imm.carrez_tot > 0 ? Math.round(hai / p.imm.carrez_tot) : 0,
+    out_prix_m2_max: p.imm.carrez_tot > 0 ? Math.round(haiTravaux / p.imm.carrez_tot) : 0,
+    out_prix_nv: nv,
+    out_prix_hai_travaux: haiTravaux,
+    "out_honos_taux_%": p.prix.honos_pct,
+    out_honos_auto: true,
+  };
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_prix",
+    p_id: prixId,
+    p_doc: cleanPatch({
+      in_IMMEUBLE: immeubleId,
+      in_ESTIMATION: estId,
+      in_Data_source: "Estimation",
+      in_Motif: "Prix estimé",
+      in_prix_hai: hai,
+      in_honos_ttc: honos,
+      in_honos_auto: true,
+      in_loyers: loyers,
+      in_loyers_max: loyersMax,
+      in_charges: charges,
+      in_surface: p.imm.carrez_tot,
+      in_travaux: travaux,
+      in_ref_loyer: p.ref.loyer,
+      in_ref_prix: p.ref.prix,
+      in_ref_renta: p.ref.renta,
+      ...out,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_estimation",
+    p_id: estId,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      ESTIMATOR: agentId,
+      PRIX: prixId,
+      Statut: "2 - A envoyer",
+      titre: p.titre,
+      prix_hai: hai,
+      Cibles: p.cibles,
+      analyse: p.analyse,
+      Score_emp: p.scores.emp,
+      Score_lot: p.scores.lot,
+      Score_bati: p.scores.bati,
+      photo: p.photo,
+      adresse_rue: p.adresse.rue,
+      "adresse_numéro_rue": p.adresse.numero_rue,
+      adresse_ville: p.adresse.ville,
+      adresse_zipcode: p.adresse.zipcode,
+      adresse_departement: p.adresse.departement,
+      imm_nb_lots_tot: p.imm.nb_lots_tot,
+      imm_nb_lots_hab: p.imm.nb_lots_hab,
+      imm_nb_lots_com: p.imm.nb_lots_com,
+      imm_nb_lots_bur: p.imm.nb_lots_bur,
+      imm_carrez_tot_tot: p.imm.carrez_tot,
+      imm_carrez_occ_tot: p.imm.carrez_occ,
+      imm_occupation: p.imm.occupation,
+      imm_loyer_hc_tot: loyers,
+      imm_loyer_hc_max_tot: loyersMax,
+      imm_Destinations: p.imm.destinations,
+      emp_gare_name: p.emp.gare_name,
+      "emp_gare_durée": p.emp.gare_time,
+      emp_com_name: p.emp.com_name,
+      "emp_com_durée": p.emp.com_time,
+      charges_tf_non_recup: p.charges.tf_non_recup,
+      charges_autres_non_recup: p.charges.autres_non_recup,
+      charges_tot_non_recup: charges,
+      travaux_bati: p.travaux.bati,
+      travaux_lots: p.travaux.lots,
+      travaux_tot: travaux,
+      ref_loyer_all: p.ref.loyer,
+      ref_prix_all: p.ref.prix,
+      ref_renta_all: p.ref.renta,
+      date_maj_secteur: now,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+
+  // Le prix estimé devient le prix affiché de la fiche (comme dans le BO).
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: {
+      prix_hai_estim: hai,
+      prix_hai: hai,
+      prix_nv: nv,
+      prix_honos_ttc: honos,
+      fin_renta_ba: out.out_rba,
+      fin_renta_bm: out.out_rbm,
+      fin_renta_na: out.out_rna,
+      fin_renta_nm: out.out_rnm,
+      fin_renta_naema: out.out_rnaema,
+      fin_renta_naemm: out.out_rnaemm,
+    },
+  });
+
+  // Trace dans l'historique des échanges (comme « Estimation (640 000 €) »).
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: newId(),
+    p_doc: {
+      Type: "Estimation",
+      AGENT: agentId,
+      IMMEUBLEs: [immeubleId],
+      notes: `Estimation (${hai.toLocaleString("fr-FR")} €)`,
+      date_start: now,
+      "Created Date": now,
+      "Modified Date": now,
+      Statut: "Traité",
+    },
+  });
+
+  refresh(immeubleId);
+  return estId;
+}
+
+/** Change le statut d'une estimation (3 - Envoyée / 4 - Interne…). */
+export async function setEstimationStatut(
+  immeubleId: string,
+  estimationId: string,
+  statut: "2 - A envoyer" | "3 - Envoyée" | "4 - Interne",
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_estimation",
+    p_id: estimationId,
+    p_patch: statut === "3 - Envoyée" ? { Statut: statut, date_envoi: new Date().toISOString() } : { Statut: statut },
+  });
+  refresh(immeubleId);
+}
+
 /** Met à jour des champs simples du bien (descriptif, prix…). */
 export async function updateBien(
   immeubleId: string,
