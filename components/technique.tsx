@@ -329,8 +329,20 @@ function AddTravauxButton({ b }: { b: BienData }) {
 
 /* ---------- Conteneur ---------- */
 
-export function TechniqueTabs({ b }: { b: BienData }) {
-  const [tab, setTab] = useState<"composants" | "travaux">("composants");
+export const ONGLETS_TECHNIQUE = [
+  { key: "composants", label: "Composants" },
+  { key: "travaux", label: "Travaux" },
+] as const;
+
+export function TechniqueTabs({ b, tab: pilote, onTab }: {
+  b: BienData;
+  /** Onglet piloté depuis le rail (retour #12) ; sinon état interne. */
+  tab?: string;
+  onTab?: (t: string) => void;
+}) {
+  const [interne, setInterne] = useState("composants");
+  const tab = pilote ?? interne;
+  const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   return (
     <>
       <EnTete b={b} />

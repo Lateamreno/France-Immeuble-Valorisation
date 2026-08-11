@@ -17,6 +17,22 @@ const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
 
+/* Pictogrammes des points d'intérêt, comme dans le BO (retour #15). */
+const PICTOS: Record<string, React.ReactNode> = {
+  gare: <><path d="M6 4h12v10H6z" /><path d="M6 14l-2 5M18 14l2 5M9 19h6" /><circle cx="9" cy="10" r="1" /><circle cx="15" cy="10" r="1" /></>,
+  bus: <><rect x="4" y="4" width="16" height="12" rx="2" /><path d="M4 10h16M7 20v-2M17 20v-2" /><circle cx="8" cy="14" r="1" /><circle cx="16" cy="14" r="1" /></>,
+  route: <><path d="M8 3 5 21M16 3l3 18M12 4v3M12 11v3M12 18v3" /></>,
+  school: <><path d="m12 4 9 4-9 4-9-4z" /><path d="M7 10v5c0 1.7 2.2 3 5 3s5-1.3 5-3v-5" /></>,
+  com: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+  autre: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.6 2.6 0 1 1 3.3 2.5c-.6.2-.8.7-.8 1.3v.4M12 17v.2" /></>,
+  population: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
+  revenus: <><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>,
+  tendue: <><path d="M12 3v9l5 3" /><circle cx="12" cy="12" r="9" /></>,
+};
+const Picto = ({ k }: { k: string }) => (
+  <svg className="pic" viewBox="0 0 24 24">{PICTOS[k]}</svg>
+);
+
 const POIS = [
   ["gare", "Gares"], ["bus", "Bus"], ["route", "Routes"], ["school", "Ecoles"],
   ["com", "Commerces"], ["autre", "Autre"],
@@ -152,7 +168,7 @@ function AdresseTab({ b }: { b: BienData }) {
       {POIS.map(([k, label]) => (
         <div key={k} style={{ marginBottom: 6 }}>
           <div className="mrow" style={{ alignItems: "center" }}>
-            <span style={{ width: 84, fontSize: 12.5, color: "var(--gray-txt)" }}>{label}</span>
+            <span className="poilab"><Picto k={k} />{label}</span>
             <input className="min" style={{ width: 210 }} placeholder={`Nom (${label.toLowerCase()})`} value={poi[`${k}_name`]} onChange={(e) => setPoi({ ...poi, [`${k}_name`]: e.target.value })} />
             <input className="min" style={{ width: 52 }} placeholder="min" value={poi[`${k}_time`]} onChange={(e) => setPoi({ ...poi, [`${k}_time`]: e.target.value })} />
             <select className="min" style={{ width: 100 }} value={poi[`${k}_moyen`]} onChange={(e) => setPoi({ ...poi, [`${k}_moyen`]: e.target.value })}>
@@ -182,14 +198,14 @@ function AdresseTab({ b }: { b: BienData }) {
         <a className="mopt" href="https://www.locservice.fr/tensiometre/" target="_blank" rel="noreferrer">LOCservice - Tensiomètre ↗</a>
       </div>
       <div className="mrow" style={{ alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}>Habitants INSEE <input className="min" style={{ width: 90 }} value={pop} onChange={(e) => setPop(e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Revenus médian €/an <input className="min" style={{ width: 90 }} value={rev} onChange={(e) => setRev(e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}><Picto k="population" />Habitants INSEE <input className="min" style={{ width: 90 }} value={pop} onChange={(e) => setPop(e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}><Picto k="revenus" />Revenus médian €/an <input className="min" style={{ width: 90 }} value={rev} onChange={(e) => setRev(e.target.value)} /></label>
         {lat !== undefined && lon !== undefined && (
           <button type="button" className="fadd" disabled={chargement} onClick={enrichir}>
             {chargement ? "…" : "⟳ INSEE"}
           </button>
         )}
-        <button type="button" className={`mopt${zt ? " on" : ""}`} onClick={() => setZt(!zt)}>Zone tendue : {zt ? "Oui" : "Non"}</button>
+        <button type="button" className={`mopt${zt ? " on" : ""}`} onClick={() => setZt(!zt)}><Picto k="tendue" />Zone tendue : {zt ? "Oui" : "Non"}</button>
         <select className="min" style={{ width: 130 }} value={tension} onChange={(e) => setTension(e.target.value)}>
           <option value="">Tension locative…</option>
           <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
@@ -498,12 +514,25 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
 
 /* ---------- Conteneur ---------- */
 
-export function EmplacementTabs({ b }: { b: BienData }) {
-  const [tab, setTab] = useState<"adresse" | "parcelles" | "secteur">("adresse");
+export const ONGLETS_EMPLACEMENT = [
+  { key: "adresse", label: "Adresse" },
+  { key: "parcelles", label: "Parcelles et PLU" },
+  { key: "secteur", label: "Prix du secteur" },
+] as const;
+
+export function EmplacementTabs({ b, tab: pilote, onTab }: {
+  b: BienData;
+  /** Onglet piloté depuis le rail (retour #12) ; sinon état interne. */
+  tab?: string;
+  onTab?: (t: string) => void;
+}) {
+  const [interne, setInterne] = useState("adresse");
+  const tab = pilote ?? interne;
+  const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   return (
     <>
       <div className="ftabs">
-        {([["adresse", "Adresse"], ["parcelles", "Parcelles et PLU"], ["secteur", "Prix du secteur"]] as const).map(([k, l]) => (
+        {ONGLETS_EMPLACEMENT.map(({ key: k, label: l }) => (
           <button key={k} type="button" className={`ftab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>

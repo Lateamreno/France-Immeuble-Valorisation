@@ -1068,3 +1068,25 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .vgt i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
 .vgt:hover { background: #f6f6f6; }
 .vgt.on { border-color: var(--slate-2); background: #f1f3f5; }
+
+/* --- Rail : sous-onglets et accès Google Maps (retour #12) --- */
+.sic2.dot { display: inline-flex; align-items: center; justify-content: center; }
+.sic2.dot::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--gray-lt); }
+.smaps { display: inline-flex; align-items: center; margin-left: 6px; opacity: .55; }
+.smaps svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.smaps:hover { opacity: 1; color: var(--red); }
+.modal.lg { width: min(880px, 94vw); }
+.mapsframe { width: 100%; height: min(520px, 62vh); border: 0; display: block; background: #eceae5; }
+
+/* --- Typologie saisie librement (retour #22) --- */
+.tlibre { position: relative; display: flex; align-items: center; gap: 2px; }
+.tlibre .lcell { flex: 1; min-width: 0; }
+.tacts { display: flex; gap: 1px; }
+.tacts button { border: 1px solid #d8d8d8; background: #fff; border-radius: 3px; width: 16px; height: 17px; line-height: 1; font-size: 11px; cursor: pointer; color: var(--slate-2); padding: 0; }
+.tacts button:hover:not(:disabled) { background: #f0f0f0; }
+.tacts button:disabled { opacity: .4; cursor: default; }
+.tmsg { position: absolute; left: 0; top: 100%; z-index: 6; white-space: nowrap; font-size: 10.5px; background: #fdf6e5; border: 1px solid #e5c98a; color: #8a6d1a; border-radius: 3px; padding: 2px 5px; margin-top: 2px; }
+
+/* --- Pictogrammes des libellés Emplacement (retour #15) --- */
+.pic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -2.5px; margin-right: 5px; opacity: .65; }
+.poilab { display: inline-flex; align-items: center; width: 84px; font-size: 12.5px; color: var(--gray-txt); }

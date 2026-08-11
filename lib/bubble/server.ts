@@ -477,6 +477,8 @@ export type BienData = {
   }[];
   lots: Record<string, unknown>[];
   parcelles: Record<string, unknown>[];
+  /** Typologies de lot ajoutées à la main par les agents (retour #22). */
+  typologies: { destination: string; label: string }[];
   /** Adresse géocodée (type Bubble « adresse ») : geo.lat / geo.lng / maps_url. */
   adr: Record<string, unknown> | null;
   secteur: Record<string, unknown> | null;
@@ -504,7 +506,7 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
   const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
-  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, adresses, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, adresses, typologies, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
@@ -519,6 +521,7 @@ export async function getBien(id: string): Promise<BienData | null> {
         : Promise.resolve([] as Record<string, unknown>[]),
       getPrixSecteur(id),
       fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 2).catch(() => []),
+      getTypologies(),
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
@@ -574,6 +577,7 @@ export async function getBien(id: string): Promise<BienData | null> {
     lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
     parcelles,
     adr: adresses[0] ?? null,
+    typologies,
     secteur,
     baux: [...baux].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     locataires: [...locataires].sort((a, b) => String(a.formatted_name ?? "").localeCompare(String(b.formatted_name ?? ""))),
@@ -594,6 +598,19 @@ export async function getBien(id: string): Promise<BienData | null> {
     visites: [...visites].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
     offres: [...offres].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? ""))),
   };
+}
+
+/** Typologies de lot ajoutées par les agents, hors référentiel de base. */
+export async function getTypologies(): Promise<{ destination: string; label: string }[]> {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+  if (!key) return [];
+  const r = await fetch(`${url}/rest/v1/bo_typologie?select=destination,label&order=label`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!r?.ok) return [];
+  return (await r.json()) as { destination: string; label: string }[];
 }
 
 /** Dernier relevé « Prix du secteur » (type Bubble prix_secteur) pour un immeuble. */

@@ -9,7 +9,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
-import { addLot, deleteLot, duplicateLot, updateLots, type LotPatch } from "@/lib/bo/actions";
+import { addLot, ajouterTypologie, deleteLot, duplicateLot, updateLots, type LotPatch } from "@/lib/bo/actions";
 import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
@@ -31,11 +31,68 @@ const TYPES_PAR_DESTINATION: Record<string, string[]> = {
   Parking: ["Parking", "Box"],
   Annexe: ["WC", "Chambre", "Cave", "Box", "Autre"],
 };
-const typesFor = (dest: string, current?: string) => {
+const typesFor = (dest: string, current?: string, ajouts: { destination: string; label: string }[] = []) => {
   const base = TYPES_PAR_DESTINATION[dest] ?? TYPES_LOT;
-  const list = [...base, "Autre"];
+  const perso = ajouts.filter((t) => t.destination === dest).map((t) => t.label);
+  const list = [...base, ...perso.filter((t) => !base.includes(t)), "Autre"];
   return current && !list.includes(current) ? [current, ...list] : list;
 };
+
+/** Cellule Typologie : liste filtrée par destination, et saisie libre dès que
+ *  l'agent choisit « Autre » — avec proposition d'enregistrer la nouvelle
+ *  typologie, doublons contrôlés (retour MAV #22). */
+function CelluleTypologie({
+  valeur, destination, ajouts, onChange,
+}: {
+  valeur: string;
+  destination: string;
+  ajouts: { destination: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  const liste = typesFor(destination, valeur, ajouts);
+  // Contrôle de doublon fait sur le référentiel seul : la valeur en cours de
+  // saisie ne doit pas se déclarer elle-même en doublon.
+  const reference = typesFor(destination, undefined, ajouts).filter((t) => t !== "Autre");
+  const [libre, setLibre] = useState(false);
+  const [texte, setTexte] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!libre) {
+    return (
+      <select className="lcell" value={valeur}
+        onChange={(e) => {
+          if (e.target.value === "Autre") { setLibre(true); setTexte(""); setMsg(null); }
+          else onChange(e.target.value);
+        }}>
+        <option value="" />
+        {liste.map((o) => <option key={o}>{o}</option>)}
+      </select>
+    );
+  }
+
+  const enregistrer = () =>
+    start(async () => {
+      const r = await ajouterTypologie(destination, texte, reference);
+      setMsg(r.message);
+      if (r.ok) { onChange(texte.trim()); setLibre(false); }
+    });
+
+  return (
+    <div className="tlibre">
+      <input className="lcell" autoFocus value={texte} placeholder="Typologie…"
+        onChange={(e) => { setTexte(e.target.value); setMsg(null); }}
+        onBlur={() => { if (texte.trim()) onChange(texte.trim()); }}
+        onKeyDown={(e) => { if (e.key === "Escape") setLibre(false); }} />
+      <span className="tacts">
+        <button type="button" title="Enregistrer cette typologie pour les prochains lots"
+          disabled={pending || texte.trim().length < 2} onClick={enregistrer}>+</button>
+        <button type="button" title="Revenir à la liste" onClick={() => setLibre(false)}>↺</button>
+      </span>
+      {msg && <span className="tmsg">{msg}</span>}
+    </div>
+  );
+}
 
 type Row = {
   id: string; isNew: boolean;
@@ -355,10 +412,8 @@ export function LotsEditor({ b }: { b: BienData }) {
                     </select>
                   </td>
                   <td>
-                    <select className="lcell" value={r.Type_lot} onChange={(e) => edit(r.id, "Type_lot", e.target.value)}>
-                      <option value="" />
-                      {typesFor(r.Destination, r.Type_lot).map((o) => <option key={o}>{o}</option>)}
-                    </select>
+                    <CelluleTypologie valeur={r.Type_lot} destination={r.Destination}
+                      ajouts={b.typologies} onChange={(v) => edit(r.id, "Type_lot", v)} />
                   </td>
                   <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
                   {on("sol") && <td className="na"><input className="lcell num" value={r.surface_sol} onChange={(e) => edit(r.id, "surface_sol", e.target.value)} /><i>m²</i></td>}

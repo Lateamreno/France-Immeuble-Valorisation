@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { reactiver, setApporteur, updateBien } from "@/lib/bo/actions";
-import { LocatifTabs } from "@/components/locatif";
+import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
-import { EmplacementTabs } from "@/components/emplacement";
-import { TechniqueTabs } from "@/components/technique";
+import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
+import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
@@ -38,6 +39,16 @@ const I = {
   note: <><path d="M4 4h16v12l-4 4H4z" /><path d="M16 20v-4h4" /></>,
   phone: <><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></>,
+  maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
+};
+
+/** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
+ *  section ouvre directement ses sous-menus, sans perdre les onglets
+ *  horizontaux du contenu. */
+const SOUS_ONGLETS: Partial<Record<SectionKey, readonly { key: string; label: string }[]>> = {
+  emplacement: ONGLETS_EMPLACEMENT,
+  locatif: ONGLETS_LOCATIF,
+  technique: ONGLETS_TECHNIQUE,
 };
 
 /** Valeur copiable en un clic (retour MAV #11 : tel et e-mail séparés). */
@@ -64,6 +75,8 @@ function Row({ children }: { children: React.ReactNode }) {
 
 export function BienFiche({ b }: { b: BienData }) {
   const [sect, setSect] = useState<SectionKey>("suivi");
+  const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
+  const majSous = (k: SectionKey) => (t: string) => setSous((p) => ({ ...p, [k]: t }));
   const im = b.im;
   const ok = (k: string) => im[k] === true;
 
@@ -93,9 +106,9 @@ export function BienFiche({ b }: { b: BienData }) {
         <div className={`fiche-inner${sect === "locatif" ? " wide" : ""}`}>
           {sect === "suivi" && <SuiviSection b={b} />}
           {sect === "proprietaire" && <ProprioSection b={b} />}
-          {sect === "emplacement" && <EmplacementSection b={b} />}
-          {sect === "locatif" && <LocatifSection b={b} />}
-          {sect === "technique" && <TechniqueSection b={b} />}
+          {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
+          {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+          {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
           {sect === "prix" && <PrixSection b={b} />}
           {sect === "photos" && <PhotosSection b={b} />}
           {sect === "estimations" && <EstimationsSection b={b} />}
@@ -134,11 +147,22 @@ export function BienFiche({ b }: { b: BienData }) {
         )}
         <nav>
           {sections.map((s) => (
-            <button key={s.key} type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => setSect(s.key)}>
-              <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
-              {s.label}
-              <span className="right">{s.indicator}</span>
-            </button>
+            <div key={s.key}>
+              <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => setSect(s.key)}>
+                <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
+                {s.label}
+                {s.key === "emplacement" && <MapsBtn b={b} />}
+                <span className="right">{s.indicator}</span>
+              </button>
+              {sect === s.key && SOUS_ONGLETS[s.key]?.map((o) => (
+                <button key={o.key} type="button"
+                  className={`srow2 sub${(sous[s.key] ?? SOUS_ONGLETS[s.key]![0].key) === o.key ? " on" : ""}`}
+                  onClick={() => setSous((p) => ({ ...p, [s.key]: o.key }))}>
+                  <span className="sic2 dot" />
+                  {o.label}
+                </button>
+              ))}
+            </div>
           ))}
           <div className="srow2" style={{ cursor: "default" }}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.folder}</svg></span>
@@ -170,6 +194,57 @@ export function BienFiche({ b }: { b: BienData }) {
         </div>
       </aside>
     </div>
+  );
+}
+
+/** Icône Google Maps du rail (retour MAV #12) : ouvre l'immeuble dans une
+ *  fenêtre, sans quitter la page en cours. */
+function MapsBtn({ b }: { b: BienData }) {
+  const [ouvert, setOuvert] = useState(false);
+  const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
+  const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`.trim();
+  const q = geo?.lat !== undefined && geo?.lng !== undefined ? `${geo.lat},${geo.lng}` : adresse;
+  const lien = String(b.adr?.maps_url ?? "") || `https://www.google.com/maps/search/${encodeURIComponent(adresse)}`;
+  const [mode, setMode] = useState<"plan" | "rue">("plan");
+  // Avec une clé Google, on utilise l'API Embed officielle, qui sait afficher
+  // la façade en Street View ; sans clé, l'embed public affiche le plan.
+  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const src = cle
+    ? mode === "rue"
+      ? `https://www.google.com/maps/embed/v1/streetview?key=${cle}&location=${encodeURIComponent(q)}&fov=80`
+      : `https://www.google.com/maps/embed/v1/place?key=${cle}&q=${encodeURIComponent(q)}&zoom=18`
+    : `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=18&output=embed`;
+
+  return (
+    <>
+      <span className="smaps" title="Voir l'immeuble sur Google Maps" role="button" tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); setOuvert(true); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setOuvert(true); } }}>
+        <svg viewBox="0 0 24 24">{I.maps}</svg>
+      </span>
+      {ouvert && createPortal(
+        <div className="modal-ov" onClick={() => setOuvert(false)}>
+          <div className="modal lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              {adresse || b.ville}
+              <button type="button" onClick={() => setOuvert(false)}>✕</button>
+            </div>
+            <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />
+            <div className="modal-f">
+              {cle && (
+                <span className="mrow" style={{ marginRight: 8 }}>
+                  <button type="button" className={`mopt${mode === "plan" ? " on" : ""}`} onClick={() => setMode("plan")}>Plan</button>
+                  <button type="button" className={`mopt${mode === "rue" ? " on" : ""}`} onClick={() => setMode("rue")}>Street View</button>
+                </span>
+              )}
+              <a className="mopt" href={lien} target="_blank" rel="noreferrer">Ouvrir dans Google Maps ↗</a>
+              <a className="mopt" href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">Street View ↗</a>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -311,16 +386,18 @@ function ProprioSection({ b }: { b: BienData }) {
   );
 }
 
-function EmplacementSection({ b }: { b: BienData }) {
+type PropsOnglet = { b: BienData; tab?: string; onTab?: (t: string) => void };
+
+function EmplacementSection({ b, tab, onTab }: PropsOnglet) {
   return (
     <>
       <SectTitle icon={I.pin} title="Emplacement" />
-      <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} />
+      <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }
 
-function LocatifSection({ b }: { b: BienData }) {
+function LocatifSection({ b, tab, onTab }: PropsOnglet) {
   const im = b.im;
   const lots = b.lots;
   const pct = (a?: unknown, m?: unknown) =>
@@ -329,12 +406,12 @@ function LocatifSection({ b }: { b: BienData }) {
       : undefined;
   return (
     <>
-      <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} />
+      <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }
 
-function TechniqueSection({ b }: { b: BienData }) {
+function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
   return (
     <>
       <SectTitle
@@ -347,7 +424,7 @@ function TechniqueSection({ b }: { b: BienData }) {
           </>
         }
       />
-      <TechniqueTabs key={`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`} b={b} />
+      <TechniqueTabs key={`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }

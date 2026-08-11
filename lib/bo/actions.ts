@@ -1207,3 +1207,46 @@ export async function updateBien(
   await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: clean });
   refresh(immeubleId);
 }
+
+/* ---------- Typologies personnalisées (retour MAV #22) ---------- */
+
+/** Forme normalisée servant au contrôle de doublon (sans accents ni casse). */
+const normalise = (t: string) =>
+  t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Enregistre une typologie saisie librement. Refuse un doublon, qu'il vienne
+ * du référentiel de base ou d'un ajout précédent — on compare sans tenir
+ * compte des accents, de la casse ni des espaces multiples.
+ */
+export async function ajouterTypologie(
+  destination: string,
+  label: string,
+  dejaConnues: string[],
+): Promise<{ ok: boolean; message: string }> {
+  const propre = label.trim();
+  if (propre.length < 2) return { ok: false, message: "Typologie trop courte." };
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : écriture impossible");
+
+  const cle = normalise(propre);
+  const collision = dejaConnues.find((t) => normalise(t) === cle);
+  if (collision) return { ok: false, message: `« ${collision} » existe déjà pour ${destination}.` };
+
+  const res = await fetch(`${SB_URL}/rest/v1/bo_typologie`, {
+    method: "POST",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({ destination, label: propre }),
+    cache: "no-store",
+  });
+  // 23505 = violation d'unicité : la typologie a déjà été ajoutée ailleurs.
+  if (res.status === 409) return { ok: false, message: `« ${propre} » est déjà enregistrée.` };
+  if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
+
+  refresh();
+  return { ok: true, message: `« ${propre} » ajoutée aux typologies ${destination}.` };
+}

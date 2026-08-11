@@ -450,8 +450,22 @@ function AddChargeButton({ b }: { b: BienData }) {
 
 /* ---------- Conteneur à sous-onglets ---------- */
 
-export function LocatifTabs({ b }: { b: BienData }) {
-  const [tab, setTab] = useState<"lots" | "baux" | "locataires" | "charges">("lots");
+export const ONGLETS_LOCATIF = [
+  { key: "lots", label: "Lots" },
+  { key: "baux", label: "Baux" },
+  { key: "locataires", label: "Locataires" },
+  { key: "charges", label: "Charges" },
+] as const;
+
+export function LocatifTabs({ b, tab: pilote, onTab }: {
+  b: BienData;
+  /** Onglet piloté depuis le rail (retour #12) ; sinon état interne. */
+  tab?: string;
+  onTab?: (t: string) => void;
+}) {
+  const [interne, setInterne] = useState("lots");
+  const tab = pilote ?? interne;
+  const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   const tabs = [
     { key: "lots", label: "Lots", n: b.lots.length },
     { key: "baux", label: "Baux", n: b.baux.length },
