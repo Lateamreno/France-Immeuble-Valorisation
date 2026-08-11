@@ -72,7 +72,7 @@ export function BienFiche({ b }: { b: BienData }) {
   return (
     <div className="fiche">
       <div className="fiche-main">
-        <div className="fiche-inner">
+        <div className={`fiche-inner${sect === "locatif" ? " wide" : ""}`}>
           {sect === "suivi" && <SuiviSection b={b} />}
           {sect === "proprietaire" && <ProprioSection b={b} />}
           {sect === "emplacement" && <EmplacementSection b={b} />}
@@ -282,20 +282,6 @@ function LocatifSection({ b }: { b: BienData }) {
       : undefined;
   return (
     <>
-      <SectTitle
-        icon={I.key}
-        title="Etat locatif"
-        chips={
-          <>
-            <span className="fchip">{lots.length} lots</span>
-            {typeof im.surface_carrez === "number" && im.surface_carrez > 0 && <span className="fchip">{Math.round(im.surface_carrez as number)} m²</span>}
-            {euros(im.fin_loyers_an) && <span className="fchip">{euros(im.fin_loyers_an)}/an</span>}
-            {typeof im.occupation_lots === "number" && <span className="fchip">{Math.round(im.occupation_lots as number)} %</span>}
-            {euros(im.fin_loyers_an_max) && <span className="fchip gold">{euros(im.fin_loyers_an_max)}/an</span>}
-            {euros(im.fin_travaux) && <span className="fchip">{euros(im.fin_travaux)}</span>}
-          </>
-        }
-      />
       <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} />
     </>
   );

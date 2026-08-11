@@ -29,41 +29,6 @@ function lotLabel(l: Record<string, unknown>) {
   return [`Lot ${l.numero ?? "?"}`, l.Type_lot].filter(Boolean).join(" · ");
 }
 
-/* ---------- Bandeau de synthèse ---------- */
-
-function Bandeau({ b }: { b: BienData }) {
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const l of b.lots) {
-      const d = String(l.Destination ?? "Autre") || "Autre";
-      m.set(d, (m.get(d) ?? 0) + 1);
-    }
-    return m;
-  }, [b.lots]);
-  const plural: Record<string, string> = { Logement: "Logements", Commerce: "Commerces", Bureau: "Bureaux", Cave: "Caves", Parking: "Parkings", Annexe: "Annexes" };
-  const parts = [...counts.entries()].map(([d, n]) => `${n} ${n > 1 ? plural[d] ?? d : d}`);
-
-  const carrez = b.lots.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
-  const loyerMois = b.lots.reduce((s, l) => s + (num(l.loyer) ?? 0), 0);
-  const loyerMaxMois = b.lots.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0);
-  const carrezOcc = b.lots.reduce(
-    (s, l) => s + ((num(l.loyer) ?? 0) > 0 ? num(l.surface_carrez) ?? 0 : 0), 0);
-  const m2Act = carrezOcc > 0 ? loyerMois / carrezOcc : 0;
-  const m2Max = carrez > 0 ? loyerMaxMois / carrez : 0;
-
-  return (
-    <div className="lband2">
-      <span className="dst">{parts.length ? parts.join(" · ") : "Aucun lot"}</span>
-      <span className="sp" style={{ flex: 1 }} />
-      {m2Act > 0 && (
-        <span title="Loyers moyens actuels → potentiels">
-          loyers moyens {m2Act.toFixed(m2Act < 10 ? 1 : 0).replace(".", ",")} → {m2Max.toFixed(m2Max < 10 ? 1 : 0).replace(".", ",")} €/m²/mois
-        </span>
-      )}
-    </div>
-  );
-}
-
 /* ---------- Baux ---------- */
 
 function BauxTab({ b }: { b: BienData }) {
@@ -502,12 +467,7 @@ export function LocatifTabs({ b }: { b: BienData }) {
           </button>
         ))}
       </div>
-      {tab === "lots" && (
-        <>
-          <Bandeau b={b} />
-          <LotsEditor key={`${String(b.im.app_modified ?? "")}-${b.lots.length}`} b={b} />
-        </>
-      )}
+      {tab === "lots" && <LotsEditor key={`${String(b.im.app_modified ?? "")}-${b.lots.length}`} b={b} />}
       {tab === "baux" && <BauxTab b={b} />}
       {tab === "locataires" && <LocatairesTab b={b} />}
       {tab === "charges" && <ChargesTab b={b} />}
