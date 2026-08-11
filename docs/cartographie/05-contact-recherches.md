@@ -36,7 +36,10 @@ Barre inférieure de création rapide, permanente sur tous les écrans : **+ Con
 ### 05.11.24 — Liste des contacts
 - Titre : **Contacts**. Onglet/filtre **« Toutes »** + filtre **« Contacts suivis par Marc-Antoine »**.
 - Barre de recherche : **« Recherchez un contact... »** + bouton **« Réinitialiser »**.
-- Compteur : **« 42793 résultats »**. Pagination : **« Page 1/280 »**, **« 10 éléments par page »** (incohérence apparente : 42 793 résultats ≠ 280 pages × 10 — la pagination semble porter sur la liste filtrée « suivis par Marc-Antoine »).
+- Compteur affiché : **« 42793 résultats »**, pagination **« Page 1/280 »**, **« 10 éléments par page »**.
+  **Compteur faux — vérifié le 11/08/26 :** la base ne contient que **3 789 contacts**
+  (API Bubble : 3 789 · miroir `bo_contact` : 3 789 · compteur du BO confirmé par MAV : 3 789).
+  Ni 42 793 ni 280 pages ne correspondent à quoi que ce soit. À ne pas reprendre comme volumétrie.
 - Liste sous forme de cartes/lignes, chacune avec :
   - Nom complet (ex. **M. Tahar IKHETEAH**, Thibaud VATAIRE, William SANAA, PIERRE SURAULT, Thierry LESVENTES, David LAMBERT, Thierry CHERBONNIER ×2 — **doublon visible**, Mathieu VEAU, + un contact au nom illisible/corrompu type spam)
   - Type : **« Particulier »** (seul type visible sur cette page)
@@ -106,10 +109,10 @@ Barre inférieure de création rapide, permanente sur tous les écrans : **+ Con
 
 ## 3. À améliorer
 
-- **Dédoublonnage** : doublon flagrant (Thierry CHERBONNIER ×2) dans les 42 793 contacts ; aucune détection/fusion visible.
+- **Dédoublonnage** : doublon flagrant (Thierry CHERBONNIER ×2) ; aucune détection/fusion visible.
 - **Qualité des données** : casse non normalisée des noms, contacts spam manifestes en base, numéros sans format uniforme, aucune validation e-mail/téléphone visible.
 - **Bug d'horodatage** : « il y a -5 jours ».
-- **Volumétrie sans segmentation** : 42 793 contacts, un seul filtre (« suivis par ») + recherche texte. Pas de filtres par profil, code de qualification, source, date de dernière activité, tags.
+- **Volumétrie sans segmentation** : 3 789 contacts, un seul filtre (« suivis par ») + recherche texte. Pas de filtres par profil, code de qualification, source, date de dernière activité, tags.
 - **Code de qualification cryptique** (« C ») ; à transformer en statut lisible avec historique.
 - **Onglets en silo** : pas de timeline unifiée du contact ; il faut cliquer 8 onglets pour reconstituer l'historique.
 - **« Interragence »** : faute + concept à clarifier (inter-agence ?).
