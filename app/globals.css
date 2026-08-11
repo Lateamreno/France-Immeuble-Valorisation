@@ -783,3 +783,82 @@ a.lrow:hover { border-color: var(--gray-lt); }
 .lmid .ls { font-size: 12.5px; color: var(--gray-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lright { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12.5px; font-weight: 700; color: var(--slate); white-space: nowrap; }
 .lst-pager { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray-txt); margin-top: 10px; }
+
+/* --- Mode Revue (retours de recette posés sur les écrans) --- */
+body.rv-armed, body.rv-armed * { cursor: crosshair !important; }
+body.rv-armed::after {
+  content: "Mode Revue — cliquez sur la zone concernée (Échap pour annuler)";
+  position: fixed; inset: 0 0 auto 0; z-index: 998;
+  background: rgba(214, 0, 0, .92); color: #fff;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  text-align: center; padding: 6px;
+}
+body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
+
+.rv-fab {
+  position: fixed; right: 16px; bottom: calc(var(--bottbar-h) + 14px); z-index: 999;
+  display: flex; align-items: center; gap: 6px;
+}
+.rv-btn {
+  border: 0; border-radius: 20px; padding: 9px 16px;
+  background: var(--slate); color: #fff;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .22);
+}
+.rv-btn:hover { background: #38434e; }
+.rv-btn.on { background: var(--red); }
+.rv-chip {
+  border: 1px solid var(--line); background: #fff; color: var(--slate);
+  border-radius: 20px; padding: 7px 12px; font-size: 12px; font-weight: 600;
+  text-decoration: none; box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+}
+
+.rv-pin {
+  position: absolute; z-index: 997;
+  transform: translate(-50%, -50%);
+  width: 22px; height: 22px; border-radius: 50% 50% 50% 2px;
+  background: var(--orange); color: #fff;
+  font-size: 11px; font-weight: 700; font-family: var(--font-body);
+  display: grid; place-items: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  cursor: help;
+}
+.rv-pin.draft { background: var(--red); z-index: 1001; }
+
+.rv-panel {
+  position: fixed; right: 16px; bottom: calc(var(--bottbar-h) + 60px); z-index: 1000;
+  width: 380px; max-width: calc(100vw - 32px);
+  background: #fff; border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+  display: flex; flex-direction: column; max-height: 78vh;
+}
+.rv-head {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--slate); color: #fff; border-radius: 7px 7px 0 0;
+  padding: 10px 14px; font-family: var(--font-title); font-size: 13.5px; font-weight: 600;
+}
+.rv-head button { border: 0; background: none; color: #fff; font-size: 14px; }
+.rv-body { padding: 12px 14px; overflow: auto; }
+.rv-body .mrow { margin-bottom: 8px; }
+.rv-target {
+  font-size: 12px; color: var(--gray-txt); background: #f6f6f4;
+  border-radius: 4px; padding: 6px 9px; margin-bottom: 10px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rv-paste {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px dashed var(--line); border-radius: 5px; padding: 8px;
+  margin-top: 8px; font-size: 12px; color: var(--gray-txt);
+}
+.rv-paste img { max-height: 90px; border-radius: 4px; border: 1px solid var(--line); }
+.rv-foot { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); }
+
+/* Fiche de retour dans la page /revue */
+.fb { display: flex; gap: 12px; border: 1px solid var(--line-lt); border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+.fb.corrige { opacity: .55; }
+.fb .fb-gr { flex: none; width: 8px; border-radius: 4px; }
+.fb .fb-main { flex: 1; min-width: 0; }
+.fb .fb-meta { font-size: 11.5px; color: var(--gray-lt); margin-bottom: 4px; }
+.fb .fb-txt { font-size: 13.5px; color: var(--slate); white-space: pre-wrap; }
+.fb .fb-zone { font-size: 12px; color: var(--gray-txt); margin-top: 4px; }
+.fb img.fb-shot { max-width: 220px; max-height: 150px; border: 1px solid var(--line); border-radius: 4px; }
