@@ -335,6 +335,92 @@ export async function deleteCharge(immeubleId: string, chargeId: string) {
   refresh(immeubleId);
 }
 
+/* ---------- Emplacement (adresse / parcelles-PLU / prix du secteur) ---------- */
+
+export type EmplacementPatch = Partial<{
+  emp_gare_name: string; emp_gare_time: number; emp_gare_moyen: string;
+  emp_bus_name: string; emp_bus_time: number; emp_bus_moyen: string;
+  emp_route_name: string; emp_route_time: number; emp_route_moyen: string;
+  emp_school_name: string; emp_school_time: number; emp_school_moyen: string;
+  emp_com_name: string; emp_com_time: number; emp_com_moyen: string;
+  emp_autre_name: string; emp_autre_time: number; emp_autre_moyen: string;
+  emp_population: number; emp_revenus: number;
+  emp_zone_tendue: boolean; emp_tension_locative: string;
+  plu_zone: string; plu_Type_zone: string; plu_hauteur: number; plu_emprise: number;
+}>;
+
+/** Met à jour les données d'emplacement / PLU de l'immeuble. */
+export async function updateEmplacement(immeubleId: string, patch: EmplacementPatch) {
+  const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Object.keys(clean).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: clean });
+  refresh(immeubleId);
+}
+
+/** Ajoute une parcelle cadastrale (liée via le tableau PARCELLEs de l'immeuble). */
+export async function addParcelle(
+  immeubleId: string,
+  input: { ref_cadastre: string; superficie?: number; facade?: number },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_parcelle",
+    p_id: id,
+    p_doc: cleanPatch({ ...input, "Created Date": now, "Modified Date": now }),
+  });
+  await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "PARCELLEs", p_value: id });
+  refresh(immeubleId);
+}
+
+/** Retire une parcelle (corbeille + retrait du tableau PARCELLEs). */
+export async function deleteParcelle(immeubleId: string, parcelleId: string) {
+  await rpc("bo_delete_doc", { p_table: "bo_parcelle", p_id: parcelleId });
+  await rpc("bo_remove_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "PARCELLEs", p_value: parcelleId });
+  refresh(immeubleId);
+}
+
+const DEST_PREFIX: Record<string, string> = {
+  Logement: "hab", Commerce: "com", Bureau: "bur", Parking: "parking", Cave: "cave",
+};
+
+/** Enregistre les valeurs de secteur d'une destination (modale « Modifier les
+ *  valeurs du secteur ») dans le relevé prix_secteur de l'immeuble, et
+ *  recalcule les valeurs globales (moyenne pondérée par la surface des lots). */
+export async function saveSecteurDest(
+  immeubleId: string,
+  secteurId: string | null,
+  dest: string,
+  values: { loyer?: number; prix?: number; renta?: number; commentaire?: string },
+  poids: { dest: string; carrez: number }[],
+) {
+  const prefix = DEST_PREFIX[dest] ?? "autre";
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = cleanPatch({
+    [`${prefix}_loyer_retenu`]: values.loyer,
+    [`${prefix}_prix_retenu`]: values.prix,
+    [`${prefix}_renta_retenu`]: values.renta,
+    [`${prefix}_commentaire`]: values.commentaire,
+    "0 - date": now,
+  });
+
+  let id = secteurId;
+  if (!id) {
+    id = newId();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_prix_secteur",
+      p_id: id,
+      p_doc: { "0 - IMMEUBLE": immeubleId, "Created Date": now, "Modified Date": now, ...patch },
+    });
+  } else {
+    await rpc("bo_patch_doc", { p_table: "bo_prix_secteur", p_id: id, p_patch: patch });
+  }
+
+  // Globaux « 0 - … » : moyenne des <dest>_*_retenu pondérée par la surface.
+  await rpc("bo_secteur_recompute_globals", { p_id: id, p_poids: poids });
+  refresh(immeubleId);
+}
+
 /* ---------- Estimations (wizard 6 étapes) ---------- */
 
 export type EstimationPayload = {

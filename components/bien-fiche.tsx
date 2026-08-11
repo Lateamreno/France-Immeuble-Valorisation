@@ -8,6 +8,7 @@ import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
 import { AddMandatButton } from "@/components/mandat-create";
+import { EmplacementTabs } from "@/components/emplacement";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -262,36 +263,10 @@ function ProprioSection({ b }: { b: BienData }) {
 }
 
 function EmplacementSection({ b }: { b: BienData }) {
-  const im = b.im;
-  const emp: [string, unknown, unknown, unknown][] = [
-    ["Gare", im.emp_gare_name, im.emp_gare_time, im.emp_gare_moyen],
-    ["Bus", im.emp_bus_name, im.emp_bus_time, im.emp_bus_moyen],
-    ["Routes", im.emp_route_name, im.emp_route_time, im.emp_route_moyen],
-    ["Ecoles", im.emp_school_name, im.emp_school_time, im.emp_school_moyen],
-    ["Commerces", im.emp_com_name, im.emp_com_time, im.emp_com_moyen],
-  ];
   return (
     <>
       <SectTitle icon={I.pin} title="Emplacement" />
-      <Row>
-        <div className="grow">
-          <div className="t">{String(im.adresse ?? `${b.adresse}, ${b.ville}`)}</div>
-          <div className="s">Zone PLU : {String(im.plu_zone ?? "n.c.")} ({String(im.plu_Type_zone ?? "n.c.")})</div>
-        </div>
-      </Row>
-      <div className="fh2">A proximité</div>
-      {emp.filter(([, n]) => n).map(([label, name, time, moyen]) => (
-        <Row key={label}>
-          <div className="grow"><div className="t">{label}</div><div className="s">{String(name)}</div></div>
-          <span className="badge-o">{String(time ?? "?")} min {String(moyen ?? "")}</span>
-        </Row>
-      ))}
-      <div className="fh2">Statistiques de la commune</div>
-      <div className="fcards">
-        <div className="fcard"><div><div className="k">Habitants (INSEE)</div><div className="v">{typeof im.emp_population === "number" ? im.emp_population.toLocaleString("fr-FR") : "n.c."}</div></div></div>
-        <div className="fcard"><div><div className="k">Revenus médian (INSEE)</div><div className="v">{euros(im.emp_revenus) ?? "n.c."}/an</div></div></div>
-        <div className="fcard"><div><div className="k">Zone tendue</div><div className="v">{String(im.emp_zone_tendue ?? "n.c.")}</div></div></div>
-      </div>
+      <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} />
     </>
   );
 }

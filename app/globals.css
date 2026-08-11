@@ -763,3 +763,5 @@ a.kgo { text-decoration: none; display: inline-flex; align-items: center; gap: 7
 /* --- Fiche mandat --- */
 .mhband { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .mhband .chip { background: var(--chip); color: var(--slate-2); border-radius: 3px; font-size: 12px; font-weight: 600; padding: 3px 9px; }
+
+.lnk { color: #2f6fb1; text-decoration: underline; }

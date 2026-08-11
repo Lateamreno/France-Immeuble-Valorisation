@@ -441,6 +441,8 @@ export type BienData = {
     relance?: string;
   }[];
   lots: Record<string, unknown>[];
+  parcelles: Record<string, unknown>[];
+  secteur: Record<string, unknown> | null;
   baux: Record<string, unknown>[];
   locataires: Record<string, unknown>[];
   charges: Record<string, unknown>[];
@@ -463,7 +465,8 @@ export async function getBien(id: string): Promise<BienData | null> {
   if (!im) return null;
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
-  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
+  const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, composants, travaux, photos, estimations, mandats, dossiers, propositions, visites, offres] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
@@ -473,6 +476,10 @@ export async function getBien(id: string): Promise<BienData | null> {
         ? fetchAll("charge", [{ key: "_id", constraint_type: "in", value: chargeIds }], 100).catch(() => [])
         : Promise.resolve([] as Record<string, unknown>[]),
       fetchAll("charge", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 100).catch(() => []),
+      parcelleIds.length
+        ? fetchAll("parcelle", [{ key: "_id", constraint_type: "in", value: parcelleIds }], 50).catch(() => [])
+        : Promise.resolve([] as Record<string, unknown>[]),
+      getPrixSecteur(id),
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
@@ -524,6 +531,8 @@ export async function getBien(id: string): Promise<BienData | null> {
         relance: dmy(s.date_relance),
       })),
     lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
+    parcelles,
+    secteur,
     baux: [...baux].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     locataires: [...locataires].sort((a, b) => String(a.formatted_name ?? "").localeCompare(String(b.formatted_name ?? ""))),
     charges: [...chargesById, ...chargesByIm.filter((c) => !chargesById.some((d) => d._id === c._id))]
