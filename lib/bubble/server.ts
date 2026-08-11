@@ -786,3 +786,90 @@ export async function listSuivis(): Promise<ListCard[]> {
     } satisfies ListCard;
   });
 }
+
+export async function listContacts(): Promise<ListCard[]> {
+  const rows = await fetchAll("contact", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  return rows.map((c) => {
+    const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
+    const types = Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : "";
+    return {
+      id: String(c._id),
+      avatar: initialsOf(c.agent),
+      title: nom || String(c.entreprise_nom ?? "Contact"),
+      sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
+      note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
+      group: "tous",
+      date: typeof c["Modified Date"] === "string" ? (c["Modified Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}
+
+export async function listRecherches(): Promise<ListCard[]> {
+  const rows = await fetchAll("recherche", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  const acheteurIds = rows.map((r) => String(r.ACHETEUR ?? "")).filter(Boolean);
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < acheteurIds.length; i += 100) {
+    const chunk = [...new Set(acheteurIds)].slice(i, i + 100);
+    if (!chunk.length) break;
+    const cs = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }]).catch(() => []);
+    for (const c of cs) contacts.set(String(c._id), c);
+  }
+  return rows.map((r) => {
+    const c = contacts.get(String(r.ACHETEUR ?? ""));
+    const prix =
+      typeof r.prix_min === "number" || typeof r.prix_max === "number"
+        ? `${euros(r.prix_min) ?? "0 €"} à ${euros(r.prix_max) ?? "∞"}`
+        : "";
+    return {
+      id: String(r._id),
+      avatar: initialsOf(r.agent),
+      title: [Array.isArray(r.dpts) ? (r.dpts as string[]).join(", ") : String(r.dpts ?? ""), String(r.Cible ?? "")].filter(Boolean).join(" · ") || "Recherche",
+      sub: c ? contactLabel(c) : undefined,
+      note: [prix, typeof r.renta === "number" ? `≥ ${(r.renta as number).toLocaleString("fr-FR")} %` : ""].filter(Boolean).join(" · ") || undefined,
+      badge: r.standby === true ? { label: "En attente", tone: "orange" } : undefined,
+      group: r.archived === true ? "archivees" : "en_cours",
+      date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}
+
+export async function listQuestions(): Promise<ListCard[]> {
+  const rows = await fetchAll("question", undefined, 300, { field: "Created Date", desc: true }).catch(() => []);
+  const imIds = rows.map((q) => String(q.IMMEUBLE ?? "")).filter(Boolean);
+  const ims = await imLabelMap(imIds);
+  return rows.map((q) => ({
+    id: String(q._id),
+    href: q.IMMEUBLE ? `/bien/${q.IMMEUBLE}` : undefined,
+    avatar: initialsOf(q["suivi par"]),
+    title: `${dmy(q["Created Date"]) ?? ""} · ${q.email ?? q["téléphone"] ?? "Question"}`,
+    sub: imLabel(ims.get(String(q.IMMEUBLE ?? ""))) || undefined,
+    note: typeof q.message === "string" ? (q.message as string).slice(0, 200) : undefined,
+    badge: q.ended === true ? { label: "Clôturée", tone: "green" } : { label: "En cours", tone: "orange" },
+    group: q.ended === true ? "cloturees" : "en_cours",
+    date: typeof q["Created Date"] === "string" ? (q["Created Date"] as string) : undefined,
+  } satisfies ListCard));
+}
+
+export async function listPropositions(): Promise<ListCard[]> {
+  const rows = await fetchAll("proposition", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
+  const ims = await imLabelMap(rows.map((p) => String(p.IMMEUBLE ?? "")));
+  return rows.map((p) => {
+    const st = String(p.Statut ?? "");
+    return {
+      id: String(p._id),
+      href: p.IMMEUBLE ? `/bien/${p.IMMEUBLE}` : undefined,
+      avatar: "FI",
+      title: String(p.mail_adresse ?? "Proposition"),
+      sub: imLabel(ims.get(String(p.IMMEUBLE ?? ""))) || undefined,
+      note: [dmy(p.date_envoi) ? `envoyée le ${dmy(p.date_envoi)}` : "", String(p.Source_proposition ?? "")].filter(Boolean).join(" · ") || undefined,
+      badge: st
+        ? {
+            label: st,
+            tone: ["Offre acceptée", "Vendu", "Offre obtenue"].includes(st) ? "green" : st.startsWith("Refus") || st === "Offre refusée" ? "red" : "orange",
+          }
+        : undefined,
+      group: ["Refusée (sans offre)", "Offre refusée", "Vendu"].includes(st) ? "terminees" : "en_cours",
+      date: typeof p["Modified Date"] === "string" ? (p["Modified Date"] as string) : undefined,
+    } satisfies ListCard;
+  });
+}
