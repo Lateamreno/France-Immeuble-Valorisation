@@ -7,6 +7,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import { addSuivi, reactiver, updateBien } from "@/lib/bo/actions";
 import { LocatifTabs } from "@/components/locatif";
+import { AddMandatButton } from "@/components/mandat-create";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -595,13 +596,17 @@ function MandatsSection({ b }: { b: BienData }) {
   return (
     <>
       <SectTitle icon={I.brief} title="Mandats" />
-      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}>+ Ajouter un mandat</button>
+      <AddMandatButton b={b} />
       {b.mandats.map((m) => {
         const st = String(m.Statut ?? "");
         return (
           <Row key={m._id as string}>
             <div className="grow">
-              <div className="t">{String(m.Type ?? "Vente")} {String(m.Type_exclu ?? "")} {m.numero ? `· #${m.numero}` : "· Pas de numéro"}</div>
+              <div className="t">
+                <Link href={`/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
+                  {String(m.Type ?? "Vente")} {String(m.Type_exclu ?? "")} {m.numero ? `· #${m.numero}` : "· Pas de numéro"}
+                </Link>
+              </div>
               <div className="s">{dmy(m.date_effet)} → {dmy(m.date_fin)} · honos {euros(m.honos_ttc) ?? "n.c."}</div>
             </div>
             <span className={st === "En cours" ? "badge-g" : ["Expiré", "Annulé"].includes(st) ? "badge-r" : "badge-o"}>{st}</span>

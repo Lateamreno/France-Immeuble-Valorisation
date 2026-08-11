@@ -559,3 +559,21 @@ export async function getEstimation(id: string): Promise<Record<string, unknown>
   }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
   return r.results[0] ?? null;
 }
+
+/** Un mandat + son immeuble principal (pour la fiche mandat). */
+export async function getMandat(id: string): Promise<{
+  m: Record<string, unknown>;
+  im: Record<string, unknown> | null;
+} | null> {
+  const r = await bq("mandat", {
+    constraints: [{ key: "_id", constraint_type: "equals", value: id }],
+    limit: 1,
+  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
+  const m = r.results[0];
+  if (!m) return null;
+  const imId = Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as string[])[0] : undefined;
+  const im = imId
+    ? (await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: imId }], limit: 1 })).results[0] ?? null
+    : null;
+  return { m, im };
+}

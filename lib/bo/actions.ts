@@ -520,6 +520,119 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Mandats (registre séquentiel loi Hoguet) ---------- */
+
+export type MandatPatch = Partial<{
+  Type: string;
+  Type_exclu: string;
+  Type_personne: string;
+  Statut: string;
+  // Mandants (2 max, modèle plat du BO)
+  "prénom_m1": string; nom_m1: string; date_naissance_m1: string; "qualité_m1": string;
+  "prénom_m2": string; nom_m2: string; date_naissance_m2: string;
+  raison_sociale: string; siren: string; rcs: string; capital: number;
+  // Objet
+  occuped_yn: boolean; ref_cadastre: string; surface_terrain: number; surface_bati: number;
+  description: string;
+  // Prix
+  prix_nv: number; honos_taux: number; honos_ttc: number; prix_hai: number; Charge_hono: string;
+  // Conditions
+  date_effet: string; "durée_tot_month": number; "durée_exclu_jours": number;
+  "durée_irrevoc_days": number; renouvelable_yn: boolean; date_fin: string;
+}>;
+
+/** Crée un mandat (modale « Nouveau mandat ») rattaché à un immeuble. */
+export async function createMandat(
+  immeubleId: string,
+  agentId: string,
+  input: {
+    Type: string;
+    Type_personne: string;
+    prenom_m1?: string;
+    nom_m1?: string;
+    raison_sociale?: string;
+    remarques?: string;
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_mandat",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLEs: [immeubleId],
+      AGENT: agentId,
+      Type: input.Type,
+      Type_exclu: "Semi-exclusif",
+      Type_personne: input.Type_personne,
+      Statut: "Attente infos",
+      "prénom_m1": input.prenom_m1,
+      nom_m1: input.nom_m1,
+      raison_sociale: input.raison_sociale,
+      description: input.remarques,
+      Charge_hono: "Vendeur",
+      honos_taux: 5,
+      "durée_tot_month": 12,
+      "durée_exclu_jours": 14,
+      "durée_irrevoc_days": 14,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return id;
+}
+
+/** Met à jour la fiche mandat (onglets Mandants / Objet / Prix / Conditions). */
+export async function updateMandat(mandatId: string, immeubleId: string, patch: MandatPatch) {
+  const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Object.keys(clean).length === 0) return;
+  // Prix : recalcul HAI si net vendeur + taux fournis.
+  if (typeof clean.prix_nv === "number") {
+    const taux = typeof clean.honos_taux === "number" ? clean.honos_taux : 5;
+    clean.honos_ttc = Math.round((clean.prix_nv as number) * (taux / 100));
+    clean.prix_hai = (clean.prix_nv as number) + (clean.honos_ttc as number);
+  }
+  // Conditions : date de fin dérivée du début + durée.
+  if (typeof clean.date_effet === "string" && typeof clean["durée_tot_month"] === "number") {
+    const d = new Date(clean.date_effet as string);
+    d.setMonth(d.getMonth() + (clean["durée_tot_month"] as number));
+    clean.date_fin = d.toISOString();
+  }
+  await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: clean });
+  refresh(immeubleId);
+  revalidatePath(`/mandat/${mandatId}`);
+}
+
+/** Réserve le prochain numéro du registre (séquentiel, immuable, sans trou). */
+export async function reserveMandatNumero(mandatId: string, immeubleId: string) {
+  await rpc("bo_reserve_mandat_numero", { p_id: mandatId });
+  refresh(immeubleId);
+  revalidatePath(`/mandat/${mandatId}`);
+}
+
+/** Marque les infos mandat reçues (Attente infos → A rédiger). */
+export async function mandatInfosRecues(mandatId: string, immeubleId: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_mandat",
+    p_id: mandatId,
+    p_patch: { Statut: "A rédiger", date_infos: new Date().toISOString() },
+  });
+  refresh(immeubleId);
+  revalidatePath(`/mandat/${mandatId}`);
+}
+
+/** Annule le mandat (le numéro, s'il existe, reste au registre). */
+export async function cancelMandat(mandatId: string, immeubleId: string, motif: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_mandat",
+    p_id: mandatId,
+    p_patch: { Statut: "Annulé", motif_annulation: motif, date_annulation: new Date().toISOString() },
+  });
+  refresh(immeubleId);
+  revalidatePath(`/mandat/${mandatId}`);
+}
+
 /** Met à jour des champs simples du bien (descriptif, prix…). */
 export async function updateBien(
   immeubleId: string,
