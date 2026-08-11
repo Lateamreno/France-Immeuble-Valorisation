@@ -707,6 +707,63 @@ export async function setEstimationStatut(
   refresh(immeubleId);
 }
 
+/* ---------- Dossiers de commercialisation (versionnés) ---------- */
+
+/** Génère un dossier complet versionné (V1, V2…) — snapshot chiffré. */
+export async function createDossier(
+  immeubleId: string,
+  agentId: string,
+  input: {
+    version: number;
+    prix_hai: number;
+    honos_pct: number;
+    isPublic: boolean;
+    snapshot: {
+      surface: number; occupation: number; loyer_hc_an: number; loyer_hc_an_max: number;
+      travaux: number; ville?: string; zipcode?: string;
+      destination_principale?: string; destinations: string[];
+    };
+  },
+) {
+  const id = newId();
+  const now = new Date().toISOString();
+  const nv = Math.round(input.prix_hai / (1 + input.honos_pct / 100));
+  const s = input.snapshot;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_dossier",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      AGENT_CREATOR: agentId,
+      version: input.version,
+      last_version: true,
+      public: input.isPublic,
+      date: now,
+      prix_hai: input.prix_hai,
+      prix_nv: nv,
+      honos_ttc: input.prix_hai - nv,
+      "honos_taux_x,xx": input.honos_pct / 100,
+      surface: s.surface,
+      occupation: s.occupation,
+      loyer_hc_an: s.loyer_hc_an,
+      loyer_hc_an_max: s.loyer_hc_an_max,
+      travaux: s.travaux,
+      renta_actuelle: input.prix_hai > 0 ? Math.round((s.loyer_hc_an / input.prix_hai) * 1000) / 10 : 0,
+      renta_max: input.prix_hai + s.travaux > 0 ? Math.round((s.loyer_hc_an_max / (input.prix_hai + s.travaux)) * 1000) / 10 : 0,
+      ville: s.ville,
+      zipcode: s.zipcode,
+      Destination_principale: s.destination_principale,
+      Destinations: s.destinations,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  // Les versions précédentes ne sont plus « dernière version ».
+  await rpc("bo_dossier_demote_others", { p_immeuble: immeubleId, p_keep: id });
+  refresh(immeubleId);
+  return id;
+}
+
 /* ---------- Mandats (registre séquentiel loi Hoguet) ---------- */
 
 export type MandatPatch = Partial<{
@@ -829,6 +886,7 @@ export async function updateBien(
     prix_honos_ttc: number;
     prix_hai: number;
     Motif_vente: string;
+    notes: string;
   }>,
 ) {
   const clean = Object.fromEntries(

@@ -10,6 +10,7 @@ import { LocatifTabs } from "@/components/locatif";
 import { AddMandatButton } from "@/components/mandat-create";
 import { EmplacementTabs } from "@/components/emplacement";
 import { TechniqueTabs } from "@/components/technique";
+import { AddDossierButton } from "@/components/dossier-create";
 
 const MOTIFS_STANDBY = [
   "Attente infos",
@@ -88,12 +89,7 @@ export function BienFiche({ b }: { b: BienData }) {
           {sect === "mandats" && <MandatsSection b={b} />}
           {(sect === "dossiers" || sect === "tous-docs") && <DossiersSection b={b} />}
           {sect === "acheteurs" && <AcheteursSection b={b} />}
-          {sect === "notes" && (
-            <>
-              <SectTitle icon={I.note} title="Notes" />
-              <div className="fempty">Notes internes — à répliquer (saisie) dans une prochaine itération.</div>
-            </>
-          )}
+          {sect === "notes" && <NotesSection b={b} />}
         </div>
       </div>
 
@@ -592,12 +588,18 @@ function DossiersSection({ b }: { b: BienData }) {
   return (
     <>
       <SectTitle icon={I.pdf} title="Dossiers" />
-      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}>+ Créer un nouveau dossier</button>
+      <AddDossierButton b={b} />
       {b.dossiers.map((d, i) => (
         <Row key={d._id as string}>
           <div className="grow">
             <div className="t">Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}</div>
-            <div className="s">{dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI · {d.public ? "Public" : "Privé"}</div>
+            <div className="s">
+              {dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI · {d.public ? "Public" : "Privé"}
+              {typeof d.surface === "number" && <> · {Math.round(d.surface as number)} m² · {String(d.occupation ?? "?")} % · {String(d.renta_actuelle ?? "?")} %</>}
+              {String(d._id).startsWith("app_") && (
+                <> · <Link href={`/bien/${String(b.im._id)}/dossier/${String(d._id)}/imprimer`} target="_blank">version imprimable</Link></>
+              )}
+            </div>
           </div>
           {typeof d.pdf === "string" && d.pdf && (
             <a className="fbtn" href={(d.pdf as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
@@ -605,6 +607,40 @@ function DossiersSection({ b }: { b: BienData }) {
         </Row>
       ))}
       {b.dossiers.length === 0 && <div className="fempty">Aucun dossier.</div>}
+    </>
+  );
+}
+
+function NotesSection({ b }: { b: BienData }) {
+  const [notes, setNotes] = useState(String(b.im.notes ?? ""));
+  const [pending, start] = useTransition();
+  const dirty = notes !== String(b.im.notes ?? "");
+  return (
+    <>
+      <SectTitle icon={I.note} title="Notes" />
+      <div style={{ fontSize: 12, color: "var(--gray-lt)", marginBottom: 8 }}>
+        Mémos internes : contacts, historique, références comparables (vente, date, surface, €/m², adresse)…
+      </div>
+      <textarea
+        className="min"
+        rows={16}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder={"ex.\nVente\n880 000 €\n24/06/2019\n253 m²\nsoit 3 478 €/m²\n7 Avenue DE PARIS 94800 VILLEJUIF"}
+        style={{ fontFamily: "var(--font-body)", lineHeight: 1.55 }}
+      />
+      <div style={{ display: "flex", marginTop: 10 }}>
+        <span style={{ flex: 1 }} />
+        <button
+          className="kgo"
+          type="button"
+          disabled={!dirty || pending}
+          style={!dirty || pending ? { opacity: 0.5 } : undefined}
+          onClick={() => start(() => updateBien(String(b.im._id), { notes }))}
+        >
+          <span className="ch">›</span> Enregistrer
+        </button>
+      </div>
     </>
   );
 }
