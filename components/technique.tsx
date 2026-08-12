@@ -8,7 +8,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
-  addComposant, addTravaux, deleteComposant, deleteTravaux, updateTechnique,
+  addComposant, addTravaux, deleteComposant, deleteTravaux, updateTechnique, updateTravaux,
 } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -212,18 +212,11 @@ function TravauxTab({ b }: { b: BienData }) {
           <div key={code}>
             <div className="fsub" style={{ color: code === "Haute" ? "var(--red)" : undefined }}>{label}</div>
             {rows.map((t) => (
-              <div key={String(t._id)} className="chrow">
-                <span className="t">{objet(t) || "Travaux"}</span>
-                <span className="c">{S(t.description)}</span>
-                {t.YN_devis === true && <span className="badge-o">Devis</span>}
-                <span className="sp" style={{ flex: 1 }} />
-                <span className="v">{euros(t.montant) ?? "n.c."}</span>
-                <button className="xdel" type="button" title="Supprimer"
-                  onClick={() => {
-                    if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
-                    start(() => deleteTravaux(immeubleId, String(t._id)));
-                  }}>✕</button>
-              </div>
+              <LigneTravaux key={String(t._id)} t={t} immeubleId={immeubleId} objet={objet(t)}
+                onDelete={() => {
+                  if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
+                  start(() => deleteTravaux(immeubleId, String(t._id)));
+                }} />
             ))}
           </div>
         );
@@ -235,16 +228,11 @@ function TravauxTab({ b }: { b: BienData }) {
           <div>
             <div className="fsub">Sans urgence renseignée</div>
             {sans.map((t) => (
-              <div key={String(t._id)} className="chrow">
-                <span className="t">{objet(t) || "Travaux"}</span>
-                <span className="c">{S(t.description)}</span>
-                <span className="sp" style={{ flex: 1 }} />
-                <span className="v">{euros(t.montant) ?? "n.c."}</span>
-                <button className="xdel" type="button" onClick={() => {
+              <LigneTravaux key={String(t._id)} t={t} immeubleId={immeubleId} objet={objet(t)}
+                onDelete={() => {
                   if (!confirm("Supprimer ces travaux ?")) return;
                   start(() => deleteTravaux(immeubleId, String(t._id)));
-                }}>✕</button>
-              </div>
+                }} />
             ))}
           </div>
         );
@@ -329,6 +317,47 @@ function AddTravauxButton({ b }: { b: BienData }) {
 }
 
 /* ---------- Conteneur ---------- */
+
+/** Ligne de travaux éditable : description et montant se corrigent sur
+ *  place, et le tableau des lots reflète le nouveau montant (retour #61). */
+function LigneTravaux({
+  t, immeubleId, objet, onDelete,
+}: {
+  t: Record<string, unknown>;
+  immeubleId: string;
+  objet: string;
+  onDelete: () => void;
+}) {
+  const id = String(t._id);
+  const [desc, setDesc] = useState(S(t.description));
+  const [montant, setMontant] = useState(typeof t.montant === "number" ? String(t.montant) : "");
+  const [pending, start] = useTransition();
+
+  const sauver = () => {
+    const v = parseFloat(montant.replace(/[^\d.,]/g, "").replace(",", "."));
+    const patch: Record<string, unknown> = {};
+    if (desc !== S(t.description)) patch.description = desc;
+    if (Number.isFinite(v) && v !== t.montant) patch.montant = v;
+    if (Object.keys(patch).length > 0) start(() => updateTravaux(immeubleId, id, patch));
+  };
+
+  return (
+    <div className="chrow" style={pending ? { opacity: 0.6 } : undefined}>
+      <span className="t">{objet || "Travaux"}</span>
+      <input className="min" style={{ flex: 1, minWidth: 120 }} placeholder="Description…"
+        value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={sauver}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+      {t.YN_devis === true && <span className="badge-o">Devis</span>}
+      <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+        <input className="min" style={{ width: 84, textAlign: "right" }} placeholder="n.c."
+          value={montant} onChange={(e) => setMontant(e.target.value)} onBlur={sauver}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+        €
+      </span>
+      <button className="xdel" type="button" title="Supprimer" onClick={onDelete}>✕</button>
+    </div>
+  );
+}
 
 export const ONGLETS_TECHNIQUE = [
   { key: "composants", label: "Composants" },

@@ -1607,3 +1607,59 @@ export async function saveAdresse(
   }
   refresh(immeubleId);
 }
+
+/** Met à jour une ligne de travaux (montant, description…) et recalcule le
+ *  total de l'immeuble — l'autre côté (tableau des lots) suit (retour #61). */
+export async function updateTravaux(
+  immeubleId: string,
+  travauxId: string,
+  patch: Partial<{ description: string; commentaire: string; montant: number; Urgence: string }>,
+) {
+  const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Object.keys(clean).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_travaux", p_id: travauxId, p_patch: clean });
+  await rpc("bo_recompute_travaux", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
+/** Saisie des travaux depuis la cellule du tableau des lots (retour #61) :
+ *  la ligne dédiée au lot est créée, ajustée ou supprimée pour que le total
+ *  du lot colle à la saisie — les lignes multi-lots ne sont pas touchées. */
+export async function setLotTravaux(
+  immeubleId: string,
+  lotId: string,
+  lotLabel: string,
+  montantCible: number,
+  dedieeId: string | null,
+  montantAutres: number,
+) {
+  const montantDediee = Math.max(0, montantCible - montantAutres);
+  if (dedieeId) {
+    if (montantDediee <= 0) {
+      await rpc("bo_delete_doc", { p_table: "bo_travaux", p_id: dedieeId });
+    } else {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_travaux",
+        p_id: dedieeId,
+        p_patch: { montant: montantDediee, "Modified Date": new Date().toISOString() },
+      });
+    }
+  } else if (montantDediee > 0) {
+    const now = new Date().toISOString();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_travaux",
+      p_id: newId(),
+      p_doc: {
+        IMMEUBLE: immeubleId,
+        LOTs: [lotId],
+        description: `Travaux ${lotLabel}`,
+        montant: montantDediee,
+        YN_devis: false,
+        "Created Date": now,
+        "Modified Date": now,
+      },
+    });
+  }
+  await rpc("bo_recompute_travaux", { p_id: immeubleId });
+  refresh(immeubleId);
+}

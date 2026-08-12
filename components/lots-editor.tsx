@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
-import { addLot, ajouterTypologie, deleteLot, duplicateLot, updateLots, type LotPatch } from "@/lib/bo/actions";
+import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updateLots, type LotPatch } from "@/lib/bo/actions";
 import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
@@ -112,6 +112,43 @@ function CelluleTypologie({
       </span>
       {msg && <span className="tmsg">{msg}</span>}
     </div>
+  );
+}
+
+/** Cellule Travaux (retour #61) : le total des travaux du lot est saisi ici,
+ *  et la saisie vit dans une ligne de « État technique / Travaux » rattachée
+ *  au lot — modifiable des deux côtés, le montant reste synchronisé. */
+function CelluleTravaux({
+  immeubleId, lotId, lotLabel, lignes,
+}: {
+  immeubleId: string;
+  lotId: string;
+  lotLabel: string;
+  lignes: Record<string, unknown>[];
+}) {
+  const total = lignes.reduce((s, t) => s + (typeof t.montant === "number" ? (t.montant as number) : 0), 0);
+  const dediee = lignes.find((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).length === 1);
+  const autres = total - (typeof dediee?.montant === "number" ? (dediee.montant as number) : 0);
+  const [texte, setTexte] = useState(total > 0 ? String(total) : "");
+  const [pending, start] = useTransition();
+
+  const valider = () => {
+    const v = parseFloat(texte.replace(/[^\d.,]/g, "").replace(",", "."));
+    const cible = Number.isFinite(v) ? v : 0;
+    if (cible === total) return;
+    start(() => setLotTravaux(immeubleId, lotId, lotLabel, cible, dediee ? String(dediee._id) : null, autres));
+  };
+
+  return (
+    <span className={total > 0 ? "tvx" : undefined} style={pending ? { opacity: 0.5 } : undefined}>
+      <input
+        className="lcell num" value={texte} placeholder="n.a."
+        onChange={(e) => setTexte(e.target.value)}
+        onBlur={valider}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      />
+      <i>€</i>
+    </span>
   );
 }
 
@@ -586,7 +623,18 @@ export function LotsEditor({ b }: { b: BienData }) {
                     </select>
                   </td>
                   {!compacte && (
-                    <td className="na">{tvx > 0 ? <span className="tvx">{euros(tvx)}</span> : <span className="nc">n.a.</span>}</td>
+                    <td className="na">
+                      {r.isNew ? (
+                        <span className="nc" title="Enregistrez le lot avant de saisir ses travaux">n.a.</span>
+                      ) : (
+                        <CelluleTravaux
+                          lotId={r.id}
+                          lotLabel={`lot ${r.numero || r.Type_lot || ""}`.trim()}
+                          immeubleId={immeubleId}
+                          lignes={b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id))}
+                        />
+                      )}
+                    </td>
                   )}
                   <td>
                     {/* La lettre du DPE occupe toute la case : pas de réserve
