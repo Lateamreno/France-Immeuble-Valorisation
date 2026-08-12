@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
 import { createContact, createImmeuble } from "@/lib/bo/actions";
+import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
+import { ContactPicker } from "@/components/contact-picker";
 
 // Icônes des 7 entités (entité + petit « + », comme le BO).
 const IC: Record<string, React.ReactNode> = {
@@ -109,50 +111,88 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   );
 }
 
+/* Sources possibles d'un immeuble, relevées sur le menu déroulant du BO. */
+const SOURCES_IMMEUBLE = [
+  "Appel à l'agence", "E-mail à contact@", "Interragence", "Parrainage",
+  "SeLoger", "LeBonCoin", "LaBonnePierre", "Autre portail immobilier",
+  "Linkedin", "Facebook", "Prospection", "Relationnel", "Acheteur", "Notaire",
+  "Autre", "Immeuble acheté avec France Immeuble", "Site web",
+];
+
 function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [numero, setNumero] = useState("");
-  const [rue, setRue] = useState("");
-  const [ville, setVille] = useState("");
-  const [cp, setCp] = useState("");
+  const [adresse, setAdresse] = useState<AdresseChoisie | null>(null);
+  const [source, setSource] = useState("");
   const [agent, setAgent] = useState(agents[0]?.slug ?? "");
+  const [proprio, setProprio] = useState<{ id: string; nom: string } | null>(null);
+  const [picker, setPicker] = useState(false);
+
+  const pret = !!adresse?.ville && !!source;
+
   return (
     <div className="modal-ov" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Nouvel immeuble<button type="button" onClick={onClose}>✕</button></div>
+        <div className="modal-h">Créer un nouvel immeuble<button type="button" onClick={onClose}>✕</button></div>
         <div className="modal-b">
-          <span className="mlab">Adresse</span>
+          <div className="mrow" style={{ alignItems: "flex-start", gap: 14 }}>
+            <label style={{ flex: 1 }}>
+              <span className="mlab">Source</span>
+              <select className={`min${source ? "" : " vide"}`} style={{ width: "100%" }} value={source} onChange={(e) => setSource(e.target.value)}>
+                <option value="" />
+                {SOURCES_IMMEUBLE.map((s2) => <option key={s2}>{s2}</option>)}
+              </select>
+            </label>
+            <label style={{ flex: 1 }}>
+              <span className="mlab">Suivi par</span>
+              <select className="min" style={{ width: "100%" }} value={agent} onChange={(e) => setAgent(e.target.value)}>
+                {agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <span className="mlab">Propriétaire</span>
           <div className="mrow" style={{ alignItems: "center" }}>
-            <input className="min" style={{ width: 60 }} placeholder="N°" value={numero} onChange={(e) => setNumero(e.target.value)} />
-            <input className="min" style={{ flex: 1, minWidth: 180 }} placeholder="Rue" value={rue} onChange={(e) => setRue(e.target.value)} />
+            {proprio ? (
+              <>
+                <span className="fchip">{proprio.nom}</span>
+                <button type="button" className="fadd" onClick={() => setPicker(true)}>Changer</button>
+                <button type="button" className="fadd" onClick={() => setProprio(null)}>Retirer</button>
+              </>
+            ) : (
+              <button type="button" className="fadd" onClick={() => setPicker(true)}>
+                + Sélectionner ou créer un propriétaire
+              </button>
+            )}
           </div>
-          <div className="mrow" style={{ marginTop: 6 }}>
-            <input className="min" style={{ width: 90 }} placeholder="CP" value={cp} onChange={(e) => setCp(e.target.value)} />
-            <input className="min" style={{ width: 180 }} placeholder="Ville" value={ville} onChange={(e) => setVille(e.target.value)} />
-          </div>
-          <span className="mlab">Suivi par</span>
-          <div className="mrow">
-            {agents.map((a) => (
-              <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
-            ))}
-          </div>
+
+          <span className="mlab">Adresse</span>
+          <AdresseInput autoFocus onChoisir={setAdresse} />
+          {adresse && (
+            <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4 }}>✓ {adresse.label}</div>
+          )}
+
           <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
-            L&apos;immeuble est créé en statut « Estimation » ; propriétaire, lots et
-            suivi se complètent ensuite sur la fiche.
+            L&apos;immeuble est créé dans « Immeubles à estimer » ; lots et suivi se
+            complètent ensuite sur la fiche.
           </div>
         </div>
         <div className="modal-f">
           <button
-            className="kgo" type="button" disabled={pending || !ville.trim()}
-            style={pending || !ville.trim() ? { opacity: 0.5 } : undefined}
+            className="kgo" type="button" disabled={pending || !pret}
+            style={pending || !pret ? { opacity: 0.5 } : undefined}
             onClick={() =>
               start(async () => {
+                if (!adresse) return;
                 const id = await createImmeuble({
                   agentId: agents.find((a) => a.slug === agent)?.id ?? "",
-                  ville: ville.trim(), zipcode: cp || undefined,
-                  rue: rue || undefined, numero_rue: numero || undefined,
-                  source: "BO",
+                  ville: adresse.ville ?? "", zipcode: adresse.cp,
+                  rue: adresse.rue, numero_rue: adresse.numero,
+                  proprietaireId: proprio?.id,
+                  source,
+                  geo: adresse.lat !== undefined && adresse.lon !== undefined
+                    ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
+                    : undefined,
                 });
                 onClose();
                 router.push(`/bien/${id}`);
@@ -160,6 +200,14 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
             }
           ><span className="ch">›</span> Créer l&apos;immeuble</button>
         </div>
+        {picker && (
+          <ContactPicker
+            titre="Sélectionner le propriétaire"
+            libelleValider="Choisir ce contact"
+            onAnnuler={() => setPicker(false)}
+            onValider={(c) => { setProprio({ id: c.id, nom: c.nom }); setPicker(false); }}
+          />
+        )}
       </div>
     </div>
   );

@@ -593,7 +593,12 @@ button { font-family: inherit; cursor: pointer; }
 .brail .srow2 .sic2 { width: 16px; height: 16px; flex: none; color: var(--slate-2); }
 .brail .srow2 .sic2 svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.9; }
 .brail .srow2 .right { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.brail .srow2.sub { padding-left: 30px; font-size: 12px; color: var(--slate-2); }
+.brail .srow2.sub {
+  padding-left: 34px; font-size: 12.5px; color: var(--slate-2);
+  background: #f4f4f2; border-left: 3px solid transparent; font-weight: 400;
+}
+.brail .srow2.sub:hover { background: #eeeeec; }
+.brail .srow2.sub.on { background: #eae9e6; border-left-color: var(--gold-bo); color: var(--slate); font-weight: 600; }
 .brail .ncount { background: var(--chip); color: var(--slate-2); border-radius: 4px; min-width: 20px; height: 18px; padding: 0 5px; display: grid; place-items: center; font-size: 11px; font-weight: 700; font-family: var(--font-body); }
 .brail .nmoney { font-size: 11px; color: var(--slate-2); font-weight: 700; font-family: var(--font-body); }
 .warn3 { width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid var(--red); position: relative; }
@@ -1167,12 +1172,15 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 
 /* --- Mode Revue : sélection rectangulaire libre --- */
 .rv-zone {
-  position: absolute; z-index: 997; pointer-events: auto;
+  position: absolute; z-index: 997;
+  /* Même réaffichée, la zone laisse passer les clics : seule la pastille
+     numérotée capte la souris (retour #63). */
+  pointer-events: none;
   border: 2px solid var(--orange); border-radius: 3px;
   background: rgba(227, 121, 13, .10);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .55) inset;
-  cursor: help;
 }
+.rv-zone b, .rv-pin { pointer-events: auto; cursor: help; }
 .rv-zone b {
   position: absolute; left: -2px; top: -2px;
   min-width: 20px; height: 18px; padding: 0 5px;
@@ -1755,3 +1763,20 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   font-family: var(--font-title); font-weight: 700; font-size: 13px;
 }
 .ltable.v2 select.lcell.dpe.vide { font-weight: 400; }
+
+/* --- Autocomplétion d'adresse (retours #59/#60) --- */
+.adr-box { position: relative; width: 100%; }
+.adr-sugg {
+  position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 60;
+  background: #fff; border: 1px solid var(--line); border-radius: 5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .12); overflow: hidden;
+}
+.adr-sugg button {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  padding: 8px 12px; font-size: 13px; color: var(--slate); cursor: pointer;
+}
+.adr-sugg button:hover, .adr-sugg button.on { background: #f6f4ef; }
+.adr-sugg .adr-src { display: block; padding: 4px 12px; font-size: 10.5px; color: var(--gray-lt); border-top: 1px solid var(--line-lt); }
+.emp-adr-edit { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.emp-adr-edit .adr-box { flex: 1; }
+.min.vide { border-color: var(--red); }

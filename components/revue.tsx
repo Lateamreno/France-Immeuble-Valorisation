@@ -52,7 +52,10 @@ export function RevueButton({ pins }: { pins: Feedback[] }) {
   const pathname = usePathname();
   const [actif, setActif] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [voirPins, setVoirPins] = useState(true);
+  // Retour #63 : les cadres enregistrés ne s'affichent plus par défaut — ils
+  // recouvraient les menus et bloquaient la navigation. Le compteur de la
+  // barre de recette les réaffiche à la demande.
+  const [voirPins, setVoirPins] = useState(false);
 
   // Raccourci clavier : Ctrl/Cmd + Shift + R
   useEffect(() => {

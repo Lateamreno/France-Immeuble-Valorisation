@@ -487,7 +487,12 @@ export async function getDashboardLive(
     blocs,
     agentSlug,
     agentName: agent.name,
-    enCours: imsAgent.length - enAttenteIds.size,
+    // Retour #58 : le badge « En cours » ne compte que les vignettes rouges —
+    // les biens mis en attente dont l'échéance est passée sans nouveau suivi.
+    // Le reste du flux n'est pas une alerte, il n'a rien à faire au compteur.
+    enCours: imsAgent.filter(
+      (i) => String(i.standby_Statut ?? "Traité") !== "Traité" && !enAttenteIds.has(i._id as string),
+    ).length,
     enAttente: enAttenteIds.size,
   };
 }

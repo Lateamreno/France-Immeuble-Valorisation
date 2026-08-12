@@ -9,9 +9,10 @@ import type { BienData } from "@/lib/bubble/server";
 import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
-  addParcelle, deleteParcelle, saveSecteurDest, updateEmplacement, type EmplacementPatch,
+  addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, updateEmplacement, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
+import { AdresseInput } from "@/components/adresse-input";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -79,6 +80,7 @@ function AdresseTab({ b }: { b: BienData }) {
   const [rev, setRev] = useState(S(num(im.emp_revenus)));
   const [zt, setZt] = useState(im.emp_zone_tendue === true);
   const [tension, setTension] = useState(S(im.emp_tension_locative));
+  const [editionAdr, setEditionAdr] = useState(false);
 
   // Enrichissement automatique (retours #14 et #15).
   const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
@@ -201,10 +203,31 @@ function AdresseTab({ b }: { b: BienData }) {
             <svg viewBox="0 0 24 24" className="gmaps"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>
             {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, <b>{S(im.adresse_zipcode)} {S(im.adresse_ville)}</b>
           </a>
-          <a className="emp-ic" href={mapsLien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps">
+          {/* Le crayon édite l'adresse — il n'ouvre plus Google Maps
+              (retour #60) ; le lien Maps reste sur l'adresse elle-même. */}
+          <button type="button" className="emp-ic" title="Modifier l'adresse" onClick={() => setEditionAdr(true)}>
             <svg viewBox="0 0 24 24"><path d="M4 20l4-1L20 7l-3-3L5 16z" /></svg>
-          </a>
+          </button>
         </div>
+        {editionAdr && (
+          <div className="emp-adr-edit">
+            <AdresseInput
+              autoFocus
+              valeur={adresseComplete}
+              placeholder="Nouvelle adresse — les suggestions s'affichent en tapant"
+              onChoisir={(a) =>
+                start(async () => {
+                  await saveAdresse(immeubleId, {
+                    numero: a.numero, rue: a.rue, cp: a.cp, ville: a.ville,
+                    lat: a.lat, lon: a.lon, label: a.label,
+                  });
+                  setEditionAdr(false);
+                })
+              }
+            />
+            <button type="button" className="fadd" onClick={() => setEditionAdr(false)}>Annuler</button>
+          </div>
+        )}
         {lat !== undefined && lon !== undefined ? (
           <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} immeubleId={immeubleId}
             captures={b.photos.filter((p) => p.type === "Carte")} />

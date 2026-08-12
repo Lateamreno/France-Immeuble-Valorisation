@@ -30,6 +30,7 @@ const I = {
   suivi: <><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></>,
   user: <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></>,
   pin: <><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></>,
+  signpost: <><path d="M12 3v3M12 13v8M8 21h8" /><path d="M5 6h12l2 2.5L17 11H5z" /></>,
   key: <><circle cx="8" cy="14" r="4" /><path d="M11 11 20 2M16 6l2.5 2.5M13 9l2 2" /></>,
   tech: <><path d="M12 3v4M12 17v4M3 12h4M17 12h4" /><circle cx="12" cy="12" r="4.5" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 10.5V17M12 7.2v.2" /></>,
@@ -79,6 +80,21 @@ function Row({ children }: { children: React.ReactNode }) {
 export function BienFiche({ b }: { b: BienData }) {
   const [sect, setSect] = useState<SectionKey>("suivi");
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
+  /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
+  const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
+  const basculer = (k: SectionKey) => {
+    if (sect === k && SOUS_ONGLETS[k]) {
+      setPlies((p) => {
+        const n = new Set(p);
+        if (n.has(k)) n.delete(k);
+        else n.add(k);
+        return n;
+      });
+    } else {
+      setSect(k);
+      setPlies((p) => { const n = new Set(p); n.delete(k); return n; });
+    }
+  };
   const majSous = (k: SectionKey) => (t: string) => setSous((p) => ({ ...p, [k]: t }));
   const im = b.im;
   const ok = (k: string) => im[k] === true;
@@ -89,7 +105,7 @@ export function BienFiche({ b }: { b: BienData }) {
   }[] = [
     { key: "suivi", label: "Suivi", icon: I.suivi, indicator: <span className="ncount">{b.suivis.length}</span> },
     { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: ok("ok_proprio") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "emplacement", label: "Emplacement", icon: I.pin, indicator: ok("ok_emplacement") ? <span className="okv">✓</span> : <span className="warn3" /> },
+    { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: ok("ok_emplacement") ? <span className="okv">✓</span> : <span className="warn3" /> },
     { key: "locatif", label: "Etat locatif", icon: I.key, indicator: ok("ok_locatif") ? <span className="okv">✓</span> : <span className="warn3" /> },
     { key: "technique", label: "Etat technique", icon: I.tech, indicator: ok("ok_composants") ? <span className="okv">✓</span> : <span className="warn3" /> },
     { key: "prix", label: "Description et prix", icon: I.info, indicator: ok("ok_prix") && ok("ok_descriptif") ? <span className="okv">✓</span> : <span className="warn3" /> },
@@ -151,13 +167,13 @@ export function BienFiche({ b }: { b: BienData }) {
         <nav>
           {sections.map((s) => (
             <div key={s.key}>
-              <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => setSect(s.key)}>
+              <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => basculer(s.key)}>
                 <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
                 {s.label}
                 {s.key === "emplacement" && <MapsBtn b={b} />}
                 <span className="right">{s.indicator}</span>
               </button>
-              {sect === s.key && SOUS_ONGLETS[s.key]?.map((o) => (
+              {sect === s.key && !plies.has(s.key) && SOUS_ONGLETS[s.key]?.map((o) => (
                 <button key={o.key} type="button"
                   className={`srow2 sub${(sous[s.key] ?? SOUS_ONGLETS[s.key]![0].key) === o.key ? " on" : ""}`}
                   onClick={() => setSous((p) => ({ ...p, [s.key]: o.key }))}>

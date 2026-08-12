@@ -764,6 +764,8 @@ export async function createImmeuble(input: {
   numero_rue?: string;
   proprietaireId?: string;
   source?: string;
+  /** Adresse géocodée choisie dans les suggestions (retour #59). */
+  geo?: { lat: number; lon: number; label: string };
 }) {
   const id = newId();
   const now = new Date().toISOString();
@@ -780,11 +782,19 @@ export async function createImmeuble(input: {
       adresse_rue: input.rue,
       adresse_numero_rue: input.numero_rue,
       PROPRIETAIRE: input.proprietaireId,
-      Source: input.source,
+      // Le BO range la provenance dans `source` (minuscule) : c'est elle que
+      // lisent les listes et les stats.
+      source: input.source,
       "Created Date": now,
       "Modified Date": now,
     }),
   });
+  if (input.geo) {
+    await saveAdresse(id, {
+      numero: input.numero_rue, rue: input.rue, cp: input.zipcode, ville: input.ville,
+      lat: input.geo.lat, lon: input.geo.lon, label: input.geo.label,
+    });
+  }
   refresh(id);
   return id;
 }
@@ -1541,4 +1551,59 @@ export async function setPropositionStatut(
 export async function chargerAcheteurs(immeubleId: string) {
   const { getAcheteurs } = await import("@/lib/bubble/server");
   return getAcheteurs(immeubleId);
+}
+
+/** Enregistre l'adresse d'un immeuble : champs de la fiche + enregistrement
+ *  « adresse » géocodé (cartes, POI, stats de commune) — retour #60. */
+export async function saveAdresse(
+  immeubleId: string,
+  a: { numero?: string; rue?: string; cp?: string; ville?: string; lat?: number; lon?: number; label: string },
+) {
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: cleanPatch({
+      adresse_numero_rue: a.numero,
+      adresse_rue: a.rue,
+      adresse_zipcode: a.cp,
+      adresse_ville: a.ville,
+    }),
+  });
+
+  // L'enregistrement « adresse » porte le géocodage : les cartes et
+  // l'enrichissement (INSEE, POI, zone tendue) le lisent.
+  const doc = cleanPatch({
+    IMMEUBLE: immeubleId,
+    numero_rue: a.numero,
+    rue: a.rue,
+    zipcode: a.cp,
+    ville_name: a.ville,
+    ville_name_low_no_accent: a.ville?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+    formatted: a.label,
+    searchfield: a.label.toLowerCase(),
+    geo: a.lat !== undefined && a.lon !== undefined ? { lat: a.lat, lng: a.lon, address: a.label } : undefined,
+    complete: true,
+    "Modified Date": now,
+  });
+
+  // Une adresse existe déjà ? On la met à jour, sinon on la crée et on la
+  // référence sur l'immeuble.
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_adresse?data->>IMMEUBLE=eq.${immeubleId}&select=id&limit=1`,
+    { headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` }, cache: "no-store" },
+  );
+  const rows = res.ok ? ((await res.json()) as { id: string }[]) : [];
+  if (rows[0]) {
+    await rpc("bo_patch_doc", { p_table: "bo_adresse", p_id: rows[0].id, p_patch: doc });
+  } else {
+    const adrId = newId();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_adresse",
+      p_id: adrId,
+      p_doc: { ...doc, "Created Date": now },
+    });
+    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { ADRESSE: adrId } });
+  }
+  refresh(immeubleId);
 }
