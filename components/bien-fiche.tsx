@@ -77,7 +77,13 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
 }
 
-export function BienFiche({ b }: { b: BienData }) {
+export function BienFiche({ b, contenu }: {
+  b: BienData;
+  /** Contenu qui remplace les sections de la fiche (estimation en cours) :
+   *  le rail de droite reste affiché pour garder l'accès aux informations de
+   *  l'immeuble pendant la saisie. */
+  contenu?: React.ReactNode;
+}) {
   const [sect, setSect] = useState<SectionKey>("suivi");
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
   /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
@@ -122,25 +128,26 @@ export function BienFiche({ b }: { b: BienData }) {
   return (
     <div className="fiche">
       <div className="fiche-main">
-        <div className={`fiche-inner${sect === "locatif" ? " wide" : ""}`}>
-          {sect === "suivi" && <SuiviSection b={b} />}
-          {sect === "proprietaire" && <ProprioSection b={b} />}
-          {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
-          {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
-          {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-          {sect === "prix" && <PrixSection b={b} />}
-          {sect === "photos" && <PhotosSection b={b} />}
-          {sect === "estimations" && <EstimationsSection b={b} />}
-          {sect === "mandats" && <MandatsSection b={b} />}
-          {sect === "dossiers" && <DossiersSection b={b} />}
-          {sect === "tous-docs" && (
+        <div className={`fiche-inner${sect === "locatif" || contenu ? " wide" : ""}`}>
+          {contenu}
+          {!contenu && sect === "suivi" && <SuiviSection b={b} />}
+          {!contenu && sect === "proprietaire" && <ProprioSection b={b} />}
+          {!contenu && sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
+          {!contenu && sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+          {!contenu && sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
+          {!contenu && sect === "prix" && <PrixSection b={b} />}
+          {!contenu && sect === "photos" && <PhotosSection b={b} />}
+          {!contenu && sect === "estimations" && <EstimationsSection b={b} />}
+          {!contenu && sect === "mandats" && <MandatsSection b={b} />}
+          {!contenu && sect === "dossiers" && <DossiersSection b={b} />}
+          {!contenu && sect === "tous-docs" && (
             <>
               <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
               <DocumentsCoffre b={b} />
             </>
           )}
-          {sect === "acheteurs" && <AcheteursSection b={b} />}
-          {sect === "notes" && <NotesSection b={b} />}
+          {!contenu && sect === "acheteurs" && <AcheteursSection b={b} />}
+          {!contenu && sect === "notes" && <NotesSection b={b} />}
         </div>
       </div>
 

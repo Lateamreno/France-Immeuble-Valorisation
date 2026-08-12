@@ -10,7 +10,9 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { createEstimation, setEstimationStatut, type EstimationPayload } from "@/lib/bo/actions";
 
-const STEPS = ["Immeuble", "Secteur", "Prix", "Analyse", "PDF", "Envoi"] as const;
+// Prix et Analyse ne font qu'une étape : on étudie le prix et on écrit le
+// commentaire en même temps, la justification se rédige devant les chiffres.
+const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 import { CIBLES } from "@/lib/referentiels";
 const SCORES = ["1", "2", "3", "4", "5"];
 
@@ -87,6 +89,16 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
     ? Math.round(candidates.reduce((s, x) => s + x, 0) / candidates.length / 1000) * 1000
     : 0;
 
+  /* Bornes du curseur de prix : l'éventail des méthodes de calcul, élargi de
+     10 % de chaque côté pour laisser de la marge à l'arbitrage. */
+  const bornes = useMemo(() => {
+    const vals = [pRendement, pRendementMax, pM2, pM2Max].filter((x) => x > 0);
+    if (vals.length === 0) return null;
+    const min = Math.floor((Math.min(...vals) * 0.9) / 5000) * 5000;
+    const max = Math.ceil((Math.max(...vals) * 1.1) / 5000) * 5000;
+    return { min, max: Math.max(max, min + 5000) };
+  }, [pRendement, pRendementMax, pM2, pM2Max]);
+
   const [haiStr, setHaiStr] = useState("");
   const [honosPct, setHonosPct] = useState("5");
   const hai = parse(haiStr) ?? pAuto;
@@ -118,9 +130,8 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
   const etatEtape: ("ok" | "warn" | "lock")[] = [
     okAdresse && okPoi && okCharges && okLocatif ? "ok" : "warn",
     okSecteur ? "ok" : "warn",
-    okPrix ? "ok" : "warn",
-    okAnalyse ? "ok" : "warn",
-    estId ? "ok" : step >= 4 ? "warn" : "lock",
+    okPrix && okAnalyse ? "ok" : "warn",
+    estId ? "ok" : step >= 3 ? "warn" : "lock",
     estId ? "ok" : "lock",
   ];
 
@@ -162,7 +173,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
         };
         const id = await createEstimation(immeubleId, String(im.AGENT ?? ""), payload);
         setEstId(id);
-        setStep(5);
+        setStep(4);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -177,11 +188,11 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
 
   const Nav = ({ nextLabel }: { nextLabel?: string }) => (
     <div className="wnav">
-      {step > 0 && step < 5 && (
+      {step > 0 && step < 4 && (
         <button className="kgo" type="button" onClick={() => setStep(step - 1)}>‹ Précédent</button>
       )}
       <span className="sp" style={{ flex: 1 }} />
-      {step < 4 && (
+      {step < 3 && (
         <button className="kgo" type="button" onClick={() => setStep(step + 1)}>
           <span className="ch">›</span> {nextLabel ?? "Suivant"}
         </button>
@@ -200,7 +211,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           <button
             key={s} type="button"
             className={`wstep${i === step ? " on" : ""}${i < step ? " done" : ""} ${etatEtape[i]}`}
-            onClick={() => { if (i < 4 && !estId) setStep(i); }}
+            onClick={() => { if (i < 3 && !estId) setStep(i); }}
           >
             <span className="n">
               {etatEtape[i] === "ok" ? "✓" : etatEtape[i] === "warn" ? "!" : etatEtape[i] === "lock" ? "🔒" : i + 1}
@@ -339,9 +350,39 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
             </div>
 
             <div className="fsub" style={{ marginTop: 16 }}>Prix estimé</div>
+            {bornes && (
+              <div className="pxbar">
+                <input
+                  type="range" min={bornes.min} max={bornes.max} step={1000} value={hai}
+                  onChange={(e) => setHaiStr(e.target.value)}
+                  style={{ ["--p" as string]: `${((hai - bornes.min) / (bornes.max - bornes.min)) * 100}%` }}
+                />
+                {/* Repères des quatre méthodes, pour situer le curseur. */}
+                <div className="pxbar-reps">
+                  {([["Rendement", pRendement], ["Rendement max", pRendementMax], ["Prix m²", pM2], ["Prix m² max", pM2Max]] as const)
+                    .filter(([, v]) => v > 0)
+                    .map(([l, v], i) => (
+                      // Les repères se chevauchent quand deux méthodes tombent
+                      // près l'une de l'autre : une ligne sur deux descend.
+                      <button key={l} type="button" className={`rep${i % 2 ? " bas" : ""}`}
+                        title={`Caler sur ${l} — ${euros(v)}`}
+                        style={{ left: `${((v - bornes.min) / (bornes.max - bornes.min)) * 100}%` }}
+                        onClick={() => setHaiStr(String(Math.round(v / 1000) * 1000))}>
+                        <i /><span>{l}</span>
+                      </button>
+                    ))}
+                </div>
+                <div className="pxbar-b">
+                  <span>{euros(bornes.min)}</span>
+                  <b>{euros(hai)} HAI</b>
+                  <span>{euros(bornes.max)}</span>
+                </div>
+              </div>
+            )}
             <div className="mrow" style={{ alignItems: "center" }}>
               <label style={{ fontSize: 12.5 }}>Prix HAI <input className="min" style={{ width: 120 }} placeholder={String(pAuto)} value={haiStr} onChange={(e) => setHaiStr(e.target.value)} /></label>
               <label style={{ fontSize: 12.5 }}>Honoraires % <input className="min" style={{ width: 60 }} value={honosPct} onChange={(e) => setHonosPct(e.target.value)} /></label>
+              <button type="button" className="fadd" onClick={() => setHaiStr(String(pAuto))}>Prix automatique</button>
               <span style={{ fontSize: 13 }}>
                 Net vendeur <b>{euros(nv)}</b> + Honoraires <b>{euros(honos)}</b> ({fr1(pct)} %) = <b className="nmoney">{euros(hai)} HAI</b>
               </span>
@@ -368,13 +409,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
                 </tbody>
               </table>
             </div>
-            <Nav />
-          </>
-        )}
-
-        {step === 3 && (
-          <>
-            <div className="fsub">Fondamentaux</div>
+            <div className="fsub" style={{ marginTop: 18 }}>Fondamentaux</div>
             <div className="wgrid">
               {([["Emplacement", scoreEmp, setScoreEmp], ["Lots", scoreLot, setScoreLot], ["Bâti", scoreBati, setScoreBati]] as const).map(([label, val, set]) => (
                 <div key={label} className="wcard">
@@ -401,7 +436,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           </>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <>
             <div className="fsub">Génération</div>
             <span className="mlab">Titre de l&apos;estimation</span>
@@ -422,7 +457,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           </>
         )}
 
-        {step === 5 && estId && (
+        {step === 4 && estId && (
           <>
             <div className="fsub">Estimation générée ✓</div>
             <div className="wcard gold">

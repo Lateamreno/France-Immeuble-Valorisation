@@ -1854,3 +1854,33 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   border: 0; background: none; padding: 3px 0 1px; cursor: pointer;
   font-size: 12px; color: var(--gold-bo); font-weight: 700;
 }
+
+/* --- Curseur de prix de l'estimation : l'arbitrage se fait à la main entre
+   les méthodes de calcul, repères cliquables pour se caler dessus. --- */
+.pxbar { margin: 4px 0 14px; }
+.pxbar input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, var(--gold-bo) var(--p, 50%), #e3e3e0 var(--p, 50%));
+  outline: none; cursor: pointer;
+}
+.pxbar input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--gold-bo); cursor: grab;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+.pxbar input[type="range"]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  border: 3px solid var(--gold-bo); cursor: grab;
+}
+.pxbar-reps { position: relative; height: 40px; margin-top: 2px; }
+.pxbar-reps .rep {
+  position: absolute; transform: translateX(-50%); border: 0; background: none;
+  padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.pxbar-reps .rep i { display: block; width: 1px; height: 6px; background: var(--gray-lt); }
+.pxbar-reps .rep.bas { padding-top: 15px; }
+.pxbar-reps .rep.bas i { height: 20px; margin-top: -15px; }
+.pxbar-reps .rep span { font-size: 10px; color: var(--gray-lt); white-space: nowrap; }
+.pxbar-reps .rep:hover span { color: var(--gold-bo); font-weight: 700; }
+.pxbar-b { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; color: var(--gray-lt); }
+.pxbar-b b { font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); }
