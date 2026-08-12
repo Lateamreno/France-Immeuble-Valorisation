@@ -1823,16 +1823,266 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .sv-l .chip { margin-left: auto; background: var(--chip); border-radius: 3px; padding: 2px 8px; font-size: 11.5px; font-weight: 700; color: var(--slate-2); white-space: nowrap; }
 .sv-f { display: flex; justify-content: flex-end; margin-top: 7px; }
 
-/* --- Wizard estimation : indicateurs de complétude (retour #66) --- */
-.wok, .wko {
-  display: inline-grid; place-items: center; width: 16px; height: 16px;
-  border-radius: 50%; font-size: 11px; font-weight: 900; margin-left: 6px; vertical-align: 1px;
+/* ============================================================================
+   Estimation — réplique des écrans du BO (captures « Modale estimation dans
+   l'ordre »). Ce n'est plus une modale mais une page : le sommaire de la fiche
+   reste à droite pendant qu'on estime. Le bandeau sombre, le fil des étapes et
+   les champs à libellé flottant reprennent le dessin du BO à l'identique.
+   ========================================================================= */
+.est { max-width: 880px; margin: 0 auto; }
+.est-head {
+  display: flex; align-items: center; justify-content: center; position: relative;
+  background: #4a4a4f; border-radius: 5px 5px 0 0; padding: 15px 44px;
 }
-.wok { color: var(--green); }
-.wko { background: var(--red); color: #fff; cursor: help; }
-.wstep.ok .n { background: var(--green); color: #fff; }
-.wstep.warn .n { background: var(--red); color: #fff; }
-.wstep.lock .n { background: #ececec; color: var(--gray-txt); font-size: 9px; }
+.est-titre { font-family: var(--font-title); font-size: 20px; font-weight: 700; color: #fff; }
+.est-close {
+  position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+  color: #cfcfd2; font-size: 17px; line-height: 1; text-decoration: none;
+}
+.est-close:hover { color: #fff; }
+
+.est-prog { height: 4px; background: #ededed; }
+.est-prog i { display: block; height: 100%; background: var(--green); transition: width .2s; }
+
+.est-steps {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  border-bottom: 1px solid var(--line); background: #fff; padding: 0 10px;
+}
+.est-step {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
+  padding: 10px 12px 11px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--gray-lt);
+}
+.est-step .ic { font-size: 11px; line-height: 1; }
+.est-step.ok .ic { color: var(--green); }
+.est-step.warn .ic { color: var(--red); }
+.est-step.lock { cursor: default; }
+.est-step.lock .ic { filter: grayscale(1); opacity: .55; }
+.est-step.on { color: var(--slate); }
+
+.est-body {
+  background: #fff; border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 5px 5px; padding: 16px 22px 22px;
+}
+
+.est-h {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate);
+  margin: 4px 0 10px;
+}
+.est-liens { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.est-liens a {
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff; padding: 4px 9px;
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 600; color: var(--slate-2);
+  text-decoration: none; white-space: nowrap;
+}
+.est-liens a:hover { background: #f6f6f6; }
+
+.est-perso {
+  display: inline-flex; align-items: center; gap: 8px; border: 0; background: none;
+  padding: 2px 0 12px; cursor: pointer; font-size: 12.5px; color: var(--gray-lt);
+}
+.est-perso .sw {
+  width: 26px; height: 14px; border-radius: 8px; border: 1.5px solid #c8c8c8;
+  position: relative; flex: none;
+}
+.est-perso .sw::after {
+  content: ""; position: absolute; top: 1.5px; left: 2px; width: 8px; height: 8px;
+  border-radius: 50%; background: #c8c8c8; transition: left .15s, background .15s;
+}
+.est-perso.on { color: var(--gold-bo); }
+.est-perso.on .sw { border-color: var(--gold-bo); }
+.est-perso.on .sw::after { left: 13px; background: var(--gold-bo); }
+
+.est-sect { font-size: 14px; color: var(--slate); margin: 14px 0 8px; }
+
+/* Une ligne de champs, avec sa pastille de complétude au bout. */
+.est-l { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+
+/* Champ servi par la fiche : libellé posé sur le bord haut, comme le BO. */
+.est-ch {
+  position: relative; flex: 1; min-width: 0; display: block;
+  border: 1px solid #e2e2e2; border-radius: 4px; background: #f2f2f2;
+  padding: 12px 11px 9px;
+}
+.est-ch > span {
+  position: absolute; top: -7px; left: 9px; padding: 0 4px; background: #fff;
+  font-family: var(--font-title); font-size: 10px; color: #c0c4c8; white-space: nowrap;
+}
+.est-ch input, .est-ch textarea {
+  width: 100%; border: 0; background: none; padding: 0; outline: none;
+  font-family: var(--font-body); font-size: 13px; color: #8f969c;
+}
+.est-ch input[readonly] { cursor: default; }
+.est-ch i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
+.est-ch.edit { background: #fff; border-color: #d3d3d3; }
+.est-ch.edit input, .est-ch.edit textarea { color: var(--slate); }
+.est-ch.txt { padding-top: 13px; }
+.est-ch.txt textarea { resize: vertical; line-height: 1.55; font-size: 12.5px; }
+
+.est-ch.honos { display: flex; align-items: center; gap: 8px; flex: 1.2; }
+.est-ch.honos .cad { width: 13px; height: 14px; flex: none; fill: var(--green); color: var(--green); }
+.est-ch.honos input:not(.pct) { color: var(--slate); }
+.est-ch.honos input.pct {
+  flex: none; width: 62px; text-align: center; background: #e6e6e6; border-radius: 3px;
+  padding: 3px 0; font-size: 12px; color: var(--gray-txt);
+}
+.est-ch.hai { display: flex; align-items: center; gap: 8px; }
+.est-reset {
+  border: 0; background: none; padding: 0; cursor: pointer; flex: none;
+  font-size: 15px; color: var(--gray-lt);
+}
+.est-reset:hover { color: var(--gold-bo); }
+.est-op { font-size: 14px; color: var(--gray-lt); flex: none; }
+
+.est-ok, .est-ko {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none;
+  border-radius: 50%; font-size: 11px; font-weight: 900;
+}
+.est-ok { color: var(--green); }
+.est-ko { background: var(--red); color: #fff; cursor: help; }
+
+.est-pic { width: 22px; flex: none; display: grid; place-items: center; }
+.est-pic svg { width: 18px; height: 18px; fill: none; stroke: var(--slate-2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Bandeau sombre des références du secteur. */
+.est-glob { display: flex; background: #1e222b; border-radius: 4px; margin-bottom: 4px; }
+.est-glob > div { flex: 1; text-align: center; padding: 8px 6px 10px; }
+.est-glob span { display: block; font-family: var(--font-title); font-size: 12px; color: #9aa0ab; }
+.est-glob b { font-family: var(--font-title); font-size: 15px; font-weight: 700; color: #fff; }
+
+/* Les quatre méthodes de calcul : un clic cale le prix dessus. */
+.est-meths { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.est-meth {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 4px; background: #f6f6f6;
+  padding: 12px 8px 14px; cursor: pointer;
+}
+.est-meth:hover { border-color: var(--gold-bo); }
+.est-meth .t { font-family: var(--font-title); font-size: 13px; color: var(--slate); }
+.est-meth .s { background: #e6e6e6; border-radius: 3px; padding: 3px 10px; font-size: 12px; color: var(--gray-txt); }
+.est-meth .v { font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); }
+.est-meth .v.bas { color: var(--red); }
+.est-meth .v.haut { color: var(--green); }
+
+.est-auto {
+  display: flex; align-items: center; background: #f0f0f0; border-radius: 4px;
+  padding: 10px 14px; margin: 12px 0 2px;
+}
+.est-auto span, .est-auto em { flex: 1; font-style: normal; font-size: 12.5px; color: var(--gray-lt); }
+.est-auto em { text-align: right; }
+.est-auto b { font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--slate); }
+
+/* Comparaison au secteur : deux panneaux sombres, écarts en vert ou en rouge. */
+.est-cmps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.est-cmp { background: #1e222b; border-radius: 4px; overflow: hidden; }
+.est-cmp-h {
+  position: relative; text-align: center; padding: 10px 26px;
+  font-family: var(--font-title); font-size: 15px; font-weight: 700; color: #fff;
+}
+.est-cmp-h i { position: absolute; right: 10px; top: 11px; font-style: normal; color: #9aa0ab; font-size: 13px; cursor: help; }
+.est-cmp .l {
+  display: grid; grid-template-columns: minmax(0, 1fr) 62px minmax(0, 1fr);
+  align-items: center; gap: 8px; padding: 7px 12px; color: #fff; font-size: 12.5px;
+}
+.est-cmp .l.v { background: #37b02c; }
+.est-cmp .l.r { background: #e21212; }
+.est-cmp .l.n + .l.n { border-top: 1px solid rgba(255, 255, 255, .08); }
+.est-cmp .l span { font-family: var(--font-title); font-weight: 600; }
+.est-cmp .l em {
+  font-style: normal; font-size: 11.5px; font-weight: 700; text-align: center;
+  border: 1.5px solid #fff; border-radius: 3px; padding: 1px 0;
+}
+.est-cmp .l b { text-align: right; font-family: var(--font-title); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.est-cmp .l.n b { grid-column: 2 / span 2; }
+
+/* Fondamentaux : la note se pose en étoiles, le libellé suit dessous. */
+.est-fonds { display: flex; align-items: center; gap: 10px; }
+.est-fond { flex: 1; border: 1px solid var(--line); border-radius: 4px; background: #f6f6f6; padding: 9px 12px 10px; }
+.est-fond .h { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--slate); }
+.est-fond .et button {
+  border: 0; background: none; padding: 0 1px; cursor: pointer; font-size: 13px; color: #d5d7d9;
+}
+.est-fond .et button.on { color: var(--slate); }
+.est-fond .s { text-align: center; font-size: 12px; color: var(--gray-txt); margin-top: 4px; }
+
+/* Cibles : quatre cartes cochables, deux par ligne comme dans le BO. */
+.est-cibles { display: flex; align-items: center; gap: 10px; }
+.est-cibles .g { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.est-cible {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 4px; background: #f6f6f6; padding: 10px 12px;
+  font-family: var(--font-title); font-size: 12.5px; color: #5b7f9c;
+}
+.est-cible svg { width: 16px; height: 16px; flex: none; fill: none; stroke: #5b7f9c; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.est-cible i { margin-left: auto; width: 11px; height: 11px; border: 1.5px solid #cfcfcf; border-radius: 50%; }
+.est-cible.on { background: #fff; border-color: var(--slate); }
+.est-cible.on i { border-color: var(--gold-bo); background: radial-gradient(var(--gold-bo) 45%, transparent 47%); }
+
+.est-loyers { display: flex; align-items: center; gap: 10px; }
+.est-loyers > div {
+  flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid var(--line); border-radius: 4px; background: #f6f6f6; padding: 10px 12px;
+  font-size: 12.5px; color: var(--slate);
+}
+.est-loyers b { font-family: var(--font-title); font-size: 12.5px; font-weight: 700; }
+.est-loyers b.v { color: var(--green); }
+.est-loyers b.r { color: var(--red); }
+.est-tiret { width: 16px; text-align: center; color: var(--gray-lt); flex: none; }
+
+.est-cpt { text-align: right; font-size: 11.5px; color: var(--gray-lt); margin-top: -4px; }
+
+.est-nav {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-top: 1px solid var(--line); margin: 18px -22px -22px; padding: 13px 22px;
+  background: #fafafa; border-radius: 0 0 5px 5px;
+}
+.est-prec {
+  border: 1px solid #cfcfcf; background: #fff; border-radius: 4px; padding: 7px 14px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate-2);
+}
+.est-prec:hover { background: #f2f2f2; }
+.est-suiv {
+  border: 0; background: var(--green); color: #fff; border-radius: 4px; padding: 8px 16px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 700;
+}
+.est-suiv:hover { filter: brightness(.95); }
+.est-suiv:disabled { opacity: .55; cursor: default; }
+
+/* Écran d'envoi : le mail du BO, préparé mais jamais envoyé tout seul. */
+.est-envoi-h { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.est-envoi-h .tag {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid #cfcfcf;
+  border-radius: 4px; background: #fff; padding: 5px 11px; font-size: 12.5px; color: var(--slate-2);
+}
+.est-envoi-h .date {
+  margin-left: auto; border: 1px solid var(--green); border-radius: 4px; background: #fff;
+  padding: 4px 10px; font-size: 12px; color: var(--gray-txt);
+}
+.est-envoi-h .date b { font-family: var(--font-title); color: var(--slate); font-weight: 700; }
+.est-ml { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.est-ml .lbl { width: 26px; flex: none; font-size: 13px; color: var(--slate-2); }
+.est-ch.plat { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--slate); }
+.est-ch.plat i { font-style: normal; color: var(--gray-lt); }
+.est-badge {
+  background: var(--slate-2); color: #fff; border-radius: 3px; padding: 2px 6px;
+  font-family: var(--font-title); font-size: 10.5px; font-weight: 700;
+}
+.est-badge.rond { border-radius: 50%; width: 20px; height: 20px; display: inline-grid; place-items: center; padding: 0; }
+.est-pj {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid #cddbe6;
+  background: #eaf2f8; border-radius: 3px; padding: 3px 9px; font-size: 12px;
+  color: #3f6f96; text-decoration: none;
+}
+.est-note { font-size: 11.5px; color: var(--gray-lt); margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .est-meths { grid-template-columns: 1fr 1fr; }
+  .est-cmps { grid-template-columns: 1fr; }
+  .est-fonds, .est-loyers { flex-wrap: wrap; }
+  .est-cibles .g { grid-template-columns: 1fr; }
+  .est-l { flex-wrap: wrap; }
+}
 
 /* --- Historique des estimations, sticky en bas (retour #66) --- */
 .hest {
@@ -1857,20 +2107,18 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 
 /* --- Curseur de prix de l'estimation : l'arbitrage se fait à la main entre
    les méthodes de calcul, repères cliquables pour se caler dessus. --- */
-.pxbar { margin: 4px 0 14px; }
+.pxbar { margin: 16px 0 6px; padding: 0 6px; }
 .pxbar input[type="range"] {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px;
-  background: linear-gradient(to right, var(--gold-bo) var(--p, 50%), #e3e3e0 var(--p, 50%));
-  outline: none; cursor: pointer;
+  -webkit-appearance: none; appearance: none; width: 100%; height: 3px; border-radius: 2px;
+  background: #4a4a4f; outline: none; cursor: pointer;
 }
 .pxbar input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
-  background: #fff; border: 3px solid var(--gold-bo); cursor: grab;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  -webkit-appearance: none; width: 18px; height: 17px; border-radius: 4px;
+  background: var(--gold-bo); border: 1px solid #a08f4b; cursor: grab;
 }
 .pxbar input[type="range"]::-moz-range-thumb {
-  width: 20px; height: 20px; border-radius: 50%; background: #fff;
-  border: 3px solid var(--gold-bo); cursor: grab;
+  width: 18px; height: 17px; border-radius: 4px; background: var(--gold-bo);
+  border: 1px solid #a08f4b; cursor: grab;
 }
 .pxbar-reps { position: relative; height: 40px; margin-top: 2px; }
 .pxbar-reps .rep {
