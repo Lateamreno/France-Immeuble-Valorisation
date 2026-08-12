@@ -6,7 +6,7 @@
 // unités dans les cellules, écarts %/m², en-tête sur 2 lignes sticky avec
 // séparateurs gras entre groupes, barre d'outils sticky avec libellés +
 // import/export, typologies filtrées par destination.
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { addLot, ajouterTypologie, deleteLot, duplicateLot, updateLots, type LotPatch } from "@/lib/bo/actions";
@@ -169,8 +169,29 @@ const OPTIONS = [
   { key: "baux", label: "Baux" },
   { key: "m2", label: "Loyers/m²" },
   { key: "commentaire", label: "Commentaire" },
+  { key: "photos", label: "Photos" },
 ] as const;
 type OptKey = (typeof OPTIONS)[number]["key"];
+
+/* Colonnes que le BO laisse tomber quand la fenêtre se resserre : il ne garde
+   que l'étage, le numéro, la destination, le type, la surface Carrez, le type
+   de bail, les loyers, l'état, le DPE et un bout de commentaire (retour #54). */
+const OPTIONS_LARGES: OptKey[] = ["batiment", "sol", "baux", "m2", "photos"];
+/** En dessous, les colonnes secondaires ne tiennent plus lisiblement. */
+const SEUIL_COMPACT = 1000;
+
+/* Largeurs relevées sur la capture du BO, en poids relatifs. Elles sont
+   normalisées à 100 % sur les seules colonnes affichées : masquer une colonne
+   ne doit pas faire grossir la case à cocher (retour #52). */
+const POIDS: Record<string, number> = {
+  bat: 2.1, etg: 2.0, num: 2.1, dest: 2.3, type: 6.8, carrez: 5.2, sol: 5.5,
+  bail: 5.2, entree: 4.6, locataire: 8.8, hc: 4.9, hcm2: 3.8, hcmax: 4.9,
+  hcmaxm2: 4.0, etat: 5.2, travaux: 6.1, dpe: 2.7, renov: 3.6,
+  commentaire: 17.3, photos: 2.9,
+};
+/* En vue compacte il reste moins de colonnes : les repères (étage, numéro,
+   destination) peuvent respirer, sinon ils tronquent leur contenu. */
+const POIDS_COMPACT: Record<string, number> = { etg: 3.4, num: 3.4, dest: 3.2, renov: 4.2 };
 
 const PLURIEL: Record<string, string> = {
   Logement: "Logements", Commerce: "Commerces", Bureau: "Bureaux",
@@ -184,13 +205,32 @@ export function LotsEditor({ b }: { b: BienData }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
+  // Les colonnes de bail sont masquées par défaut : elles font doublon avec
+  // l'onglet Baux et mangent la largeur utile (retour #52).
   const [opts, setOpts] = useState<Record<OptKey, boolean>>({
-    batiment: true, sol: true, baux: true, m2: true, commentaire: true,
+    batiment: true, sol: true, baux: false, m2: true, commentaire: true, photos: true,
   });
   const [destOff, setDestOff] = useState<Set<string>>(new Set());
   const [plein, setPlein] = useState(false);
 
-  const on = (k: OptKey) => opts[k];
+  // Largeur réellement disponible : en dessous du seuil on bascule en vue
+  // compacte plutôt que de comprimer vingt colonnes à 17 px.
+  const wrap = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setCompact(e.contentRect.width < SEUIL_COMPACT));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const compacte = compact && !plein;
+  const on = (k: OptKey) => opts[k] && !(compacte && OPTIONS_LARGES.includes(k));
+  /* La bascule « Batiment » couvre bâtiment et étage. En fenêtre étroite le BO
+     ne sacrifie que le bâtiment : l'étage reste, c'est un repère de terrain. */
+  const colBat = opts.batiment && !compacte;
+  const colEtg = opts.batiment;
   const toggleOpt = (k: OptKey) => setOpts((o) => ({ ...o, [k]: !o[k] }));
   const toggleDest = (d: string) =>
     setDestOff((s) => {
@@ -216,6 +256,32 @@ export function LotsEditor({ b }: { b: BienData }) {
     () => DESTINATIONS.filter((d) => (parDest.get(d) ?? 0) > 0 || destOff.has(d)),
     [parDest, destOff],
   );
+
+  /* Colonnes réellement affichées, dans l'ordre du tableau. */
+  const colonnes = useMemo(() => {
+    const c: string[] = [];
+    if (colBat) c.push("bat");
+    if (colEtg) c.push("etg");
+    c.push("num", "dest", "type", "carrez");
+    if (on("sol")) c.push("sol");
+    c.push("bail");
+    if (on("baux")) c.push("entree", "locataire");
+    c.push("hc");
+    if (on("m2")) c.push("hcm2");
+    c.push("hcmax");
+    if (on("m2")) c.push("hcmaxm2");
+    c.push("etat");
+    if (!compacte) c.push("travaux");
+    c.push("dpe", "renov");
+    if (on("commentaire")) c.push("commentaire");
+    if (on("photos")) c.push("photos");
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts, compacte, colBat, colEtg]);
+
+  const poids = (c: string) => (compacte ? POIDS_COMPACT[c] : undefined) ?? POIDS[c] ?? 4;
+  const totalPoids = colonnes.reduce((s2, c) => s2 + poids(c), 0);
+  const largeur = (c: string) => (poids(c) / totalPoids) * 100;
 
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
 
@@ -348,9 +414,8 @@ export function LotsEditor({ b }: { b: BienData }) {
     return <span className={p >= 0 ? "pos" : "neg"}>{p >= 0 ? "+" : ""}{p} %</span>;
   };
 
-  const nbCols =
-    1 + (on("batiment") ? 2 : 0) + 3 + 1 + (on("sol") ? 1 : 0) +
-    (on("baux") ? 3 : 1) + 2 + (on("m2") ? 2 : 0) + 4 + (on("commentaire") ? 1 : 0) + 1;
+  /** Cases à cocher + colonnes affichées. */
+  const nbCols = 1 + colonnes.length;
 
   return (
     <div className={plein ? "lots-full" : undefined}>
@@ -358,7 +423,12 @@ export function LotsEditor({ b }: { b: BienData }) {
       <div className="lhead">
         <div className="lopts">
           {OPTIONS.map((o) => (
-            <button key={o.key} type="button" className={`ltog${on(o.key) ? " on" : ""}`} onClick={() => toggleOpt(o.key)}>
+            <button key={o.key} type="button"
+              className={`ltog${on(o.key) ? " on" : ""}${compacte && OPTIONS_LARGES.includes(o.key) ? " bride" : ""}`}
+              title={compacte && OPTIONS_LARGES.includes(o.key)
+                ? "Fenêtre trop étroite pour cette colonne — élargissez la fenêtre ou passez en plein écran"
+                : undefined}
+              onClick={() => toggleOpt(o.key)}>
               <span className="sw2" />{o.label}
             </button>
           ))}
@@ -403,53 +473,38 @@ export function LotsEditor({ b }: { b: BienData }) {
 
       {/* Bord à bord : le tableau sort du gouttières de la fiche pour toucher
           les deux sidebars, comme dans le BO (retour #49). */}
-      <div className="ltable-wrap bord-a-bord" style={pending ? { opacity: 0.6 } : undefined}>
+      <div ref={wrap} className="ltable-wrap bord-a-bord" style={pending ? { opacity: 0.6 } : undefined}>
         <table className="ltable v2">
-          {/* Largeurs relevées au pixel sur la capture du BO (retour #49) :
-              les colonnes de repère restent étroites, Locataire et Commentaire
-              prennent la place — c'est là que se trouve l'information utile. */}
+          {/* Largeurs relevées au pixel sur la capture du BO (retour #49),
+              renormalisées sur les seules colonnes affichées (retour #52). */}
           <colgroup>
             <col style={{ width: 22 }} />
-            {on("batiment") && <><col style={{ width: "2.1%" }} /><col style={{ width: "2.0%" }} /></>}
-            <col style={{ width: "2.1%" }} />
-            <col style={{ width: "2.3%" }} />
-            <col style={{ width: "6.8%" }} />
-            <col style={{ width: "5.2%" }} />
-            {on("sol") && <col style={{ width: "5.5%" }} />}
-            <col style={{ width: "5.2%" }} />
-            {on("baux") && <><col style={{ width: "4.6%" }} /><col style={{ width: "8.8%" }} /></>}
-            <col style={{ width: "4.9%" }} />
-            {on("m2") && <col style={{ width: "3.8%" }} />}
-            <col style={{ width: "4.9%" }} />
-            {on("m2") && <col style={{ width: "4.0%" }} />}
-            <col style={{ width: "5.2%" }} />
-            <col style={{ width: "6.1%" }} />
-            <col style={{ width: "2.7%" }} />
-            <col style={{ width: "3.6%" }} />
-            {on("commentaire") && <col style={{ width: "17.3%" }} />}
-            <col style={{ width: "2.9%" }} />
+            {colonnes.map((c) => <col key={c} style={{ width: `${largeur(c)}%` }} />)}
           </colgroup>
           <thead>
             <tr>
               <th className="grp brd" rowSpan={2} style={{ width: 26 }} />
-              <th className="grp brd" colSpan={on("batiment") ? 3 : 1}>Référence</th>
+              <th className="grp brd" colSpan={1 + (colBat ? 1 : 0) + (colEtg ? 1 : 0)}>Référence</th>
               <th className="grp brd" colSpan={2 + 1 + (on("sol") ? 1 : 0)}>Général</th>
               <th className="grp brd" colSpan={(on("baux") ? 3 : 1) + 2 + (on("m2") ? 2 : 0)}>Loyer</th>
-              <th className="grp brd" colSpan={4}>Etat</th>
-              <th className="grp" colSpan={(on("commentaire") ? 1 : 0) + 1}>Autres</th>
+              <th className="grp brd" colSpan={compacte ? 3 : 4}>Etat</th>
+              {(on("commentaire") || on("photos")) && (
+                <th className="grp" colSpan={(on("commentaire") ? 1 : 0) + (on("photos") ? 1 : 0)}>Autres</th>
+              )}
             </tr>
             <tr>
-              {on("batiment") && <><th className="brd">Bat.</th><th>Etg</th></>}
-              <th className={on("batiment") ? "" : "brd"}>N°</th>
+              {colBat && <th className="brd">Bat.</th>}
+              {colEtg && <th className={colBat ? "" : "brd"}>Etg</th>}
+              <th className={colBat || colEtg ? "" : "brd"}>N°</th>
               <th className="brd">Dest.</th><th>Type</th>
               <th>Carrez</th>{on("sol") && <th>Au sol</th>}
               <th className="brd">Type bail</th>
               {on("baux") && <><th>Entrée</th><th>Locataire</th></>}
               <th>HC actuel</th>{on("m2") && <th>€/m²</th>}
               <th>HC max</th>{on("m2") && <th>€/m²</th>}
-              <th className="brd">Etat</th><th>Travaux</th><th>DPE</th><th>Rénov.</th>
+              <th className="brd">Etat</th>{!compacte && <th>Travaux</th>}<th>DPE</th><th>Rénov.</th>
               {on("commentaire") && <th className="brd">Commentaire</th>}
-              <th className={on("commentaire") ? "" : "brd"}>Photos</th>
+              {on("photos") && <th className={on("commentaire") ? "" : "brd"}>Photos</th>}
             </tr>
           </thead>
           <tbody>
@@ -463,13 +518,13 @@ export function LotsEditor({ b }: { b: BienData }) {
               return (
                 <tr key={r.id} style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}>
                   <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
-                  {on("batiment") && (
-                    <>
-                      <td className="brd"><input className="lcell" value={r.batiment} onChange={(e) => edit(r.id, "batiment", e.target.value)} /></td>
-                      <td><input className="lcell" value={r.etage} onChange={(e) => edit(r.id, "etage", e.target.value)} /></td>
-                    </>
+                  {colBat && (
+                    <td className="brd"><input className="lcell" value={r.batiment} onChange={(e) => edit(r.id, "batiment", e.target.value)} /></td>
                   )}
-                  <td className={on("batiment") ? "" : "brd"}><input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} /></td>
+                  {colEtg && (
+                    <td className={colBat ? "" : "brd"}><input className="lcell" value={r.etage} onChange={(e) => edit(r.id, "etage", e.target.value)} /></td>
+                  )}
+                  <td className={colBat || colEtg ? "" : "brd"}><input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} /></td>
                   <td className="brd dest" title={r.Destination}>
                     <span className="destic">
                       {r.Destination
@@ -513,7 +568,9 @@ export function LotsEditor({ b }: { b: BienData }) {
                       <option value="" />{[...new Set([r.Etat, ...ETATS])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
                     </select>
                   </td>
-                  <td className="na">{tvx > 0 ? <span className="tvx">{euros(tvx)}</span> : <span className="nc">n.a.</span>}</td>
+                  {!compacte && (
+                    <td className="na">{tvx > 0 ? <span className="tvx">{euros(tvx)}</span> : <span className="nc">n.a.</span>}</td>
+                  )}
                   <td>
                     <select className={`lcell${!r.Type_dpe || r.Type_dpe === "n.c." ? " vide" : ""}`} value={r.Type_dpe} onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
                       <option value="" />{[...new Set([r.Type_dpe, ...DPES])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
@@ -521,9 +578,11 @@ export function LotsEditor({ b }: { b: BienData }) {
                   </td>
                   <td className="na"><input className="lcell num" value={r.renov_year} onChange={(e) => edit(r.id, "renov_year", e.target.value)} /></td>
                   {on("commentaire") && <td className="brd"><input className="lcell" value={r.commentaire} onChange={(e) => edit(r.id, "commentaire", e.target.value)} /></td>}
-                  <td className={`na${on("commentaire") ? "" : " brd"}`}>
-                    <span className="phc"><svg viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>{photos}</span>
-                  </td>
+                  {on("photos") && (
+                    <td className={`na${on("commentaire") ? "" : " brd"}`}>
+                      <span className="phc"><svg viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>{photos}</span>
+                    </td>
+                  )}
                 </tr>
               );
             })}

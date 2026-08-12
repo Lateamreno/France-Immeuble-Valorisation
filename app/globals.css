@@ -898,8 +898,14 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .fb img.fb-shot { max-width: 220px; max-height: 150px; border: 1px solid var(--line); border-radius: 4px; }
 
 /* --- État locatif v2 (retours MAV du 11/08) --- */
-.lhead { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.lhead { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+/* En fenêtre étroite les trois blocs s'empilent au lieu de passer sous le
+   rail de droite (retour #54). */
+.lhead > .lsynth, .lhead > div:nth-child(2) { flex: 1 1 320px; min-width: 0; }
 .lopts, .ldest { display: flex; flex-direction: column; gap: 3px; flex: none; padding-top: 4px; }
+@media (max-width: 1400px) {
+  .lopts, .ldest { flex-direction: row; flex-wrap: wrap; gap: 4px 14px; flex: 1 1 100%; }
+}
 .ldest { align-items: flex-start; }
 .ltog {
   display: inline-flex; align-items: center; gap: 8px;
@@ -1700,3 +1706,7 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .poi-nom::placeholder { color: var(--slate); opacity: 1; }
 .poi-l:hover .poi-nom { box-shadow: inset 0 -1px 0 var(--line); }
 .poi-nom:focus { outline: 0; background: #fff; box-shadow: 0 0 0 1px var(--gold-bo); }
+
+/* Bascule de colonne neutralisée par une fenêtre trop étroite (retour #54) :
+   le réglage est conservé, il reprendra effet une fois la place revenue. */
+.ltog.bride { opacity: .4; cursor: help; }
