@@ -484,17 +484,25 @@ function SecteurTab({ b }: { b: BienData }) {
   const carrezOcc = lots.reduce((s, l) => s + ((num(l.loyer) ?? 0) > 0 ? num(l.surface_carrez) ?? 0 : 0), 0);
   const loyersAn = lots.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12;
   const loyersMaxAn = lots.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12;
-  const travaux = num(im.fin_travaux) ?? 0;
-  const hai = num(im.prix_hai) ?? 0;
 
   const refLoyer = num(sect["0 - loyer_mois"]);
   const refPrix = num(sect["0 - prix"]);
   const refRenta = num(sect["0 - renta _%"]);
 
-  const gap = (v?: number, ref?: number) =>
-    v !== undefined && ref !== undefined && ref > 0
-      ? ` (${v >= ref ? "+" : "−"}${Math.abs(Math.round(((v - ref) / ref) * 100))} %)`
-      : "";
+  const lm2Act = carrezOcc > 0 && loyersAn > 0 ? loyersAn / 12 / carrezOcc : undefined;
+  const lm2Max = carrez > 0 && loyersMaxAn > 0 ? loyersMaxAn / 12 / carrez : undefined;
+
+  /* Équivalents « si l'immeuble était au niveau du secteur » (retour #64). */
+  const kAn = (v?: number) => (v !== undefined ? `${Math.round(v / 1000).toLocaleString("fr-FR")} k€/an` : undefined);
+  const eur0 = (v?: number) => (v !== undefined ? `${Math.round(v).toLocaleString("fr-FR")} €` : undefined);
+  const secteurLoyerAn = refLoyer !== undefined && carrez > 0 ? refLoyer * carrez * 12 : undefined;
+  const secteurValeur = refPrix !== undefined && carrez > 0 ? refPrix * carrez : undefined;
+  const secteurCapital = secteurLoyerAn !== undefined && refRenta ? secteurLoyerAn / (refRenta / 100) : undefined;
+  const capActuel = loyersAn > 0 && refRenta ? loyersAn / (refRenta / 100) : undefined;
+  const capMax = loyersMaxAn > 0 && refRenta ? loyersMaxAn / (refRenta / 100) : undefined;
+
+  const ecart = (v?: number, ref?: number) =>
+    v !== undefined && ref !== undefined && ref > 0 ? Math.round(((v - ref) / ref) * 100) : undefined;
 
   const dests = [...new Set(lots.map((l) => String(l.Destination ?? "")).filter((d) => d))];
   const poids = dests.map((d) => ({
@@ -502,82 +510,110 @@ function SecteurTab({ b }: { b: BienData }) {
     carrez: lots.filter((l) => String(l.Destination ?? "") === d).reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
   }));
 
-  const lm2Act = carrezOcc > 0 ? loyersAn / 12 / carrezOcc : undefined;
-  const lm2Max = carrez > 0 ? loyersMaxAn / 12 / carrez : undefined;
-  const pm2Act = carrez > 0 && hai > 0 ? hai / carrez : undefined;
-  const pm2Max = carrez > 0 && hai > 0 ? (hai + travaux) / carrez : undefined;
+  const dateMaj = S(sect["0 - date"]).slice(0, 10).split("-").reverse().join("/");
+
+  /* Une cellule du tableau sombre : écart %, valeur, équivalent en chip. */
+  const Cell = ({ pct, val, chip }: { pct?: number; val?: string; chip?: string }) => (
+    <td>
+      {val || chip ? (
+        <span className="sd-cell">
+          {pct !== undefined && <em className={pct < 0 ? "neg" : "pos"}>{pct > 0 ? "+" : ""}{pct} %</em>}
+          {val && <b>{val}</b>}
+          {chip && <i>{chip}</i>}
+        </span>
+      ) : (
+        <span className="sd-nc">n.c.</span>
+      )}
+    </td>
+  );
 
   return (
     <>
-      {S(sect["0 - date"]) && (
-        <div style={{ fontSize: 12, color: "var(--gray-txt)", marginBottom: 8 }}>
-          Mis à jour le {S(sect["0 - date"]).slice(0, 10).split("-").reverse().join("/")}
+      <div className="emp-cadre">
+        <div className="emp-titre">
+          <svg viewBox="0 0 24 24"><path d="M3 19h18" /><path d="M3 16.5 8.5 9l4 3.5L20 5v11.5z" /></svg>
+          Prix du secteur
         </div>
-      )}
+        {dateMaj && <div className="emp-maj">Mis à jour le {dateMaj}</div>}
+      </div>
+
       <div className="fsub">Immeuble entier</div>
-      <div className="ltable-wrap">
-        <table className="ltable">
+      <div className="sect-dark">
+        <table>
           <thead><tr><th /><th>Secteur</th><th>Actuel</th><th>Potentiel</th></tr></thead>
           <tbody>
             <tr>
-              <td><b>Loyer (€/m²/mois)</b></td>
-              <td>{refLoyer !== undefined ? fr1(refLoyer) : "n.c."}</td>
-              <td>{lm2Act !== undefined ? fr1(lm2Act) + gap(lm2Act, refLoyer) : "—"}</td>
-              <td>{lm2Max !== undefined ? fr1(lm2Max) + gap(lm2Max, refLoyer) : "—"}</td>
+              <td className="pic"><svg viewBox="0 0 24 24"><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></svg></td>
+              <Cell val={refLoyer !== undefined ? `${fr1(refLoyer)} €/m²/mois` : undefined} chip={kAn(secteurLoyerAn)} />
+              <Cell pct={ecart(lm2Act, refLoyer)} val={lm2Act !== undefined ? `${fr1(lm2Act)} €/m²/mois` : undefined} chip={kAn(loyersAn > 0 ? loyersAn : undefined)} />
+              <Cell pct={ecart(lm2Max, refLoyer)} val={lm2Max !== undefined ? `${fr1(lm2Max)} €/m²/mois` : undefined} chip={kAn(loyersMaxAn > 0 ? loyersMaxAn : undefined)} />
             </tr>
             <tr>
-              <td><b>Loyer annuel</b></td>
-              <td>{refLoyer !== undefined && carrez > 0 ? `${Math.round((refLoyer * carrez * 12) / 1000)} k€/an` : "n.c."}</td>
-              <td>{loyersAn > 0 ? `${Math.round(loyersAn / 1000)} k€/an` : "—"}</td>
-              <td>{loyersMaxAn > 0 ? `${Math.round(loyersMaxAn / 1000)} k€/an` : "—"}</td>
+              <td className="pic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg></td>
+              <Cell val={refPrix !== undefined ? `${Math.round(refPrix).toLocaleString("fr-FR")} €/m²` : undefined} chip={eur0(secteurValeur)} />
+              <Cell chip={eur0(secteurValeur)} />
+              <Cell chip={eur0(secteurValeur)} />
             </tr>
             <tr>
-              <td><b>Prix (€/m²)</b></td>
-              <td>{refPrix !== undefined ? Math.round(refPrix).toLocaleString("fr-FR") : "n.c."}</td>
-              <td>{pm2Act !== undefined ? Math.round(pm2Act).toLocaleString("fr-FR") + gap(pm2Act, refPrix) : "—"}</td>
-              <td>{pm2Max !== undefined ? Math.round(pm2Max).toLocaleString("fr-FR") : "—"}</td>
-            </tr>
-            <tr>
-              <td><b>Rendement</b></td>
-              <td>{refRenta !== undefined ? `${fr1(refRenta)} %` : "n.c."}</td>
-              <td>{hai > 0 && loyersAn > 0 ? `${fr1((loyersAn / hai) * 100)} %` : "—"}</td>
-              <td>{hai > 0 && loyersMaxAn > 0 ? `${fr1((loyersMaxAn / (hai + travaux)) * 100)} %` : "—"}</td>
-            </tr>
-            <tr>
-              <td><b>Valeur</b></td>
-              <td>{refPrix !== undefined && carrez > 0 ? euros(Math.round(refPrix * carrez)) : "n.c."}</td>
-              <td>{hai > 0 ? euros(hai) : "—"}</td>
-              <td>{hai > 0 ? euros(hai + travaux) : "—"}</td>
+              <td className="pic"><svg viewBox="0 0 24 24"><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></svg></td>
+              <Cell val={refRenta !== undefined ? `${fr1(refRenta)} %` : undefined} chip={eur0(secteurCapital)} />
+              <Cell chip={eur0(capActuel)} />
+              <Cell chip={eur0(capMax)} />
             </tr>
           </tbody>
         </table>
       </div>
+      <div className="sd-legende">
+        Ligne 1 : loyer moyen au m² et loyer annuel équivalent · Ligne 2 : prix au m² et valeur de
+        l&apos;immeuble à ce prix · Ligne 3 : rendement et valeur en capitalisant le loyer à ce rendement.
+      </div>
 
-      <div className="fsub" style={{ marginTop: 16 }}>Détail par destination</div>
+      <div className="fsub" style={{ marginTop: 18 }}>Détail par destination</div>
       {dests.length === 0 && <div className="fempty">Saisissez d&apos;abord des lots pour ventiler le secteur par destination.</div>}
-      {dests.map((d) => {
-        const prefix = DEST_PREFIX[d] ?? "autre";
-        const ls = lots.filter((l) => String(l.Destination ?? "") === d);
-        const surf = ls.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
-        return (
-          <div key={d} className="chrow">
-            <span className="t">{d}s</span>
-            <span className="c">{Math.round(surf)} m² carrez</span>
-            <span className="c">
-              {num(sect[`${prefix}_loyer_retenu`]) !== undefined ? `${fr1(num(sect[`${prefix}_loyer_retenu`])!)} €/m²/mois` : "loyer n.c."}
-              {" · "}
-              {num(sect[`${prefix}_prix_retenu`]) !== undefined ? `${Math.round(num(sect[`${prefix}_prix_retenu`])!).toLocaleString("fr-FR")} €/m²` : "prix n.c."}
-              {" · "}
-              {num(sect[`${prefix}_renta_retenu`]) !== undefined ? `${fr1(num(sect[`${prefix}_renta_retenu`])!)} %` : "renta n.c."}
-            </span>
-            <span className="sp" style={{ flex: 1 }} />
-            <EditSecteurBtn b={b} dest={d} poids={poids} />
-          </div>
-        );
-      })}
+      <div className="sect-vgs">
+        {dests.map((d) => {
+          const prefix = DEST_PREFIX[d] ?? "autre";
+          const surf = lots.filter((l) => String(l.Destination ?? "") === d).reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
+          const loyer = num(sect[`${prefix}_loyer_retenu`]);
+          const prix = num(sect[`${prefix}_prix_retenu`]);
+          const renta = num(sect[`${prefix}_renta_retenu`]);
+          const loyerAnD = loyer !== undefined && surf > 0 ? loyer * surf * 12 : undefined;
+          return (
+            <div key={d} className="sect-vg">
+              <div className="sv-h">
+                <b>{PLURIELS[d] ?? `${d}s`}</b>
+                <span>{Math.round(surf).toLocaleString("fr-FR")} m² carrez</span>
+              </div>
+              <div className="sv-l">
+                <svg viewBox="0 0 24 24"><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></svg>
+                {loyer !== undefined ? <b>{fr1(loyer)} <i>€/m²/mois</i></b> : <b className="nc">loyer n.c.</b>}
+                {loyerAnD !== undefined && <span className="chip">{Math.round(loyerAnD / 1000).toLocaleString("fr-FR")} k€/an</span>}
+              </div>
+              <div className="sv-l">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg>
+                {prix !== undefined ? <b>{Math.round(prix).toLocaleString("fr-FR")} <i>€/m²</i></b> : <b className="nc">prix n.c.</b>}
+                {prix !== undefined && surf > 0 && <span className="chip">{Math.round(prix * surf).toLocaleString("fr-FR")} €</span>}
+              </div>
+              <div className="sv-l">
+                <svg viewBox="0 0 24 24"><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></svg>
+                {renta !== undefined ? <b>{fr1(renta)} <i>%</i></b> : <b className="nc">renta n.c.</b>}
+                {renta !== undefined && loyerAnD !== undefined && renta > 0 && (
+                  <span className="chip">{Math.round(loyerAnD / (renta / 100)).toLocaleString("fr-FR")} €</span>
+                )}
+              </div>
+              <div className="sv-f"><EditSecteurBtn b={b} dest={d} poids={poids} /></div>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }
+
+const PLURIELS: Record<string, string> = {
+  Logement: "Logements", Commerce: "Commerces", Bureau: "Bureaux",
+  Logistique: "Entrepôts", Cave: "Caves", Parking: "Parkings", Annexe: "Annexes",
+};
 
 function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: { dest: string; carrez: number }[] }) {
   const immeubleId = String(b.im._id);
@@ -589,9 +625,22 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
   const [prix, setPrix] = useState(S(num(sect[`${prefix}_prix_retenu`])));
   const [renta, setRenta] = useState(S(num(sect[`${prefix}_renta_retenu`])));
   const [comment, setComment] = useState(S(sect[`${prefix}_commentaire`]));
+  /* Liens contextualisés sur l'adresse et le type du bien (retour #65) :
+     SeLoger a un format d'URL stable par code postal ; pour les autres, la
+     recherche ciblée sur le site tombe directement sur la page de la ville. */
+  const ville = S(b.im.adresse_ville);
+  const cp = S(b.im.adresse_zipcode);
+  const cible = (site: string, quoi: string) =>
+    `https://www.google.com/search?q=${encodeURIComponent(`site:${site} ${quoi} ${ville} ${cp}`)}`;
   const links: [string, string][] = dest === "Commerce"
-    ? [["LocalCommercial.net", "https://www.localcommercial.net"], ["UnEmplacement", "https://www.unemplacement.com"]]
-    : [["Seloger", `https://www.seloger.com/prix-de-l-immo/vente/${S(b.im.adresse_zipcode)}.htm`], ["Notaires", "https://www.immobilier.notaires.fr/fr/prix-immobilier"]];
+    ? [
+        ["LocalCommercial.net", cible("localcommercial.net", "local commercial")],
+        ["UnEmplacement", cible("unemplacement.com", "emplacement commercial")],
+      ]
+    : [
+        ["Seloger", `https://www.seloger.com/prix-de-l-immo/vente/${cp}.htm`],
+        ["Notaires", cible("immobilier.notaires.fr", "prix immobilier")],
+      ];
 
   return (
     <>
