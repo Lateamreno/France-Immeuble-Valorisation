@@ -105,6 +105,29 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
   const [analyse, setAnalyse] = useState("");
   const [titre, setTitre] = useState(`Estimation ${S(im.adresse_ville)}`.trim());
 
+  /* --- Complétude (retour #66) : tout est servi par la fiche ; ce qui
+     manque porte un point d'exclamation rouge pour qu'on aille le chercher,
+     au niveau du bloc et au niveau de l'étape. --- */
+  const okAdresse = !!(S(im.adresse_rue) && S(im.adresse_ville));
+  const okPoi = !!(gareName && gareTime && comName && comTime);
+  const okCharges = chTf !== "";
+  const okLocatif = agg.tot > 0 && agg.carrez > 0;
+  const okSecteur = refLoyer !== "" && refPrix !== "" && refRenta !== "";
+  const okPrix = hai > 0;
+  const okAnalyse = analyse.trim().length > 0;
+  const etatEtape: ("ok" | "warn" | "lock")[] = [
+    okAdresse && okPoi && okCharges && okLocatif ? "ok" : "warn",
+    okSecteur ? "ok" : "warn",
+    okPrix ? "ok" : "warn",
+    okAnalyse ? "ok" : "warn",
+    estId ? "ok" : step >= 4 ? "warn" : "lock",
+    estId ? "ok" : "lock",
+  ];
+
+  const St = ({ ok }: { ok: boolean }) =>
+    ok ? <span className="wok" title="Complet">✓</span>
+       : <span className="wko" title="Information manquante — cliquez pour la compléter">!</span>;
+
   const generer = () =>
     start(async () => {
       setError(null);
@@ -176,10 +199,13 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
         {STEPS.map((s, i) => (
           <button
             key={s} type="button"
-            className={`wstep${i === step ? " on" : ""}${i < step ? " done" : ""}`}
+            className={`wstep${i === step ? " on" : ""}${i < step ? " done" : ""} ${etatEtape[i]}`}
             onClick={() => { if (i < 4 && !estId) setStep(i); }}
           >
-            <span className="n">{i + 1}</span>{s}
+            <span className="n">
+              {etatEtape[i] === "ok" ? "✓" : etatEtape[i] === "warn" ? "!" : etatEtape[i] === "lock" ? "🔒" : i + 1}
+            </span>
+            {s}
           </button>
         ))}
       </div>
@@ -190,11 +216,11 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
             <div className="fsub">Données de l&apos;immeuble</div>
             <div className="wgrid">
               <div className="wcard">
-                <div className="h">Adresse</div>
+                <div className="h">Adresse <St ok={okAdresse} /></div>
                 <div className="v">{[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}<br />{S(im.adresse_zipcode)} {S(im.adresse_ville)}</div>
               </div>
               <div className="wcard">
-                <div className="h">Points d&apos;intérêt</div>
+                <div className="h">Points d&apos;intérêt <St ok={okPoi} /></div>
                 <div className="mrow" style={{ alignItems: "center", marginBottom: 4 }}>
                   <input className="min" style={{ width: 150 }} placeholder="Nom de la gare" value={gareName} onChange={(e) => setGareName(e.target.value)} />
                   <input className="min" style={{ width: 60 }} placeholder="min" value={gareTime} onChange={(e) => setGareTime(e.target.value)} /> min
@@ -205,7 +231,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
                 </div>
               </div>
               <div className="wcard">
-                <div className="h">Charges non récupérables (€/an)</div>
+                <div className="h">Charges non récupérables (€/an) <St ok={okCharges} /></div>
                 <div className="mrow" style={{ alignItems: "center" }}>
                   <label style={{ fontSize: 12 }}>Taxe foncière <input className="min" style={{ width: 90 }} value={chTf} onChange={(e) => setChTf(e.target.value)} /></label>
                   <label style={{ fontSize: 12 }}>Autres charges <input className="min" style={{ width: 90 }} value={chAutres} onChange={(e) => setChAutres(e.target.value)} /></label>
@@ -213,7 +239,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
                 <div className="v" style={{ marginTop: 6 }}>Charges totales : <b>{euros(chargesTot) ?? "0 €"}/an</b></div>
               </div>
               <div className="wcard">
-                <div className="h">Travaux</div>
+                <div className="h">Travaux <St ok={true} /></div>
                 <div className="mrow" style={{ alignItems: "center" }}>
                   <label style={{ fontSize: 12 }}>sur le bâti <input className="min" style={{ width: 90 }} value={tvxBati} onChange={(e) => setTvxBati(e.target.value)} /></label>
                   <label style={{ fontSize: 12 }}>sur les lots <input className="min" style={{ width: 90 }} value={tvxLots} onChange={(e) => setTvxLots(e.target.value)} /></label>
@@ -221,7 +247,7 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
                 <div className="v" style={{ marginTop: 6 }}>Travaux totaux : <b>{euros(travauxTot) ?? "0 €"}</b></div>
               </div>
             </div>
-            <div className="fsub" style={{ marginTop: 16 }}>État locatif</div>
+            <div className="fsub" style={{ marginTop: 16 }}>État locatif <St ok={okLocatif} /></div>
             <div className="ltable-wrap">
               <table className="ltable">
                 <thead><tr><th>Destination</th><th>Lots</th><th>Occupés</th><th>Surface</th><th>Loyer</th><th>Potentiel</th></tr></thead>
@@ -429,6 +455,49 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           </>
         )}
       </div>
+
+      <HistoriqueEstimations b={b} immeubleId={immeubleId} />
+    </div>
+  );
+}
+
+/** Historique des estimations, en bandeau sticky maigre au bas de la page
+ *  (retour #66) : la dernière est toujours visible, « Voir plus » déplie les
+ *  précédentes. Chaque estimation est figée à sa date — sa version imprimable
+ *  montre les chiffres sur lesquels elle s'est basée à l'époque. */
+function HistoriqueEstimations({ b, immeubleId }: { b: BienData; immeubleId: string }) {
+  const [plus, setPlus] = useState(false);
+  const ests = [...b.estimations].sort((a, z) =>
+    String(z["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
+  );
+  if (ests.length === 0) return null;
+
+  const dmyfr = (v: unknown) =>
+    typeof v === "string" ? v.slice(0, 10).split("-").reverse().join("/") : "";
+  const Ligne = ({ e, derniere }: { e: Record<string, unknown>; derniere?: boolean }) => (
+    <div className={`hest-l${derniere ? " last" : ""}`}>
+      {derniere && <b className="tag">Dernière estimation</b>}
+      <span className="t">{S(e.titre) || "Estimation"}</span>
+      <span className="d">figée au {dmyfr(e["Created Date"])}</span>
+      <span className="p">{euros(num(e.prix_hai)) ?? "—"}</span>
+      <span className={String(e.Statut ?? "").startsWith("3") ? "badge-g" : "badge-o"}>
+        {S(e.Statut).replace(/^\d+ - /, "") || "?"}
+      </span>
+      <Link className="fadd" href={`/bien/${immeubleId}/estimation/${S(e._id)}/imprimer`} target="_blank">
+        PDF
+      </Link>
+    </div>
+  );
+
+  return (
+    <div className="hest">
+      <Ligne e={ests[0]} derniere />
+      {ests.length > 1 && (
+        <button type="button" className="hest-plus" onClick={() => setPlus(!plus)}>
+          {plus ? "Réduire" : `Voir plus (${ests.length - 1})`}
+        </button>
+      )}
+      {plus && ests.slice(1).map((e) => <Ligne key={S(e._id)} e={e} />)}
     </div>
   );
 }

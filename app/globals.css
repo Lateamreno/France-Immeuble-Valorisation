@@ -1822,3 +1822,35 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .sv-l b.nc { color: var(--gray-lt); font-weight: 400; font-size: 12.5px; }
 .sv-l .chip { margin-left: auto; background: var(--chip); border-radius: 3px; padding: 2px 8px; font-size: 11.5px; font-weight: 700; color: var(--slate-2); white-space: nowrap; }
 .sv-f { display: flex; justify-content: flex-end; margin-top: 7px; }
+
+/* --- Wizard estimation : indicateurs de complétude (retour #66) --- */
+.wok, .wko {
+  display: inline-grid; place-items: center; width: 16px; height: 16px;
+  border-radius: 50%; font-size: 11px; font-weight: 900; margin-left: 6px; vertical-align: 1px;
+}
+.wok { color: var(--green); }
+.wko { background: var(--red); color: #fff; cursor: help; }
+.wstep.ok .n { background: var(--green); color: #fff; }
+.wstep.warn .n { background: var(--red); color: #fff; }
+.wstep.lock .n { background: #ececec; color: var(--gray-txt); font-size: 9px; }
+
+/* --- Historique des estimations, sticky en bas (retour #66) --- */
+.hest {
+  position: sticky; bottom: 0; z-index: 20;
+  margin: 18px -4px 0; padding: 8px 14px;
+  background: #fff; border: 1px solid var(--line); border-radius: 7px 7px 0 0;
+  box-shadow: 0 -3px 12px rgba(0, 0, 0, .07);
+}
+.hest-l { display: flex; align-items: center; gap: 11px; padding: 4px 0; font-size: 12.5px; }
+.hest-l + .hest-l { border-top: 1px solid var(--line-lt); }
+.hest-l .tag {
+  border: 1px solid var(--gold-bo); color: var(--gold-bo); border-radius: 3px;
+  padding: 1px 7px; font-size: 10.5px; font-weight: 700; white-space: nowrap;
+}
+.hest-l .t { font-family: var(--font-title); font-weight: 700; color: var(--slate); }
+.hest-l .d { color: var(--gray-lt); font-size: 11.5px; }
+.hest-l .p { margin-left: auto; font-family: var(--font-title); font-weight: 700; color: var(--slate); }
+.hest-plus {
+  border: 0; background: none; padding: 3px 0 1px; cursor: pointer;
+  font-size: 12px; color: var(--gold-bo); font-weight: 700;
+}
