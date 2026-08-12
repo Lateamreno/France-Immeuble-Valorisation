@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Rail } from "@/components/rail";
+import { Burger } from "@/components/burger";
 import { getAgents } from "@/lib/bubble/server";
 import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
@@ -25,6 +26,7 @@ export default async function RootLayout({
     <html lang="fr">
       <body>
         <div className="shell">
+          <Burger />
           <Rail />
           <div className="main">
             {children}

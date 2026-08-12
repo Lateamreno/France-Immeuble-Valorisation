@@ -300,8 +300,25 @@ export function LotsEditor({ b }: { b: BienData }) {
     };
   }, [visibles]);
 
+  /* La surface au sol vaut la surface Carrez et le loyer potentiel vaut le
+     loyer actuel, sauf différence réelle : on les reporte à la saisie tant que
+     l'agent n'y a pas touché, il ne corrige que l'exception (retour #55). */
+  const REPORTS: Partial<Record<keyof Row, keyof Row>> = {
+    surface_carrez: "surface_sol",
+    loyer: "loyer_max",
+  };
+
   const edit = (id: string, field: keyof Row, value: string) => {
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+    setRows((rs) =>
+      rs.map((r) => {
+        if (r.id !== id) return r;
+        const suite = REPORTS[field];
+        // Le report ne s'applique que si la case cible suivait la case source :
+        // une valeur saisie à la main n'est jamais écrasée.
+        const suit = suite && (r[suite] === "" || r[suite] === r[field]);
+        return { ...r, [field]: value, ...(suit ? { [suite!]: value } : null) };
+      }),
+    );
     setDirty((d) => new Set(d).add(id));
   };
   const toggleSel = (id: string) =>
@@ -572,7 +589,10 @@ export function LotsEditor({ b }: { b: BienData }) {
                     <td className="na">{tvx > 0 ? <span className="tvx">{euros(tvx)}</span> : <span className="nc">n.a.</span>}</td>
                   )}
                   <td>
-                    <select className={`lcell${!r.Type_dpe || r.Type_dpe === "n.c." ? " vide" : ""}`} value={r.Type_dpe} onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
+                    {/* La lettre du DPE occupe toute la case : pas de réserve
+                        de chevron, sinon elle disparaît dans une colonne
+                        étroite (retour #56). */}
+                    <select className={`lcell dpe${!r.Type_dpe || r.Type_dpe === "n.c." ? " vide" : ""}`} value={r.Type_dpe} onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
                       <option value="" />{[...new Set([r.Type_dpe, ...DPES])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
                     </select>
                   </td>
