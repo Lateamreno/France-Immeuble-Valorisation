@@ -812,6 +812,9 @@ a.kgo { text-decoration: none; display: inline-flex; align-items: center; gap: 7
   .print-page { padding: 0; max-width: none; }
   body { background: #fff !important; }
   .side, .bottbar { display: none !important; }
+  /* Les repères de recette n'ont rien à faire sur un document remis au
+     propriétaire ou à un acquéreur. */
+  .rv-fab, .rv-chip, .rv-pin, .rv-zone, .rv-panel, .brg-bar, .brg-voile { display: none !important; }
 }
 
 /* --- Fiche mandat --- */

@@ -37,7 +37,12 @@ export function AddDossierButton({ b }: { b: BienData }) {
     };
   }, [b]);
 
-  const version = b.dossiers.reduce((m, d) => Math.max(m, Number(d.version ?? 0)), 0) + 1;
+  const prochaine = b.dossiers.reduce((m, d) => Math.max(m, Number(d.version ?? 0)), 0) + 1;
+  /* Une fois le dossier créé, la fiche se recharge et « prochaine » avance
+     d'un cran : on fige le numéro attribué pour que l'écran de confirmation
+     annonce la version réellement enregistrée, pas la suivante. */
+  const [attribuee, setAttribuee] = useState<number | null>(null);
+  const version = attribuee ?? prochaine;
   const [hai, setHai] = useState(S(num(b.im.prix_hai)));
   const [pct, setPct] = useState("5");
   const [pub, setPub] = useState(false);
@@ -48,7 +53,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const generer = () =>
     start(async () => {
       const id = await createDossier(immeubleId, String(b.im.AGENT ?? ""), {
-        version,
+        version: prochaine,
         prix_hai: vHai,
         honos_pct: vPct,
         isPublic: pub,
@@ -62,6 +67,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
           destinations: agg.dests,
         },
       });
+      setAttribuee(prochaine);
       setCreatedId(id);
       setStep(2);
     });
@@ -70,7 +76,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
 
   return (
     <>
-      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }} onClick={() => setOpen(true)}>
+      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}
+        onClick={() => { setAttribuee(null); setCreatedId(null); setStep(0); setOpen(true); }}>
         + Nouveau dossier
       </button>
       {open && (
