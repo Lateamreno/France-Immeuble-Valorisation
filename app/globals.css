@@ -2275,3 +2275,22 @@ body.nav-etroite .savebar { left: 0; right: 0; }
 .est-pjf.pdf a:hover { color: #2f6fb1; }
 .est-pjf.pdf svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
 .est-pjf i { font-style: normal; color: var(--gray-txt); font-size: 11.5px; }
+
+/* --- Champ attendu tant qu'il est vide (règle du BO, retours #69, #71, #77) ---
+   Le cadre rouge dit où il manque quelque chose, sans message d'erreur. */
+.min.requis, input.requis, select.requis, textarea.requis {
+  border-color: var(--red);
+  background: #fff8f8;
+}
+.min.ko { border-color: var(--red); background: #fff2f2; color: var(--red); }
+
+/* Profil et motif de vente saisis depuis la fiche (#71) : le cadre reste
+   rouge tant que l'information manque. */
+.pr-case.vide-req { border-color: var(--red); background: #fff8f8; }
+.pr-in {
+  border: 0; background: none; width: 100%;
+  font-family: var(--font-title); font-size: 13.5px; font-weight: 600; color: var(--slate);
+  padding: 0; margin-top: 1px;
+}
+.pr-in:focus { outline: none; box-shadow: inset 0 -1px 0 var(--gold); }
+select.pr-in { cursor: pointer; }

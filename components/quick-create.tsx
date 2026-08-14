@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useAgentCourant } from "@/lib/bo/agent-courant";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
 import { createContact, createImmeuble } from "@/lib/bo/actions";
@@ -59,7 +60,14 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   const [portable, setPortable] = useState("");
   const [acheteur, setAcheteur] = useState(false);
   const [vendeur, setVendeur] = useState(false);
-  const [agent, setAgent] = useState(agents[0]?.slug ?? "");
+  /* Par défaut l'agent aux commandes, pas le premier de la liste (#67). */
+  const { slug: agent, choisir: setAgent } = useAgentCourant(agents);
+
+  /* Un contact sans adresse e-mail ne sert à rien : ni estimation, ni
+     proposition, ni relance. Elle est donc exigée dès la création (#69). */
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+  const completContact = !!nom.trim() && emailOk;
+
   return (
     <div className="modal-ov">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -70,10 +78,13 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
               <option>Monsieur</option><option>Madame</option>
             </select>
             <input className="min" style={{ width: 130 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
-            <input className="min" style={{ width: 150 }} placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
+            <input className={`min${!nom.trim() ? " requis" : ""}`} style={{ width: 150 }}
+              placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
           </div>
           <div className="mrow" style={{ marginTop: 6 }}>
-            <input className="min" style={{ width: 200 }} placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
+              style={{ width: 200 }} placeholder="E-mail (obligatoire)" value={email}
+              onChange={(e) => setEmail(e.target.value)} />
             <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
           </div>
           <span className="mlab">Projet</span>
@@ -90,8 +101,9 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
         </div>
         <div className="modal-f">
           <button
-            className="kgo" type="button" disabled={pending || !nom.trim()}
-            style={pending || !nom.trim() ? { opacity: 0.5 } : undefined}
+            className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
+            disabled={pending || !completContact}
+            title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
             onClick={() =>
               start(async () => {
                 const id = await createContact({
@@ -124,7 +136,8 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
   const [pending, start] = useTransition();
   const [adresse, setAdresse] = useState<AdresseChoisie | null>(null);
   const [source, setSource] = useState("");
-  const [agent, setAgent] = useState(agents[0]?.slug ?? "");
+  /* Par défaut l'agent aux commandes, pas le premier de la liste (#67). */
+  const { slug: agent, choisir: setAgent } = useAgentCourant(agents);
   const [proprio, setProprio] = useState<{ id: string; nom: string } | null>(null);
   const [picker, setPicker] = useState(false);
 

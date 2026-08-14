@@ -863,6 +863,8 @@ export type ContactPatch = Partial<{
   entreprise_siren: string;
   /** Classement acquéreur A/B/C/D du BO. */
   Note: string;
+  /** Profil du propriétaire, saisi librement depuis la fiche bien (#71). */
+  profil: string;
   date_naissance: string;
   lieu_naissance_geo: string;
   adresse_geo: string;

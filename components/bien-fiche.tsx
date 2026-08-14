@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
-import { chargerAcheteurs, reactiver, setApporteur, setPropositionStatut, updateBien } from "@/lib/bo/actions";
+import { chargerAcheteurs, reactiver, setApporteur, setPropositionStatut, updateBien, updateContact } from "@/lib/bo/actions";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -16,6 +16,7 @@ import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
 import { Picto } from "@/components/pictos";
+import { MOTIFS_VENTE } from "@/lib/referentiels";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 import { ContactPicker } from "@/components/contact-picker";
 import { copierTexte } from "@/components/copier";
@@ -395,6 +396,13 @@ function ProprioSection({ b }: { b: BienData }) {
   const nomComplet = c ? `${S2(c["prénom"]) ?? ""} ${S2(c.nom) ?? ""}`.trim() : "";
   const profil = c && Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : undefined;
   const motif = S2(b.im.Motif_vente);
+  /* Profil et motif se saisissent depuis la fiche, et se signalent en rouge
+     tant qu'ils manquent (#71). Le profil est un texte libre porté par le
+     contact, le motif un choix du référentiel porté par l'immeuble. */
+  const profil0 = c ? S2(c.profil) ?? "" : "";
+  const [profilTxt, setProfilTxt] = useState(profil0);
+  const [motifSel, setMotifSel] = useState(motif ?? "");
+  const [, start] = useTransition();
   const entreprise = c ? S2(c.entreprise_nom) : undefined;
   const tel = c ? S2(c.portable_formatted) ?? S2(c.portable) ?? S2(c.fixe_formatted) : undefined;
   const mail = c ? S2(c.email) : undefined;
@@ -417,17 +425,33 @@ function ProprioSection({ b }: { b: BienData }) {
       </div>
 
       <div className="pr-duo">
-        <div className="pr-case">
+        <div className={`pr-case${profilTxt.trim() ? "" : " vide-req"}`}>
           <span className="pr-ic">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
           </span>
-          <div><div className="k">Profil</div><div className="v">{profil ?? "—"}</div></div>
+          <div>
+            <div className="k">Profil</div>
+            <input className="pr-in" value={profilTxt} placeholder={profil ?? "À renseigner"}
+              onChange={(e) => setProfilTxt(e.target.value)}
+              onBlur={() => profilTxt !== profil0 && start(() =>
+                updateContact(String(c?._id ?? ""), { profil: profilTxt || undefined }))} />
+          </div>
         </div>
-        <div className="pr-case">
+        <div className={`pr-case${motifSel ? "" : " vide-req"}`}>
           <span className="pr-ic">
             <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 3 9v2H9v-2a5 5 0 0 1 3-9zM10 18h4" /></svg>
           </span>
-          <div><div className="k">Motif de la vente</div><div className="v">{motif ?? "—"}</div></div>
+          <div>
+            <div className="k">Motif de la vente</div>
+            <select className="pr-in" value={motifSel}
+              onChange={(e) => {
+                setMotifSel(e.target.value);
+                start(() => updateBien(String(b.im._id), { Motif_vente: e.target.value || undefined }));
+              }}>
+              <option value="">À renseigner</option>
+              {MOTIFS_VENTE.map((m) => <option key={m}>{m}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
