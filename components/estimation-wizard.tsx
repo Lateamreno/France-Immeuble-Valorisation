@@ -10,7 +10,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
-import { createEstimation, setEstimationStatut, type EstimationPayload } from "@/lib/bo/actions";
+import {
+  createEstimation, genererPdfEstimation, setEstimationStatut, type EstimationPayload,
+} from "@/lib/bo/actions";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -87,6 +89,9 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
   const [step, setStep] = useState(0);
   const [pending, start] = useTransition();
   const [estId, setEstId] = useState<string | null>(null);
+  /** Le PDF du dossier, fabriqué juste après l'estimation. */
+  const [pdf, setPdf] = useState<{ url: string; ko: number } | null>(null);
+  const [pdfKo, setPdfKo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
   const [perso, setPerso] = useState(false);
@@ -125,6 +130,9 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           lots: ls.length,
           occ: ls.filter((l) => (num(l.loyer) ?? 0) > 0).length,
           surface: ls.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
+          // Surface effectivement louée : la colonne « Dont louée » du dossier.
+          surfaceOcc: ls.filter((l) => (num(l.loyer) ?? 0) > 0)
+            .reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
           loyer: ls.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12,
           max: ls.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12,
         };
@@ -248,6 +256,10 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
             carrez_tot: agg.carrez, carrez_occ: agg.carrezOcc, occupation: agg.occupation,
             loyer_hc_tot: agg.loyersAn, loyer_hc_max_tot: agg.loyersMaxAn,
             destinations: agg.destinations,
+            parDest: agg.parDest.map((d) => ({
+              dest: d.dest, lots: d.lots, surface: d.surface, surfaceOcc: d.surfaceOcc,
+              loyer: d.loyer, loyerMax: d.max,
+            })),
           },
           emp: {
             gare_name: gareName || undefined, gare_time: parse(gareTime),
@@ -255,7 +267,13 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
           },
           charges: { tf_non_recup: parse(chTf), autres_non_recup: parse(chAutres) },
           travaux: { bati: parse(tvxBati), lots: parse(tvxLots) },
-          ref: { loyer: rLoyer || undefined, prix: rPrix || undefined, renta: rRenta || undefined },
+          ref: {
+            loyer: rLoyer || undefined, prix: rPrix || undefined, renta: rRenta || undefined,
+            parDest: agg.parDest.map((d) => {
+              const r = refs[d.dest] ?? { l: "", p: "", r: "" };
+              return { dest: d.dest, loyer: parse(r.l), prix: parse(r.p), renta: parse(r.r) };
+            }),
+          },
           prix: { hai, honos_pct: pct },
           scores: { emp: String(scores.emp), lot: String(scores.lot), bati: String(scores.bati) },
           cibles,
@@ -265,6 +283,15 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
         const id = await createEstimation(immeubleId, String(im.AGENT ?? ""), payload);
         setEstId(id);
         setStep(4);
+        // Le dossier 6 pages part ensuite dans le coffre : c'est la pièce
+        // jointe du mail. S'il échoue, l'estimation reste valable et la page
+        // imprimable prend le relais.
+        try {
+          const f = await genererPdfEstimation(immeubleId, id);
+          setPdf({ url: f.url, ko: f.ko });
+        } catch (err) {
+          setPdfKo(err instanceof Error ? err.message : "PDF non généré");
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erreur inconnue");
       }
@@ -666,12 +693,22 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
             <div className="est-ml">
               <span className="lbl">PJ</span>
               <label className="est-ch plat">
-                <span>1 fichier</span>
-                <Link className="est-pj" href={`/bien/${immeubleId}/estimation/${estId}/imprimer`} target="_blank">
-                  ▤ Estimation
+                <span>{pdf ? `1 fichier (${pdf.ko} ko)` : pdfKo ? "à imprimer" : "génération en cours…"}</span>
+                <a className="est-pj" href={pdf?.url ?? `/bien/${immeubleId}/estimation/${estId}/imprimer`}
+                  target="_blank" rel="noreferrer" download={pdf ? "Estimation.pdf" : undefined}>
+                  ▤ Estimation{pdf ? " (PDF)" : ""}
+                </a>
+                <Link className="fadd" href={`/bien/${immeubleId}/estimation/${estId}/imprimer`} target="_blank">
+                  Voir le dossier
                 </Link>
               </label>
             </div>
+            {pdfKo && (
+              <div className="warnbox">
+                Le PDF n&apos;a pas pu être fabriqué ({pdfKo}). Le dossier reste consultable et
+                imprimable : ouvrez-le puis « Enregistrer en PDF ».
+              </div>
+            )}
             <div className="est-l">
               <Champ label="Objet" valeur={mailObjet} />
             </div>

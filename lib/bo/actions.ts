@@ -581,12 +581,21 @@ export type EstimationPayload = {
     carrez_tot: number; carrez_occ: number; occupation: number;
     loyer_hc_tot: number; loyer_hc_max_tot: number; // €/an
     destinations: string[];
+    /** Détail par destination : le dossier PDF en a besoin, et il doit être
+     *  figé avec l'estimation (l'état locatif, lui, continue de bouger). */
+    parDest: {
+      dest: string; lots: number; surface: number; surfaceOcc: number;
+      loyer: number; loyerMax: number;
+    }[];
   };
   emp: { gare_name?: string; gare_time?: number; com_name?: string; com_time?: number };
   charges: { tf_non_recup?: number; autres_non_recup?: number };
   travaux: { bati?: number; lots?: number };
-  // Secteur retenu
-  ref: { loyer?: number; prix?: number; renta?: number };
+  // Secteur retenu : moyennes pondérées + détail par destination
+  ref: {
+    loyer?: number; prix?: number; renta?: number;
+    parDest: { dest: string; loyer?: number; prix?: number; renta?: number }[];
+  };
   // Prix estimé
   prix: { hai: number; honos_pct: number };
   // Analyse
@@ -651,11 +660,35 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
     }),
   });
 
+  /* Détail par destination, aux noms de colonnes du BO (hab/com/bur/park…) :
+     le dossier PDF se reconstruit depuis l'estimation seule. */
+  const SFX: Record<string, string> = {
+    Logement: "hab", Commerce: "com", Bureau: "bur",
+    Parking: "park", Cave: "cave", Logistique: "autre", Annexe: "autre",
+  };
+  const parDest: Record<string, number> = {};
+  for (const l of p.imm.parDest) {
+    const s = SFX[l.dest] ?? "autre";
+    parDest[`imm_nb_lots_${s}`] = (parDest[`imm_nb_lots_${s}`] ?? 0) + l.lots;
+    parDest[`imm_carrez_tot_${s}`] = (parDest[`imm_carrez_tot_${s}`] ?? 0) + l.surface;
+    parDest[`imm_carrez_occ_${s}`] = (parDest[`imm_carrez_occ_${s}`] ?? 0) + l.surfaceOcc;
+    parDest[`imm_loyer_hc_${s}`] = (parDest[`imm_loyer_hc_${s}`] ?? 0) + l.loyer;
+    parDest[`imm_loyer_hc_max_${s}`] = (parDest[`imm_loyer_hc_max_${s}`] ?? 0) + l.loyerMax;
+  }
+  for (const r of p.ref.parDest) {
+    const s = SFX[r.dest] ?? "autre";
+    if (r.loyer !== undefined) parDest[`ref_loyer_${s}`] = r.loyer;
+    if (r.prix !== undefined) parDest[`ref_prix_${s}`] = r.prix;
+    if (r.renta !== undefined) parDest[`ref_renta_${s}`] = r.renta;
+  }
+
   await rpc("bo_insert_doc", {
     p_table: "bo_estimation",
     p_id: estId,
     p_doc: cleanPatch({
       IMMEUBLE: immeubleId,
+      ...parDest,
+      "honos_taux_%": p.prix.honos_pct,
       ESTIMATOR: agentId,
       PRIX: prixId,
       Statut: "2 - A envoyer",
@@ -947,6 +980,61 @@ export async function uploadDocument(immeubleId: string, label: string, fd: Form
   });
   refresh(immeubleId);
   return id;
+}
+
+/**
+ * Fabrique le PDF du dossier d'estimation, le range dans le coffre et
+ * l'attache à l'estimation — c'est la pièce jointe du mail au propriétaire.
+ * Le dossier est imprimé depuis sa propre page : une seule mise en forme à
+ * maintenir, à l'écran comme dans le PDF.
+ */
+export async function genererPdfEstimation(immeubleId: string, estimationId: string) {
+  const { pdfDepuisUrl } = await import("./pdf");
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${hote}/bien/${immeubleId}/estimation/${estimationId}/imprimer?nu=1`;
+
+  const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+  const now = new Date().toISOString();
+  const docId = newId();
+  const path = `estimations/${immeubleId}/${estimationId}.pdf`;
+
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+    },
+    body: new Uint8Array(pdf),
+  });
+  if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_app_document",
+    p_id: docId,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      ESTIMATION: estimationId,
+      name: "Dossier d'estimation",
+      file_name: `Estimation.pdf`,
+      path,
+      format: "application/pdf",
+      size_kB: Math.round(pdf.length / 1024),
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_patch_doc", {
+    p_table: "bo_estimation",
+    p_id: estimationId,
+    p_patch: { FILE: docId },
+  });
+  refresh(immeubleId);
+  return { documentId: docId, url: `/api/photo?s=${encodeURIComponent(path)}`, ko: Math.round(pdf.length / 1024) };
 }
 
 /** Retire un document du coffre (ligne récupérable, fichier conservé). */

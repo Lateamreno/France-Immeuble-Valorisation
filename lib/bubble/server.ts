@@ -674,6 +674,17 @@ export async function getPrixSecteur(immeubleId: string): Promise<Record<string,
   return r.results[0] ?? null;
 }
 
+/** La fiche complète d'un agent (photo, téléphone, poste) : le dossier
+ *  d'estimation imprime son contact dédié en couverture. */
+export async function getAgentFiche(id: string): Promise<Record<string, unknown> | null> {
+  if (!id) return null;
+  const r = await bq("agentfi", {
+    constraints: [{ key: "_id", constraint_type: "equals", value: id }],
+    limit: 1,
+  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
+  return r.results[0] ?? null;
+}
+
 /** Une estimation par id (pour la page imprimable). */
 export async function getEstimation(id: string): Promise<Record<string, unknown> | null> {
   const r = await bq("estimation", {
