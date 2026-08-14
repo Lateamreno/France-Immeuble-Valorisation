@@ -154,6 +154,10 @@ function CelluleTravaux({
 
 type Row = {
   id: string; isNew: boolean;
+  /** Rang d'affichage choisi à la souris (#82) — il ne touche pas au numéro. */
+  ordre: number;
+  /** Travaux d'un lot pas encore enregistré (#84) : posés au moment du save. */
+  travaux: string;
   batiment: string; etage: string; numero: string;
   Destination: string; Type_lot: string;
   surface_carrez: string; surface_sol: string;
@@ -168,9 +172,11 @@ const N = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
-function toRow(l: Record<string, unknown>): Row {
+function toRow(l: Record<string, unknown>, i: number): Row {
   return {
     id: String(l._id), isNew: false,
+    ordre: typeof l.ordre === "number" ? (l.ordre as number) : i,
+    travaux: "",
     batiment: S(l.batiment), etage: S(l.etage), numero: S(l.numero),
     Destination: S(l.Destination), Type_lot: S(l.Type_lot),
     surface_carrez: S(l.surface_carrez), surface_sol: S(l.surface_sol),
@@ -180,8 +186,11 @@ function toRow(l: Record<string, unknown>): Row {
   };
 }
 
-function toPatch(r: Row): LotPatch {
+/** `avecOrdre` n'est vrai qu'après un glisser-déposer : sans cela, éditer un
+ *  seul lot lui donnerait un rang que les autres n'ont pas. */
+function toPatch(r: Row, avecOrdre = false): LotPatch {
   return {
+    ...(avecOrdre ? { ordre: r.ordre } : null),
     batiment: r.batiment || undefined,
     etage: r.etage || undefined,
     numero: N(r.numero),
@@ -238,6 +247,8 @@ const PLURIEL: Record<string, string> = {
 export function LotsEditor({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const initial = useMemo(() => b.lots.map(toRow), [b.lots]);
+  /* Point de retour de « Annuler » (#85) : la dernière version enregistrée. */
+  const enregistre = useRef<Row[]>(initial);
   const [rows, setRows] = useState<Row[]>(initial);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState<Set<string>>(new Set());
@@ -248,7 +259,6 @@ export function LotsEditor({ b }: { b: BienData }) {
     batiment: true, sol: true, baux: false, m2: true, commentaire: true, photos: true,
   });
   const [destOff, setDestOff] = useState<Set<string>>(new Set());
-  const [plein, setPlein] = useState(false);
 
   // Largeur réellement disponible : en dessous du seuil on bascule en vue
   // compacte plutôt que de comprimer vingt colonnes à 17 px.
@@ -262,7 +272,7 @@ export function LotsEditor({ b }: { b: BienData }) {
     return () => ro.disconnect();
   }, []);
 
-  const compacte = compact && !plein;
+  const compacte = compact;
   const on = (k: OptKey) => opts[k] && !(compacte && OPTIONS_LARGES.includes(k));
   /* La bascule « Batiment » couvre bâtiment et étage. En fenêtre étroite le BO
      ne sacrifie que le bâtiment : l'étage reste, c'est un repère de terrain. */
@@ -372,7 +382,8 @@ export function LotsEditor({ b }: { b: BienData }) {
   const addRow = () => {
     const id = `new_${Date.now()}`;
     setRows((rs) => [...rs, {
-      id, isNew: true, batiment: "", etage: "", numero: nextNumero(),
+      id, isNew: true, ordre: rs.length, travaux: "",
+      batiment: "", etage: "", numero: nextNumero(),
       Destination: "Logement", Type_lot: "", surface_carrez: "", surface_sol: "",
       Type_bail: "Vide", loyer: "", loyer_max: "", Etat: "n.c.", Type_dpe: "n.c.",
       renov_year: "", commentaire: "",
@@ -382,12 +393,52 @@ export function LotsEditor({ b }: { b: BienData }) {
 
   const save = () =>
     start(async () => {
+      const rang = reordonne.current;
       const news = rows.filter((r) => r.isNew && dirty.has(r.id));
       const edits = rows.filter((r) => !r.isNew && dirty.has(r.id));
-      for (const r of news) await addLot(immeubleId, toPatch(r));
-      if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r) })));
+      for (const r of news) {
+        const id = await addLot(immeubleId, toPatch(r, rang));
+        // Le lot vient de naître : ses travaux ne pouvaient pas encore lui
+        // être rattachés, on le fait maintenant (#84).
+        const montant = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
+        if (Number.isFinite(montant) && montant > 0) {
+          await setLotTravaux(immeubleId, id, `lot ${r.numero || r.Type_lot || ""}`.trim(), montant, null, 0);
+        }
+      }
+      if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r, rang) })));
+      reordonne.current = false;
+      enregistre.current = rows.map((r) => ({ ...r, isNew: false, travaux: "" }));
       setDirty(new Set());
     });
+
+  /* Annuler (#85) : on revient à la dernière version enregistrée, les lots
+     créés et pas encore validés disparaissent. */
+  const annuler = () => {
+    setRows(enregistre.current);
+    setDirty(new Set());
+    setSel(new Set());
+    reordonne.current = false;
+  };
+
+  /* Glisser-déposer des lignes (#82). Le rang est un champ à part : les
+     numéros de lot, eux, ne bougent pas — ils désignent la copropriété. */
+  const reordonne = useRef(false);
+  const [glisse, setGlisse] = useState<string | null>(null);
+  const deposer = (cibleId: string) => {
+    const src = glisse;
+    setGlisse(null);
+    if (!src || src === cibleId) return;
+    setRows((rs) => {
+      const de = rs.findIndex((r) => r.id === src);
+      const vers = rs.findIndex((r) => r.id === cibleId);
+      if (de < 0 || vers < 0) return rs;
+      const copie = [...rs];
+      copie.splice(vers, 0, ...copie.splice(de, 1));
+      return copie.map((r, i) => ({ ...r, ordre: i }));
+    });
+    reordonne.current = true;
+    setDirty(new Set(rows.map((r) => r.id)));
+  };
 
   const duplicate = () =>
     start(async () => {
@@ -399,9 +450,12 @@ export function LotsEditor({ b }: { b: BienData }) {
       setSel(new Set());
     });
 
+  /* Suppression (#86) : une vraie fenêtre qui récapitule les lots concernés,
+     pas la boîte du navigateur. */
+  const [aSupprimer, setASupprimer] = useState(false);
   const remove = () => {
     if (sel.size === 0) return;
-    if (!confirm(`Supprimer ${sel.size} lot(s) ? (récupérable dans la corbeille)`)) return;
+    setASupprimer(false);
     start(async () => {
       for (const id of sel) {
         if (id.startsWith("new_")) setRows((rs) => rs.filter((r) => r.id !== id));
@@ -441,7 +495,7 @@ export function LotsEditor({ b }: { b: BienData }) {
         const o = Object.fromEntries(entetes.map((h, i) => [h, (vals[i] ?? "").trim()]));
         const id = `new_${Date.now()}_${nouveaux.length}`;
         nouveaux.push({
-          id, isNew: true,
+          id, isNew: true, ordre: 0, travaux: o.travaux ?? "",
           batiment: o.batiment ?? "", etage: o.etage ?? "", numero: o.numero ?? "",
           Destination: o.Destination ?? "Logement", Type_lot: o.Type_lot ?? "",
           surface_carrez: o.surface_carrez ?? "", surface_sol: o.surface_sol ?? "",
@@ -472,7 +526,7 @@ export function LotsEditor({ b }: { b: BienData }) {
   const nbCols = 1 + colonnes.length;
 
   return (
-    <div className={plein ? "lots-full" : undefined}>
+    <div>
       {/* En-tête : bascules de colonnes · synthèse · bascules de destinations */}
       <div className="lhead">
         <div className="lopts">
@@ -480,7 +534,7 @@ export function LotsEditor({ b }: { b: BienData }) {
             <button key={o.key} type="button"
               className={`ltog${on(o.key) ? " on" : ""}${compacte && OPTIONS_LARGES.includes(o.key) ? " bride" : ""}`}
               title={compacte && OPTIONS_LARGES.includes(o.key)
-                ? "Fenêtre trop étroite pour cette colonne — élargissez la fenêtre ou passez en plein écran"
+                ? "Fenêtre trop étroite pour cette colonne — élargissez la fenêtre"
                 : undefined}
               onClick={() => toggleOpt(o.key)}>
               <span className="sw2" />{o.label}
@@ -570,7 +624,13 @@ export function LotsEditor({ b }: { b: BienData }) {
                 .reduce((s, t) => s + (typeof t.montant === "number" ? t.montant : 0), 0);
               const photos = b.photos.filter((p) => p.type === "Lot").length && r.isNew ? 0 : 0;
               return (
-                <tr key={r.id} style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}>
+                <tr
+                  key={r.id}
+                  className={glisse === r.id ? "glisse" : undefined}
+                  style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}
+                  onDragOver={(e) => { if (glisse) e.preventDefault(); }}
+                  onDrop={(e) => { e.preventDefault(); deposer(r.id); }}
+                >
                   <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
                   {colBat && (
                     <td className="brd"><input className="lcell" value={r.batiment} onChange={(e) => edit(r.id, "batiment", e.target.value)} /></td>
@@ -578,7 +638,18 @@ export function LotsEditor({ b }: { b: BienData }) {
                   {colEtg && (
                     <td className={colBat ? "" : "brd"}><input className="lcell" value={r.etage} onChange={(e) => edit(r.id, "etage", e.target.value)} /></td>
                   )}
-                  <td className={colBat || colEtg ? "" : "brd"}><input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} /></td>
+                  {/* La poignée se glisse sous le numéro : ni colonne en plus,
+                      ni ligne plus haute (#82). */}
+                  <td className={`poi${colBat || colEtg ? "" : " brd"}`}>
+                    <input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} />
+                    <span
+                      className="grip" draggable title="Glisser pour déplacer la ligne"
+                      onDragStart={() => setGlisse(r.id)}
+                      onDragEnd={() => setGlisse(null)}
+                    >
+                      <svg viewBox="0 0 16 6"><circle cx="4" cy="3" r="1.1" /><circle cx="8" cy="3" r="1.1" /><circle cx="12" cy="3" r="1.1" /></svg>
+                    </span>
+                  </td>
                   <td className="brd dest" title={r.Destination}>
                     <span className="destic">
                       {r.Destination
@@ -625,7 +696,13 @@ export function LotsEditor({ b }: { b: BienData }) {
                   {!compacte && (
                     <td className="na">
                       {r.isNew ? (
-                        <span className="nc" title="Enregistrez le lot avant de saisir ses travaux">n.a.</span>
+                        <span className={r.travaux ? "tvx" : undefined}>
+                          <input
+                            className="lcell num" value={r.travaux} placeholder="0"
+                            onChange={(e) => edit(r.id, "travaux", e.target.value)}
+                          />
+                          <i>€</i>
+                        </span>
                       ) : (
                         <CelluleTravaux
                           lotId={r.id}
@@ -671,27 +748,64 @@ export function LotsEditor({ b }: { b: BienData }) {
         <button className="ltb lbl" type="button" onClick={duplicate} disabled={sel.size === 0 || pending}>
           <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg> Dupliquer
         </button>
-        <button className="ltb lbl red" type="button" onClick={remove} disabled={sel.size === 0 || pending}>
+        <button className="ltb lbl red" type="button" onClick={() => setASupprimer(true)} disabled={sel.size === 0 || pending}>
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg> Supprimer
         </button>
         <span className="sp" style={{ flex: 1 }} />
+        {/* Import et export au centre, comme au BO : la place de droite est
+            celle d'Annuler et d'Enregistrer (#85). */}
         <label className="ltb lbl gold">
           <svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M4 20h16" /></svg> Importer
           <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importer(f); e.target.value = ""; }} />
         </label>
-        <button className="ltb lbl" type="button" onClick={() => setPlein((v) => !v)}>
-          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg> {plein ? "Quitter" : "Plein écran"}
-        </button>
         <button className="ltb lbl gold" type="button" onClick={exporter}>
           <svg viewBox="0 0 24 24"><path d="M12 4v12M8 12l4 4 4-4M4 20h16" /></svg> Télécharger
         </button>
-        <span className="sp" style={{ width: 10 }} />
+        <span className="sp" style={{ flex: 1 }} />
+        <button className="ltb annul" type="button" onClick={annuler} disabled={dirty.size === 0 || pending}>
+          Annuler
+        </button>
         <button className="kgo" type="button" onClick={save} disabled={dirty.size === 0 || pending}
           style={pending || dirty.size === 0 ? { opacity: 0.5 } : undefined}>
           <span className="ch">›</span> Enregistrer{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </button>
       </div>
+
+      {aSupprimer && (
+        <div className="modal-ov" onClick={() => setASupprimer(false)}>
+          <div className="modal sup-mod" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              Supprimer {sel.size > 1 ? `${sel.size} lots` : "un lot"}
+              <button type="button" onClick={() => setASupprimer(false)}>✕</button>
+            </div>
+            <div className="modal-b">
+              <table className="sup-t">
+                <thead><tr><th>N°</th><th>Type</th><th>Surface</th><th>Loyer HC</th></tr></thead>
+                <tbody>
+                  {rows.filter((r) => sel.has(r.id)).map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.numero || "—"}</td>
+                      <td>{r.Type_lot || r.Destination || "—"}</td>
+                      <td>{r.surface_carrez ? `${r.surface_carrez} m²` : "—"}</td>
+                      <td>{r.loyer ? `${r.loyer} €` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="sup-n">
+                Les lots enregistrés partent à la corbeille : ils restent récupérables.
+              </p>
+            </div>
+            <div className="modal-f">
+              <button type="button" className="ltb annul" onClick={() => setASupprimer(false)}>Annuler</button>
+              <button type="button" className="sup-go" disabled={pending} onClick={remove}>
+                Supprimer {sel.size > 1 ? `les ${sel.size} lots` : "le lot"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

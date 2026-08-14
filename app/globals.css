@@ -1059,7 +1059,6 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   border-radius: 0; padding: 7px 14px; margin: 0;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, .07);
 }
-.lots-full .ltools.v2 { right: 0; }
 /* La zone de saisie laisse la place à la barre d'outils. */
 .fiche-inner.wide { padding-bottom: 58px; }
 .ltb.lbl {
@@ -1076,12 +1075,6 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ltb.lbl.gold { background: #e8b21f; border-color: #e8b21f; color: #3a2f05; }
 .ltb.lbl.gold:hover { background: #f0bd35; }
 
-/* Plein écran du tableau */
-.lots-full {
-  position: fixed; inset: 0; z-index: 900; background: #fff;
-  padding: 16px 18px 90px; overflow: auto;
-}
-.lots-full .ltools.v2 { position: fixed; left: 18px; right: 18px; bottom: 14px; }
 
 /* --- Modale « Suivi » (réplique de la capture du BO) --- */
 .modal.sv { width: min(880px, 95vw); padding: 0; }
@@ -2429,3 +2422,41 @@ select.pr-in { cursor: pointer; }
 .sf.requis .sf-lab { color: var(--red); background: #fff8f8; }
 .sf.calc .sf-box { background: #efefef; }
 .sf.calc .sf-lab { background: #efefef; }
+
+/* --- Tableau des lots : ordre, travaux, suppression (retours #82, #85, #86) --- */
+
+/* Poignée de déplacement glissée sous le numéro : la colonne ne s'élargit pas
+   et la ligne ne grandit pas — la poignée se pose sur le bas de la case. */
+.ltable.v2 td.poi { position: relative; }
+.ltable.v2 td.poi .grip {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: -1px;
+  width: 18px; height: 6px; cursor: grab; opacity: 0; transition: opacity .12s;
+}
+.ltable.v2 tr:hover td.poi .grip { opacity: 1; }
+.ltable.v2 td.poi .grip svg { width: 100%; height: 100%; fill: #9a9a9a; stroke: none; }
+.ltable.v2 td.poi .grip:active { cursor: grabbing; }
+.ltable.v2 tr.glisse { opacity: .45; }
+
+/* Annuler : à gauche du bouton vert, discret tant qu'il n'y a rien à annuler. */
+.ltb.annul {
+  width: auto; height: 32px; padding: 0 13px;
+  border: 0; background: none; color: var(--slate-2);
+  font-family: var(--font-title); font-size: 13.5px; font-weight: 600;
+  text-decoration: underline; cursor: pointer;
+}
+.ltb.annul:disabled { color: #b0b0b0; text-decoration: none; cursor: default; }
+
+/* Fenêtre de suppression : elle nomme les lots concernés avant d'agir. */
+.modal.sup-mod { max-width: 620px; }
+.sup-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sup-t th {
+  text-align: left; font-family: var(--font-title); font-size: 11.5px; font-weight: 700;
+  color: var(--gray-txt); border-bottom: 1px solid var(--line); padding: 0 8px 6px;
+}
+.sup-t td { padding: 7px 8px; border-bottom: 1px solid var(--line-lt); color: var(--slate); }
+.sup-n { margin: 12px 0 2px; font-size: 12px; color: var(--gray-txt); }
+.sup-go {
+  border: 0; background: var(--red); color: #fff; border-radius: 4px;
+  padding: 9px 18px; font-family: var(--font-title); font-size: 13.5px; font-weight: 700; cursor: pointer;
+}
+.sup-go:disabled { opacity: .55; cursor: default; }

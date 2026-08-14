@@ -201,6 +201,8 @@ export type LotPatch = Partial<{
   Type_dpe: string;
   renov_year: number;
   commentaire: string;
+  /** Rang d'affichage du tableau des lots (#82). */
+  ordre: number;
 }>;
 
 const cleanPatch = (p: Record<string, unknown>) =>

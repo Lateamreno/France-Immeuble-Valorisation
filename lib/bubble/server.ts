@@ -499,6 +499,9 @@ export async function getDashboardLive(
 
 /* ===================== Fiche Bien ===================== */
 
+const rangLot = (l: Record<string, unknown>) =>
+  typeof l.ordre === "number" ? (l.ordre as number) : Number(l.numero ?? 0);
+
 const photoProxy = (u?: unknown) =>
   typeof u === "string" && u
     ? u.startsWith("storage:")
@@ -624,7 +627,9 @@ export async function getBien(id: string): Promise<BienData | null> {
         motif: typeof s.Motif_standby === "string" ? s.Motif_standby : undefined,
         relance: dmy(s.date_relance),
       })),
-    lots: [...lots].sort((a, b) => Number(a.numero ?? 0) - Number(b.numero ?? 0)),
+    // L'agent peut réordonner les lignes à la souris (#82) : `ordre` prime,
+    // le numéro de lot reste le repère par défaut.
+    lots: [...lots].sort((a, b) => rangLot(a) - rangLot(b)),
     parcelles,
     adr: adresses[0] ?? null,
     typologies,
