@@ -85,6 +85,64 @@ const point = (f: Champs, ...cles: string[]): [number, number] | undefined => {
   return undefined;
 };
 
+
+/* Commerces (#78) — aucun portail ODS ne publie les supermarchés. On
+   interroge l'annuaire officiel des entreprises, qui sait chercher par
+   activité autour d'un point : 47.11F hypermarchés, 47.11D supermarchés,
+   47.11C multi-commerces. Gratuit, sans clé, et rapide — là où Overpass
+   répondait en 504 une fois sur deux.
+   Les supérettes (47.11B) ne servent que si rien de plus gros n'existe :
+   dans un dossier, « Carrefour à 4 min » vaut mieux qu'une épicerie. */
+const NAF_GRANDES = "47.11F,47.11D,47.11C";
+const NAF_PETITES = "47.11B,47.11A";
+
+type EtabAnnuaire = {
+  latitude?: string; longitude?: string;
+  libelle_commune?: string; adresse?: string;
+  etat_administratif?: string;
+};
+type EntrepriseAnnuaire = {
+  nom_complet?: string;
+  matching_etablissements?: EtabAnnuaire[];
+};
+
+async function annuaire(lat: number, lon: number, naf: string, rayon: number): Promise<POI[]> {
+  const q = new URLSearchParams({
+    lat: String(lat), long: String(lon), radius: String(rayon),
+    activite_principale: naf, limite_matching_etablissements: "1", per_page: "10",
+  });
+  const res = await fetch(`https://recherche-entreprises.api.gouv.fr/near_point?${q}`, {
+    next: { revalidate: 604800 },
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  const j = (await res.json().catch(() => null)) as { results?: EntrepriseAnnuaire[] } | null;
+
+  const out: POI[] = [];
+  for (const r of j?.results ?? []) {
+    const e = r.matching_etablissements?.[0];
+    if (!e || e.etat_administratif === "F") continue;
+    const la = Number(e.latitude), lo = Number(e.longitude);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) continue;
+    // Les raisons sociales sont en majuscules et souvent suivies du sigle :
+    // « CARREFOUR HYPERMARCHES (CARREFOUR) » devient « Carrefour Hypermarches ».
+    const brut = (r.nom_complet ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+    if (!brut) continue;
+    const nom = brut.length > 3 && brut === brut.toUpperCase()
+      ? brut.toLowerCase().replace(/(^|[\s'-])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase())
+      : brut;
+    const d = dist(lat, lon, la, lo);
+    out.push({ nom, sous: "Commerce", distance: d, ...trajet(d) });
+  }
+  return out;
+}
+
+/** Le commerce le plus proche : grandes surfaces d'abord, supérettes ensuite. */
+async function commerces(lat: number, lon: number): Promise<POI[]> {
+  const grandes = await annuaire(lat, lon, NAF_GRANDES, 3);
+  if (grandes.length) return grandes;
+  return annuaire(lat, lon, NAF_PETITES, 2);
+}
+
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
 export async function GET(req: NextRequest) {
@@ -97,7 +155,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "coordonnées manquantes" }, { status: 400 });
   }
 
-  const [communes, idfmGares, idfmArrets, sncf, ecoles] = await Promise.all([
+  const [communes, idfmGares, idfmArrets, sncf, ecoles, coms] = await Promise.all([
     // Commune : population légale + code INSEE.
     fetch(
       `https://geo.api.gouv.fr/communes?${cp ? `codePostal=${encodeURIComponent(cp)}` : `nom=${encodeURIComponent(ville)}`}&fields=nom,code,population`,
@@ -128,6 +186,8 @@ export async function GET(req: NextRequest) {
       sous: s(f.type_etablissement),
       geo: point(f, "position"),
     })),
+    // Supermarchés et grandes surfaces alimentaires.
+    commerces(lat, lon),
   ]);
 
   const commune = communes.find((c) => c.nom.toLowerCase() === ville.toLowerCase()) ?? communes[0];
@@ -171,6 +231,7 @@ export async function GET(req: NextRequest) {
       gare: top([...idfmGares, ...sncf]),
       bus: top(idfmArrets),
       school: top(ecoles),
+      com: top(coms),
     },
   });
 }

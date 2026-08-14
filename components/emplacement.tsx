@@ -319,7 +319,7 @@ function AdresseTab({ b }: { b: BienData }) {
             : `${S(im.adresse_ville)} (${S(im.adresse_zipcode)})`}
         </div>
         <div className="ville-g">
-          <div className="ville-c">
+          <div className={`ville-c${pop.trim() ? "" : " requis"}`}>
             <Picto k="population" gros />
             <div className="t">Habitants</div>
             <div className="s">INSEE</div>
@@ -327,7 +327,7 @@ function AdresseTab({ b }: { b: BienData }) {
               ? <span className="v fige" title="Donnée INSEE, remise à jour à chaque ouverture">{Number(pop).toLocaleString("fr-FR")}</span>
               : <input className="v" value={pop} onChange={(e) => setPop(e.target.value)} placeholder="—" />}
           </div>
-          <div className="ville-c">
+          <div className={`ville-c${rev.trim() ? "" : " requis"}`}>
             <Picto k="revenus" gros />
             <div className="t">Revenus médian</div>
             <div className="s">INSEE</div>
@@ -346,7 +346,7 @@ function AdresseTab({ b }: { b: BienData }) {
               ? <span className={`v fige${zt ? " oui" : ""}`} title="Zonage officiel de la taxe sur les logements vacants">{zt ? "Oui" : "Non"}</span>
               : <button type="button" className="v bt" onClick={() => setZt(!zt)}>{zt ? "Oui" : "Non"}</button>}
           </div>
-          <div className="ville-c">
+          <div className={`ville-c${tension ? "" : " requis"}`}>
             <Picto k="tension" gros />
             <div className="t">Tension locative</div>
             <div className="s">LOCservice</div>

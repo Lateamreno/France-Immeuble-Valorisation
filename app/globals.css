@@ -2308,3 +2308,9 @@ select.pr-in { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .emp-map .map-croix, .emp-map .map-sat { transition: none; }
 }
+
+/* #77 — Vignette du bloc Ville en attente : cadre rouge tant que la donnée
+   manque, comme dans le BO. La zone tendue n'y figure pas : « Non » est une
+   réponse, pas un vide. */
+.ville-c.requis { border-color: var(--red); background: #fff8f8; }
+.ville-c.requis .t { color: var(--red); }
