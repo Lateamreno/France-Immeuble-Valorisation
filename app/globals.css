@@ -575,10 +575,37 @@ button { font-family: inherit; cursor: pointer; }
   padding: 1px 8px; margin-top: 3px;
 }
 .brail-head .bp { color: #b6a359; font-family: var(--font-body); font-weight: 700; font-size: 14px; margin-top: 3px; }
-.brail-prog { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-.brail-prog .line { flex: 1; height: 3px; background: #b6a359; border-radius: 2px; position: relative; }
-.brail-prog .pill { border: 1px solid var(--line); border-radius: 99px; background: #fff; font-size: 11px; font-weight: 700; color: var(--slate-2); padding: 1px 10px; white-space: nowrap; }
-.brail-prog .ic { color: #b6a359; }
+/* Bandeau « en attente » du rail (retour #73) : motif, échéance et jours
+   restants sur une seule ligne. La jauge est collée au bord bas du bandeau :
+   elle informe sans prendre un pixel de hauteur. */
+.brail-prog {
+  display: flex; align-items: center; gap: 5px; padding: 10px 10px;
+  border-bottom: 1px solid var(--line); position: relative; overflow: hidden;
+}
+/* `.pill` porte ailleurs une hauteur de 40 px : ici c'est une puce de texte. */
+.brail-prog .pill {
+  display: block; height: auto; line-height: 16px;
+  border: 1px solid var(--line); border-radius: 99px; background: #fff;
+  font-size: 11px; font-weight: 700; color: var(--slate-2); padding: 0 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
+}
+.brail-prog .ic { display: inline-flex; color: #b6a359; flex: none; width: 14px; height: 14px; }
+.brail-prog .ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.brail-prog .fin { margin-left: auto; flex: none; font-size: 10.5px; color: var(--gray-txt); font-family: var(--font-body); }
+.brail-prog .jr {
+  flex: none; background: #b6a359; color: #fff; border-radius: 99px;
+  font-size: 10.5px; font-weight: 700; padding: 1px 7px; font-family: var(--font-body);
+}
+.brail-prog .sansfin { margin-left: auto; font-size: 10.5px; color: var(--gray-lt); font-style: italic; }
+.brail-prog .jauge { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #ebe7d8; }
+.brail-prog .jauge i { display: block; height: 100%; background: #b6a359; }
+/* Échéance dépassée : le bandeau bascule au rouge, comme les alertes du BO. */
+.brail-prog.retard .ic { color: var(--red); }
+.brail-prog.retard .pill { border-color: var(--red); color: var(--red); }
+.brail-prog.retard .fin { color: var(--red); }
+.brail-prog.retard .jr { background: var(--red); }
+.brail-prog.retard .jauge { background: #f6dcdc; }
+.brail-prog.retard .jauge i { background: var(--red); }
 .brail nav { flex: 1; }
 .brail .srow2 {
   display: flex; align-items: center; gap: 10px;

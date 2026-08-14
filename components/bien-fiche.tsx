@@ -46,6 +46,7 @@ const I = {
   phone: <><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></>,
   maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
+  sablier: <><path d="M7 3h10M7 21h10" /><path d="M8 3v3.5c0 2 4 3.3 4 5.5s-4 3.5-4 5.5V21M16 3v3.5c0 2-4 3.3-4 5.5s4 3.5 4 5.5V21" /></>,
 };
 
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
@@ -165,14 +166,7 @@ export function BienFiche({ b, contenu }: {
             {b.prix && <div className="bp">{b.prix}</div>}
           </div>
         </div>
-        {b.standby && b.standby !== "Traité" && (
-          <div className="brail-prog">
-            <span className="line" />
-            <span className="pill">{b.suivis[0]?.motif ?? b.standby}</span>
-            <span className="line" />
-            <span className="ic">ⓘ</span>
-          </div>
-        )}
+        {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
         <nav>
           {sections.map((s) => (
             <div key={s.key}>
@@ -221,6 +215,62 @@ export function BienFiche({ b, contenu }: {
           <ReactiverBtn immeubleId={String(im._id)} />
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** Bandeau « en attente » du rail (retour #73).
+ *
+ *  Le bandeau disait seulement pourquoi le bien dormait ; il ne disait pas
+ *  jusqu'à quand. On tient les trois informations sur la même ligne, à
+ *  hauteur inchangée : le motif, l'échéance, et le temps qui reste. La barre
+ *  d'avancement est posée sur le bord bas du bandeau, elle ne coûte donc
+ *  aucun pixel de hauteur, et vire au rouge dès que la date est passée. */
+function BandeauAttente({ b }: { b: BienData }) {
+  const attente = b.suivis.find((s) => s.relance) ?? b.suivis[0];
+  const motif = attente?.motif ?? b.standby ?? "En attente";
+  // Les dates de la fiche sont formatées en jj/mm/aa (parfois jj/mm/aaaa).
+  const jour = (s?: string) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{2}(?:\d{2})?)$/.exec(s ?? "");
+    if (!m) return undefined;
+    const an = +m[3];
+    return new Date(an < 100 ? 2000 + an : an, +m[2] - 1, +m[1]);
+  };
+  const fin = jour(attente?.relance);
+  const debut = jour(attente?.date);
+
+  if (!fin) {
+    return (
+      <div className="brail-prog" title={motif}>
+        <span className="ic"><svg viewBox="0 0 24 24">{I.sablier}</svg></span>
+        <span className="pill">{motif}</span>
+        <span className="sansfin">sans échéance</span>
+      </div>
+    );
+  }
+
+  const jourMs = 86400000;
+  const aujourdhui = new Date();
+  aujourdhui.setHours(0, 0, 0, 0);
+  const restants = Math.round((fin.getTime() - aujourdhui.getTime()) / jourMs);
+  const retard = restants < 0;
+  const total = debut ? Math.max(1, Math.round((fin.getTime() - debut.getTime()) / jourMs)) : 0;
+  const avance = total ? Math.min(100, Math.max(0, ((total - restants) / total) * 100)) : retard ? 100 : 0;
+  const fr = fin.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+
+  return (
+    <div
+      className={`brail-prog${retard ? " retard" : ""}`}
+      title={
+        `${motif} — ${debut ? `du ${attente?.date} au ` : "jusqu'au "}${attente?.relance}` +
+        ` (${retard ? `en retard de ${-restants} j` : restants === 0 ? "échéance aujourd'hui" : `${restants} j restants`})`
+      }
+    >
+      <span className="ic"><svg viewBox="0 0 24 24">{I.sablier}</svg></span>
+      <span className="pill">{motif}</span>
+      <span className="fin">{fr}</span>
+      <span className="jr">{retard ? `+${-restants} j` : `J-${restants}`}</span>
+      <span className="jauge"><i style={{ width: `${avance}%` }} /></span>
     </div>
   );
 }
