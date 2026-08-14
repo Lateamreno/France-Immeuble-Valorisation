@@ -41,13 +41,29 @@ const Ic = ({ d, cls = "dos-ic" }: { d: React.ReactNode; cls?: string }) => (
   <svg className={cls} viewBox="0 0 24 24" aria-hidden>{d}</svg>
 );
 
+/* Le PDF est imprimé par un navigateur sans polices installées : tout
+   caractère qui n'est pas dans la police du dossier sortirait en carré vide.
+   Les symboles sont donc dessinés, jamais écrits. */
+const ETOILE = "m12 2.6 2.75 5.9 6.35.85-4.65 4.45 1.15 6.35L12 17.05 6.4 20.15l1.15-6.35L2.9 9.35l6.35-.85z";
+
 /** Note en étoiles pleines / vides, comme le dossier. */
 const Etoiles = ({ n, taille = "" }: { n: number; taille?: string }) => (
   <span className={`dos-et ${taille}`}>
     {[1, 2, 3, 4, 5].map((i) => (
-      <b key={i} className={i <= n ? "on" : ""}>★</b>
+      <svg key={i} className={i <= n ? "on" : ""} viewBox="0 0 24 24" aria-hidden>
+        <path d={ETOILE} />
+      </svg>
     ))}
   </span>
+);
+
+/** « ≥ » et « ≤ » dessinés, pour la même raison. */
+const Comp = ({ sup }: { sup?: boolean }) => (
+  <svg className="dos-cmp" viewBox="0 0 24 24" aria-hidden>
+    {sup
+      ? <path d="M5 5.5 19 12 5 18.5M5 21.5h14" />
+      : <path d="M19 5.5 5 12l14 6.5M5 21.5h14" />}
+  </svg>
 );
 
 /** Les textes de cible portent leurs mots en gras entre astérisques. */
@@ -352,8 +368,8 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           <div className="dos-ach-g">
             <div className="dos-ach-l">
               <div className="l"><Ic d={I.pin} /><div><span>Emplacement</span><b>{d.etat.emp}</b></div></div>
-              <div className="l"><Ic d={I.courbe} /><div><span>Rendement</span><b>≥ {fr1(d.ref.renta)} %</b></div></div>
-              <div className="l"><Ic d={I.euro} /><div><span>Prix au m²</span><b>≤ {group(d.ref.prix)} €/m²</b></div></div>
+              <div className="l"><Ic d={I.courbe} /><div><span>Rendement</span><b><Comp sup /> {fr1(d.ref.renta)} %</b></div></div>
+              <div className="l"><Ic d={I.euro} /><div><span>Prix au m²</span><b><Comp /> {group(d.ref.prix)} €/m²</b></div></div>
             </div>
             <div className="dos-ach-b">
               Les acheteurs pour ce type de bien recherchent un

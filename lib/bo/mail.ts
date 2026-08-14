@@ -47,6 +47,8 @@ export async function envoyerMail(m: {
   replyTo?: string;
   cc?: string;
   bcc?: string;
+  /** Copie cachée demandée par l'agent, en plus de la sienne. */
+  bccSup?: string;
   attachments?: PieceJointe[];
 }) {
   const c = CONF();
@@ -66,7 +68,7 @@ export async function envoyerMail(m: {
     to: vers || m.to,
     cc: vers ? undefined : m.cc || undefined,
     // En redirection, pas de copie cachée : tout arrive déjà au même endroit.
-    bcc: vers ? undefined : m.bcc || undefined,
+    bcc: vers ? undefined : [m.bcc, m.bccSup].filter(Boolean).join(", ") || undefined,
     replyTo: m.replyTo || undefined,
     subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
     text: vers

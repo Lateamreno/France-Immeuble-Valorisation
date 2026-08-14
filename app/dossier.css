@@ -152,11 +152,21 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
    des colonnes de valeurs. */
 .dos-3 .dos-et b, .dos-res-g .dos-et b { display: inline; }
 
-.dos-et b { font-size: 12pt; color: #d8d8d8; font-weight: 400; letter-spacing: .04em; }
-.dos-et b.on { color: var(--dos-or); }
-.dos-hd .dos-et b { color: rgba(255, 255, 255, .45); font-size: 13pt; }
-.dos-hd .dos-et b.on { color: var(--dos-or); }
-.dos-et.gr b { font-size: 15pt; }
+/* Étoiles dessinées : aucune dépendance à une police (voir le composant).
+   Le display est forcé : les règles de colonnes (`.dos-hd span`, `.dos-3 b`)
+   sont plus spécifiques et mettraient les étoiles les unes sous les autres. */
+.dos-et, .dos-hd .dos-et, .dos-3 .dos-et, .dos-res-g .dos-et {
+  display: inline-flex; align-items: center; gap: .6mm;
+}
+.dos-et svg { display: inline-block; width: 4.2mm; height: 4.2mm; fill: #d8d8d8; flex: none; }
+.dos-et svg.on { fill: var(--dos-or); }
+.dos-hd .dos-et svg { fill: rgba(255, 255, 255, .45); width: 4.6mm; height: 4.6mm; }
+.dos-hd .dos-et svg.on { fill: var(--dos-or); }
+.dos-et.gr svg { width: 5.4mm; height: 5.4mm; }
+.dos-cmp {
+  width: 3.4mm; height: 3.4mm; vertical-align: -.3mm;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* -------------------------------------------------------------- Tableaux */
 .dos-tb { width: calc(100% - 16mm); margin: 0 8mm 2mm; border-collapse: collapse; }
@@ -240,7 +250,10 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
 .dos-txt p + p, .dos-txt p + ul { margin-top: 3mm; }
 .dos-ul { margin-top: 1mm; }
 .dos-ul li { font-size: 10.5pt; line-height: 1.45; padding-left: 4mm; position: relative; }
-.dos-ul li::before { content: "•"; position: absolute; left: 1mm; }
+.dos-ul li::before {
+  content: ""; position: absolute; left: 1.4mm; top: 1.9mm;
+  width: 1.1mm; height: 1.1mm; border-radius: 50%; background: currentColor;
+}
 .dos-analyse { min-height: 42mm; }
 .dos-analyse p { text-align: justify; }
 

@@ -36,9 +36,14 @@ export async function GET(req: NextRequest) {
       next: { revalidate: 86400 },
     });
     if (!upstream.ok) return pixel();
+    const type = upstream.headers.get("Content-Type") ?? "application/octet-stream";
+    // Un PDF doit s'ouvrir dans le lecteur du navigateur quand on clique
+    // dessus, pas se télécharger : « inline » plus un nom de fichier lisible.
+    const nom = s.split("/").pop() || "document";
     return new Response(upstream.body, {
       headers: {
-        "Content-Type": upstream.headers.get("Content-Type") ?? "application/octet-stream",
+        "Content-Type": type,
+        "Content-Disposition": `inline; filename="${nom.replace(/"/g, "")}"`,
         "Cache-Control": "public, max-age=86400, immutable",
       },
     });

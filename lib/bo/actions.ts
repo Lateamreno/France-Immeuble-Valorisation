@@ -1076,8 +1076,11 @@ export async function envoyerEstimation(input: {
   objet: string;
   message: string;
   replyTo?: string;
-  /** Adresses en copie, saisies à la main ou choisies parmi les agents. */
+  /** Adresses en copie et en copie cachée. */
   cc?: string;
+  cci?: string;
+  /** Le dossier d'estimation a été retiré des pièces jointes. */
+  sansDossier?: boolean;
   /** Documents du coffre à joindre en plus du dossier d'estimation. */
   documents?: string[];
   /** Fichiers ajoutés à la volée depuis le poste de l'agent. */
@@ -1089,7 +1092,7 @@ export async function envoyerEstimation(input: {
 
   // Le PDF part depuis le coffre : on envoie exactement le document archivé.
   const e = await bqOne("bo_estimation", input.estimationId);
-  const docId = String(e?.FILE ?? "");
+  const docId = input.sansDossier ? "" : String(e?.FILE ?? "");
   let piece: { filename: string; content: Buffer; contentType: string } | undefined;
   if (docId && SB_KEY) {
     const doc = await bqOne("bo_app_document", docId);
@@ -1108,7 +1111,9 @@ export async function envoyerEstimation(input: {
       }
     }
   }
-  if (!piece) throw new Error("PDF introuvable : générez le dossier avant d'envoyer");
+  if (!piece && !input.sansDossier) {
+    throw new Error("PDF introuvable : générez le dossier avant d'envoyer");
+  }
 
   /* L'estimation est un courrier personnel : elle part de l'adresse de
      l'agent qui l'a faite, et il en reçoit une copie cachée pour l'avoir
@@ -1139,7 +1144,7 @@ export async function envoyerEstimation(input: {
 
   /* Pièces jointes supplémentaires : d'abord les documents déjà rangés dans
      le coffre du bien, puis les fichiers ajoutés à la volée. */
-  const pieces = [piece];
+  const pieces = piece ? [piece] : [];
   for (const id of input.documents ?? []) {
     const doc = await bqOne("bo_app_document", id);
     const path = String(doc?.path ?? "");
@@ -1171,6 +1176,7 @@ export async function envoyerEstimation(input: {
   const messageId = await envoyerMail({
     to: input.to,
     cc: input.cc?.trim() || undefined,
+    bccSup: input.cci?.trim() || undefined,
     subject: input.objet,
     text: input.message,
     from,

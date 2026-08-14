@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import { Copier } from "@/components/copier";
+import { AdressesInput } from "@/components/adresses-input";
 import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
   type EstimationPayload,
@@ -104,8 +105,11 @@ export function EstimationWizard({
   /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
   const [envoye, setEnvoye] = useState<string | null>(null);
   const [envoiKo, setEnvoiKo] = useState<string | null>(null);
-  /** Copie et pièces jointes de l'e-mail (demande MAV du 14/08). */
-  const [cc, setCc] = useState("");
+  /** Copie, copie cachée et pièces jointes (demandes MAV du 14/08). */
+  const [cc, setCc] = useState<string[]>([]);
+  const [cci, setCci] = useState<string[]>([]);
+  /** Le dossier est joint d'office ; on peut le retirer puis le remettre. */
+  const [dossierJoint, setDossierJoint] = useState(true);
   const [pjDocs, setPjDocs] = useState<string[]>([]);
   const [pjFichiers, setPjFichiers] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +258,12 @@ export function EstimationWizard({
     estId ? "ok" : "lock",
   ];
 
+  /* Le dossier d'estimation est déjà en pièce jointe : le proposer une
+     seconde fois dans la liste des documents n'aurait pas de sens. */
+  const autresDocs = b.documents.filter(
+    (d) => String(d.name ?? "") !== "Dossier d'estimation" || String(d.ESTIMATION ?? "") !== estId,
+  );
+
   const envoyer = () =>
     start(async () => {
       setEnvoiKo(null);
@@ -265,7 +275,9 @@ export function EstimationWizard({
           to: S(b.proprietaire?.email),
           objet: mailObjet,
           message: `${mailCorps}\n\n${b.agentInitials} — France Immeuble`,
-          cc: cc.trim() || undefined,
+          cc: cc.join(", ") || undefined,
+          cci: cci.join(", ") || undefined,
+          sansDossier: !dossierJoint,
           documents: pjDocs,
           fichiers: pjFichiers.length ? fd : undefined,
         });
@@ -727,35 +739,59 @@ export function EstimationWizard({
               </div>
             </div>
             <div className="est-ml">
-              <span className="lbl">Copie</span>
-              <label className="est-ch plat">
-                <input className="est-cc" type="text" value={cc} onChange={(e) => setCc(e.target.value)}
-                  placeholder="Ajouter une adresse en copie (séparer par des virgules)" />
-              </label>
+              <span className="lbl">Cc</span>
+              <div className="est-ch plat">
+                <AdressesInput valeurs={cc} onChange={setCc}
+                  placeholder="Ajouter une adresse en copie" />
+              </div>
+            </div>
+            <div className="est-ml">
+              <span className="lbl">Cci</span>
+              <div className="est-ch plat">
+                <AdressesInput valeurs={cci} onChange={setCci}
+                  placeholder="Copie cachée — le destinataire ne la voit pas" />
+              </div>
             </div>
             <div className="est-ml">
               <span className="lbl">PJ</span>
-              <label className="est-ch plat">
-                <span>{pdf ? `1 fichier (${pdf.ko} ko)` : pdfKo ? "à imprimer" : "génération en cours…"}</span>
-                <a className="est-pj" href={pdf?.url ?? `/bien/${immeubleId}/estimation/${estId}/imprimer`}
-                  target="_blank" rel="noreferrer" download={pdf ? "Estimation.pdf" : undefined}>
-                  ▤ Estimation{pdf ? " (PDF)" : ""}
-                </a>
+              <div className="est-ch plat est-pjplus">
+                {pdf && dossierJoint && (
+                  <span className="est-pjf pdf">
+                    <a href={pdf.url} target="_blank" rel="noreferrer" title="Ouvrir le PDF">
+                      <svg viewBox="0 0 24 24" aria-hidden>
+                        <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z" />
+                        <path d="M14 3v4h4" />
+                      </svg>
+                      Estimation.pdf
+                    </a>
+                    <i>{pdf.ko} ko</i>
+                    <button type="button" title="Retirer du message" aria-label="Retirer du message"
+                      onClick={() => setDossierJoint(false)}>✕</button>
+                  </span>
+                )}
+                {pdf && !dossierJoint && (
+                  <button type="button" className="fadd" onClick={() => setDossierJoint(true)}>
+                    ↩ Remettre le dossier d&apos;estimation
+                  </button>
+                )}
+                {!pdf && (
+                  <span>{pdfKo ? "PDF non fabriqué — dossier à imprimer" : "génération en cours…"}</span>
+                )}
                 <Link className="fadd" href={`/bien/${immeubleId}/estimation/${estId}/imprimer`} target="_blank">
                   Voir le dossier
                 </Link>
-              </label>
+              </div>
             </div>
             {/* Joindre en plus : les documents déjà rangés dans le coffre du
                 bien, et des fichiers pris sur le poste. */}
             <div className="est-ml">
               <span className="lbl" />
               <div className="est-ch plat est-pjplus">
-                {b.documents.length > 0 && (
+                {autresDocs.length > 0 && (
                   <details>
-                    <summary>+ Joindre un document du bien ({b.documents.length})</summary>
+                    <summary>+ Joindre un document du bien ({autresDocs.length})</summary>
                     <div className="est-pjlist">
-                      {b.documents.map((d) => {
+                      {autresDocs.map((d) => {
                         const id = String(d._id);
                         return (
                           <label key={id}>
