@@ -2132,3 +2132,8 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .pxbar-reps .rep:hover span { color: var(--gold-bo); font-weight: 700; }
 .pxbar-b { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; color: var(--gray-lt); }
 .pxbar-b b { font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); }
+
+/* Écran d'envoi de l'estimation : tant que le mail n'est pas parti, la
+   pastille reste en attente plutôt que d'annoncer un envoi qui n'a pas eu
+   lieu. */
+.est-envoi-h .tag.att { background: var(--chip); color: var(--slate-2); }

@@ -12,7 +12,9 @@
     "@sparticuz/chromium": "^149.0.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
+    "@types/nodemailer": "^8.0.1",
     "next": "16.2.10",
+    "nodemailer": "^9.0.5",
     "puppeteer-core": "^25.7.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"

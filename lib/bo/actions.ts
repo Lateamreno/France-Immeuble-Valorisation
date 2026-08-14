@@ -38,6 +38,19 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
+/** Relit une ligne du miroir par son id (les écritures ont besoin de se
+ *  relire : joindre le bon PDF, retrouver un chemin de fichier…). */
+async function bqOne(table: string, id: string): Promise<Record<string, unknown> | null> {
+  if (!SB_KEY || !id) return null;
+  const res = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=data&limit=1`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  return rows[0]?.data ?? null;
+}
+
 const newId = () =>
   `app_${Date.now()}x${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`;
 
@@ -1035,6 +1048,79 @@ export async function genererPdfEstimation(immeubleId: string, estimationId: str
   });
   refresh(immeubleId);
   return { documentId: docId, url: `/api/photo?s=${encodeURIComponent(path)}`, ko: Math.round(pdf.length / 1024) };
+}
+
+/**
+ * Envoie l'estimation au propriétaire, dossier PDF joint, et journalise
+ * l'envoi sur l'estimation comme le fait le BO (`sent`, date, destinataire).
+ * L'agent est en « Répondre à » : la réponse lui revient sans qu'on écrive
+ * à sa place — c'est ce qui garde le mail hors des spams.
+ */
+export async function envoyerEstimation(input: {
+  immeubleId: string;
+  estimationId: string;
+  to: string;
+  objet: string;
+  message: string;
+  replyTo?: string;
+}) {
+  const { envoyerMail, mailConfigure } = await import("./mail");
+  if (!mailConfigure()) throw new Error("Envoi non configuré");
+  if (!input.to.includes("@")) throw new Error("Adresse du destinataire manquante");
+
+  // Le PDF part depuis le coffre : on envoie exactement le document archivé.
+  const e = await bqOne("bo_estimation", input.estimationId);
+  const docId = String(e?.FILE ?? "");
+  let piece: { filename: string; content: Buffer; contentType: string } | undefined;
+  if (docId && SB_KEY) {
+    const doc = await bqOne("bo_app_document", docId);
+    const path = String(doc?.path ?? "");
+    if (path) {
+      const r = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+        headers: { Authorization: `Bearer ${SB_KEY}` },
+        cache: "no-store",
+      });
+      if (r.ok) {
+        piece = {
+          filename: String(doc?.file_name ?? "Estimation.pdf"),
+          content: Buffer.from(await r.arrayBuffer()),
+          contentType: "application/pdf",
+        };
+      }
+    }
+  }
+  if (!piece) throw new Error("PDF introuvable : générez le dossier avant d'envoyer");
+
+  // Répondre à : l'agent qui a fait l'estimation. On l'attrape ici plutôt que
+  // de le faire porter par l'écran — le navigateur n'a pas à connaître les
+  // adresses des agents.
+  let replyTo = input.replyTo;
+  if (!replyTo) {
+    const ag = await bqOne("bo_agentfi", String(e?.ESTIMATOR ?? ""));
+    const mail = String(ag?.email ?? "");
+    const nom = `${String(ag?.["prénom"] ?? "")} ${String(ag?.nom ?? "")}`.trim();
+    if (mail) replyTo = nom ? `${nom} <${mail}>` : mail;
+  }
+
+  const messageId = await envoyerMail({
+    to: input.to,
+    subject: input.objet,
+    text: input.message,
+    replyTo,
+    attachments: [piece],
+  });
+
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_estimation",
+    p_id: input.estimationId,
+    p_patch: cleanPatch({
+      sent: true, sent_at: now, sent_to: input.to,
+      sent_message_id: messageId, statut: "3 - Envoyée", "Modified Date": now,
+    }),
+  });
+  refresh(input.immeubleId);
+  return { messageId, ko: Math.round(piece.content.length / 1024) };
 }
 
 /** Retire un document du coffre (ligne récupérable, fichier conservé). */

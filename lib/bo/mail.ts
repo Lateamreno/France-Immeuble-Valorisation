@@ -1,0 +1,61 @@
+// Envoi d'e-mails depuis l'app (estimation au propriétaire, avec le dossier
+// PDF en pièce jointe).
+//
+// SMTP volontairement, pas d'API propriétaire : la même implémentation marche
+// avec la boîte OVH de France Immeuble (ssl0.ovh.net) comme avec SendGrid
+// (smtp.sendgrid.net, identifiant « apikey »). Changer de route se fait par
+// variables d'environnement, sans retoucher le code.
+//
+// Délivrabilité — ce qui compte pour ne pas tomber en spam :
+//   • on écrit TOUJOURS depuis une adresse du domaine (MAIL_FROM), jamais
+//     depuis l'adresse du destinataire ni celle d'un tiers ;
+//   • l'agent est mis en « Répondre à », donc la réponse lui arrive
+//     directement sans usurper son identité à l'envoi ;
+//   • le domaine doit publier SPF (autorisant la route choisie), DKIM et
+//     DMARC — voir README-mail.md.
+import nodemailer from "nodemailer";
+
+export type PieceJointe = { filename: string; content: Buffer; contentType?: string };
+
+const CONF = () => ({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT ?? 465),
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS,
+  from: process.env.MAIL_FROM,
+});
+
+/** L'app sait-elle envoyer ? Sinon l'écran reste en préparation manuelle. */
+export function mailConfigure() {
+  const c = CONF();
+  return !!(c.host && c.user && c.pass && c.from);
+}
+
+export async function envoyerMail(m: {
+  to: string;
+  subject: string;
+  text: string;
+  replyTo?: string;
+  attachments?: PieceJointe[];
+}) {
+  const c = CONF();
+  if (!mailConfigure()) throw new Error("Envoi non configuré (SMTP_HOST / SMTP_USER / SMTP_PASS / MAIL_FROM)");
+
+  const t = nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    // 465 = TLS implicite, 587 = STARTTLS : les deux routes possibles.
+    secure: c.port === 465,
+    auth: { user: c.user!, pass: c.pass! },
+  });
+
+  const info = await t.sendMail({
+    from: c.from,
+    to: m.to,
+    replyTo: m.replyTo || undefined,
+    subject: m.subject,
+    text: m.text,
+    attachments: m.attachments,
+  });
+  return String(info.messageId ?? "");
+}

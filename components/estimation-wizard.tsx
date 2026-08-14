@@ -11,7 +11,8 @@ import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import {
-  createEstimation, genererPdfEstimation, setEstimationStatut, type EstimationPayload,
+  createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
+  type EstimationPayload,
 } from "@/lib/bo/actions";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
@@ -82,7 +83,14 @@ const Ok = () => <span className="est-ok" title="Complet">✓</span>;
 const Ko = () => <span className="est-ko" title="Information manquante — allez la compléter sur la fiche">!</span>;
 const Etat = ({ ok }: { ok: boolean }) => (ok ? <Ok /> : <Ko />);
 
-export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<string, unknown> | null }) {
+export function EstimationWizard({
+  b, secteur, envoiActif,
+}: {
+  b: BienData;
+  secteur: Record<string, unknown> | null;
+  /** Vrai quand la boîte d'envoi est configurée : l'app envoie elle-même. */
+  envoiActif?: boolean;
+}) {
   const router = useRouter();
   const im = b.im;
   const immeubleId = String(im._id);
@@ -92,6 +100,9 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
   /** Le PDF du dossier, fabriqué juste après l'estimation. */
   const [pdf, setPdf] = useState<{ url: string; ko: number } | null>(null);
   const [pdfKo, setPdfKo] = useState<string | null>(null);
+  /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
+  const [envoye, setEnvoye] = useState<string | null>(null);
+  const [envoiKo, setEnvoiKo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
   const [perso, setPerso] = useState(false);
@@ -237,6 +248,22 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
     estId ? "ok" : step >= 3 ? "warn" : "lock",
     estId ? "ok" : "lock",
   ];
+
+  const envoyer = () =>
+    start(async () => {
+      setEnvoiKo(null);
+      try {
+        await envoyerEstimation({
+          immeubleId, estimationId: estId!,
+          to: S(b.proprietaire?.email),
+          objet: mailObjet,
+          message: `${mailCorps}\n\n${b.agentInitials} — France Immeuble`,
+        });
+        setEnvoye(new Date().toISOString());
+      } catch (err) {
+        setEnvoiKo(err instanceof Error ? err.message : "erreur inconnue");
+      }
+    });
 
   const generer = () =>
     start(async () => {
@@ -667,8 +694,10 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
         {step === 4 && estId && (
           <>
             <div className="est-envoi-h">
-              <span className="tag">✈ Envoyé <b>automatiquement</b></span>
-              <span className="date">{dmyfr(new Date().toISOString())} <b>{new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</b></span>
+              <span className={`tag${envoye ? "" : " att"}`}>
+                {envoye ? <>✈ Envoyé <b>automatiquement</b></> : <>✈ <b>Prêt à envoyer</b></>}
+              </span>
+              {envoye && <span className="date">{dmyfr(envoye)} <b>{new Date(envoye).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</b></span>}
             </div>
             <div className="est-ml">
               <span className="lbl">De</span>
@@ -717,14 +746,26 @@ export function EstimationWizard({ b, secteur }: { b: BienData; secteur: Record<
               <textarea rows={14} readOnly value={`${mailCorps}\n\n${b.agentInitials} — France Immeuble`} />
             </label>
             <div className="est-note">
-              L&apos;envoi reste manuel : l&apos;app prépare, l&apos;agent envoie depuis sa boîte.
+              {envoiActif
+                ? "L'app envoie depuis la boîte France Immeuble, avec l'agent en « Répondre à » : la réponse du propriétaire arrive directement dans sa boîte."
+                : "L'envoi reste manuel : l'app prépare, l'agent envoie depuis sa boîte."}
             </div>
+            {envoiKo && <div className="warnbox">Envoi impossible : {envoiKo}</div>}
             <div className="est-nav">
               {b.proprietaire && S(b.proprietaire.email) && (
-                <a className="est-suiv" style={{ textDecoration: "none" }}
-                  href={`mailto:${S(b.proprietaire.email)}?subject=${encodeURIComponent(mailObjet)}&body=${encodeURIComponent(mailCorps)}`}>
-                  ✈ Préparer l&apos;e-mail
-                </a>
+                envoiActif ? (
+                  <button className="est-suiv" type="button"
+                    disabled={pending || !pdf || !!envoye}
+                    title={pdf ? undefined : "Le dossier PDF doit être fabriqué avant l'envoi"}
+                    onClick={envoyer}>
+                    {envoye ? "✓ Envoyé" : "✈ Envoyer au propriétaire"}
+                  </button>
+                ) : (
+                  <a className="est-suiv" style={{ textDecoration: "none" }}
+                    href={`mailto:${S(b.proprietaire.email)}?subject=${encodeURIComponent(mailObjet)}&body=${encodeURIComponent(mailCorps)}`}>
+                    ✈ Préparer l&apos;e-mail
+                  </a>
+                )
               )}
               <span className="sp" style={{ flex: 1 }} />
               <button className="est-suiv" type="button" disabled={pending} onClick={() => marquer("3 - Envoyée")}>
