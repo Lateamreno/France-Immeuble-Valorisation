@@ -11,22 +11,42 @@ envoie depuis sa boîte comme avant.
 Preview). Ne jamais mettre un mot de passe dans le dépôt ni dans une
 conversation.
 
-| Variable | Boîte OVH (recommandé) | SendGrid |
-|---|---|---|
-| `SMTP_HOST` | `ssl0.ovh.net` | `smtp.sendgrid.net` |
-| `SMTP_PORT` | `465` | `465` |
-| `SMTP_USER` | l'adresse complète, ex. `estimation@france-immeuble.fr` | `apikey` (littéralement) |
-| `SMTP_PASS` | le mot de passe de la boîte | la clé d'API SendGrid |
-| `MAIL_FROM` | `France Immeuble <estimation@france-immeuble.fr>` | idem |
+| Variable | SendGrid (pour démarrer) | Postmark | Boîte OVH |
+|---|---|---|---|
+| `SMTP_HOST` | `smtp.sendgrid.net` | `smtp.postmarkapp.com` | `ssl0.ovh.net` |
+| `SMTP_PORT` | `587` | `587` | `465` |
+| `SMTP_USER` | `apikey` (littéralement) | le *Server API Token* | l'adresse complète |
+| `SMTP_PASS` | la clé d'API SendGrid | **le même** *Server API Token* | le mot de passe |
+| `MAIL_FROM` | `France Immeuble <contact@france-immeuble.fr>` | idem | idem |
 
 Le code ne dépend d'aucun fournisseur : changer de route se fait en changeant
 ces variables, sans toucher au code (`lib/bo/mail.ts`).
 
-**Recommandation : la boîte OVH.** Le domaine est déjà chez OVH, le SPF
-l'autorise déjà, le message part d'une vraie boîte qui a une réputation et
-une histoire — c'est ce qui passe le mieux les filtres pour quelques dizaines
-d'envois par jour. SendGrid n'a d'intérêt qu'à partir de volumes bien plus
-importants, et demande alors un vrai suivi de réputation.
+**Pour démarrer : SendGrid, sans toucher au DNS.** Son DKIM est déjà posé et
+aligné sur `france-immeuble.fr` (enregistrements `s1`/`s2._domainkey`) : les
+mails partent signés au nom du domaine dès aujourd'hui. La clé d'API doit
+porter la permission *Mail Send*, et `MAIL_FROM` doit être une adresse du
+domaine authentifié.
+
+**Postmark s'essaie en parallèle, sans rien casser.** Les deux services
+cohabitent : Postmark signe avec un sélecteur DKIM différent de celui de
+SendGrid, et sa route de retour (`pm-bounces`) est un nom nouveau. Aucun
+enregistrement existant n'est modifié, le site continue d'envoyer par
+SendGrid pendant l'essai. Et pour un premier test, une simple *Sender
+Signature* (une adresse confirmée d'un clic) suffit : **zéro DNS**.
+
+Sur le fond, Postmark est le meilleur outil des deux pour ce que fait cette
+app : il ne fait que du transactionnel — il refuse le marketing, donc ses
+serveurs ne sont jamais salis par les campagnes de masse d'autres clients —
+et il garde 45 jours chaque message avec son contenu et ses événements, ce
+qui répond en dix secondes à « le propriétaire dit qu'il n'a rien reçu ».
+Mais pour quelques dizaines d'envois par jour, les deux font le travail : la
+délivrabilité se joue d'abord sur le DNS ci-dessous, pas sur le fournisseur.
+
+**Les SMS ne viennent d'aucun des deux.** SendGrid appartient à Twilio, mais
+n'envoie que des e-mails ; les SMS passent par l'API Twilio, avec son propre
+compte et ses propres identifiants (`Account SID`, `Auth Token`, numéro
+expéditeur). Postmark n'envoie pas de SMS du tout.
 
 ## 2. Les trois réglages DNS qui décident du spam
 
@@ -52,13 +72,19 @@ On démarre en `p=none` : aucune conséquence sur la remise, on ne fait
 qu'observer. Après quelques semaines de rapports, passer à
 `p=quarantine; pct=100`.
 
-### b. SPF — seulement si on envoie par SendGrid
+### b. SPF — utile, mais pas indispensable
 
 `v=spf1 include:mx.ovh.com include:sendgrid.net ~all`
 
 Aujourd'hui SendGrid **n'est pas** dans le SPF : tout mail qu'il envoie échoue
-SPF. Il est rattrapé par sa signature DKIM, mais « SPF en échec + pas de
-DMARC » suffit à faire basculer un message en spam chez Outlook et Orange.
+SPF. Il est rattrapé par sa signature DKIM — et DMARC se contente d'un seul
+des deux alignés, donc DKIM seul suffit à valider. Mais « SPF en échec + pas
+de DMARC » suffit à faire basculer un message en spam chez Outlook et Orange :
+c'est l'absence de DMARC qui coûte cher, pas le SPF.
+
+Cette ligne n'est donc pas urgente, et elle devient inutile le jour où
+SendGrid s'arrête. Postmark, lui, ne demande aucun `include` : sa route de
+retour `pm-bounces` porte son propre SPF.
 
 ### c. DKIM OVH — seulement si on envoie par OVH
 
