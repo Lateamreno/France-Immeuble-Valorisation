@@ -2147,3 +2147,21 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 }
 .carte-auto:disabled { background: #9ec9a0; cursor: default; }
 .carte-err { color: var(--red); font-size: 12.5px; margin-bottom: 6px; }
+
+/* --- Bouton copier (repris du plugin du BO) ---
+   Toujours un retour visible : sans confirmation, on ne sait pas si le clic
+   a pris, et on reclique trois fois. */
+.cop {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: #fff; color: var(--slate-2);
+  border-radius: 4px; padding: 5px 9px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
+.cop svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.cop:hover { background: var(--chip); }
+.cop.petit { padding: 4px 8px; font-size: 12px; }
+.cop.ok { border-color: #3db327; color: #2b8a1f; background: #f2fbf1; }
+.cop.ko { border-color: var(--red); color: var(--red); }
+.cop:disabled { opacity: .45; cursor: default; }
+/* Habillage « barre d'icônes » (adresse de l'onglet Emplacement). */
+.emp-ic.ok { color: #2b8a1f; border-color: #3db327; }

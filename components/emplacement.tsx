@@ -12,6 +12,7 @@ import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, updateEmplacement, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
+import { Copier } from "@/components/copier";
 import { AdresseInput } from "@/components/adresse-input";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -195,10 +196,7 @@ function AdresseTab({ b }: { b: BienData }) {
           Emplacement
         </div>
         <div className="emp-adr">
-          <button type="button" className="emp-ic" title="Copier l'adresse"
-            onClick={() => navigator.clipboard?.writeText(adresseComplete)}>
-            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="12" rx="1.5" /><path d="M5 15V4h11" /></svg>
-          </button>
+          <Copier valeur={adresseComplete} titre="Copier l'adresse" cls="emp-ic" />
           <a className="emp-chip" href={mapsLien} target="_blank" rel="noreferrer">
             <svg viewBox="0 0 24 24" className="gmaps"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>
             {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, <b>{S(im.adresse_zipcode)} {S(im.adresse_ville)}</b>

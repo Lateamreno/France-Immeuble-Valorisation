@@ -18,6 +18,7 @@ import { Acheteurs } from "@/components/acheteurs";
 import { Picto } from "@/components/pictos";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 import { ContactPicker } from "@/components/contact-picker";
+import { copierTexte } from "@/components/copier";
 
 
 
@@ -63,9 +64,9 @@ function Copiable({ valeur, type }: { valeur: string; type: "tel" | "mail" }) {
       <a href={`${type === "tel" ? "tel:" : "mailto:"}${valeur}`} className="v">
         <svg viewBox="0 0 24 24">{type === "tel" ? I.phone : I.mail}</svg>{valeur}
       </a>
-      <button type="button" title="Copier" onClick={(e) => {
+      <button type="button" title={ok ? "Copié" : "Copier"} onClick={async (e) => {
         e.preventDefault();
-        navigator.clipboard?.writeText(valeur);
+        await copierTexte(valeur);
         setOk(true);
         setTimeout(() => setOk(false), 1200);
       }}>{ok ? "✓" : "⧉"}</button>

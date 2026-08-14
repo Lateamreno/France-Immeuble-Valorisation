@@ -5,6 +5,7 @@
 // Informations · Société · Notes · Source, sous-onglets avec compteurs.
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { Copier } from "@/components/copier";
 import type { ContactData } from "@/lib/bubble/server";
 import { dmy, euros } from "@/lib/format";
 import { archiverContact, updateContact } from "@/lib/bo/actions";
@@ -91,8 +92,18 @@ export function ContactFiche({ d }: { d: ContactData }) {
         {types.map((t) => <span key={t} className="chip">{t}</span>)}
         <span className="sp" style={{ flex: 1 }} />
         {note && <span className={`note n${note}`} title={`Classement acquéreur ${note}`}>{note}</span>}
-        {portable && <a className="fadd" href={`tel:${portable}`}>Appeler</a>}
-        {email && <a className="fadd" href={`mailto:${email}`}>Envoyer un e-mail</a>}
+        {portable && (
+          <>
+            <a className="fadd" href={`tel:${portable}`}>Appeler</a>
+            <Copier valeur={portable} titre="Copier le téléphone" petit>Copier</Copier>
+          </>
+        )}
+        {email && (
+          <>
+            <a className="fadd" href={`mailto:${email}`}>Envoyer un e-mail</a>
+            <Copier valeur={email} titre="Copier l'e-mail" petit>Copier</Copier>
+          </>
+        )}
         <button type="button" className="fadd" disabled={pending}
           onClick={() => {
             const motif = prompt(`Motif d'archivage ?\n\n${MOTIFS_ARCHIVAGE.join(" · ")}`, "Doublon");

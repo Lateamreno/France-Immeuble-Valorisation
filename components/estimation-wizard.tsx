@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
+import { Copier } from "@/components/copier";
 import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
   type EstimationPayload,
@@ -740,11 +741,16 @@ export function EstimationWizard({
             )}
             <div className="est-l">
               <Champ label="Objet" valeur={mailObjet} />
+              <Copier valeur={mailObjet} titre="Copier l'objet" petit>Copier</Copier>
             </div>
             <label className="est-ch txt">
               <span>Message</span>
               <textarea rows={14} readOnly value={`${mailCorps}\n\n${b.agentInitials} — France Immeuble`} />
             </label>
+            <div className="est-l">
+              <Copier valeur={`${mailCorps}\n\n${b.agentInitials} — France Immeuble`}
+                titre="Copier le message" petit>Copier le message</Copier>
+            </div>
             <div className="est-note">
               {envoiActif
                 ? "L'app envoie depuis la boîte France Immeuble, avec l'agent en « Répondre à » : la réponse du propriétaire arrive directement dans sa boîte."
