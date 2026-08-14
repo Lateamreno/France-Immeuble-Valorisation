@@ -831,6 +831,72 @@ const PLURIELS: Record<string, string> = {
   Logistique: "Entrepôts", Cave: "Caves", Parking: "Parkings", Annexe: "Annexes",
 };
 
+/* Marques des sites de référence (retour #87). Dessinées, pas importées :
+   pas de fichier à héberger, et l'icône reste nette à toutes les tailles. */
+const MARQUES: Record<string, React.ReactNode> = {
+  seloger: <span className="mq sl">SL</span>,
+  notaires: <span className="mq nt">N</span>,
+  maps: (
+    <svg className="mq-svg" viewBox="0 0 24 24">
+      <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
+      <circle cx="12" cy="10" r="2.6" fill="#fff" stroke="none" />
+    </svg>
+  ),
+  copie: (
+    <svg className="mq-svg trait" viewBox="0 0 24 24">
+      <rect x="8" y="3" width="12" height="15" rx="2" /><path d="M16 21H6a2 2 0 0 1-2-2V7" />
+    </svg>
+  ),
+};
+
+/** Saisie chiffrée du BO (retour #88) : que des chiffres, affichés par
+ *  paquets de trois. La valeur reste un nombre exploitable par les calculs. */
+const nbAffiche = (v: string) => {
+  if (v === "") return "";
+  const [ent, dec] = v.split(".");
+  const groupe = ent.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return dec === undefined ? groupe : `${groupe},${dec}`;
+};
+const nbSaisi = (t: string, decimales: number) => {
+  let v = t.replace(/[^\d.,]/g, "").replace(/,/g, ".");
+  const i = v.indexOf(".");
+  if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, "");
+  if (decimales === 0) return v.split(".")[0];
+  const [ent, dec] = v.split(".");
+  return dec === undefined ? ent : `${ent}.${dec.slice(0, decimales)}`;
+};
+
+/** Champ encadré de la modale du BO : picto à gauche, libellé posé sur le
+ *  cadre, unité à droite. Rouge tant qu'il est vide. */
+function ChampSecteur({
+  icone, libelle, unite, valeur, onChange, decimales = 0, calcule,
+}: {
+  icone: React.ReactNode; libelle: string; unite?: string;
+  valeur: string; onChange?: (v: string) => void;
+  decimales?: number;
+  /** Champ déduit des autres : affiché, jamais saisi. */
+  calcule?: boolean;
+}) {
+  const vide = valeur === "";
+  return (
+    <div className={`sf${calcule ? " calc" : vide ? " requis" : ""}`}>
+      <span className="sf-ic"><svg viewBox="0 0 24 24">{icone}</svg></span>
+      <span className="sf-box">
+        <span className="sf-lab">{libelle}</span>
+        {calcule ? (
+          <span className="sf-val">{vide ? "n.c." : nbAffiche(valeur)}</span>
+        ) : (
+          <input
+            inputMode="decimal" value={nbAffiche(valeur)} placeholder={libelle}
+            onChange={(e) => onChange?.(nbSaisi(e.target.value, decimales))}
+          />
+        )}
+        {unite && <span className="sf-suf">{unite}</span>}
+      </span>
+    </div>
+  );
+}
+
 function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: { dest: string; carrez: number }[] }) {
   const immeubleId = String(b.im._id);
   const sect = b.secteur ?? {};
@@ -839,49 +905,93 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
   const [pending, start] = useTransition();
   const [loyer, setLoyer] = useState(S(num(sect[`${prefix}_loyer_retenu`])));
   const [prix, setPrix] = useState(S(num(sect[`${prefix}_prix_retenu`])));
-  const [renta, setRenta] = useState(S(num(sect[`${prefix}_renta_retenu`])));
   const [comment, setComment] = useState(S(sect[`${prefix}_commentaire`]));
-  /* Liens contextualisés sur l'adresse et le type du bien (retour #65) :
-     SeLoger a un format d'URL stable par code postal ; pour les autres, la
-     recherche ciblée sur le site tombe directement sur la page de la ville. */
+
+  /* Le rendement n'est pas une saisie : c'est le loyer annuel rapporté au
+     prix. Le laisser à la main, c'est laisser entrer une incohérence. */
+  const renta =
+    parse(loyer) && parse(prix) ? String(Math.round((parse(loyer)! * 12 * 1000) / parse(prix)!) / 10) : "";
+
   const ville = S(b.im.adresse_ville);
   const cp = S(b.im.adresse_zipcode);
+  const adresse = `${S(b.im.adresse_numero_rue)} ${S(b.im.adresse_rue)} ${cp} ${ville}`.replace(/\s+/g, " ").trim();
+  const dept = cp.startsWith("97") || cp.startsWith("98") ? cp.slice(0, 3) : cp.slice(0, 2);
+  const idf = ["75", "77", "78", "91", "92", "93", "94", "95"].includes(dept);
   const cible = (site: string, quoi: string) =>
     `https://www.google.com/search?q=${encodeURIComponent(`site:${site} ${quoi} ${ville} ${cp}`)}`;
-  const links: [string, string][] = dest === "Commerce"
-    ? [
-        ["LocalCommercial.net", cible("localcommercial.net", "local commercial")],
-        ["UnEmplacement", cible("unemplacement.com", "emplacement commercial")],
-      ]
-    : [
-        ["Seloger", `https://www.seloger.com/prix-de-l-immo/vente/${cp}.htm`],
-        ["Notaires", cible("immobilier.notaires.fr", "prix immobilier")],
-      ];
+  /* Les liens du BO, dans l'ordre du BO. Pour le commerce, les deux sites
+     spécialisés remplacent SeLoger, qui ne cote pas les baux commerciaux. */
+  const liens: { cle: string; label: string; href: string }[] =
+    dest === "Commerce"
+      ? [
+          { cle: "seloger", label: "LocalCommercial", href: cible("localcommercial.net", "local commercial") },
+          { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
+        ]
+      : [
+          { cle: "seloger", label: "Seloger", href: "https://www.seloger.com/prix-de-l-immo/vente/pays/france.htm" },
+          { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
+          ...(idf ? [{ cle: "notaires", label: "Notaires Paris", href: "https://paris.notaires.fr/fr/carte-des-prix" }] : []),
+        ];
+
+  /* Le BO n'enregistre que si les deux valeurs qui servent aux calculs sont
+     là : sans elles, ni rendement ni estimation. */
+  const complet = parse(loyer) !== undefined && parse(prix) !== undefined;
 
   return (
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>Modifier</button>
       {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Modifier les valeurs du secteur — {dest}s<button type="button" onClick={() => setOpen(false)}>✕</button></div>
+        <div className="modal-ov" onClick={() => setOpen(false)}>
+          <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              Modifier les valeurs du secteur
+              <button type="button" onClick={() => setOpen(false)}>✕</button>
+            </div>
             <div className="modal-b">
-              <div className="mrow" style={{ marginBottom: 8 }}>
-                {links.map(([l, href]) => <a key={l} className="mopt" href={href} target="_blank" rel="noreferrer">{l} ↗</a>)}
+              <div className="sm-liens">
+                <b>{PLURIELS[dest] ?? `${dest}s`}</b>
+                <span className="sp" />
+                {liens.map((l, i) => (
+                  <a key={i} className="sm-lk" href={l.href} target="_blank" rel="noreferrer">
+                    {MARQUES[l.cle]}{l.label}
+                  </a>
+                ))}
+                <a
+                  className="sm-lk"
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`}
+                  target="_blank" rel="noreferrer"
+                >{MARQUES.maps}Maps</a>
+                <button type="button" className="sm-lk" title="Copier l'adresse" onClick={() => copierTexte(adresse)}>
+                  {MARQUES.copie}Adresse
+                </button>
               </div>
-              <span className="mlab">Loyer du secteur ({dest === "Commerce" ? "€/m²/an ÷ 12 → saisir en €/m²/mois" : "€/m²/mois"})</span>
-              <input className="min" value={loyer} onChange={(e) => setLoyer(e.target.value)} />
-              <span className="mlab">Prix du secteur (€/m²)</span>
-              <input className="min" value={prix} onChange={(e) => setPrix(e.target.value)} />
-              <span className="mlab">Rendement du secteur (%)</span>
-              <input className="min" value={renta} onChange={(e) => setRenta(e.target.value)} />
+
+              <ChampSecteur
+                icone={<><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>}
+                libelle="Loyer du secteur"
+                unite={dest === "Commerce" ? "€/m²/mois (annuel ÷ 12)" : "€/m²/mois"}
+                valeur={loyer} onChange={setLoyer} decimales={2}
+              />
+              <ChampSecteur
+                icone={<><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>}
+                libelle="Prix du secteur" unite="€/m²"
+                valeur={prix} onChange={setPrix}
+              />
+              <ChampSecteur
+                icone={<><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></>}
+                libelle="Rendement du secteur" unite="%"
+                valeur={renta} calcule
+              />
+
               <span className="mlab">Commentaire</span>
-              <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+              <textarea className="min" rows={2} placeholder="Commentaire" value={comment}
+                onChange={(e) => setComment(e.target.value)} />
             </div>
             <div className="modal-f">
+              <span className="sp" />
               <button
-                className="kgo" type="button" disabled={pending}
-                style={pending ? { opacity: 0.5 } : undefined}
+                className="savebar-go" type="button" disabled={pending || !complet}
+                title={complet ? undefined : "Loyer et prix du secteur attendus"}
                 onClick={() =>
                   start(async () => {
                     await saveSecteurDest(
@@ -894,7 +1004,7 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
                     setOpen(false);
                   })
                 }
-              ><span className="ch">›</span> Enregistrer</button>
+              >{pending ? "Enregistrement…" : "❯ Enregistrer"}</button>
             </div>
           </div>
         </div>
