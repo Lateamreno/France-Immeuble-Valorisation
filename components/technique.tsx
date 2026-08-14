@@ -129,7 +129,7 @@ function AddComposantButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un composant</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau composant<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">
@@ -268,7 +268,7 @@ function AddTravauxButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter des travaux</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveaux travaux<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">

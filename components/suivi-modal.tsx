@@ -55,6 +55,15 @@ export function SuiviModal({
   const toggleCanal = (k: string) =>
     setCanaux((c) => (c.includes(k) ? c.filter((x) => x !== k) : [...c, k]));
 
+  /* Le bouton n'est vert que lorsque l'enregistrement est réellement
+     possible : un mode de contact, une note non vide, et — si le bien part
+     en attente — un motif et une date postérieure à aujourd'hui (#72). */
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const complet =
+    canaux.length > 0 &&
+    notes.trim().length > 0 &&
+    (!attente || (!!motif && date > aujourdhui));
+
   const valider = () =>
     start(async () => {
       setErr(null);
@@ -84,8 +93,10 @@ export function SuiviModal({
   }
 
   return createPortal(
-    <div className="modal-ov" onClick={onClose}>
+    <div className="modal-ov">
       <div className="modal sv" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onClose}>✕</button>
+
         <div className="sv-head">
           <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z" /></svg>
           Suivi
@@ -183,8 +194,10 @@ export function SuiviModal({
         <div className="sv-foot">
           <button type="button" className="sv-annuler" onClick={onClose}>Annuler</button>
           <span style={{ flex: 1 }} />
-          <button className="sv-go" type="button" disabled={pending || (attente && !motif)}
-            style={pending || (attente && !motif) ? { opacity: 0.5 } : undefined} onClick={valider}>
+          <button className={`sv-go${complet ? " pret" : ""}`} type="button"
+            disabled={pending || !complet}
+            title={complet ? undefined : "Renseignez le mode de contact et une note" }
+            onClick={valider}>
             {attente ? (
               <><svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 8 5 8 9s-8 5-8 9" /></svg> Mettre en attente</>
             ) : (

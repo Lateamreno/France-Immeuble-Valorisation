@@ -141,7 +141,7 @@ function AddBailButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un bail</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau bail<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">
@@ -294,7 +294,7 @@ function AddLocataireButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un locataire</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau locataire<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">
@@ -415,7 +415,7 @@ function AddChargeButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter une charge</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouvelle charge<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">

@@ -34,8 +34,10 @@ export function ModaleMoyenContact({
   }, [onAnnuler]);
 
   return createPortal(
-    <div className="modal-ov" onClick={onAnnuler}>
+    <div className="modal-ov">
       <div className="modal vf" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+
         <div className="vf-head">Validation du formulaire</div>
         <div className="vf-body">
           <p>Indiquez par quel moyen vous avez réussi à joindre le contact :</p>
@@ -156,8 +158,10 @@ export function ModaleTransfert({
   }, [onAnnuler]);
 
   return createPortal(
-    <div className="modal-ov" onClick={onAnnuler}>
+    <div className="modal-ov">
       <div className="modal tr" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+
         <div className="tr-head">
           <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
           Transférer à un collègue

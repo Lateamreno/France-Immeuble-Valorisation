@@ -2165,3 +2165,28 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .cop:disabled { opacity: .45; cursor: default; }
 /* Habillage « barre d'icônes » (adresse de l'onglet Emplacement). */
 .emp-ic.ok { color: #2b8a1f; border-color: #3db327; }
+
+/* --- Croix de fermeture, sur toute fenêtre (retour #68) ---
+   Le voile ne ferme plus au clic : une saisie commencée ne doit pas
+   disparaître sur un clic à côté. La croix et la touche Échap sont les
+   seules sorties, toutes deux volontaires. */
+.modal { position: relative; }
+.mod-x {
+  position: absolute; top: 8px; right: 10px; z-index: 2;
+  border: 0; background: none; cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 4px;
+  color: rgba(255, 255, 255, .8);
+}
+.mod-x:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+/* En-têtes clairs : la croix reprend la couleur du texte. */
+.modal.cp .mod-x { color: var(--gray-lt); }
+.modal.cp .mod-x:hover { background: #ececec; color: var(--slate); }
+
+/* --- Règle générale des boutons de validation (retour #72) ---
+   Vert dès que l'action est possible, neutre tant qu'il manque quelque
+   chose. Le bouton dit ainsi où on en est, sans message d'erreur. */
+.sv-go.pret, .btn-pret {
+  background: var(--green); border-color: var(--green); color: #fff;
+}
+.sv-go.pret:hover, .btn-pret:hover { background: #35a121; }
+.sv-go:disabled { opacity: .55; cursor: not-allowed; }

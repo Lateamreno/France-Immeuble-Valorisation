@@ -250,7 +250,7 @@ function MapsBtn({ b }: { b: BienData }) {
         <svg viewBox="0 0 24 24">{I.maps}</svg>
       </span>
       {ouvert && createPortal(
-        <div className="modal-ov" onClick={() => setOuvert(false)}>
+        <div className="modal-ov">
           <div className="modal lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">
               {adresse || b.ville}

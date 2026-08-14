@@ -23,7 +23,7 @@ export function AddVisiteButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Programmer une visite</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Programmer une visite<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">
@@ -103,7 +103,7 @@ export function AddOffreButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter une offre</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouvelle offre<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">

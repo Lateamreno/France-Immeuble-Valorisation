@@ -61,7 +61,7 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   const [vendeur, setVendeur] = useState(false);
   const [agent, setAgent] = useState(agents[0]?.slug ?? "");
   return (
-    <div className="modal-ov" onClick={onClose}>
+    <div className="modal-ov">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">Nouveau contact<button type="button" onClick={onClose}>✕</button></div>
         <div className="modal-b">
@@ -131,7 +131,7 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
   const pret = !!adresse?.ville && !!source;
 
   return (
-    <div className="modal-ov" onClick={onClose}>
+    <div className="modal-ov">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">Créer un nouvel immeuble<button type="button" onClick={onClose}>✕</button></div>
         <div className="modal-b">

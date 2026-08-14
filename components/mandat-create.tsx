@@ -41,7 +41,7 @@ export function AddMandatButton({ b }: { b: BienData }) {
         + Ajouter un mandat
       </button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau mandat<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">

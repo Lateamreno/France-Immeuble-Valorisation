@@ -290,7 +290,7 @@ function ReserveBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: st
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>Attribuer un numéro</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Réserver un numéro<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b" style={{ fontSize: 13, lineHeight: 1.6 }}>
@@ -323,7 +323,7 @@ function CancelBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: str
         Annuler le mandat
       </button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Annuler le mandat<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">

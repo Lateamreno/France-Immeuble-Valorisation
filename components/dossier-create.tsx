@@ -81,7 +81,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
         + Nouveau dossier
       </button>
       {open && (
-        <div className="modal-ov" onClick={close}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau dossier — V{version}<button type="button" onClick={close}>✕</button></div>
             <div className="modal-b">

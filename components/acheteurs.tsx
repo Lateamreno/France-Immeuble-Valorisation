@@ -182,7 +182,7 @@ function ModaleMatching({
     setF({ ...f, notes: f.notes.includes(n) ? f.notes.filter((x) => x !== n) : [...f.notes, n] });
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
+    <div className="modal-ov">
       <div className="modal lg" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">Trouver des acquéreurs<button type="button" onClick={onFermer}>✕</button></div>
         <div className="modal-b">

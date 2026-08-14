@@ -68,8 +68,10 @@ export function ContactPicker({
     });
 
   return createPortal(
-    <div className="modal-ov" onClick={onAnnuler}>
+    <div className="modal-ov">
       <div className="modal cp" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+
         <div className="cp-head">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
           {titre}

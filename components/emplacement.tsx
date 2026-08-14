@@ -644,7 +644,7 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>Modifier</button>
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
+        <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Modifier les valeurs du secteur — {dest}s<button type="button" onClick={() => setOpen(false)}>✕</button></div>
             <div className="modal-b">
