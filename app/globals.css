@@ -2314,3 +2314,35 @@ select.pr-in { cursor: pointer; }
    réponse, pas un vide. */
 .ville-c.requis { border-color: var(--red); background: #fff8f8; }
 .ville-c.requis .t { color: var(--red); }
+
+/* --- Terrain et parcelles (retour #80) ---
+   Le BO résume le terrain dans un encadré or : c'est la première chose que
+   l'agent regarde en ouvrant l'onglet, avant même le détail des parcelles. */
+.terr {
+  border: 1px solid var(--gold-bo); border-radius: 5px; padding: 10px 16px 12px;
+  max-width: 920px; margin: 0 auto 12px; display: flex; flex-direction: column; align-items: center;
+}
+.terr-t {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 8px;
+  color: var(--gold-bo); font-family: var(--font-title); font-size: 21px; font-weight: 700;
+}
+.terr-t svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.terr-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.terr-chips .fchip { padding: 6px 12px; font-size: 12.5px; font-weight: 400; gap: 7px; }
+.terr-chips .fchip b { font-weight: 700; font-size: 14px; }
+.terr-chips .fchip.off { color: var(--gray-lt); }
+
+/* Parcelles proposées par le cadastre IGN : une proposition, pas une écriture. */
+.terr-prop { border: 1px dashed var(--line); border-radius: 5px; padding: 8px 10px; margin-bottom: 8px; }
+.terr-prop p { margin: 0 0 6px; font-size: 12px; color: var(--gray-txt); }
+.terr-prop .mopt:disabled { color: var(--gray-lt); cursor: default; }
+
+/* Plan de la parcelle entourée : zone de dépôt puis image déposée. */
+.terr-drop {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  white-space: normal; min-height: 90px; padding: 14px; background: #faf9f6; box-shadow: none;
+}
+.terr-photo { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.terr-photo img {
+  max-width: 100%; max-height: 420px; border: 1px solid var(--line); border-radius: 5px; display: block;
+}

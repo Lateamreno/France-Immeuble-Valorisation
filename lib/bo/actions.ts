@@ -51,6 +51,20 @@ async function bqOne(table: string, id: string): Promise<Record<string, unknown>
   return rows[0]?.data ?? null;
 }
 
+/** Relit plusieurs lignes du miroir par leurs ids (ordre non garanti). */
+async function bqIn(table: string, ids: string[]): Promise<Record<string, unknown>[]> {
+  const liste = ids.filter(Boolean);
+  if (!SB_KEY || liste.length === 0) return [];
+  const filtre = `(${liste.map((i) => `"${i.replace(/"/g, "")}"`).join(",")})`;
+  const res = await fetch(
+    `${SB_URL}/rest/v1/${table}?id=in.${encodeURIComponent(filtre)}&select=data&limit=200`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  );
+  if (!res.ok) return [];
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  return rows.map((r) => r.data).filter(Boolean);
+}
+
 const newId = () =>
   `app_${Date.now()}x${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`;
 
@@ -406,6 +420,7 @@ export type EmplacementPatch = Partial<{
   emp_population: number; emp_revenus: number;
   emp_zone_tendue: boolean; emp_tension_locative: string;
   plu_zone: string; plu_Type_zone: string; plu_hauteur: number; plu_emprise: number;
+  ter_surface: number; ter_facade: number;
 }>;
 
 /** Met à jour les données d'emplacement / PLU de l'immeuble. */
@@ -416,10 +431,30 @@ export async function updateEmplacement(immeubleId: string, patch: EmplacementPa
   refresh(immeubleId);
 }
 
+/* Terrain : dans le BO, la surface et la façade de l'encadré or sont la somme
+   des parcelles. On les recalcule à chaque ajout/retrait pour que l'encadré,
+   la description du bien et le dossier de vente racontent la même chose. */
+async function syncTerrain(immeubleId: string) {
+  const im = await bqOne("bo_immeuble", immeubleId);
+  const ids = Array.isArray(im?.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
+  if (ids.length === 0) return;
+  const parcelles = await bqIn("bo_parcelle", ids);
+  const somme = (cle: string) =>
+    parcelles.reduce((s, p) => s + (typeof p[cle] === "number" ? (p[cle] as number) : 0), 0);
+  // Une somme nulle veut dire « les parcelles ne portent pas l'information »,
+  // pas « le terrain fait zéro » : on laisse alors la valeur déjà saisie.
+  const patch = cleanPatch({
+    ter_surface: somme("superficie") || undefined,
+    ter_facade: somme("facade") || undefined,
+  });
+  if (Object.keys(patch).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: patch });
+}
+
 /** Ajoute une parcelle cadastrale (liée via le tableau PARCELLEs de l'immeuble). */
 export async function addParcelle(
   immeubleId: string,
-  input: { ref_cadastre: string; superficie?: number; facade?: number },
+  input: { ref_cadastre: string; superficie?: number; facade?: number; idu?: string },
 ) {
   const id = newId();
   const now = new Date().toISOString();
@@ -429,6 +464,7 @@ export async function addParcelle(
     p_doc: cleanPatch({ ...input, "Created Date": now, "Modified Date": now }),
   });
   await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "PARCELLEs", p_value: id });
+  await syncTerrain(immeubleId);
   refresh(immeubleId);
 }
 
@@ -436,6 +472,33 @@ export async function addParcelle(
 export async function deleteParcelle(immeubleId: string, parcelleId: string) {
   await rpc("bo_delete_doc", { p_table: "bo_parcelle", p_id: parcelleId });
   await rpc("bo_remove_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "PARCELLEs", p_value: parcelleId });
+  await syncTerrain(immeubleId);
+  refresh(immeubleId);
+}
+
+/** Photo du plan de parcelle entourée (champ `ter_parcelle_img` du BO). */
+export async function uploadPhotoParcelle(immeubleId: string, fd: FormData) {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 15 * 1024 * 1024) throw new Error("Fichier trop lourd (15 Mo max)");
+  const path = `photos/${immeubleId}/parcelle-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: { ter_parcelle_img: `storage:${path}` },
+  });
+  refresh(immeubleId);
+  return `/api/photo?s=${encodeURIComponent(path)}`;
+}
+
+/** Retire la photo de parcelle (le fichier reste dans le bucket). */
+export async function supprimerPhotoParcelle(immeubleId: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: { ter_parcelle_img: null },
+  });
   refresh(immeubleId);
 }
 

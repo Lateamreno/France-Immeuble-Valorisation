@@ -9,7 +9,8 @@ import type { BienData } from "@/lib/bubble/server";
 import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
-  addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, updateEmplacement, type EmplacementPatch,
+  addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
+  updateEmplacement, uploadPhotoParcelle, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
@@ -20,6 +21,14 @@ const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
+
+/** Une image de fiche passe toujours par le proxy : les fichiers Bubble comme
+ *  le bucket Supabase sont privés. */
+const proxy = (u: string) =>
+  !u ? undefined
+    : u.startsWith("storage:")
+      ? `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}`
+      : `/api/photo?u=${encodeURIComponent(u.replace(/^\/\//, "https://"))}`;
 
 /* Pictogrammes des points d'intérêt, comme dans le BO (retour #15). */
 const PICTOS: Record<string, React.ReactNode> = {
@@ -430,6 +439,9 @@ function PoiVignette({
 
 /* ---------- Parcelles & PLU ---------- */
 
+/** Parcelle proposée par le cadastre IGN sous le point d'adresse (#80). */
+type ParcelleIGN = { ref: string; superficie?: number; idu?: string; commune?: string };
+
 function ParcellesTab({ b }: { b: BienData }) {
   const im = b.im;
   const immeubleId = String(im._id);
@@ -458,14 +470,122 @@ function ParcellesTab({ b }: { b: BienData }) {
       pluEnBase.current = pluCourant;
     });
 
+  /* Encadré or : la surface et la façade du terrain, somme des parcelles.
+     À défaut de parcelles chiffrées, on garde la valeur déjà en fiche. */
+  const totalP = (cle: string) =>
+    b.parcelles.reduce((s, p) => s + (num(p[cle]) ?? 0), 0);
+  const surface = totalP("superficie") || num(im.ter_surface);
+  const facade = totalP("facade") || num(im.ter_facade);
+
+  /* Les trois liens ouvrent directement le bien : le point d'adresse est déjà
+     géocodé, on s'en sert pour centrer le cadastre et le Géoportail (#80). */
+  const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
+  const lat = num(geo?.lat);
+  const lon = num(geo?.lng);
+  const adresse = `${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
+  const idu = b.parcelles.map((p) => S(p.idu)).find((x) => x);
+  const lienCadastre =
+    lat !== undefined && lon !== undefined
+      ? `https://cadastre.data.gouv.fr/map?style=ortho${idu ? `&parcelleId=${idu}` : ""}#19/${lat}/${lon}`
+      : "https://cadastre.data.gouv.fr/map";
+  const lienGeoportail =
+    lat !== undefined && lon !== undefined
+      ? `https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19` +
+        "&l0=CADASTRALPARCELS.PARCELLAIRE_EXPRESS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes"
+      : "https://www.geoportail.gouv.fr/carte";
+  const lienGoogle = adresse
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`
+    : gLink("cadastre parcelle", b);
+
+  /* Le cadastre IGN sait quelle parcelle contient ce point : on propose, et
+     c'est l'agent qui ajoute (même doctrine que les points d'intérêt). */
+  const [proposees, setProposees] = useState<ParcelleIGN[] | null>(null);
+  const [rechCadastre, setRechCadastre] = useState(false);
+  const chercherParcelles = async () => {
+    if (lat === undefined || lon === undefined) return;
+    setRechCadastre(true);
+    try {
+      const r = await fetch(`/api/cadastre?lat=${lat}&lon=${lon}`);
+      const d = (await r.json()) as { parcelles?: ParcelleIGN[] };
+      setProposees(d.parcelles ?? []);
+    } catch {
+      setProposees([]);
+    } finally {
+      setRechCadastre(false);
+    }
+  };
+  /* « 000 0H 17 » (forme IGN) et « H 17 » (forme saisie au BO) désignent la
+     même parcelle : on compare sans espaces ni zéros de remplissage. */
+  const cle = (r: string) => {
+    const brut = r.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^0+/, "");
+    const m = brut.match(/^([A-Z]*)0*(\d+)$/);
+    return m ? `${m[1]}${parseInt(m[2], 10)}` : brut;
+  };
+  const dejaLa = (r: string) => b.parcelles.some((p) => cle(S(p.ref_cadastre)) === cle(r));
+
   return (
     <>
       <div className="fsub">Parcelles</div>
-      <div className="mrow" style={{ marginBottom: 8 }}>
-        <a className="mopt" href={`https://cadastre.gouv.fr/scpc/rechercherPlan.do`} target="_blank" rel="noreferrer">Cadastre ↗</a>
-        <a className="mopt" href={`https://www.geoportail.gouv.fr/carte`} target="_blank" rel="noreferrer">Géoportail ↗</a>
-        <a className="mopt" href={gLink("cadastre parcelle", b)} target="_blank" rel="noreferrer">Google ↗</a>
+
+      <div className="terr">
+        <div className="terr-t">
+          <svg viewBox="0 0 24 24"><path d="M3 20V8l9-4 9 4v12z" /><path d="M3 20h18M9 20v-6h6v6" /></svg>
+          Terrain
+        </div>
+        <div className="terr-chips">
+          <span className={`fchip${surface === undefined ? " off" : ""}`}>
+            Surface <b>{surface !== undefined ? `${fr1(surface)} m²` : "—"}</b>
+          </span>
+          <span className={`fchip${facade === undefined ? " off" : ""}`}>
+            Façade <b>{facade !== undefined ? `${fr1(facade)} m` : "—"}</b>
+          </span>
+          <span className={`fchip${b.parcelles.length === 0 ? " off" : ""}`}>
+            {b.parcelles.length > 1 ? "Parcelles" : "Parcelle"} <b>{b.parcelles.length}</b>
+          </span>
+        </div>
       </div>
+
+      <div className="mrow" style={{ marginBottom: 8 }}>
+        <a className="mopt" href={lienCadastre} target="_blank" rel="noreferrer">Cadastre ↗</a>
+        <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer">Géoportail ↗</a>
+        <a className="mopt" href={lienGoogle} target="_blank" rel="noreferrer">Google ↗</a>
+        {lat !== undefined && lon !== undefined && (
+          <button type="button" className="mopt" disabled={rechCadastre} onClick={chercherParcelles}>
+            {rechCadastre ? "Recherche…" : "Retrouver les parcelles"}
+          </button>
+        )}
+      </div>
+
+      {proposees !== null && (
+        <div className="terr-prop">
+          {proposees.length === 0 ? (
+            <p>Le cadastre ne rend aucune parcelle sous ce point : à saisir à la main.</p>
+          ) : (
+            <>
+              <p>Parcelle{proposees.length > 1 ? "s" : ""} du cadastre sous l&apos;adresse — cliquez pour ajouter :</p>
+              <div className="mrow">
+                {proposees.map((p) => (
+                  <button
+                    key={p.idu ?? p.ref} type="button" className="mopt"
+                    disabled={pending || dejaLa(p.ref)}
+                    onClick={() =>
+                      start(async () => {
+                        await addParcelle(immeubleId, {
+                          ref_cadastre: p.ref, superficie: p.superficie, idu: p.idu,
+                        });
+                      })
+                    }
+                  >
+                    {dejaLa(p.ref) ? "✓ " : "+ "}{p.ref}
+                    {p.superficie !== undefined && ` · ${p.superficie.toLocaleString("fr-FR")} m²`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {b.parcelles.map((p) => (
         <div key={String(p._id)} className="chrow">
           <span className="t">Parcelle {S(p.ref_cadastre)}</span>
@@ -494,6 +614,8 @@ function ParcellesTab({ b }: { b: BienData }) {
         >+ Ajouter une parcelle</button>
       </div>
 
+      <PhotoParcelle immeubleId={immeubleId} source={S(im.ter_parcelle_img)} />
+
       <div className="fsub" style={{ marginTop: 18 }}>Plan Local d&apos;Urbanisme (PLU)</div>
       <div className="mrow" style={{ alignItems: "center" }}>
         <label style={{ fontSize: 12 }}>Zone <input className="min" style={{ width: 90 }} value={zone} onChange={(e) => setZone(e.target.value)} /></label>
@@ -502,6 +624,68 @@ function ParcellesTab({ b }: { b: BienData }) {
         <label style={{ fontSize: 12 }}>Emprise max (%) <input className="min" style={{ width: 70 }} value={emprise} onChange={(e) => setEmprise(e.target.value)} /></label>
       </div>
       <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} />
+    </>
+  );
+}
+
+/** Plan de la parcelle entourée : dépôt puis affichage (champ BO
+ *  `ter_parcelle_img`). La même image sert au dossier de vente. */
+function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [pending, start] = useTransition();
+  const [url, setUrl] = useState(() => proxy(source));
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const envoyer = (f?: File | null) => {
+    if (!f) return;
+    start(async () => {
+      setErreur(null);
+      try {
+        const fd = new FormData();
+        fd.set("file", f);
+        setUrl(await uploadPhotoParcelle(immeubleId, fd));
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : "envoi impossible");
+      }
+    });
+  };
+
+  return (
+    <>
+      <div className="fsub" style={{ marginTop: 18 }}>Plan de la parcelle</div>
+      {erreur && <p className="carte-err">{erreur}</p>}
+      {url ? (
+        <div className="terr-photo">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Plan de la parcelle" /></a>
+          <div className="mrow">
+            <button type="button" className="mopt" disabled={pending} onClick={() => input.current?.click()}>
+              Remplacer
+            </button>
+            <button
+              type="button" className="mopt" disabled={pending}
+              onClick={() => {
+                if (!confirm("Retirer le plan de la parcelle ?")) return;
+                start(async () => { await supprimerPhotoParcelle(immeubleId); setUrl(undefined); });
+              }}
+            >Retirer</button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="carte-drop terr-drop"
+          onPaste={(e) => envoyer([...e.clipboardData.files][0])}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); envoyer(e.dataTransfer.files[0]); }}
+          onClick={() => input.current?.click()}
+          tabIndex={0}
+          role="button"
+        >
+          {pending ? "Envoi…" : "Déposez le plan avec la parcelle entourée (cliquer, coller ou glisser)"}
+        </div>
+      )}
+      <input ref={input} type="file" accept="image/*" hidden
+        onChange={(e) => envoyer(e.target.files?.[0])} />
     </>
   );
 }
