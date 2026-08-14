@@ -16,6 +16,7 @@ import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
+import { urlSeloger } from "@/lib/seloger";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -695,6 +696,18 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
 function SecteurTab({ b }: { b: BienData }) {
   const im = b.im;
   const sect = b.secteur ?? {};
+  /* Le code INSEE de la commune ouvre SeLoger sur la bonne ville (#87) : son
+     URL se construit à partir de ce code. Une seule demande pour l'onglet,
+     partagée par les vignettes de destination. */
+  const [commune, setCommune] = useState<{ code?: string; nom?: string }>({});
+  useEffect(() => {
+    if (!S(im.adresse_ville) && !S(im.adresse_zipcode)) return;
+    const q = new URLSearchParams({ ville: S(im.adresse_ville), cp: S(im.adresse_zipcode) });
+    fetch(`/api/insee?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.code) setCommune({ code: String(d.code), nom: String(d.nom ?? "") }); })
+      .catch(() => {});
+  }, [im.adresse_ville, im.adresse_zipcode]);
   const lots = b.lots;
   const carrez = lots.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
   const carrezOcc = lots.reduce((s, l) => s + ((num(l.loyer) ?? 0) > 0 ? num(l.surface_carrez) ?? 0 : 0), 0);
@@ -817,7 +830,7 @@ function SecteurTab({ b }: { b: BienData }) {
                   <span className="chip">{Math.round(loyerAnD / (renta / 100)).toLocaleString("fr-FR")} €</span>
                 )}
               </div>
-              <div className="sv-f"><EditSecteurBtn b={b} dest={d} poids={poids} /></div>
+              <div className="sv-f"><EditSecteurBtn b={b} dest={d} poids={poids} commune={commune} /></div>
             </div>
           );
         })}
@@ -897,7 +910,11 @@ function ChampSecteur({
   );
 }
 
-function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: { dest: string; carrez: number }[] }) {
+function EditSecteurBtn({ b, dest, poids, commune }: {
+  b: BienData; dest: string; poids: { dest: string; carrez: number }[];
+  /** Commune officielle (code INSEE + nom) pour l'URL SeLoger. */
+  commune?: { code?: string; nom?: string };
+}) {
   const immeubleId = String(b.im._id);
   const sect = b.secteur ?? {};
   const prefix = DEST_PREFIX[dest] ?? "autre";
@@ -917,6 +934,15 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
   const adresse = `${S(b.im.adresse_numero_rue)} ${S(b.im.adresse_rue)} ${cp} ${ville}`.replace(/\s+/g, " ").trim();
   const dept = cp.startsWith("97") || cp.startsWith("98") ? cp.slice(0, 3) : cp.slice(0, 2);
   const idf = ["75", "77", "78", "91", "92", "93", "94", "95"].includes(dept);
+  /* La fiche porte déjà le slug de la ville (`ville_url`) : seul le code
+     INSEE demande un aller-retour, et son absence dégrade proprement vers la
+     page du département. */
+  const seloger = {
+    insee: commune?.code, nom: commune?.nom || ville,
+    slug: typeof b.adr?.ville_url === "string" ? (b.adr.ville_url as string) : undefined,
+    cp,
+  };
+
   const cible = (site: string, quoi: string) =>
     `https://www.google.com/search?q=${encodeURIComponent(`site:${site} ${quoi} ${ville} ${cp}`)}`;
   /* Les liens du BO, dans l'ordre du BO. Pour le commerce, les deux sites
@@ -928,7 +954,10 @@ function EditSecteurBtn({ b, dest, poids }: { b: BienData; dest: string; poids: 
           { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
         ]
       : [
-          { cle: "seloger", label: "Seloger", href: "https://www.seloger.com/prix-de-l-immo/vente/pays/france.htm" },
+          // Une page par champ à remplir : les loyers pour le premier, les
+          // prix pour le second, tous deux sur la commune du bien.
+          { cle: "seloger", label: "Loyers", href: urlSeloger({ ...seloger, type: "location" }) },
+          { cle: "seloger", label: "Prix", href: urlSeloger({ ...seloger, type: "vente" }) },
           { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
           ...(idf ? [{ cle: "notaires", label: "Notaires Paris", href: "https://paris.notaires.fr/fr/carte-des-prix" }] : []),
         ];

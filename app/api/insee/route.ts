@@ -14,13 +14,25 @@ export async function GET(req: NextRequest) {
   const cp = (q.get("cp") ?? "").trim();
   if (!ville && !cp) return Response.json({ error: "ville ou code postal attendu" }, { status: 400 });
 
-  const url =
-    `https://geo.api.gouv.fr/communes?${cp ? `codePostal=${encodeURIComponent(cp)}` : `nom=${encodeURIComponent(ville)}`}` +
-    "&fields=nom,code&limit=20";
-  const r = await fetch(url, { next: { revalidate: 604800 } }).catch(() => null);
-  if (!r?.ok) return Response.json({ code: null });
+  /* Deux façons de chercher : par code postal, puis par nom. La seconde
+     rattrape les échecs passagers de l'API comme les codes postaux absents
+     de la fiche. */
+  const demandes = [
+    cp && `codePostal=${encodeURIComponent(cp)}`,
+    ville && `nom=${encodeURIComponent(ville)}`,
+  ].filter(Boolean) as string[];
 
-  const communes = (await r.json()) as { nom: string; code: string }[];
+  let communes: { nom: string; code: string }[] = [];
+  for (const q of demandes) {
+    const r = await fetch(`https://geo.api.gouv.fr/communes?${q}&fields=nom,code&limit=20`, {
+      next: { revalidate: 604800 },
+    }).catch(() => null);
+    if (r?.ok) {
+      communes = (await r.json().catch(() => [])) as { nom: string; code: string }[];
+      if (communes.length) break;
+    }
+  }
+  if (communes.length === 0) return Response.json({ code: null });
   // Un code postal peut couvrir plusieurs communes : on préfère celle dont le
   // nom correspond, sans accents ni tirets, et on retombe sur la première.
   const norm = (x: string) =>
