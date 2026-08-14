@@ -7,10 +7,18 @@ import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
 import { listFeedback } from "@/lib/bo/feedback";
 
+/** Un déploiement de recette porte la marque en négatif et le dit dans le
+ *  titre : avec le tableau de bord Vercel, la preview et la production
+ *  ouverts côte à côte, l'onglet se reconnaît sans le lire. */
+const preview = process.env.VERCEL_ENV === "preview";
+
 export const metadata: Metadata = {
-  title: "France Immeuble — Back-office",
+  title: preview ? "Preview · France Immeuble" : "France Immeuble — Back-office",
   description:
     "Back-office France Immeuble : prospection, commercialisation et bouclage des ventes d'immeubles de rapport.",
+  icons: {
+    icon: [{ url: preview ? "/favicon-preview.svg" : "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export const viewport: Viewport = {
