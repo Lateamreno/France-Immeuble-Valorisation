@@ -55,36 +55,49 @@ Relevé du **14/08/2026** sur `france-immeuble.fr` :
 | | État | À faire |
 |---|---|---|
 | MX | OVH (`mx*.mail.ovh.net`) | — |
-| SPF | `v=spf1 include:mx.ovh.com ~all` | ajouter SendGrid **si** on passe par lui |
-| DKIM | SendGrid signé (`s1`/`s2._domainkey`) ; rien côté OVH | activer DKIM OVH si on envoie par OVH |
-| DMARC | **absent** | à créer |
+| SPF | `v=spf1 include:mx.ovh.com ~all` | **rien** — voir ci-dessous |
+| DKIM | SendGrid signé (`s1`/`s2._domainkey`), aligné sur le domaine | rien ; activer DKIM OVH seulement si on envoie par OVH |
+| Chemin de retour | `em3897.france-immeuble.fr` → SendGrid, SPF `ip4:168.245.79.154 -all` | rien |
+| DMARC | **absent** | **à créer — le seul manque** |
+
+**L'authentification SendGrid est complète.** Le domaine est authentifié
+(« Domain Authentication : Verified »), donc SendGrid n'expédie pas sous
+`france-immeuble.fr` mais sous `em3897.france-immeuble.fr`, un sous-domaine qui
+lui appartient et qui porte son propre SPF. Le SPF est donc vérifié sur ce
+sous-domaine — il passe — et comme il partage le domaine racine de l'adresse
+d'expéditeur, il s'aligne au sens de DMARC. Le DKIM, lui, signe déjà
+`d=france-immeuble.fr`. **Les deux mécanismes passent et s'alignent : il n'y a
+aucune ligne SPF à ajouter.**
+
+Conséquence pratique : toute adresse `@france-immeuble.fr` peut expédier sans
+être déclarée une par une. Romain enverra depuis la sienne sans aucune
+manipulation.
 
 ### a. DMARC (le plus important, il manque complètement)
 
-Sans DMARC, chaque messagerie décide seule du sort d'un message imparfait :
-c'est ce qui explique qu'une partie des mails du formulaire arrive en spam et
-l'autre non.
+Sans DMARC, chaque messagerie décide seule du sort d'un message venu d'un
+tiers au nom du domaine — même quand SPF et DKIM passent, comme ici. C'est ce
+qui explique qu'une partie des mails du formulaire arrive en spam et l'autre
+non : le filtre d'OVH voit un serveur extérieur écrire au nom de
+`france-immeuble.fr` et doit deviner. DMARC lui répond.
 
 - Nom : `_dmarc` · Type : `TXT`
-- Valeur : `v=DMARC1; p=none; rua=mailto:dmarc@france-immeuble.fr; fo=1`
+- Valeur : `v=DMARC1; p=none; rua=mailto:ma.voci@france-immeuble.fr; fo=1`
+  (une adresse qui existe vraiment : les rapports doivent arriver quelque part)
 
 On démarre en `p=none` : aucune conséquence sur la remise, on ne fait
 qu'observer. Après quelques semaines de rapports, passer à
 `p=quarantine; pct=100`.
 
-### b. SPF — utile, mais pas indispensable
+### b. SPF — rien à faire
 
-`v=spf1 include:mx.ovh.com include:sendgrid.net ~all`
+Il n'y a **pas** de ligne SendGrid à ajouter : son chemin de retour
+`em3897.france-immeuble.fr` porte déjà son propre SPF, vérifié et aligné.
+Ajouter `include:sendgrid.net` au SPF racine ne servirait à rien et
+consommerait une des dix résolutions DNS autorisées.
 
-Aujourd'hui SendGrid **n'est pas** dans le SPF : tout mail qu'il envoie échoue
-SPF. Il est rattrapé par sa signature DKIM — et DMARC se contente d'un seul
-des deux alignés, donc DKIM seul suffit à valider. Mais « SPF en échec + pas
-de DMARC » suffit à faire basculer un message en spam chez Outlook et Orange :
-c'est l'absence de DMARC qui coûte cher, pas le SPF.
-
-Cette ligne n'est donc pas urgente, et elle devient inutile le jour où
-SendGrid s'arrête. Postmark, lui, ne demande aucun `include` : sa route de
-retour `pm-bounces` porte son propre SPF.
+Le SPF racine ne concerne que les mails partant des boîtes OVH elles-mêmes,
+et il est correct.
 
 ### c. DKIM OVH — seulement si on envoie par OVH
 
