@@ -17,11 +17,13 @@ import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
+import type { Reperes } from "@/lib/bo/reperes";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
+const fr2 = (x: number) => (Math.round(x * 100) / 100).toLocaleString("fr-FR");
 
 /** Une image de fiche passe toujours par le proxy : les fichiers Bubble comme
  *  le bucket Supabase sont privés. */
@@ -882,20 +884,24 @@ const nbSaisi = (t: string, decimales: number) => {
 /** Champ encadré de la modale du BO : picto à gauche, libellé posé sur le
  *  cadre, unité à droite. Rouge tant qu'il est vide. */
 function ChampSecteur({
-  icone, libelle, unite, valeur, onChange, decimales = 0, calcule,
+  icone, libelle, unite, valeur, onChange, decimales = 0, calcule, repere, aRemplacer,
 }: {
   icone: React.ReactNode; libelle: string; unite?: string;
   valeur: string; onChange?: (v: string) => void;
   decimales?: number;
   /** Champ déduit des autres : affiché, jamais saisi. */
   calcule?: boolean;
+  /** Ordre de grandeur du marché, rappelé sous le champ. */
+  repere?: React.ReactNode;
+  /** La valeur affichée vient du repère : elle attend d'être vérifiée. */
+  aRemplacer?: boolean;
 }) {
   const vide = valeur === "";
   return (
-    <div className={`sf${calcule ? " calc" : vide ? " requis" : ""}`}>
+    <div className={`sf${calcule ? " calc" : vide ? " requis" : aRemplacer ? " repere" : ""}`}>
       <span className="sf-ic"><svg viewBox="0 0 24 24">{icone}</svg></span>
       <span className="sf-box">
-        <span className="sf-lab">{libelle}</span>
+        <span className="sf-lab">{libelle}{aRemplacer ? " — repère, à vérifier" : ""}</span>
         {calcule ? (
           <span className="sf-val">{vide ? "n.c." : nbAffiche(valeur)}</span>
         ) : (
@@ -905,6 +911,7 @@ function ChampSecteur({
           />
         )}
         {unite && <span className="sf-suf">{unite}</span>}
+        {repere && <span className="sf-rep">{repere}</span>}
       </span>
     </div>
   );
@@ -923,6 +930,25 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
   const [loyer, setLoyer] = useState(S(num(sect[`${prefix}_loyer_retenu`])));
   const [prix, setPrix] = useState(S(num(sect[`${prefix}_prix_retenu`])));
   const [comment, setComment] = useState(S(sect[`${prefix}_commentaire`]));
+
+  /* Repères de marché (loyers d'annonce du ministère, ventes DVF). Ils
+     donnent l'ordre de grandeur avant la saisie vérifiée : ils préremplissent
+     un champ vide, et restent affichés sous le champ pour se situer. Le
+     chiffre retenu, lui, reste celui que l'agent tape. */
+  const [reperes, setReperes] = useState<Reperes | null>(null);
+  const prerempli = useRef({ loyer: false, prix: false });
+  useEffect(() => {
+    if (!open || !commune?.code || reperes) return;
+    fetch(`/api/reperes?insee=${commune.code}&destination=${encodeURIComponent(dest)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: Reperes | null) => {
+        if (!d) return;
+        setReperes(d);
+        if (d.loyer) setLoyer((v) => { if (v) return v; prerempli.current.loyer = true; return String(Math.round(d.loyer!.valeur * 100) / 100); });
+        if (d.prix) setPrix((v) => { if (v) return v; prerempli.current.prix = true; return String(d.prix!.valeur); });
+      })
+      .catch(() => {});
+  }, [open, commune?.code, dest, reperes]);
 
   /* Le rendement n'est pas une saisie : c'est le loyer annuel rapporté au
      prix. Le laisser à la main, c'est laisser entrer une incohérence. */
@@ -999,12 +1025,30 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
                 icone={<><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>}
                 libelle="Loyer du secteur"
                 unite={dest === "Commerce" ? "€/m²/mois (annuel ÷ 12)" : "€/m²/mois"}
-                valeur={loyer} onChange={setLoyer} decimales={2}
+                valeur={loyer}
+                onChange={(v) => { prerempli.current.loyer = false; setLoyer(v); }}
+                decimales={2}
+                repere={reperes?.loyer && (
+                  <>
+                    <b>{fr2(reperes.loyer.valeur)} €/m²/mois</b> — loyers d&apos;annonce {reperes.loyer.millesime}
+                    {reperes.loyer.commune ? "" : ", estimé sur les communes voisines"}
+                    {reperes.loyer.bas !== undefined && ` · fourchette ${fr2(reperes.loyer.bas)} à ${fr2(reperes.loyer.haut!)} €`}
+                  </>
+                )}
+                aRemplacer={prerempli.current.loyer}
               />
               <ChampSecteur
                 icone={<><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>}
                 libelle="Prix du secteur" unite="€/m²"
-                valeur={prix} onChange={setPrix}
+                valeur={prix}
+                onChange={(v) => { prerempli.current.prix = false; setPrix(v); }}
+                repere={reperes?.prix && (
+                  <>
+                    <b>{reperes.prix.valeur.toLocaleString("fr-FR")} €/m²</b> — médiane des ventes DVF {reperes.prix.millesime},
+                    {` sur ${reperes.prix.ventes.toLocaleString("fr-FR")} vente${reperes.prix.ventes > 1 ? "s" : ""} d'appartement`}
+                  </>
+                )}
+                aRemplacer={prerempli.current.prix}
               />
               <ChampSecteur
                 icone={<><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></>}

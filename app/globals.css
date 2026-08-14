@@ -2460,3 +2460,17 @@ select.pr-in { cursor: pointer; }
   padding: 9px 18px; font-family: var(--font-title); font-size: 13.5px; font-weight: 700; cursor: pointer;
 }
 .sup-go:disabled { opacity: .55; cursor: default; }
+
+/* Repère de marché sous le champ : l'ordre de grandeur, jamais la valeur
+   retenue. Le cadre ambre dit « il y a un chiffre, mais il attend d'être
+   vérifié » — ni le rouge du vide, ni le neutre du validé. */
+.sf { margin-bottom: 28px; }
+.sf-rep {
+  position: absolute; left: 10px; right: 10px; bottom: -17px;
+  font-size: 11px; color: var(--gray-txt); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.sf-rep b { font-weight: 700; color: var(--slate-2); }
+.sf.repere .sf-box { border-color: #d9a441; background: #fffdf6; }
+.sf.repere .sf-lab { color: #a9741a; background: #fffdf6; }
+.sf.calc { margin-bottom: 20px; }
