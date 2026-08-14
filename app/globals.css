@@ -2294,3 +2294,17 @@ body.nav-etroite .savebar { left: 0; right: 0; }
 }
 .pr-in:focus { outline: none; box-shadow: inset 0 -1px 0 var(--gold); }
 select.pr-in { cursor: pointer; }
+
+/* Lien LOCservice : la ville part dans le presse-papier au clic (#76). */
+.emp-lien-i { margin-left: 6px; font-size: 10.5px; color: var(--gray-lt); font-style: italic; }
+
+/* #74 — Les contrôles de la carte (croix directionnelle, bascule satellite)
+   ne doivent pas se retrouver sur la capture remise au client. Ils
+   n'apparaissent donc qu'au survol ou au clavier, et restent invisibles le
+   reste du temps : la carte est propre au moment où l'agent la photographie. */
+.emp-map .map-croix, .emp-map .map-sat { opacity: 0; transition: opacity .14s; }
+.emp-map:hover .map-croix, .emp-map:hover .map-sat,
+.emp-map:focus-within .map-croix, .emp-map:focus-within .map-sat { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .emp-map .map-croix, .emp-map .map-sat { transition: none; }
+}

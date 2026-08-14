@@ -12,7 +12,7 @@ import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, updateEmplacement, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
-import { Copier } from "@/components/copier";
+import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 
@@ -282,7 +282,17 @@ function AdresseTab({ b }: { b: BienData }) {
           <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(S(im.adresse_ville))}`} target="_blank" rel="noreferrer">INSEE - Population</a>
           <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(`revenus ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">INSEE - Revenus</a>
           <a className="emp-lien" href="https://www.service-public.fr/simulateur/calcul/zones-tendues" target="_blank" rel="noreferrer">Service Public - Zones tendues</a>
-          <a className="emp-lien" href="https://www.locservice.fr/tensiometre/" target="_blank" rel="noreferrer">LOCservice - Tensiomètre</a>
+          {/* #76 — LOCservice cherche la ville en JavaScript : aucune adresse
+              par commune n'existe, une URL fabriquée tomberait en 404. Le lien
+              met donc le nom de la ville dans le presse-papier en s'ouvrant,
+              il ne reste qu'à coller dans leur champ. */}
+          <a className="emp-lien" href="https://www.locservice.fr/tensiometre/"
+            target="_blank" rel="noreferrer"
+            title={`Ouvre le tensiomètre et copie « ${S(im.adresse_ville)} » — il ne reste qu'à coller`}
+            onClick={() => { void copierTexte(S(im.adresse_ville)); }}>
+            LOCservice - Tensiomètre
+            <span className="emp-lien-i">ville copiée</span>
+          </a>
         </div>
       </div>
 
