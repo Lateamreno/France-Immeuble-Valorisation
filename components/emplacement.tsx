@@ -13,6 +13,7 @@ import {
 } from "@/lib/bo/actions";
 import { CartesSituation } from "@/components/carte";
 import { Copier } from "@/components/copier";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -171,6 +172,13 @@ function AdresseTab({ b }: { b: BienData }) {
     }
   };
 
+  /* Ce qui est en base au chargement : la barre d'enregistrement n'apparaît
+     que si l'écran s'en écarte (retours #79 et #83). */
+  const enBase = useRef<string>("");
+  const courant = JSON.stringify({ poi, pop, rev, zt, tension });
+  if (!enBase.current) enBase.current = courant;
+  const modifie = courant !== enBase.current;
+
   const save = () =>
     start(() => {
       const patch: Record<string, unknown> = {
@@ -182,6 +190,7 @@ function AdresseTab({ b }: { b: BienData }) {
         patch[`emp_${k}_time`] = parse(poi[`${k}_time`]);
         patch[`emp_${k}_moyen`] = poi[`${k}_moyen`] || undefined;
       }
+      enBase.current = courant;
       return updateEmplacement(immeubleId, patch as EmplacementPatch);
     });
 
@@ -329,12 +338,7 @@ function AdresseTab({ b }: { b: BienData }) {
         )}
       </div>
 
-      <div className="wnav">
-        <span className="sp" style={{ flex: 1 }} />
-        <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={save}>
-          <span className="ch">›</span> Enregistrer
-        </button>
-      </div>
+      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} />
     </>
   );
 }
@@ -412,6 +416,22 @@ function ParcellesTab({ b }: { b: BienData }) {
   const [hauteur, setHauteur] = useState(S(num(im.plu_hauteur)));
   const [emprise, setEmprise] = useState(S(num(im.plu_emprise)));
 
+  /* Même règle que le bloc Ville : la barre n'apparaît qu'en cas d'écart
+     avec ce qui est enregistré. */
+  const pluEnBase = useRef<string>("");
+  const pluCourant = JSON.stringify({ zone, typeZone, hauteur, emprise });
+  if (!pluEnBase.current) pluEnBase.current = pluCourant;
+  const pluModifie = pluCourant !== pluEnBase.current;
+
+  const savePlu = () =>
+    start(async () => {
+      await updateEmplacement(immeubleId, {
+        plu_zone: zone || undefined, plu_Type_zone: typeZone || undefined,
+        plu_hauteur: parse(hauteur), plu_emprise: parse(emprise),
+      });
+      pluEnBase.current = pluCourant;
+    });
+
   return (
     <>
       <div className="fsub">Parcelles</div>
@@ -455,19 +475,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         <label style={{ fontSize: 12 }}>Hauteur max (m) <input className="min" style={{ width: 70 }} value={hauteur} onChange={(e) => setHauteur(e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Emprise max (%) <input className="min" style={{ width: 70 }} value={emprise} onChange={(e) => setEmprise(e.target.value)} /></label>
       </div>
-      <div className="wnav">
-        <span className="sp" style={{ flex: 1 }} />
-        <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined}
-          onClick={() =>
-            start(() =>
-              updateEmplacement(immeubleId, {
-                plu_zone: zone || undefined, plu_Type_zone: typeZone || undefined,
-                plu_hauteur: parse(hauteur), plu_emprise: parse(emprise),
-              }),
-            )
-          }
-        ><span className="ch">›</span> Enregistrer</button>
-      </div>
+      <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} />
     </>
   );
 }

@@ -5,6 +5,8 @@ import { EstimationWizard } from "@/components/estimation-wizard";
 import { mailConfigure } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
+// Fabrication du PDF : le navigateur met quelques secondes à démarrer à froid.
+export const maxDuration = 60;
 
 export default async function EstimationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

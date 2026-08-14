@@ -1002,6 +1002,19 @@ export async function uploadDocument(immeubleId: string, label: string, fd: Form
  * maintenir, à l'écran comme dans le PDF.
  */
 export async function genererPdfEstimation(immeubleId: string, estimationId: string) {
+  /* Next masque le message des exceptions en production : on renvoie donc
+     l'échec comme une valeur, avec sa cause lisible. Sans ça l'écran affiche
+     « An error occurred… », qui n'aide personne. */
+  try {
+    return { ok: true as const, ...(await fabriquerPdf(immeubleId, estimationId)) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[pdf estimation]", message);
+    return { ok: false as const, message };
+  }
+}
+
+async function fabriquerPdf(immeubleId: string, estimationId: string) {
   const { pdfDepuisUrl } = await import("./pdf");
   const { headers } = await import("next/headers");
   const h = await headers();
@@ -1063,6 +1076,12 @@ export async function envoyerEstimation(input: {
   objet: string;
   message: string;
   replyTo?: string;
+  /** Adresses en copie, saisies à la main ou choisies parmi les agents. */
+  cc?: string;
+  /** Documents du coffre à joindre en plus du dossier d'estimation. */
+  documents?: string[];
+  /** Fichiers ajoutés à la volée depuis le poste de l'agent. */
+  fichiers?: FormData;
 }) {
   const { envoyerMail, mailConfigure } = await import("./mail");
   if (!mailConfigure()) throw new Error("Envoi non configuré");
@@ -1118,14 +1137,46 @@ export async function envoyerEstimation(input: {
       ? (nomAgent ? `${nomAgent} <${mailAgent}>` : mailAgent)
       : undefined);
 
+  /* Pièces jointes supplémentaires : d'abord les documents déjà rangés dans
+     le coffre du bien, puis les fichiers ajoutés à la volée. */
+  const pieces = [piece];
+  for (const id of input.documents ?? []) {
+    const doc = await bqOne("bo_app_document", id);
+    const path = String(doc?.path ?? "");
+    if (!path || !SB_KEY) continue;
+    const r = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      headers: { Authorization: `Bearer ${SB_KEY}` },
+      cache: "no-store",
+    });
+    if (!r.ok) continue;
+    pieces.push({
+      filename: String(doc?.file_name ?? doc?.name ?? "document"),
+      content: Buffer.from(await r.arrayBuffer()),
+      contentType: String(doc?.format ?? "application/octet-stream"),
+    });
+  }
+  for (const v of input.fichiers?.getAll("f") ?? []) {
+    if (!(v instanceof File) || v.size === 0) continue;
+    pieces.push({
+      filename: v.name,
+      content: Buffer.from(await v.arrayBuffer()),
+      contentType: v.type || "application/octet-stream",
+    });
+  }
+  const poids = pieces.reduce((s2, p) => s2 + p.content.length, 0);
+  if (poids > 20 * 1024 * 1024) {
+    throw new Error("Pièces jointes trop lourdes (20 Mo maximum au total)");
+  }
+
   const messageId = await envoyerMail({
     to: input.to,
+    cc: input.cc?.trim() || undefined,
     subject: input.objet,
     text: input.message,
     from,
     replyTo,
     bcc: mailAgent || undefined,
-    attachments: [piece],
+    attachments: pieces,
   });
 
   const now = new Date().toISOString();
@@ -1134,11 +1185,13 @@ export async function envoyerEstimation(input: {
     p_id: input.estimationId,
     p_patch: cleanPatch({
       sent: true, sent_at: now, sent_to: input.to,
+      sent_cc: input.cc?.trim() || undefined,
+      sent_pj: pieces.map((p) => p.filename).join(", "),
       sent_message_id: messageId, statut: "3 - Envoyée", "Modified Date": now,
     }),
   });
   refresh(input.immeubleId);
-  return { messageId, ko: Math.round(piece.content.length / 1024) };
+  return { messageId, ko: Math.round(poids / 1024), pieces: pieces.length };
 }
 
 /**

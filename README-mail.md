@@ -125,3 +125,20 @@ Après avoir posé les enregistrements (compter jusqu'à 24 h de propagation),
 envoyer une estimation de test à une adresse `@gmail.com`, puis dans Gmail :
 *⋮ → Afficher l'original*. Il faut lire **SPF: PASS**, **DKIM: PASS**,
 **DMARC: PASS**. Les trois au vert = la boîte de réception.
+
+## 5. Filet de recette : `MAIL_REDIRECT`
+
+La preview travaille sur les vraies données : un essai d'envoi partirait chez
+un vrai propriétaire. Poser la variable **`MAIL_REDIRECT`** (sur l'environnement
+Preview uniquement) détourne **tous** les envois vers cette adresse :
+
+```
+MAIL_REDIRECT = ma.voci@france-immeuble.fr
+```
+
+L'objet devient `[ESSAI → adresse.du.vrai.destinataire] …` et le message
+rappelle en tête à qui il serait parti. Le reste — expéditeur, pièce jointe,
+signature — est strictement identique à un envoi réel, donc le test reste
+valable pour juger de la délivrabilité.
+
+Ne pas poser cette variable en Production.

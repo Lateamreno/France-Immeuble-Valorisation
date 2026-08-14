@@ -18,6 +18,11 @@ import nodemailer from "nodemailer";
 
 export type PieceJointe = { filename: string; content: Buffer; contentType?: string };
 
+/** Filet de recette : si MAIL_REDIRECT est posée, TOUT part vers cette
+ *  adresse au lieu du vrai destinataire. La preview travaille sur les vraies
+ *  données — un essai ne doit pas atterrir chez un propriétaire. */
+const REDIRECT = () => process.env.MAIL_REDIRECT?.trim();
+
 const CONF = () => ({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT ?? 465),
@@ -40,6 +45,7 @@ export async function envoyerMail(m: {
    *  signature ne s'aligne plus et le message part en spam. */
   from?: string;
   replyTo?: string;
+  cc?: string;
   bcc?: string;
   attachments?: PieceJointe[];
 }) {
@@ -54,13 +60,18 @@ export async function envoyerMail(m: {
     auth: { user: c.user!, pass: c.pass! },
   });
 
+  const vers = REDIRECT();
   const info = await t.sendMail({
     from: m.from || c.from,
-    to: m.to,
-    bcc: m.bcc || undefined,
+    to: vers || m.to,
+    cc: vers ? undefined : m.cc || undefined,
+    // En redirection, pas de copie cachée : tout arrive déjà au même endroit.
+    bcc: vers ? undefined : m.bcc || undefined,
     replyTo: m.replyTo || undefined,
-    subject: m.subject,
-    text: m.text,
+    subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
+    text: vers
+      ? `— Envoi de recette. Destinataire réel : ${m.to}${m.cc ? ` · copie : ${m.cc}` : ""}${m.bcc ? ` · copie cachée : ${m.bcc}` : ""} —\n\n${m.text}`
+      : m.text,
     attachments: m.attachments,
   });
   return String(info.messageId ?? "");

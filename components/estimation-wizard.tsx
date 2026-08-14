@@ -104,6 +104,10 @@ export function EstimationWizard({
   /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
   const [envoye, setEnvoye] = useState<string | null>(null);
   const [envoiKo, setEnvoiKo] = useState<string | null>(null);
+  /** Copie et pièces jointes de l'e-mail (demande MAV du 14/08). */
+  const [cc, setCc] = useState("");
+  const [pjDocs, setPjDocs] = useState<string[]>([]);
+  const [pjFichiers, setPjFichiers] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
   const [perso, setPerso] = useState(false);
@@ -254,11 +258,16 @@ export function EstimationWizard({
     start(async () => {
       setEnvoiKo(null);
       try {
+        const fd = new FormData();
+        for (const f of pjFichiers) fd.append("f", f);
         await envoyerEstimation({
           immeubleId, estimationId: estId!,
           to: S(b.proprietaire?.email),
           objet: mailObjet,
           message: `${mailCorps}\n\n${b.agentInitials} — France Immeuble`,
+          cc: cc.trim() || undefined,
+          documents: pjDocs,
+          fichiers: pjFichiers.length ? fd : undefined,
         });
         setEnvoye(new Date().toISOString());
       } catch (err) {
@@ -314,12 +323,9 @@ export function EstimationWizard({
         // Le dossier 6 pages part ensuite dans le coffre : c'est la pièce
         // jointe du mail. S'il échoue, l'estimation reste valable et la page
         // imprimable prend le relais.
-        try {
-          const f = await genererPdfEstimation(immeubleId, id);
-          setPdf({ url: f.url, ko: f.ko });
-        } catch (err) {
-          setPdfKo(err instanceof Error ? err.message : "PDF non généré");
-        }
+        const f = await genererPdfEstimation(immeubleId, id);
+        if (f.ok) setPdf({ url: f.url, ko: f.ko });
+        else setPdfKo(f.message);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erreur inconnue");
       }
@@ -721,6 +727,13 @@ export function EstimationWizard({
               </div>
             </div>
             <div className="est-ml">
+              <span className="lbl">Copie</span>
+              <label className="est-ch plat">
+                <input className="est-cc" type="text" value={cc} onChange={(e) => setCc(e.target.value)}
+                  placeholder="Ajouter une adresse en copie (séparer par des virgules)" />
+              </label>
+            </div>
+            <div className="est-ml">
               <span className="lbl">PJ</span>
               <label className="est-ch plat">
                 <span>{pdf ? `1 fichier (${pdf.ko} ko)` : pdfKo ? "à imprimer" : "génération en cours…"}</span>
@@ -732,6 +745,43 @@ export function EstimationWizard({
                   Voir le dossier
                 </Link>
               </label>
+            </div>
+            {/* Joindre en plus : les documents déjà rangés dans le coffre du
+                bien, et des fichiers pris sur le poste. */}
+            <div className="est-ml">
+              <span className="lbl" />
+              <div className="est-ch plat est-pjplus">
+                {b.documents.length > 0 && (
+                  <details>
+                    <summary>+ Joindre un document du bien ({b.documents.length})</summary>
+                    <div className="est-pjlist">
+                      {b.documents.map((d) => {
+                        const id = String(d._id);
+                        return (
+                          <label key={id}>
+                            <input type="checkbox" checked={pjDocs.includes(id)}
+                              onChange={(e) => setPjDocs((v) =>
+                                e.target.checked ? [...v, id] : v.filter((x) => x !== id))} />
+                            {S(d.name) || S(d.file_name) || "Document"}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
+                <label className="fadd">
+                  + Ajouter un fichier
+                  <input type="file" multiple hidden
+                    onChange={(e) => setPjFichiers((v) => [...v, ...Array.from(e.target.files ?? [])])} />
+                </label>
+                {pjFichiers.map((f, i) => (
+                  <span className="est-pjf" key={`${f.name}-${i}`}>
+                    {f.name}
+                    <button type="button" title="Retirer" aria-label="Retirer"
+                      onClick={() => setPjFichiers((v) => v.filter((_, j) => j !== i))}>✕</button>
+                  </span>
+                ))}
+              </div>
             </div>
             {pdfKo && (
               <div className="warnbox">
