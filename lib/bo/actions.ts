@@ -1103,8 +1103,15 @@ export async function envoyerEstimation(input: {
   const domaine = (process.env.MAIL_FROM ?? "").split("@")[1]?.replace(/>.*$/, "").trim();
   const agentSurLeDomaine = !!domaine && mailAgent.toLowerCase().endsWith(`@${domaine.toLowerCase()}`);
 
+  /* Nom affiché : la personne d'abord, la marque ensuite — c'est la
+     personne que le propriétaire a eue au téléphone, et les boîtes mail
+     tronquent la fin. La marque est reprise du nom d'affichage de
+     MAIL_FROM, pour rester réglable sans toucher au code. */
+  const marque = (process.env.MAIL_FROM ?? "").split("<")[0].replace(/["']/g, "").trim();
   const from = agentSurLeDomaine
-    ? (nomAgent ? `${nomAgent} <${mailAgent}>` : mailAgent)
+    ? (nomAgent
+      ? `${nomAgent}${marque ? ` — ${marque}` : ""} <${mailAgent}>`
+      : mailAgent)
     : undefined;
   const replyTo = input.replyTo
     ?? (!agentSurLeDomaine && mailAgent
