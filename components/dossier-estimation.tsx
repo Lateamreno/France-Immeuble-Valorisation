@@ -9,7 +9,7 @@
 import type { Dossier } from "@/lib/bo/dossier";
 import { group } from "@/lib/format";
 import {
-  METHODOLOGIE, MENTIONS, SOCIETE, cibleGenitif, cibleLibelle, cibleTexte,
+  METHODOLOGIE, MENTIONS, SOCIETE, blocsCible, cibleGenitif, cibleLibelle, criteresEntete,
 } from "@/lib/bo/textes-cible";
 
 const fr1 = (x: number) => x.toFixed(1).replace(".", ",");
@@ -75,7 +75,8 @@ function Page({
 }
 
 export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
-  const cible = cibleTexte(d.cibles);
+  const crit = criteresEntete(d.cibles);
+  const blocs = blocsCible(d.cibles);
   const lib = cibleLibelle(d.cibles);
   const lim = d.methodes.limitant;
   const parM2 = d.methodes.m2;
@@ -219,11 +220,11 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           </div>
           <div>
             <Ic d={I.cible} cls="dos-ic gd" /><span>Critère principal</span>
-            <b className="dos-hd-v">{cible.principal}</b>
+            <b className="dos-hd-v">{crit.principal}</b>
           </div>
           <div>
             <Ic d={I.cible} cls="dos-ic gd" /><span>Critère secondaire</span>
-            <b className="dos-hd-v">{cible.secondaire}</b>
+            <b className="dos-hd-v">{crit.secondaire}</b>
           </div>
           <Ic d={I.gens} cls="dos-hd-big" />
         </div>
@@ -235,20 +236,26 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           </p>
           <p>
             Actuellement occupé à {Math.round(d.occupation)} %, l&apos;immeuble génère {group(d.loyers)} € HC/an.{" "}
+            {d.loyersMax > d.loyers &&
+              `Entièrement loué il pourra générer un revenu de ${group(d.loyersMax)} € HC/an. `}
             {d.travaux > 0
-              ? `Nous avons retenu ${group(d.travaux)} € de travaux à prévoir.`
+              ? `Toutefois, ${group(d.travaux)} € de travaux sont à prévoir.`
               : "Aucun travaux n'est à prévoir."}
           </p>
           <p>Ce type de bien s&apos;adresse à une cible {cibleGenitif(d.cibles)}.</p>
         </div>
 
         <h2 className="dos-h"><Ic d={I.reglages} /> Critères de la cible</h2>
-        <div className="dos-card dos-txt">
-          <p><Gras t={cible.intro} /></p>
-          <p>Les <b>critères des {cible.pluriel.toLowerCase()}</b> sont généralement les suivants :</p>
-          <ul className="dos-ul">
-            {cible.criteres.map((c) => <li key={c}><Gras t={c} /></li>)}
-          </ul>
+        <div className={`dos-card dos-txt${blocs.length > 1 ? " serre" : ""}`}>
+          {blocs.map((b) => (
+            <div className="dos-bloc" key={b.cle}>
+              <p><Gras t={b.f.intro(b.liste)} /></p>
+              <p>Les <b>critères des {b.liste}</b> sont généralement les suivants :</p>
+              <ul className="dos-ul">
+                {b.f.criteres.map((c) => <li key={c}><Gras t={c} /></li>)}
+              </ul>
+            </div>
+          ))}
         </div>
       </Page>
 
