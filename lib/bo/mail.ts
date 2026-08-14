@@ -7,10 +7,11 @@
 // variables d'environnement, sans retoucher le code.
 //
 // Délivrabilité — ce qui compte pour ne pas tomber en spam :
-//   • on écrit TOUJOURS depuis une adresse du domaine (MAIL_FROM), jamais
-//     depuis l'adresse du destinataire ni celle d'un tiers ;
-//   • l'agent est mis en « Répondre à », donc la réponse lui arrive
-//     directement sans usurper son identité à l'envoi ;
+//   • on écrit TOUJOURS depuis une adresse du domaine, jamais depuis
+//     l'adresse du destinataire ni celle d'un tiers ;
+//   • l'estimation part de l'adresse de l'agent qui l'a faite — c'est une
+//     adresse du domaine, donc la signature reste alignée, et le propriétaire
+//     répond naturellement à son interlocuteur ;
 //   • le domaine doit publier SPF (autorisant la route choisie), DKIM et
 //     DMARC — voir README-mail.md.
 import nodemailer from "nodemailer";
@@ -35,7 +36,11 @@ export async function envoyerMail(m: {
   to: string;
   subject: string;
   text: string;
+  /** Expéditeur affiché. Doit rester sur le domaine authentifié, sinon la
+   *  signature ne s'aligne plus et le message part en spam. */
+  from?: string;
   replyTo?: string;
+  bcc?: string;
   attachments?: PieceJointe[];
 }) {
   const c = CONF();
@@ -50,8 +55,9 @@ export async function envoyerMail(m: {
   });
 
   const info = await t.sendMail({
-    from: c.from,
+    from: m.from || c.from,
     to: m.to,
+    bcc: m.bcc || undefined,
     replyTo: m.replyTo || undefined,
     subject: m.subject,
     text: m.text,

@@ -1091,22 +1091,33 @@ export async function envoyerEstimation(input: {
   }
   if (!piece) throw new Error("PDF introuvable : générez le dossier avant d'envoyer");
 
-  // Répondre à : l'agent qui a fait l'estimation. On l'attrape ici plutôt que
-  // de le faire porter par l'écran — le navigateur n'a pas à connaître les
-  // adresses des agents.
-  let replyTo = input.replyTo;
-  if (!replyTo) {
-    const ag = await bqOne("bo_agentfi", String(e?.ESTIMATOR ?? ""));
-    const mail = String(ag?.email ?? "");
-    const nom = `${String(ag?.["prénom"] ?? "")} ${String(ag?.nom ?? "")}`.trim();
-    if (mail) replyTo = nom ? `${nom} <${mail}>` : mail;
-  }
+  /* L'estimation est un courrier personnel : elle part de l'adresse de
+     l'agent qui l'a faite, et il en reçoit une copie cachée pour l'avoir
+     dans sa boîte. Garde-fou : on ne prend son adresse que si elle est bien
+     sur le domaine d'envoi — écrire depuis un domaine qu'on ne signe pas,
+     c'est le spam assuré. On retombe alors sur MAIL_FROM, avec l'agent en
+     « Répondre à ». */
+  const ag = await bqOne("bo_agentfi", String(e?.ESTIMATOR ?? ""));
+  const mailAgent = String(ag?.email ?? "").trim();
+  const nomAgent = `${String(ag?.["prénom"] ?? "")} ${String(ag?.nom ?? "")}`.trim();
+  const domaine = (process.env.MAIL_FROM ?? "").split("@")[1]?.replace(/>.*$/, "").trim();
+  const agentSurLeDomaine = !!domaine && mailAgent.toLowerCase().endsWith(`@${domaine.toLowerCase()}`);
+
+  const from = agentSurLeDomaine
+    ? (nomAgent ? `${nomAgent} <${mailAgent}>` : mailAgent)
+    : undefined;
+  const replyTo = input.replyTo
+    ?? (!agentSurLeDomaine && mailAgent
+      ? (nomAgent ? `${nomAgent} <${mailAgent}>` : mailAgent)
+      : undefined);
 
   const messageId = await envoyerMail({
     to: input.to,
     subject: input.objet,
     text: input.message,
+    from,
     replyTo,
+    bcc: mailAgent || undefined,
     attachments: [piece],
   });
 
