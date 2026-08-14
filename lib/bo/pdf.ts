@@ -24,6 +24,22 @@ async function navigateur() {
   };
 }
 
+/** Photographie un fragment HTML (sert à coller les deux cartes en une seule
+ *  image, comme la capture d'écran que faisait l'agent à la main). */
+export async function pngDepuisHtml(html: string, largeur: number, hauteur: number): Promise<Buffer> {
+  const opts = await navigateur();
+  const b = await puppeteer.launch(opts);
+  try {
+    const p = await b.newPage();
+    await p.setViewport({ width: largeur, height: hauteur, deviceScaleFactor: 2 });
+    await p.setContent(html, { waitUntil: "load", timeout: 30_000 });
+    const png = await p.screenshot({ type: "png" });
+    return Buffer.from(png);
+  } finally {
+    await b.close();
+  }
+}
+
 /** Imprime une URL de l'application en PDF A4, fonds compris. */
 export async function pdfDepuisUrl(url: string, cookie?: string): Promise<Buffer> {
   const opts = await navigateur();

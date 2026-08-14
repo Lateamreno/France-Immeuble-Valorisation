@@ -1123,6 +1123,87 @@ export async function envoyerEstimation(input: {
   return { messageId, ko: Math.round(piece.content.length / 1024) };
 }
 
+/**
+ * Retour MAV #75 — la capture des cartes sans copier-coller.
+ *
+ * L'agent ne fait plus de capture d'écran : le serveur demande à Google les
+ * deux vues (la région, puis le quartier), les colle côte à côte comme dans
+ * le dossier, et range l'image dans les photos de l'immeuble (type « Carte »).
+ * Elle prend alors la place de la carte vivante, exactement comme une capture
+ * déposée à la main.
+ */
+export async function capturerCartes(immeubleId: string, sat = false) {
+  const { pngDepuisHtml } = await import("./pdf");
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+  const base = `${proto}://${hote}`;
+
+  const adr = await bqOne("bo_adresse", await idAdresse(immeubleId));
+  const geo = adr?.geo as { lat?: number; lng?: number } | undefined;
+  const lat = typeof geo?.lat === "number" ? geo.lat : undefined;
+  const lon = typeof geo?.lng === "number" ? geo.lng : undefined;
+  if (lat === undefined || lon === undefined) {
+    throw new Error("Adresse non géocodée : impossible de capturer les cartes");
+  }
+
+  // On passe par notre relais : la clé Google ne sort jamais du serveur.
+  const vue = (z: number, pin: string) =>
+    `${base}/api/staticmap?lat=${lat}&lon=${lon}&z=${z}&w=400&h=300&pin=${pin}${sat ? "&sat=1" : ""}`;
+  const test = await fetch(vue(14, "1"), { cache: "no-store" });
+  if (!test.ok) {
+    throw new Error(`Google Maps a refusé la capture : ${(await test.text()).slice(0, 160)}`);
+  }
+
+  const html =
+    `<body style="margin:0;display:flex;background:#fff">` +
+    `<img src="${vue(5, "0")}" width="400" height="300">` +
+    `<img src="${vue(14, "1")}" width="400" height="300">` +
+    `</body>`;
+  const png = await pngDepuisHtml(html, 800, 300);
+
+  const id = newId();
+  const now = new Date().toISOString();
+  const path = `photos/${immeubleId}/${id}-cartes.png`;
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "image/png", "x-upsert": "true" },
+    body: new Uint8Array(png),
+  });
+  if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_photo",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      image: `storage:${path}`,
+      Type: "Carte",
+      format: "image/png",
+      size_kB: Math.round(png.length / 1024),
+      date: now,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  return { id, ko: Math.round(png.length / 1024) };
+}
+
+/** L'adresse d'un immeuble (une seule ligne par immeuble dans le BO). */
+async function idAdresse(immeubleId: string) {
+  if (!SB_KEY) return "";
+  const r = await fetch(
+    `${SB_URL}/rest/v1/bo_adresse?data->>IMMEUBLE=eq.${immeubleId}&select=id&limit=1`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  );
+  if (!r.ok) return "";
+  const rows = (await r.json()) as { id: string }[];
+  return rows[0]?.id ?? "";
+}
+
 /** Retire un document du coffre (ligne récupérable, fichier conservé). */
 export async function deleteDocument(immeubleId: string, documentId: string) {
   await rpc("bo_delete_doc", { p_table: "bo_app_document", p_id: documentId });

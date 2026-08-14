@@ -10,7 +10,7 @@
 // (NEXT_PUBLIC_GOOGLE_MAPS_KEY), la vue rapprochée bascule automatiquement sur
 // Google Static Maps, plus proche des captures actuelles du dossier.
 import { useMemo, useRef, useState, useTransition } from "react";
-import { uploadPhoto } from "@/lib/bo/actions";
+import { capturerCartes, uploadPhoto } from "@/lib/bo/actions";
 
 const TAILLE = 256;
 
@@ -109,6 +109,9 @@ export function CartesSituation({
 }) {
   const capture = captures.find((c) => c.url);
   const [vivante, setVivante] = useState(!capture);
+  /* Google répond-il ? Tant que la clé n'est pas posée, /api/staticmap renvoie
+     404 : on retombe sur la carte intégrée et la capture reste manuelle. */
+  const [googleOk, setGoogleOk] = useState(true);
 
   if (capture && !vivante) {
     return (
@@ -129,9 +132,13 @@ export function CartesSituation({
 
   return (
     <div className="emp-maps">
-      <VueCarte titre={`La France — ${adresse}`} lat={lat} lon={lon} zoom={5} />
-      <VueCarte titre={`Le quartier — ${adresse}`} lat={lat} lon={lon} zoom={14} />
-      {immeubleId && <CaptureCarte immeubleId={immeubleId} dejaCapturee={!!capture} />}
+      <VueCarte titre={`La France — ${adresse}`} lat={lat} lon={lon} zoom={5}
+        onEchec={() => setGoogleOk(false)} />
+      <VueCarte titre={`Le quartier — ${adresse}`} lat={lat} lon={lon} zoom={14}
+        onEchec={() => setGoogleOk(false)} />
+      {immeubleId && (
+        <CaptureCarte immeubleId={immeubleId} dejaCapturee={!!capture} auto={googleOk} />
+      )}
     </div>
   );
 }
@@ -140,11 +147,13 @@ export function CartesSituation({
  *  comme dans le BO (retour #43). Ils agissent réellement sur la vue —
  *  la croix décale le centre, le carré bascule en vue aérienne. */
 function VueCarte({
-  titre, lat, lon, zoom,
+  titre, lat, lon, zoom, onEchec,
 }: {
   titre: string; lat: number; lon: number; zoom: number;
+  /** Prévient le parent que Google ne répond pas (clé absente ou refusée). */
+  onEchec?: () => void;
 }) {
-  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const [statique, setStatique] = useState(true);
   const [sat, setSat] = useState(false);
   const [dLat, setDLat] = useState(0);
   const [dLon, setDLon] = useState(0);
@@ -165,10 +174,14 @@ function VueCarte({
         <Carte lat={cLat} lon={cLon} zoom={zoom} largeur={340} hauteur={210}
           titre={titre} fond={zoom < 8 ? "clair" : "osm"} />
       </span>
-      {cle ? (
+      {/* Carte statique servie par notre relais : la clé Google reste au
+          serveur. Si elle n'est pas configurée, la route répond 404 et on
+          bascule sur la carte intégrée, sans clé. */}
+      {statique ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt={titre}
-          src={`https://maps.googleapis.com/maps/api/staticmap?center=${q}&zoom=${zoom}&size=400x300&scale=2&maptype=${sat ? "hybrid" : "roadmap"}&markers=${lat},${lon}&key=${cle}`} />
+          src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? 0 : 1}${sat ? "&sat=1" : ""}`}
+          onError={() => { setStatique(false); onEchec?.(); }} />
       ) : (
         <iframe title={titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
           src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&t=${sat ? "k" : "m"}&output=embed`} />
@@ -194,10 +207,28 @@ function VueCarte({
 
 /** Import d'une capture de carte : elle rejoint les photos de l'immeuble
  *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
-function CaptureCarte({ immeubleId, dejaCapturee }: { immeubleId: string; dejaCapturee?: boolean }) {
+function CaptureCarte({
+  immeubleId, dejaCapturee, auto,
+}: {
+  immeubleId: string; dejaCapturee?: boolean;
+  /** Google répond : l'app sait fabriquer la capture toute seule (#75). */
+  auto?: boolean;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
   const [ok, setOk] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const capturer = () =>
+    start(async () => {
+      setErreur(null);
+      try {
+        await capturerCartes(immeubleId);
+        setOk(true);
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : "capture impossible");
+      }
+    });
 
   const envoyer = (f: File) =>
     start(async () => {
@@ -210,10 +241,20 @@ function CaptureCarte({ immeubleId, dejaCapturee }: { immeubleId: string; dejaCa
   return (
     <div className="carte-cap">
       <p>
-        {dejaCapturee
-          ? "Une capture existe déjà : en déposer une nouvelle la remplacera dans le dossier de vente."
-          : "La capture de la carte n'est pas encore faite. Collez (Ctrl+V) ou déposez-la : elle remplacera la carte ici et sera reprise dans le dossier de vente."}
+        {auto
+          ? (dejaCapturee
+            ? "Une capture existe déjà : « Capturer les cartes » la remplacera dans le dossier de vente."
+            : "L'app peut fabriquer la capture des deux cartes toute seule — ou collez la vôtre (Ctrl+V).")
+          : (dejaCapturee
+            ? "Une capture existe déjà : en déposer une nouvelle la remplacera dans le dossier de vente."
+            : "La capture de la carte n'est pas encore faite. Collez (Ctrl+V) ou déposez-la : elle remplacera la carte ici et sera reprise dans le dossier de vente.")}
       </p>
+      {auto && (
+        <button type="button" className="carte-auto" disabled={pending} onClick={capturer}>
+          {pending ? "Capture en cours…" : ok ? "✓ Cartes capturées — recommencer" : "📷 Capturer les cartes"}
+        </button>
+      )}
+      {erreur && <p className="carte-err">{erreur}</p>}
       <div
         className="carte-drop"
         onPaste={(e) => {

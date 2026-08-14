@@ -2137,3 +2137,13 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
    pastille reste en attente plutôt que d'annoncer un envoi qui n'a pas eu
    lieu. */
 .est-envoi-h .tag.att { background: var(--chip); color: var(--slate-2); }
+
+/* Capture automatique des cartes (#75) : l'app fabrique l'image, le dépôt
+   manuel reste disponible juste en dessous. */
+.carte-auto {
+  border: 0; background: #3db327; color: #fff; border-radius: 4px;
+  padding: 8px 14px; font-weight: 700; font-size: 13px; cursor: pointer;
+  margin-bottom: 8px;
+}
+.carte-auto:disabled { background: #9ec9a0; cursor: default; }
+.carte-err { color: var(--red); font-size: 12.5px; margin-bottom: 6px; }
