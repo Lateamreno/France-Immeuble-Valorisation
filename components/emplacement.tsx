@@ -89,6 +89,19 @@ function AdresseTab({ b }: { b: BienData }) {
   const lat = num(geo?.lat);
   const lon = num(geo?.lng);
   const [sugg, setSugg] = useState<Enrichissement | null>(null);
+  /* Code INSEE de la commune : il ouvre le tensiomètre LOCservice sur la
+     bonne ville (#76). L'enrichissement le rapporte ; à défaut on le demande
+     une fois, sans rien modifier de la fiche. */
+  const [inseeSeul, setInseeSeul] = useState("");
+  const insee = sugg?.commune?.code ?? inseeSeul;
+  useEffect(() => {
+    if (insee || !S(im.adresse_ville)) return;
+    const q = new URLSearchParams({ ville: S(im.adresse_ville), cp: S(im.adresse_zipcode) });
+    fetch(`/api/insee?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.code) setInseeSeul(String(d.code)); })
+      .catch(() => {});
+  }, [insee, im.adresse_ville, im.adresse_zipcode]);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   /** Photo des valeurs avant remplissage automatique, pour pouvoir l'annuler. */
@@ -282,16 +295,19 @@ function AdresseTab({ b }: { b: BienData }) {
           <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(S(im.adresse_ville))}`} target="_blank" rel="noreferrer">INSEE - Population</a>
           <a className="emp-lien" href={`https://www.insee.fr/fr/recherche?q=${encodeURIComponent(`revenus ${S(im.adresse_ville)}`)}`} target="_blank" rel="noreferrer">INSEE - Revenus</a>
           <a className="emp-lien" href="https://www.service-public.fr/simulateur/calcul/zones-tendues" target="_blank" rel="noreferrer">Service Public - Zones tendues</a>
-          {/* #76 — LOCservice cherche la ville en JavaScript : aucune adresse
-              par commune n'existe, une URL fabriquée tomberait en 404. Le lien
-              met donc le nom de la ville dans le presse-papier en s'ouvrant,
-              il ne reste qu'à coller dans leur champ. */}
-          <a className="emp-lien" href="https://www.locservice.fr/tensiometre/"
+          {/* #76 — LOCservice range ses pages par code INSEE, pas par nom de
+              ville : tensiometre-33063.html pour Bordeaux. On y va donc
+              directement dès qu'on connaît le code de la commune ; sinon on
+              ouvre la recherche en copiant le nom, à coller dans leur champ. */}
+          <a className="emp-lien"
+            href={insee ? `https://www.locservice.fr/tensiometre/tensiometre-${insee}.html`
+              : "https://www.locservice.fr/tensiometre/"}
             target="_blank" rel="noreferrer"
-            title={`Ouvre le tensiomètre et copie « ${S(im.adresse_ville)} » — il ne reste qu'à coller`}
-            onClick={() => { void copierTexte(S(im.adresse_ville)); }}>
+            title={insee ? `Tension locative à ${S(im.adresse_ville)}`
+              : `Ouvre le tensiomètre et copie « ${S(im.adresse_ville)} » — il ne reste qu'à coller`}
+            onClick={insee ? undefined : () => { void copierTexte(S(im.adresse_ville)); }}>
             LOCservice - Tensiomètre
-            <span className="emp-lien-i">ville copiée</span>
+            {!insee && <span className="emp-lien-i">ville copiée</span>}
           </a>
         </div>
       </div>
