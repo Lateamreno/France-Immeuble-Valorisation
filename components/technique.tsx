@@ -8,13 +8,17 @@ import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
-  addComposant, addTravaux, deleteComposant, deleteTravaux, updateComposant, updateTechnique, updateTravaux,
+  addComposant, addTravaux, deleteComposant, deleteTravaux, joindreDevis,
+  updateComposant, updateTechnique, updateTravaux,
 } from "@/lib/bo/actions";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
+/** Les pièces jointes vivent dans le bucket privé : elles passent par le proxy. */
+const proxyFichier = (u: string) =>
+  u.startsWith("storage:") ? `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}` : u;
 
 import { ETATS_BATI, MATERIAUX, TYPES_COMPOSANT, URGENCES as URGENCES_REF } from "@/lib/referentiels";
 
@@ -265,9 +269,180 @@ function AddComposantButton({ b }: { b: BienData }) {
 
 /* ---------- Travaux ---------- */
 
+/* Une vignette par chantier, cliquable : elle ouvre la fenêtre du BO où l'on
+   règle l'objet, le montant, le commentaire et le devis (#92). */
+function VignetteTravaux({
+  t, objet, onOuvrir, onSupprimer,
+}: {
+  t: Record<string, unknown>; objet: string;
+  onOuvrir: () => void; onSupprimer: () => void;
+}) {
+  const fichiers = Array.isArray(t.FILEs) ? (t.FILEs as string[]) : [];
+  return (
+    <div className="tvg" role="button" tabIndex={0}
+      onClick={onOuvrir}
+      onKeyDown={(e) => { if (e.key === "Enter") onOuvrir(); }}>
+      <span className="tvg-ic"><svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg></span>
+      <span className="tvg-c">
+        <b>{S(t.description) || "Travaux sans description"}</b>
+        <span className="tvg-chips">
+          <span className={`tvg-chip${objet ? " on" : ""}`}>{objet || "Pas de lot"}</span>
+          <span className={`tvg-chip${fichiers.length ? " on" : ""}`}>
+            {fichiers.length ? `${fichiers.length} pièce${fichiers.length > 1 ? "s" : ""} jointe${fichiers.length > 1 ? "s" : ""}` : "Pas de devis"}
+          </span>
+        </span>
+        {S(t.commentaire) && <i className="tvg-com">{S(t.commentaire)}</i>}
+      </span>
+      <span className="tvg-v">{euros(t.montant) ?? "n.c."}</span>
+      <button
+        className="chg-x" type="button" title="Supprimer les travaux"
+        onClick={(e) => { e.stopPropagation(); onSupprimer(); }}
+      >
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
+      </button>
+    </div>
+  );
+}
+
+/** Fenêtre « travaux » du BO, la même pour créer et pour modifier. */
+function ModaleTravaux({
+  b, travaux, onFermer,
+}: {
+  b: BienData;
+  /** Absent = création. */
+  travaux?: Record<string, unknown>;
+  onFermer: () => void;
+}) {
+  const immeubleId = String(b.im._id);
+  const [pending, start] = useTransition();
+  const id = travaux ? String(travaux._id) : "";
+  const [lotIds, setLotIds] = useState<string[]>(Array.isArray(travaux?.LOTs) ? (travaux!.LOTs as string[]) : []);
+  const [compIds, setCompIds] = useState<string[]>(Array.isArray(travaux?.COMPOSANTs) ? (travaux!.COMPOSANTs as string[]) : []);
+  const [desc, setDesc] = useState(S(travaux?.description));
+  const [montant, setMontant] = useState(S(num(travaux?.montant)));
+  const [urgence, setUrgence] = useState<"Haute" | "Moyenne" | "Basse">(
+    (["Haute", "Moyenne", "Basse"] as const).find((u) => u === S(travaux?.Urgence)) ?? "Moyenne",
+  );
+  const [devis, setDevis] = useState(travaux?.YN_devis === true);
+  const [comment, setComment] = useState(S(travaux?.commentaire));
+  const [fichier, setFichier] = useState<File | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const joints = Array.isArray(travaux?.FILEs) ? (travaux!.FILEs as string[]) : [];
+
+  const toggle = (arr: string[], set: (v: string[]) => void, x: string) =>
+    set(arr.includes(x) ? arr.filter((v) => v !== x) : [...arr, x]);
+
+  const complet = desc.trim().length > 0 && (lotIds.length > 0 || compIds.length > 0);
+
+  const enregistrer = () =>
+    start(async () => {
+      setErreur(null);
+      try {
+        const commun = {
+          description: desc || undefined,
+          commentaire: comment || undefined,
+          montant: parse(montant),
+          urgence,
+          devis: devis || !!fichier,
+        };
+        const cible = travaux
+          ? (await updateTravaux(immeubleId, id, {
+              description: commun.description, commentaire: commun.commentaire,
+              montant: commun.montant, Urgence: urgence, YN_devis: commun.devis,
+              LOTs: lotIds, COMPOSANTs: compIds,
+            }), id)
+          : await addTravaux(immeubleId, { lotIds, composantIds: compIds, ...commun });
+        if (fichier && cible) {
+          const fd = new FormData();
+          fd.set("file", fichier);
+          await joindreDevis(immeubleId, String(cible), fd);
+        }
+        onFermer();
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : "enregistrement impossible");
+      }
+    });
+
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          {travaux ? "Modifier les travaux" : "Nouveaux travaux"}
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <div className="fsub">Objet des travaux</div>
+          <span className="mlab">Lots concernés</span>
+          <div className="mrow">
+            {b.lots.length === 0 && <span className="tvg-vide">Aucun lot.</span>}
+            {b.lots.map((l) => (
+              <button key={String(l._id)} type="button"
+                className={`mopt${lotIds.includes(String(l._id)) ? " on" : ""}`}
+                onClick={() => toggle(lotIds, setLotIds, String(l._id))}>{lotLabel(l)}</button>
+            ))}
+          </div>
+          <span className="mlab">— ou composants du bâti</span>
+          <div className="mrow">
+            {b.composants.length === 0 && <span className="tvg-vide">Aucun composant.</span>}
+            {b.composants.map((c) => (
+              <button key={String(c._id)} type="button"
+                className={`mopt${compIds.includes(String(c._id)) ? " on" : ""}`}
+                onClick={() => toggle(compIds, setCompIds, String(c._id))}>{S(c.Type_composant)}</button>
+            ))}
+          </div>
+
+          <div className="fsub" style={{ marginTop: 16 }}>Détails des travaux</div>
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <input className={`min${desc.trim() ? "" : " requis"}`} style={{ flex: 1 }} placeholder="Description"
+              value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <select className="min" style={{ width: 120 }} value={urgence}
+              onChange={(e) => setUrgence(e.target.value as "Haute" | "Moyenne" | "Basse")}>
+              {(["Haute", "Moyenne", "Basse"] as const).map((u) => <option key={u}>{u}</option>)}
+            </select>
+            <select className="min" style={{ width: 90 }} value={devis ? "Oui" : "Non"} onChange={(e) => setDevis(e.target.value === "Oui")}>
+              <option>Non</option><option>Oui</option>
+            </select>
+            <input className="min" style={{ width: 110 }} placeholder="Montant €" value={montant}
+              onChange={(e) => setMontant(e.target.value)} />
+          </div>
+
+          <div className="fsub" style={{ marginTop: 16 }}>Documents</div>
+          {joints.map((f, i) => (
+            <a key={i} className="mopt" href={proxyFichier(f)} target="_blank" rel="noreferrer">Pièce jointe {i + 1} ↗</a>
+          ))}
+          <label className="tvg-fic">
+            <input type="file" hidden onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
+            {fichier ? `📎 ${fichier.name}` : "📎 Joindre un devis"}
+          </label>
+
+          <div className="fsub" style={{ marginTop: 16 }}>Commentaire</div>
+          <textarea className="min" rows={3} placeholder="Commentaire" value={comment}
+            onChange={(e) => setComment(e.target.value)} />
+          {erreur && <p className="carte-err" style={{ marginTop: 8 }}>{erreur}</p>}
+        </div>
+        <div className="modal-f">
+          {travaux ? (
+            <button type="button" className="sup-go" disabled={pending}
+              onClick={() => {
+                if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
+                start(async () => { await deleteTravaux(immeubleId, id); onFermer(); });
+              }}>Supprimer les travaux</button>
+          ) : <span />}
+          <button className="savebar-go" type="button" disabled={pending || !complet}
+            title={complet ? undefined : "Une description et au moins un lot ou un composant sont attendus"}
+            onClick={enregistrer}>
+            {pending ? "Enregistrement…" : "❯ Enregistrer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TravauxTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const [modale, setModale] = useState<{ t?: Record<string, unknown> } | null>(null);
   const isLots = (t: Record<string, unknown>) => Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0;
   const totalLots = b.travaux.filter(isLots).reduce((s, t) => s + (num(t.montant) ?? 0), 0);
   const totalBati = b.travaux.filter((t) => !isLots(t)).reduce((s, t) => s + (num(t.montant) ?? 0), 0);
@@ -290,13 +465,35 @@ function TravauxTab({ b }: { b: BienData }) {
     return "";
   };
 
+  const supprimer = (t: Record<string, unknown>) => {
+    if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
+    start(() => deleteTravaux(immeubleId, String(t._id)));
+  };
+
+  const groupe = (rows: Record<string, unknown>[]) =>
+    rows.map((t) => (
+      <VignetteTravaux key={String(t._id)} t={t} objet={objet(t)}
+        onOuvrir={() => setModale({ t })} onSupprimer={() => supprimer(t)} />
+    ));
+
+  const sansUrgence = b.travaux.filter((t) => !URGENCES.some(([c]) => c === S(t.Urgence)));
+
   return (
     <div style={pending ? { opacity: 0.6 } : undefined}>
-      <div className="lband2">
-        <span className="dst">{euros(totalLots) ?? "0 €"} sur les lots · {euros(totalBati) ?? "0 €"} sur le bâti</span>
-        <span className="sp" style={{ flex: 1 }} />
-        <AddTravauxButton b={b} />
+      <div className="blor">
+        <div className="blor-t">
+          <svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg>
+          Travaux
+        </div>
+        <div className="blor-chips">
+          <span className={`fchip${totalLots ? "" : " off"}`}><b>{euros(totalLots) ?? "0 €"}</b> sur les lots</span>
+          <span className={`fchip${totalBati ? "" : " off"}`}><b>{euros(totalBati) ?? "0 €"}</b> sur le bâti</span>
+        </div>
       </div>
+      <div className="blor-add">
+        <button className="fadd" type="button" onClick={() => setModale({})}>+ Ajouter des travaux</button>
+      </div>
+
       {b.travaux.length === 0 && <div className="fempty">Aucuns travaux saisis.</div>}
       {URGENCES.map(([code, label]) => {
         const rows = b.travaux.filter((t) => S(t.Urgence) === code);
@@ -304,150 +501,18 @@ function TravauxTab({ b }: { b: BienData }) {
         return (
           <div key={code}>
             <div className="fsub" style={{ color: code === "Haute" ? "var(--red)" : undefined }}>{label}</div>
-            {rows.map((t) => (
-              <LigneTravaux key={String(t._id)} t={t} immeubleId={immeubleId} objet={objet(t)}
-                onDelete={() => {
-                  if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
-                  start(() => deleteTravaux(immeubleId, String(t._id)));
-                }} />
-            ))}
+            {groupe(rows)}
           </div>
         );
       })}
-      {(() => {
-        const sans = b.travaux.filter((t) => !URGENCES.some(([c]) => c === S(t.Urgence)));
-        if (sans.length === 0) return null;
-        return (
-          <div>
-            <div className="fsub">Sans urgence renseignée</div>
-            {sans.map((t) => (
-              <LigneTravaux key={String(t._id)} t={t} immeubleId={immeubleId} objet={objet(t)}
-                onDelete={() => {
-                  if (!confirm("Supprimer ces travaux ?")) return;
-                  start(() => deleteTravaux(immeubleId, String(t._id)));
-                }} />
-            ))}
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-function AddTravauxButton({ b }: { b: BienData }) {
-  const immeubleId = String(b.im._id);
-  const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-  const [lotIds, setLotIds] = useState<string[]>([]);
-  const [compIds, setCompIds] = useState<string[]>([]);
-  const [desc, setDesc] = useState("");
-  const [montant, setMontant] = useState("");
-  const [urgence, setUrgence] = useState<"Haute" | "Moyenne" | "Basse">("Moyenne");
-  const [devis, setDevis] = useState(false);
-  const toggle = (arr: string[], set: (v: string[]) => void, id: string) =>
-    set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
-
-  const submit = () =>
-    start(async () => {
-      await addTravaux(immeubleId, {
-        lotIds, composantIds: compIds,
-        description: desc || undefined, montant: parse(montant),
-        urgence, devis,
-      });
-      setOpen(false);
-    });
-
-  return (
-    <>
-      <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter des travaux</button>
-      {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Nouveaux travaux<button type="button" onClick={() => setOpen(false)}>✕</button></div>
-            <div className="modal-b">
-              <span className="mlab">Objet des travaux — lots</span>
-              <div className="mrow">
-                {b.lots.length === 0 && <span style={{ fontSize: 12, color: "var(--gray-lt)" }}>Aucun lot.</span>}
-                {b.lots.map((l) => (
-                  <button key={String(l._id)} type="button" className={`mopt${lotIds.includes(String(l._id)) ? " on" : ""}`} onClick={() => toggle(lotIds, setLotIds, String(l._id))}>
-                    {lotLabel(l)}
-                  </button>
-                ))}
-              </div>
-              <span className="mlab">— ou composants du bâti</span>
-              <div className="mrow">
-                {b.composants.length === 0 && <span style={{ fontSize: 12, color: "var(--gray-lt)" }}>Aucun composant.</span>}
-                {b.composants.map((c) => (
-                  <button key={String(c._id)} type="button" className={`mopt${compIds.includes(String(c._id)) ? " on" : ""}`} onClick={() => toggle(compIds, setCompIds, String(c._id))}>
-                    {S(c.Type_composant)}
-                  </button>
-                ))}
-              </div>
-              <span className="mlab">Description</span>
-              <input className="min" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="ex. Peinture et remise en état" />
-              <span className="mlab">Estimer les travaux</span>
-              <div className="mrow" style={{ alignItems: "center" }}>
-                <input className="min" style={{ width: 110 }} placeholder="Montant €" value={montant} onChange={(e) => setMontant(e.target.value)} />
-                {(["Haute", "Moyenne", "Basse"] as const).map((u) => (
-                  <button key={u} type="button" className={`mopt${urgence === u ? " on" : ""}`} onClick={() => setUrgence(u)}>{u}</button>
-                ))}
-                <button type="button" className={`mopt${devis ? " on" : ""}`} onClick={() => setDevis(!devis)}>Devis : {devis ? "Oui" : "Non"}</button>
-              </div>
-            </div>
-            <div className="modal-f">
-              <button
-                className="kgo" type="button"
-                disabled={pending || (lotIds.length === 0 && compIds.length === 0)}
-                style={pending || (lotIds.length === 0 && compIds.length === 0) ? { opacity: 0.5 } : undefined}
-                onClick={submit}
-              ><span className="ch">›</span> Créer les travaux</button>
-            </div>
-          </div>
+      {sansUrgence.length > 0 && (
+        <div>
+          <div className="fsub">Sans urgence renseignée</div>
+          {groupe(sansUrgence)}
         </div>
       )}
-    </>
-  );
-}
 
-/* ---------- Conteneur ---------- */
-
-/** Ligne de travaux éditable : description et montant se corrigent sur
- *  place, et le tableau des lots reflète le nouveau montant (retour #61). */
-function LigneTravaux({
-  t, immeubleId, objet, onDelete,
-}: {
-  t: Record<string, unknown>;
-  immeubleId: string;
-  objet: string;
-  onDelete: () => void;
-}) {
-  const id = String(t._id);
-  const [desc, setDesc] = useState(S(t.description));
-  const [montant, setMontant] = useState(typeof t.montant === "number" ? String(t.montant) : "");
-  const [pending, start] = useTransition();
-
-  const sauver = () => {
-    const v = parseFloat(montant.replace(/[^\d.,]/g, "").replace(",", "."));
-    const patch: Record<string, unknown> = {};
-    if (desc !== S(t.description)) patch.description = desc;
-    if (Number.isFinite(v) && v !== t.montant) patch.montant = v;
-    if (Object.keys(patch).length > 0) start(() => updateTravaux(immeubleId, id, patch));
-  };
-
-  return (
-    <div className="chrow" style={pending ? { opacity: 0.6 } : undefined}>
-      <span className="t">{objet || "Travaux"}</span>
-      <input className="min" style={{ flex: 1, minWidth: 120 }} placeholder="Description…"
-        value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={sauver}
-        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-      {t.YN_devis === true && <span className="badge-o">Devis</span>}
-      <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-        <input className="min" style={{ width: 84, textAlign: "right" }} placeholder="n.c."
-          value={montant} onChange={(e) => setMontant(e.target.value)} onBlur={sauver}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-        €
-      </span>
-      <button className="xdel" type="button" title="Supprimer" onClick={onDelete}>✕</button>
+      {modale && <ModaleTravaux b={b} travaux={modale.t} onFermer={() => setModale(null)} />}
     </div>
   );
 }

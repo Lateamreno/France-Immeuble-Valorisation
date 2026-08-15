@@ -115,43 +115,6 @@ function CelluleTypologie({
   );
 }
 
-/** Cellule Travaux (retour #61) : le total des travaux du lot est saisi ici,
- *  et la saisie vit dans une ligne de « État technique / Travaux » rattachée
- *  au lot — modifiable des deux côtés, le montant reste synchronisé. */
-function CelluleTravaux({
-  immeubleId, lotId, lotLabel, lignes,
-}: {
-  immeubleId: string;
-  lotId: string;
-  lotLabel: string;
-  lignes: Record<string, unknown>[];
-}) {
-  const total = lignes.reduce((s, t) => s + (typeof t.montant === "number" ? (t.montant as number) : 0), 0);
-  const dediee = lignes.find((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).length === 1);
-  const autres = total - (typeof dediee?.montant === "number" ? (dediee.montant as number) : 0);
-  const [texte, setTexte] = useState(total > 0 ? String(total) : "");
-  const [pending, start] = useTransition();
-
-  const valider = () => {
-    const v = parseFloat(texte.replace(/[^\d.,]/g, "").replace(",", "."));
-    const cible = Number.isFinite(v) ? v : 0;
-    if (cible === total) return;
-    start(() => setLotTravaux(immeubleId, lotId, lotLabel, cible, dediee ? String(dediee._id) : null, autres));
-  };
-
-  return (
-    <span className={total > 0 ? "tvx" : undefined} style={pending ? { opacity: 0.5 } : undefined}>
-      <input
-        className="lcell num" value={texte} placeholder="n.a."
-        onChange={(e) => setTexte(e.target.value)}
-        onBlur={valider}
-        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-      />
-      <i>€</i>
-    </span>
-  );
-}
-
 type Row = {
   id: string; isNew: boolean;
   /** Rang d'affichage choisi à la souris (#82) — il ne touche pas au numéro. */
@@ -172,11 +135,11 @@ const N = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
-function toRow(l: Record<string, unknown>, i: number): Row {
+function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
   return {
     id: String(l._id), isNew: false,
     ordre: typeof l.ordre === "number" ? (l.ordre as number) : i,
-    travaux: "",
+    travaux,
     batiment: S(l.batiment), etage: S(l.etage), numero: S(l.numero),
     Destination: S(l.Destination), Type_lot: S(l.Type_lot),
     surface_carrez: S(l.surface_carrez), surface_sol: S(l.surface_sol),
@@ -246,7 +209,20 @@ const PLURIEL: Record<string, string> = {
 
 export function LotsEditor({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
-  const initial = useMemo(() => b.lots.map(toRow), [b.lots]);
+  /* Le montant des travaux du lot est une valeur de la ligne comme une autre :
+     il attend le bouton Enregistrer, il ne part plus tout seul (#90). */
+  const travauxDuLot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of b.travaux) {
+      if (!Array.isArray(t.LOTs)) continue;
+      for (const id of t.LOTs as string[]) m.set(id, (m.get(id) ?? 0) + (typeof t.montant === "number" ? t.montant : 0));
+    }
+    return m;
+  }, [b.travaux]);
+  const initial = useMemo(
+    () => b.lots.map((l, i) => toRow(l, i, String(travauxDuLot.get(String(l._id)) ?? ""))),
+    [b.lots, travauxDuLot],
+  );
   /* Point de retour de « Annuler » (#85) : la dernière version enregistrée. */
   const enregistre = useRef<Row[]>(initial);
   const [rows, setRows] = useState<Row[]>(initial);
@@ -406,6 +382,17 @@ export function LotsEditor({ b }: { b: BienData }) {
         }
       }
       if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r, rang) })));
+      // Travaux des lots existants : seulement ceux dont le montant a bougé.
+      for (const r of edits) {
+        const avant = travauxDuLot.get(r.id) ?? 0;
+        const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
+        const cible = Number.isFinite(v) ? v : 0;
+        if (cible === avant) continue;
+        const lignes = b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id));
+        const dediee = lignes.find((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).length === 1);
+        const autres = avant - (typeof dediee?.montant === "number" ? (dediee.montant as number) : 0);
+        await setLotTravaux(immeubleId, r.id, `lot ${r.numero || r.Type_lot || ""}`.trim(), cible, dediee ? String(dediee._id) : null, autres);
+      }
       reordonne.current = false;
       enregistre.current = rows.map((r) => ({ ...r, isNew: false, travaux: "" }));
       setDirty(new Set());
@@ -695,22 +682,13 @@ export function LotsEditor({ b }: { b: BienData }) {
                   </td>
                   {!compacte && (
                     <td className="na">
-                      {r.isNew ? (
-                        <span className={r.travaux ? "tvx" : undefined}>
-                          <input
-                            className="lcell num" value={r.travaux} placeholder="0"
-                            onChange={(e) => edit(r.id, "travaux", e.target.value)}
-                          />
-                          <i>€</i>
-                        </span>
-                      ) : (
-                        <CelluleTravaux
-                          lotId={r.id}
-                          lotLabel={`lot ${r.numero || r.Type_lot || ""}`.trim()}
-                          immeubleId={immeubleId}
-                          lignes={b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id))}
+                      <span className={parseFloat(r.travaux) > 0 ? "tvx" : undefined}>
+                        <input
+                          className="lcell num" value={r.travaux} placeholder="0"
+                          onChange={(e) => edit(r.id, "travaux", e.target.value)}
                         />
-                      )}
+                        <i>€</i>
+                      </span>
                     </td>
                   )}
                   <td>

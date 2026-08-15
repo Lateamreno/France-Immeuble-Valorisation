@@ -2544,3 +2544,32 @@ select.pr-in { cursor: pointer; }
 }
 .cmp-tvx.on { color: var(--red); border-color: #f0c9c9; background: #fff7f7; font-weight: 700; }
 .cmp-tvx svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* --- Travaux en vignettes (retour #92) ---
+   Chaque chantier est une vignette cliquable qui ouvre sa fenêtre ; la
+   poubelle remplace la croix, et le commentaire se lit sans ouvrir. */
+.tvg {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  padding: 12px 16px; margin: 0 auto 8px; max-width: 920px; cursor: pointer;
+}
+.tvg:hover { border-color: var(--gold-bo); background: #fffdf8; }
+.tvg-ic { flex: none; width: 26px; height: 26px; color: var(--slate); }
+.tvg-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.tvg-c { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tvg-c b { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); }
+.tvg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tvg-chip {
+  border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px;
+  font-size: 11.5px; color: var(--gray-lt); background: #fafafa;
+}
+.tvg-chip.on { color: var(--slate-2); background: #fff; border-color: #d8d3c6; }
+.tvg-com { font-style: normal; font-size: 12.5px; color: var(--gray-txt); }
+.tvg-v { flex: none; font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); }
+.tvg-vide { font-size: 12px; color: var(--gray-lt); }
+.tvg-fic {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  border: 1px dashed var(--line); border-radius: 4px; padding: 7px 12px;
+  font-size: 12.5px; color: var(--slate-2); background: #fafafa;
+}
+.tvg-fic:hover { background: #f2f2f2; }

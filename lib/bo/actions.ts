@@ -2042,13 +2042,40 @@ export async function saveAdresse(
 export async function updateTravaux(
   immeubleId: string,
   travauxId: string,
-  patch: Partial<{ description: string; commentaire: string; montant: number; Urgence: string }>,
+  patch: Partial<{
+    description: string; commentaire: string; montant: number; Urgence: string;
+    YN_devis: boolean; LOTs: string[]; COMPOSANTs: string[];
+  }>,
 ) {
+  // Les listes vides sont légitimes ici (on retire le dernier lot) : elles ne
+  // passent donc pas par le filtre habituel, qui les garderait telles quelles.
   const clean = cleanPatch(patch as Record<string, unknown>);
+  if (Array.isArray(patch.LOTs)) clean.LOTs = patch.LOTs;
+  if (Array.isArray(patch.COMPOSANTs)) clean.COMPOSANTs = patch.COMPOSANTs;
+  if (typeof patch.YN_devis === "boolean") clean.YN_devis = patch.YN_devis;
   if (Object.keys(clean).length === 0) return;
+  clean["Modified Date"] = new Date().toISOString();
   await rpc("bo_patch_doc", { p_table: "bo_travaux", p_id: travauxId, p_patch: clean });
   await rpc("bo_recompute_travaux", { p_id: immeubleId });
   refresh(immeubleId);
+}
+
+/** Joint un fichier à des travaux (un devis, le plus souvent). */
+export async function joindreDevis(immeubleId: string, travauxId: string, fd: FormData) {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 25 * 1024 * 1024) throw new Error("Fichier trop lourd (25 Mo max)");
+  const path = `documents/${immeubleId}/travaux-${travauxId}-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  const doc = await bqOne("bo_travaux", travauxId);
+  const fichiers = Array.isArray(doc?.FILEs) ? (doc.FILEs as string[]) : [];
+  await rpc("bo_patch_doc", {
+    p_table: "bo_travaux",
+    p_id: travauxId,
+    p_patch: { FILEs: [...fichiers, `storage:${path}`], YN_devis: true, "Modified Date": new Date().toISOString() },
+  });
+  refresh(immeubleId);
+  return `/api/photo?s=${encodeURIComponent(path)}`;
 }
 
 /** Saisie des travaux depuis la cellule du tableau des lots (retour #61) :
