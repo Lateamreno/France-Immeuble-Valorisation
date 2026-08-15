@@ -6,6 +6,7 @@
 // Tout est servi par l'état locatif et la fiche secteur ; ce qui manque porte
 // un point d'exclamation rouge. Le prix est figé à la génération.
 import { useMemo, useState, useTransition } from "react";
+import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
@@ -96,43 +97,48 @@ export function EstimationWizard({
   const router = useRouter();
   const im = b.im;
   const immeubleId = String(im._id);
-  const [step, setStep] = useState(0);
+  /* Espace de noms de la mémoire d'écran : la saisie survit à une balade
+     dans les autres menus, y compris hors de la fiche (#96). */
+  const NS = `est:${immeubleId}:`;
+  const useMem = <T,>(cle: string, initial: T | (() => T)) => useMemoire<T>(NS + cle, initial);
+
+  const [step, setStep] = useMem("step", 0);
   const [pending, start] = useTransition();
-  const [estId, setEstId] = useState<string | null>(null);
+  const [estId, setEstId] = useMem<string | null>("estId", null);
   /** Le PDF du dossier, fabriqué juste après l'estimation. */
-  const [pdf, setPdf] = useState<{ url: string; ko: number } | null>(null);
+  const [pdf, setPdf] = useMem<{ url: string; ko: number } | null>("pdf", null);
   const [pdfKo, setPdfKo] = useState<string | null>(null);
   /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
-  const [envoye, setEnvoye] = useState<string | null>(null);
+  const [envoye, setEnvoye] = useMem<string | null>("envoye", null);
   const [envoiKo, setEnvoiKo] = useState<string | null>(null);
   /** Copie, copie cachée et pièces jointes (demandes MAV du 14/08). */
-  const [cc, setCc] = useState<string[]>([]);
-  const [cci, setCci] = useState<string[]>([]);
+  const [cc, setCc] = useMem<string[]>("cc", []);
+  const [cci, setCci] = useMem<string[]>("cci", []);
   /** Le dossier est joint d'office ; on peut le retirer puis le remettre. */
-  const [dossierJoint, setDossierJoint] = useState(true);
-  const [pjDocs, setPjDocs] = useState<string[]>([]);
+  const [dossierJoint, setDossierJoint] = useMem("dossierJoint", true);
+  const [pjDocs, setPjDocs] = useMem<string[]>("pjDocs", []);
   const [pjFichiers, setPjFichiers] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
-  const [perso, setPerso] = useState(false);
+  const [perso, setPerso] = useMem("perso", false);
 
   /* --- Immeuble --- */
-  const [gareName, setGareName] = useState(S(im.emp_gare_name));
-  const [gareTime, setGareTime] = useState(S(num(im.emp_gare_time)));
-  const [comName, setComName] = useState(S(im.emp_com_name));
-  const [comTime, setComTime] = useState(S(num(im.emp_com_time)));
+  const [gareName, setGareName] = useMem("gareName", S(im.emp_gare_name));
+  const [gareTime, setGareTime] = useMem("gareTime", S(num(im.emp_gare_time)));
+  const [comName, setComName] = useMem("comName", S(im.emp_com_name));
+  const [comTime, setComTime] = useMem("comTime", S(num(im.emp_com_time)));
   const chTf0 = b.charges.filter((c) => String(c.Type_charge ?? "").startsWith("Taxe"))
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
   const chAut0 = b.charges.filter((c) => !String(c.Type_charge ?? "").startsWith("Taxe"))
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
-  const [chTf, setChTf] = useState(chTf0 ? String(chTf0) : "");
-  const [chAutres, setChAutres] = useState(chAut0 ? String(chAut0) : "");
+  const [chTf, setChTf] = useMem("chTf", chTf0 ? String(chTf0) : "");
+  const [chAutres, setChAutres] = useMem("chAutres", chAut0 ? String(chAut0) : "");
   const tvxBati0 = b.travaux.filter((t) => Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
   const tvxLots0 = b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
-  const [tvxBati, setTvxBati] = useState(tvxBati0 ? String(tvxBati0) : "");
-  const [tvxLots, setTvxLots] = useState(tvxLots0 ? String(tvxLots0) : "");
+  const [tvxBati, setTvxBati] = useMem("tvxBati", tvxBati0 ? String(tvxBati0) : "");
+  const [tvxLots, setTvxLots] = useMem("tvxLots", tvxLots0 ? String(tvxLots0) : "");
 
   /* --- Agrégats lots, par destination comme le BO --- */
   const agg = useMemo(() => {
@@ -171,7 +177,7 @@ export function EstimationWizard({
      BO. Le bandeau « global » n'est pas saisi : c'est la moyenne pondérée par
      les surfaces, et le rendement global s'en déduit (loyer × 12 / prix). --- */
   const sect = secteur ?? {};
-  const [refs, setRefs] = useState<Record<string, { l: string; p: string; r: string }>>(() =>
+  const [refs, setRefs] = useMem<Record<string, { l: string; p: string; r: string }>>("refs", () =>
     Object.fromEntries(agg.parDest.map((d) => {
       const px = DEST_PREFIX[d.dest] ?? "autre";
       // Faute de référence propre à la destination, on part du global saisi
@@ -216,9 +222,9 @@ export function EstimationWizard({
     ? Math.round(candidates.reduce((s, x) => s + x, 0) / candidates.length / 1000) * 1000
     : 0;
 
-  const [haiStr, setHaiStr] = useState("");
+  const [haiStr, setHaiStr] = useMem("haiStr", "");
   const hai = parse(haiStr) ?? pAuto;
-  const [honosPct, setHonosPct] = useState("5");
+  const [honosPct, setHonosPct] = useMem("honosPct", "5");
   const pct = parse(honosPct) ?? 5;
   const nv = pct >= 0 ? Math.round(hai / (1 + pct / 100)) : hai;
   const honos = hai - nv;
@@ -238,10 +244,10 @@ export function EstimationWizard({
   const lm2Max = agg.carrez > 0 ? agg.loyersMaxAn / 12 / agg.carrez : 0;
 
   /* --- Analyse --- */
-  const [scores, setScores] = useState<Record<string, number>>({ bati: 3, emp: 4, lot: 4 });
-  const [cibles, setCibles] = useState<string[]>(["Investisseur"]);
-  const [analyse, setAnalyse] = useState("");
-  const [titre, setTitre] = useState(`Estimation ${S(im.adresse_ville)}`.trim());
+  const [scores, setScores] = useMem<Record<string, number>>("scores", { bati: 3, emp: 4, lot: 4 });
+  const [cibles, setCibles] = useMem<string[]>("cibles", ["Investisseur"]);
+  const [analyse, setAnalyse] = useMem("analyse", "");
+  const [titre, setTitre] = useMem("titre", `Estimation ${S(im.adresse_ville)}`.trim());
 
   /* --- Complétude --- */
   const okAdresse = !!(S(im.adresse_rue) && S(im.adresse_ville));
@@ -383,7 +389,18 @@ export function EstimationWizard({
     <div className="est">
       <div className="est-head">
         <span className="est-titre">{estId ? "Estimation" : "Nouvelle estimation"}</span>
-        <Link href={`/bien/${immeubleId}`} className="est-close">✕</Link>
+        {/* La saisie est mémorisée pour l'onglet : ce bouton est le seul moyen
+            de repartir d'une page blanche (#96). */}
+        <button
+          type="button" className="est-reset"
+          title="Vider la saisie et repartir de zéro"
+          onClick={() => {
+            if (!confirm("Effacer la saisie en cours et recommencer l'estimation ?")) return;
+            oublier(NS);
+            window.location.reload();
+          }}
+        >Recommencer</button>
+        <Link href={`/bien/${immeubleId}`} className="est-close" title="Fermer l'estimation">✕</Link>
       </div>
 
       <div className="est-prog"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>

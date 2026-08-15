@@ -8,7 +8,9 @@ const nextConfig: NextConfig = {
   },
   // Le Chromium qui imprime le dossier d'estimation ne doit pas être empaqueté
   // par le bundler : il embarque un binaire et ses fichiers de support.
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+  // `sharp` embarque du binaire natif et `heic-convert` un décodeur
+  // WebAssembly (libheif) : les empaqueter les casserait.
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "sharp", "heic-convert"],
   // …et son dossier `bin` (le binaire compressé et les polices) n'est référencé
   // par aucun import : sans cette ligne, Vercel ne l'embarque pas et le
   // navigateur refuse de démarrer une fois déployé.

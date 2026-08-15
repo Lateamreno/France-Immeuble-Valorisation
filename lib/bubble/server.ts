@@ -542,7 +542,21 @@ export type BienData = {
   charges: Record<string, unknown>[];
   composants: Record<string, unknown>[];
   travaux: Record<string, unknown>[];
-  photos: { id: string; url?: string; type?: string }[];
+  photos: {
+    id: string;
+    /** Vignette (600 px) pour les grilles. */
+    url?: string;
+    /** Plein format (2200 px) pour l'agrandissement et le dossier. */
+    urlPleine?: string;
+    type?: string;
+    /** Lot associé, quand `type` vaut « Lot ». */
+    lotId?: string;
+    ordre: number;
+    /** Part dans le dossier de vente. */
+    dossier: boolean;
+    annonce: boolean;
+    estimation: boolean;
+  }[];
   documents: Record<string, unknown>[];
   estimations: Record<string, unknown>[];
   mandats: Record<string, unknown>[];
@@ -579,7 +593,7 @@ export async function getBien(id: string): Promise<BienData | null> {
       getTypologies(),
       fetchAll("composant", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
       fetchAll("travaux", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
-      fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 40).catch(() => []),
+      fetchAll("photo", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 300).catch(() => []),
       fetchAll("app_document", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 60).catch(() => []),
       fetchAll("estimation", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
       fetchAll("mandat", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
@@ -647,11 +661,24 @@ export async function getBien(id: string): Promise<BienData | null> {
       .sort((a, b) => String(a["Created Date"]).localeCompare(String(b["Created Date"]))),
     composants,
     travaux,
-    photos: photos.map((p) => ({
-      id: p._id as string,
-      url: photoProxy(p.compressed ?? p.image),
-      type: typeof p.Type === "string" ? (p.Type as string) : undefined,
-    })),
+    // La principale d'abord, puis le rang saisi au glisser-déposer (#95).
+    photos: [...photos]
+      .sort((a, c) =>
+        (a.Type === "Principale" ? 0 : 1) - (c.Type === "Principale" ? 0 : 1) ||
+        (Number(a.order ?? 0) || 0) - (Number(c.order ?? 0) || 0) ||
+        String(a["Created Date"] ?? "").localeCompare(String(c["Created Date"] ?? "")),
+      )
+      .map((p) => ({
+        id: p._id as string,
+        url: photoProxy(p.compressed ?? p.image),
+        urlPleine: photoProxy(p.image ?? p.compressed),
+        type: typeof p.Type === "string" ? (p.Type as string) : undefined,
+        lotId: typeof p.LOT === "string" ? (p.LOT as string) : undefined,
+        ordre: Number(p.order ?? 0) || 0,
+        dossier: p.show_in_doss === true,
+        annonce: p.show_in_ann === true,
+        estimation: p.show_in_est === true,
+      })),
     documents: [...documents].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     estimations: [...estimations].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
     mandats: [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),

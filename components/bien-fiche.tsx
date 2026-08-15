@@ -17,7 +17,8 @@ import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/
 import { Acheteurs } from "@/components/acheteurs";
 import { Picto } from "@/components/pictos";
 import { MOTIFS_VENTE } from "@/lib/referentiels";
-import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
+import { DocumentsCoffre } from "@/components/fichiers";
+import { PhotosEcran } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { copierTexte } from "@/components/copier";
 import { PrixEcran } from "@/components/prix";
@@ -27,7 +28,10 @@ import { PrixEcran } from "@/components/prix";
 type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
   | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs"
-  | "acheteurs" | "notes";
+  | "acheteurs" | "notes"
+  /* Écran greffé sur la fiche (l'estimation) : il reste monté pendant qu'on
+     visite les autres sections, pour ne rien perdre de la saisie (#96). */
+  | "encours";
 
 const I = {
   suivi: <><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></>,
@@ -88,7 +92,7 @@ export function BienFiche({ b, contenu }: {
    *  l'immeuble pendant la saisie. */
   contenu?: React.ReactNode;
 }) {
-  const [sect, setSect] = useState<SectionKey>("suivi");
+  const [sect, setSect] = useState<SectionKey>(contenu ? "encours" : "suivi");
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
   /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
   const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
@@ -132,26 +136,29 @@ export function BienFiche({ b, contenu }: {
   return (
     <div className="fiche">
       <div className="fiche-main">
-        <div className={`fiche-inner${sect === "locatif" || contenu ? " wide" : ""}`}>
-          {contenu}
-          {!contenu && sect === "suivi" && <SuiviSection b={b} />}
-          {!contenu && sect === "proprietaire" && <ProprioSection b={b} />}
-          {!contenu && sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
-          {!contenu && sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
-          {!contenu && sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-          {!contenu && sect === "prix" && <PrixSection b={b} />}
-          {!contenu && sect === "photos" && <PhotosSection b={b} />}
-          {!contenu && sect === "estimations" && <EstimationsSection b={b} />}
-          {!contenu && sect === "mandats" && <MandatsSection b={b} />}
-          {!contenu && sect === "dossiers" && <DossiersSection b={b} />}
-          {!contenu && sect === "tous-docs" && (
+        <div className={`fiche-inner${sect === "locatif" || sect === "encours" ? " wide" : ""}`}>
+          {/* L'écran en cours n'est jamais démonté, seulement masqué : c'est ce
+              qui permet d'aller voir l'état locatif ou les photos et de
+              revenir à l'estimation sans avoir rien perdu (#96). */}
+          {contenu && <div hidden={sect !== "encours"}>{contenu}</div>}
+          {sect === "suivi" && <SuiviSection b={b} />}
+          {sect === "proprietaire" && <ProprioSection b={b} />}
+          {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
+          {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+          {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
+          {sect === "prix" && <PrixSection b={b} />}
+          {sect === "photos" && <PhotosSection b={b} />}
+          {sect === "estimations" && <EstimationsSection b={b} />}
+          {sect === "mandats" && <MandatsSection b={b} />}
+          {sect === "dossiers" && <DossiersSection b={b} />}
+          {sect === "tous-docs" && (
             <>
               <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
               <DocumentsCoffre b={b} />
             </>
           )}
-          {!contenu && sect === "acheteurs" && <AcheteursSection b={b} />}
-          {!contenu && sect === "notes" && <NotesSection b={b} />}
+          {sect === "acheteurs" && <AcheteursSection b={b} />}
+          {sect === "notes" && <NotesSection b={b} />}
         </div>
       </div>
 
@@ -169,6 +176,17 @@ export function BienFiche({ b, contenu }: {
         </div>
         {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
         <nav>
+          {contenu && (
+            <button
+              type="button"
+              className={`srow2 encours${sect === "encours" ? " on" : ""}`}
+              onClick={() => setSect("encours")}
+            >
+              <span className="sic2"><svg viewBox="0 0 24 24">{I.calc}</svg></span>
+              Estimation en cours
+              <span className="right"><span className="pastille" /></span>
+            </button>
+          )}
           {sections.map((s) => (
             <div key={s.key}>
               <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => basculer(s.key)}>
@@ -702,22 +720,14 @@ function PhotosSection({ b }: { b: BienData }) {
         chips={
           <>
             <span className="fchip">{b.photos.length} photos</span>
+            <span className="fchip">{b.photos.filter((p) => p.dossier).length} au dossier</span>
             <span className="fchip">{compte("Extérieur")} extérieure{compte("Extérieur") > 1 ? "s" : ""}</span>
             <span className="fchip">{compte("Parties communes")} des PC</span>
             <span className="fchip">{compte("Lot")} des lots</span>
           </>
         }
       />
-      <AddPhotoButton b={b} />
-      <div className="fphotos">
-        {b.photos.map((p) => (
-          <div className="ph" key={p.id} style={{ position: "relative" }}>
-            {p.url && <Image src={p.url} alt="" width={320} height={240} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-            <DeletePhotoButton b={b} photoId={p.id} />
-          </div>
-        ))}
-      </div>
-      {b.photos.length === 0 && <div className="fempty">Aucune photo.</div>}
+      <PhotosEcran b={b} />
     </>
   );
 }

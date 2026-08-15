@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updateLots, type LotPatch } from "@/lib/bo/actions";
+import { PhotosDuLot } from "@/components/photos";
 import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
@@ -609,7 +610,6 @@ export function LotsEditor({ b }: { b: BienData }) {
               const tvx = b.travaux
                 .filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id))
                 .reduce((s, t) => s + (typeof t.montant === "number" ? t.montant : 0), 0);
-              const photos = b.photos.filter((p) => p.type === "Lot").length && r.isNew ? 0 : 0;
               return (
                 <tr
                   key={r.id}
@@ -703,7 +703,8 @@ export function LotsEditor({ b }: { b: BienData }) {
                   {on("commentaire") && <td className="brd"><input className="lcell" value={r.commentaire} onChange={(e) => edit(r.id, "commentaire", e.target.value)} /></td>}
                   {on("photos") && (
                     <td className={`na${on("commentaire") ? "" : " brd"}`}>
-                      <span className="phc"><svg viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>{photos}</span>
+                      {/* Les photos associées au lot dans l'écran Photos (#95). */}
+                      <PhotosDuLot b={b} lotId={r.id} />
                     </td>
                   )}
                 </tr>

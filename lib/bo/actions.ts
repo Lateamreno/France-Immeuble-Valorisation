@@ -1031,37 +1031,183 @@ async function uploadToBucket(path: string, file: File) {
 const safeName = (name: string) =>
   name.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\w.\-]+/g, "_").slice(0, 120);
 
-/** Ajoute une photo (modale « Nouvelle photo » : type Extérieur / Parties communes / Lot). */
-export async function uploadPhoto(immeubleId: string, type: string, lotId: string | null, fd: FormData) {
+/* ---------- Photos (retour #95) ----------
+ *
+ * Le schéma Bubble portait déjà tout ce qu'il fallait, on s'y cale :
+ *   Type          Principale | Extérieur | Parties communes | Lot | Cadastre | Carte
+ *   LOT           le lot associé, quand Type vaut « Lot »
+ *   order         rang d'affichage (glisser-déposer)
+ *   show_in_doss  la photo part dans le dossier de vente
+ *   image         le JPEG plein format · compressed  la vignette
+ */
+
+/** Dépose le fichier tel quel dans le bucket (chemin complet fourni). */
+async function deposer(path: string, data: Buffer, mime: string) {
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const res = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": mime, "x-upsert": "true" },
+    body: new Uint8Array(data),
+  });
+  if (!res.ok) throw new Error(`Upload storage ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Toutes les photos d'un immeuble, lues dans le miroir. */
+async function photosDe(immeubleId: string): Promise<Record<string, unknown>[]> {
+  if (!SB_KEY) return [];
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_photo?data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&select=data&limit=300`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  );
+  if (!res.ok) return [];
+  return ((await res.json()) as { data: Record<string, unknown> }[]).map((r) => r.data).filter(Boolean);
+}
+
+const patchPhoto = (id: string, doc: Record<string, unknown>) =>
+  rpc("bo_patch_doc", {
+    p_table: "bo_photo",
+    p_id: id,
+    p_patch: { ...doc, "Modified Date": new Date().toISOString() },
+  });
+
+/**
+ * Ajoute une photo. Le fichier reçu est décodé, redressé (EXIF), redimensionné
+ * et **converti en JPEG** — y compris les HEIC d'iPhone : rien d'autre qu'un
+ * JPEG n'entre dans le bucket, donc aucun format exotique ne peut casser la
+ * fabrication d'un PDF (demande MAV du 15/08).
+ */
+export async function uploadPhoto(
+  immeubleId: string,
+  type: string,
+  lotId: string | null,
+  fd: FormData,
+  /** Rang d'affichage : l'appelant enchaîne les fichiers et compte lui-même. */
+  ordre?: number,
+  /** Import en rafale : ne pas revalider la fiche à chaque fichier — trente
+   *  photos feraient trente rendus complets. L'appelant termine par
+   *  `rafraichirFiche`. */
+  silencieux?: boolean,
+) {
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
-  if (file.size > 15 * 1024 * 1024) throw new Error("Fichier trop lourd (15 Mo max)");
+  if (file.size > 25 * 1024 * 1024) throw new Error(`« ${file.name} » : trop lourd (25 Mo max)`);
+
+  const { versWeb } = await import("@/lib/bo/images");
+  const web = await versWeb(file);
+
   const id = newId();
   const now = new Date().toISOString();
-  const path = `photos/${immeubleId}/${id}-${safeName(file.name)}`;
-  await uploadToBucket(path, file);
+  const base = `photos/${immeubleId}/${id}-${safeName(file.name).replace(/\.[^.]+$/, "")}`;
+  await Promise.all([
+    deposer(`${base}.jpg`, web.pleine, "image/jpeg"),
+    deposer(`${base}-min.jpg`, web.vignette, "image/jpeg"),
+  ]);
+
   await rpc("bo_insert_doc", {
     p_table: "bo_photo",
     p_id: id,
     p_doc: cleanPatch({
       IMMEUBLE: immeubleId,
       LOT: lotId ?? undefined,
-      image: `storage:${path}`,
+      image: `storage:${base}.jpg`,
+      compressed: `storage:${base}-min.jpg`,
       Type: type,
-      format: file.type,
-      size_kB: Math.round(file.size / 1024),
+      format: "image/jpeg",
+      largeur: web.largeur,
+      hauteur: web.hauteur,
+      size_kB: Math.round(web.pleine.length / 1024),
+      order: typeof ordre === "number" ? ordre : 0,
+      // Par défaut la photo sert au dossier de vente ; l'annonce publique et
+      // l'estimation restent des choix explicites.
+      show_in_doss: true,
+      show_in_ann: false,
+      show_in_est: false,
       date: now,
       "Created Date": now,
       "Modified Date": now,
     }),
   });
-  refresh(immeubleId);
+  if (type === "Principale") await promouvoir(immeubleId, id, `storage:${base}-min.jpg`);
+  if (!silencieux) refresh(immeubleId);
   return id;
+}
+
+/** Revalide la fiche une fois la rafale d'imports terminée. */
+export async function rafraichirFiche(immeubleId: string) {
+  refresh(immeubleId);
+}
+
+/** Écrit la photo principale sur l'immeuble et rétrograde l'ancienne. */
+async function promouvoir(immeubleId: string, photoId: string, vignette?: string) {
+  const photos = await photosDe(immeubleId);
+  await Promise.all(
+    photos
+      .filter((p) => p.Type === "Principale" && p._id !== photoId)
+      .map((p) => patchPhoto(String(p._id), { Type: "Extérieur" })),
+  );
+  const cible = photos.find((p) => p._id === photoId);
+  const url = vignette ?? (cible?.compressed as string | undefined) ?? (cible?.image as string | undefined);
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: cleanPatch({ photo_main_compressed: url, "Modified Date": new Date().toISOString() }),
+  });
+}
+
+/** Désigne la photo principale (celle qui s'affiche en grand et sur la liste). */
+export async function definirPhotoPrincipale(immeubleId: string, photoId: string) {
+  await patchPhoto(photoId, { Type: "Principale", LOT: null });
+  await promouvoir(immeubleId, photoId);
+  refresh(immeubleId);
+}
+
+/** Coche / décoche une diffusion (dossier de vente, annonce, estimation). */
+export async function basculerDiffusionPhoto(
+  immeubleId: string,
+  photoId: string,
+  champ: "show_in_doss" | "show_in_ann" | "show_in_est",
+  valeur: boolean,
+) {
+  await patchPhoto(photoId, { [champ]: valeur });
+  refresh(immeubleId);
+}
+
+/** Modale « Associer » : rattache la photo à un lot, à la façade, aux parties
+ *  communes, au cadastre ou à la carte. */
+export async function associerPhoto(
+  immeubleId: string,
+  photoId: string,
+  type: string,
+  lotId: string | null,
+) {
+  if (type === "Principale") {
+    await definirPhotoPrincipale(immeubleId, photoId);
+    return;
+  }
+  // `null` (et non `undefined`) : détacher un lot doit effacer la clé.
+  await patchPhoto(photoId, { Type: type, LOT: type === "Lot" && lotId ? lotId : null });
+  refresh(immeubleId);
+}
+
+/** Glisser-déposer : réécrit le rang de chaque photo dans l'ordre reçu. */
+export async function ordonnerPhotos(immeubleId: string, ids: string[]) {
+  await Promise.all(ids.map((id, i) => patchPhoto(id, { order: i })));
+  refresh(immeubleId);
 }
 
 /** Supprime une photo (ligne récupérable ; le fichier reste dans le bucket). */
 export async function deletePhoto(immeubleId: string, photoId: string) {
+  const photos = await photosDe(immeubleId);
+  const cible = photos.find((p) => p._id === photoId);
   await rpc("bo_delete_doc", { p_table: "bo_photo", p_id: photoId });
+  // La vignette de la fiche pointait sur elle : ne pas laisser une image morte.
+  if (cible?.Type === "Principale") {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_immeuble",
+      p_id: immeubleId,
+      p_patch: { photo_main_compressed: null, "Modified Date": new Date().toISOString() },
+    });
+  }
   refresh(immeubleId);
 }
 
