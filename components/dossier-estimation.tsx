@@ -114,7 +114,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
         <div className="dos-cv-h">
           <div className="dos-cv-card">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="dos-logo" src="/dossier/logo-fi.png" alt="France Immeuble" />
+            <img className="dos-logo" src="/logos/fi-creme-bronze-fond-sombre.svg" alt="France Immeuble" />
             <p>{SOCIETE.tel}<br />{SOCIETE.email}<br />{SOCIETE.site}</p>
           </div>
           <div className="dos-cv-ag">
@@ -401,7 +401,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
       <Page titre="" sombre sansPied>
         <div className="dos-fin">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="dos-logo gr" src="/dossier/logo-fi.png" alt="France Immeuble" />
+          <img className="dos-logo gr" src="/logos/fi-creme-bronze-fond-sombre.svg" alt="France Immeuble" />
           <div className="dos-fin-c">
             <div><Ic d={I.mail} /><span>{SOCIETE.email}</span></div>
             <div><Ic d={I.tel} /><span>{SOCIETE.tel}</span></div>
