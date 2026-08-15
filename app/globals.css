@@ -2338,19 +2338,21 @@ select.pr-in { cursor: pointer; }
 /* --- Terrain et parcelles (retour #80) ---
    Le BO résume le terrain dans un encadré or : c'est la première chose que
    l'agent regarde en ouvrant l'onglet, avant même le détail des parcelles. */
-.terr {
+.terr, .blor {
   border: 1px solid var(--gold-bo); border-radius: 5px; padding: 10px 16px 12px;
   max-width: 920px; margin: 0 auto 12px; display: flex; flex-direction: column; align-items: center;
 }
-.terr-t {
+.terr-t, .blor-t {
   display: flex; align-items: center; gap: 9px; margin-bottom: 8px;
   color: var(--gold-bo); font-family: var(--font-title); font-size: 21px; font-weight: 700;
 }
-.terr-t svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; }
-.terr-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.terr-chips .fchip { padding: 6px 12px; font-size: 12.5px; font-weight: 400; gap: 7px; }
-.terr-chips .fchip b { font-weight: 700; font-size: 14px; }
-.terr-chips .fchip.off { color: var(--gray-lt); }
+.terr-t svg, .blor-t svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.terr-chips, .blor-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.terr-chips .fchip, .blor-chips .fchip { padding: 6px 12px; font-size: 12.5px; font-weight: 400; gap: 7px; }
+.terr-chips .fchip b, .blor-chips .fchip b { font-weight: 700; font-size: 14px; }
+.terr-chips .fchip.off, .blor-chips .fchip.off { color: var(--gray-lt); }
+/* Le bouton d'ajout se pose sous l'encadré, centré, comme au BO. */
+.blor-add { display: flex; justify-content: center; margin: 0 0 16px; }
 
 /* Parcelles proposées par le cadastre IGN : une proposition, pas une écriture. */
 .terr-prop { border: 1px dashed var(--line); border-radius: 5px; padding: 8px 10px; margin-bottom: 8px; }
@@ -2474,3 +2476,71 @@ select.pr-in { cursor: pointer; }
 .sf.repere .sf-box { border-color: #d9a441; background: #fffdf6; }
 .sf.repere .sf-lab { color: #a9741a; background: #fffdf6; }
 .sf.calc { margin-bottom: 20px; }
+
+/* --- Lignes de charges (retour #89) ---
+   Reprise du BO : picto, libellé et détail à gauche, montant non récupérable
+   à droite. Les lignes permanentes portent un cadenas au lieu de la
+   poubelle — elles se vident, elles ne se suppriment pas. */
+.chg {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  padding: 12px 16px; margin-bottom: 8px; max-width: 920px; margin-left: auto; margin-right: auto;
+}
+.chg-ic { flex: none; width: 26px; height: 26px; color: var(--slate-2); }
+.chg-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.chg-c { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.chg-c b { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); }
+.chg-c i { font-style: normal; font-size: 12.5px; color: var(--gray-txt); }
+.chg-v { flex: none; font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); }
+.chg-v i { font-style: normal; font-weight: 400; font-size: 12.5px; color: var(--gray-txt); }
+.chg-v .nc { font-weight: 400; font-size: 13px; color: var(--gray-lt); }
+.chg-x, .chg-lock { flex: none; width: 22px; height: 22px; border: 0; background: none; padding: 0; }
+.chg-x { color: var(--gray-lt); cursor: pointer; }
+.chg-x:hover { color: var(--red); }
+.chg-lock { color: #d0d0d0; }
+.chg-x svg, .chg-lock svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; }
+/* Saisie posée dans la ligne : on remplit sans ouvrir de fenêtre. */
+.chg-saisie { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--gray-txt); }
+.chg-saisie .min { width: 86px; padding: 3px 7px; font-size: 12.5px; }
+.chg-saisie .tiret { padding: 0 2px; }
+
+/* --- Composants du bâti (retour #91) ---
+   Deux vignettes d'en-tête, rouges tant qu'elles sont vides, puis une ligne
+   par composant, remplie sur place. */
+.vbat-row { display: flex; gap: 12px; max-width: 920px; margin: 0 auto 14px; }
+.vbat {
+  flex: 1; display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 12px 16px;
+}
+.vbat.requis { border-color: var(--red); }
+.vbat-ic { flex: none; width: 26px; height: 26px; color: var(--slate-2); }
+.vbat-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.vbat-c { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.vbat-c b { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); }
+.vbat-c .min { width: 100%; }
+
+.cmp {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  padding: 12px 16px; margin: 0 auto 8px; max-width: 920px;
+}
+.cmp-ic { flex: none; width: 26px; height: 26px; color: var(--slate); }
+.cmp-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.cmp-c { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.cmp-c b {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate);
+}
+.cmp-c b .tiret { color: var(--gray-lt); font-weight: 400; }
+.cmp-c .min { font-size: 12.5px; padding: 3px 7px; }
+/* Le matériau manquant se lit en rouge, sans cadre : c'est le texte du BO. */
+.cmp-c .min.requis { border-color: transparent; background: none; color: var(--red); font-weight: 700; }
+.cmp .min.etat { flex: none; width: 150px; font-size: 12.5px; }
+.cmp .min.etat.requis { border-color: transparent; background: none; color: var(--red); font-weight: 700; text-align: right; }
+.cmp-tvx {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 4px; padding: 3px 9px;
+  font-size: 12px; color: var(--gray-lt); background: #fafafa;
+}
+.cmp-tvx.on { color: var(--red); border-color: #f0c9c9; background: #fff7f7; font-weight: 700; }
+.cmp-tvx svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }

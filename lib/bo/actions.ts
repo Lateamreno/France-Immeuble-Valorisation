@@ -403,6 +403,18 @@ export async function addCharge(
   return id;
 }
 
+/** Modifie une charge existante puis recalcule les totaux. */
+export async function updateCharge(
+  immeubleId: string,
+  chargeId: string,
+  patch: Partial<{ total_an: number; recup_an: number; non_recup_an: number; commentaire: string }>,
+) {
+  const clean = cleanPatch({ ...patch, "Modified Date": new Date().toISOString() });
+  await rpc("bo_patch_doc", { p_table: "bo_charge", p_id: chargeId, p_patch: clean });
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+  refresh(immeubleId);
+}
+
 /** Supprime une charge (récupérable) puis recalcule les totaux. */
 export async function deleteCharge(immeubleId: string, chargeId: string) {
   await rpc("bo_delete_doc", { p_table: "bo_charge", p_id: chargeId });
@@ -594,6 +606,24 @@ export async function addComposant(
   await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "COMPOSANTs", p_value: id });
   refresh(immeubleId);
   return id;
+}
+
+/** Modifie un composant existant. */
+export async function updateComposant(
+  immeubleId: string,
+  composantId: string,
+  patch: { Type_materiau?: string; type_materiau_autre?: string; Etat?: string; renov_year?: number; commentaire?: string },
+) {
+  const clean = cleanPatch({
+    "Type_matériau": patch.Type_materiau,
+    "type_matériau_autre": patch.type_materiau_autre,
+    Etat: patch.Etat,
+    renov_year: patch.renov_year,
+    commentaire: patch.commentaire,
+    "Modified Date": new Date().toISOString(),
+  });
+  await rpc("bo_patch_doc", { p_table: "bo_composant", p_id: composantId, p_patch: clean });
+  refresh(immeubleId);
 }
 
 /** Supprime un composant (corbeille + retrait du tableau COMPOSANTs). */

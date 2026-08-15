@@ -3,13 +3,14 @@
 // État technique — sous-onglets Composants · Travaux (réplique BO).
 // Composants = cartes type/matériau/état ; travaux rattachés à des lots
 // OU à des composants du bâti, groupés par urgence.
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
-  addComposant, addTravaux, deleteComposant, deleteTravaux, updateTechnique, updateTravaux,
+  addComposant, addTravaux, deleteComposant, deleteTravaux, updateComposant, updateTechnique, updateTravaux,
 } from "@/lib/bo/actions";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -29,72 +30,164 @@ function lotLabel(l: Record<string, unknown>) {
   return [`Lot ${l.numero ?? "?"}`, l.Type_lot].filter(Boolean).join(" · ");
 }
 
-/* ---------- En-tête (année + état général) ---------- */
+/* ---------- Composants ---------- */
 
-function EnTete({ b }: { b: BienData }) {
-  const immeubleId = String(b.im._id);
-  const [pending, start] = useTransition();
-  const [annee, setAnnee] = useState(S(num(b.im.year_constru)));
-  const [etat, setEtat] = useState(S(b.im.Etat));
+/* Tous les immeubles ont une façade, une toiture, des fenêtres et un mode de
+   chauffage : ces quatre-là sont toujours affichés, prêts à remplir, sans
+   qu'il faille les créer (#91). Ils n'entrent en base qu'une fois renseignés. */
+const COMPOSANTS_STANDARD = ["Chauffage", "Façade", "Fenêtres", "Toiture"] as const;
+
+/** Vignette « Année de construction » / « État général », rouge tant que vide. */
+function VignetteBati({
+  icone, libelle, enfants, vide,
+}: {
+  icone: React.ReactNode; libelle: string; enfants: React.ReactNode; vide: boolean;
+}) {
   return (
-    <div className="lband2">
-      <label style={{ fontSize: 12.5 }}>Année de construction{" "}
-        <input className="min" style={{ width: 70 }} value={annee} onChange={(e) => setAnnee(e.target.value)} />
-      </label>
-      <label style={{ fontSize: 12.5 }}>État général{" "}
-        <select className="min" style={{ width: 130 }} value={etat} onChange={(e) => setEtat(e.target.value)}>
-          <option value="" />{[...new Set([etat, ...ETATS_GENERAL])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-        </select>
-      </label>
-      <span className="sp" style={{ flex: 1 }} />
-      <button className="fadd" type="button" disabled={pending}
-        onClick={() => start(() => updateTechnique(immeubleId, { year_constru: parse(annee), Etat: etat || undefined }))}>
-        Enregistrer
-      </button>
+    <div className={`vbat${vide ? " requis" : ""}`}>
+      <span className="vbat-ic"><svg viewBox="0 0 24 24">{icone}</svg></span>
+      <span className="vbat-c">
+        <b>{libelle}</b>
+        {enfants}
+      </span>
     </div>
   );
 }
 
-/* ---------- Composants ---------- */
+/** Une ligne de composant : matériau et état saisis sur place. */
+function LigneComposant({
+  b, type, composant,
+}: {
+  b: BienData; type: string; composant?: Record<string, unknown>;
+}) {
+  const immeubleId = String(b.im._id);
+  const [pending, start] = useTransition();
+  const [materiau, setMateriau] = useState(S(composant?.["Type_matériau"]));
+  const [etat, setEtat] = useState(S(composant?.Etat));
+
+  const enBase = useRef("");
+  const courant = JSON.stringify({ materiau, etat });
+  if (!enBase.current) enBase.current = courant;
+  const modifie = courant !== enBase.current;
+
+  const tvx = b.travaux
+    .filter((t) => composant && Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as string[]).includes(String(composant._id)))
+    .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
+
+  const enregistrer = () =>
+    start(async () => {
+      const patch = { Type_materiau: materiau || undefined, Etat: etat || undefined };
+      if (composant) await updateComposant(immeubleId, String(composant._id), patch);
+      else await addComposant(immeubleId, { Type_composant: type, ...patch });
+      enBase.current = courant;
+    });
+
+  const choix = MATERIAUX[type] ?? [];
+  const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
+
+  return (
+    <>
+      <div className="cmp">
+        <span className="cmp-ic"><svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg></span>
+        <span className="cmp-c">
+          <b>
+            {type}
+            <span className="tiret">—</span>
+            <select className={`min${materiau ? "" : " requis"}`} value={materiau} onChange={(e) => setMateriau(e.target.value)}>
+              <option value="">Matériau à préciser</option>
+              {[...new Set([materiau, ...choix, "Autre"])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+            </select>
+          </b>
+          <span className={`cmp-tvx${tvx > 0 ? " on" : ""}`}>
+            <svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg>
+            {tvx > 0 ? `${euros(tvx)} de travaux` : "Pas de travaux"}
+          </span>
+        </span>
+        <select className={`min etat${etat ? "" : " requis"}`} value={etat} onChange={(e) => setEtat(e.target.value)}>
+          <option value="">Etat à préciser</option>
+          {[...new Set([etat, ...ETATS_COMPOSANT])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+        </select>
+        {standard ? (
+          <span className="chg-lock" title="Composant permanent : il se remplit, il ne se supprime pas">
+            <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+          </span>
+        ) : (
+          <button
+            className="chg-x" type="button" title="Supprimer le composant"
+            onClick={() => {
+              if (!composant) return;
+              if (!confirm("Supprimer ce composant ? (récupérable dans la corbeille)")) return;
+              start(() => deleteComposant(immeubleId, String(composant._id)));
+            }}
+          >
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
+          </button>
+        )}
+      </div>
+      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} />
+    </>
+  );
+}
 
 function ComposantsTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
-  const travauxOf = (cid: string) =>
-    b.travaux
-      .filter((t) => Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as string[]).includes(cid))
-      .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
+  const [annee, setAnnee] = useState(S(num(b.im.year_constru)));
+  const [etat, setEtat] = useState(S(b.im.Etat));
+
+  const enBase = useRef("");
+  const courant = JSON.stringify({ annee, etat });
+  if (!enBase.current) enBase.current = courant;
+  const modifie = courant !== enBase.current;
+
+  const parType = (t: string) => b.composants.find((c) => String(c.Type_composant ?? "") === t);
+  const enPlus = b.composants.filter(
+    (c) => !(COMPOSANTS_STANDARD as readonly string[]).includes(String(c.Type_composant ?? "")),
+  );
 
   return (
-    <>
-      <div className="lband2">
-        <span className="dst">{b.composants.length} composant{b.composants.length > 1 ? "s" : ""}</span>
-        <span className="sp" style={{ flex: 1 }} />
-        <AddComposantButton b={b} />
+    <div style={pending ? { opacity: 0.6 } : undefined}>
+      <div className="blor">
+        <div className="blor-t">
+          <svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg>
+          Composants
+        </div>
       </div>
-      {b.composants.length === 0 && <div className="fempty">Aucun composant saisi.</div>}
-      <div className="wgrid" style={pending ? { opacity: 0.6 } : undefined}>
-        {b.composants.map((c) => {
-          const tvx = travauxOf(String(c._id));
-          return (
-            <div key={String(c._id)} className="wcard" style={{ position: "relative" }}>
-              <button className="xdel" type="button" title="Supprimer le composant" style={{ position: "absolute", top: 6, right: 6 }}
-                onClick={() => {
-                  if (!confirm("Supprimer ce composant ? (récupérable dans la corbeille)")) return;
-                  start(() => deleteComposant(immeubleId, String(c._id)));
-                }}>✕</button>
-              <div className="h">{S(c.Type_composant)}{S(c.type_composant_autre) ? ` — ${S(c.type_composant_autre)}` : ""}</div>
-              <div className="v">{S(c["Type_matériau"]) || "Matériau à préciser"}</div>
-              <div className="v" style={{ color: c.Etat === "Travaux" ? "var(--red)" : undefined }}>
-                {S(c.Etat) || "Etat à préciser"}
-                {num(c.renov_year) ? ` · rénové en ${c.renov_year}` : ""}
-              </div>
-              {tvx > 0 && <div className="v" style={{ color: "var(--red)", fontWeight: 700 }}>Travaux {euros(tvx)}</div>}
-            </div>
-          );
-        })}
+      <div className="blor-add"><AddComposantButton b={b} /></div>
+
+      <div className="vbat-row">
+        <VignetteBati
+          icone={<><path d="M4 20h16M6 20v-9l6-4 6 4v9" /><path d="M9 20v-5h6v5M8 6.5V4M12 5V3M16 6.5V4" /></>}
+          libelle="Année de construction" vide={!annee}
+          enfants={<input className={`min${annee ? "" : " requis"}`} value={annee} onChange={(e) => setAnnee(e.target.value)} />}
+        />
+        <VignetteBati
+          icone={<><path d="M3 12h4l2-5 3 10 2.5-7 1.5 2h5" /></>}
+          libelle="Etat général" vide={!etat}
+          enfants={
+            <select className={`min${etat ? "" : " requis"}`} value={etat} onChange={(e) => setEtat(e.target.value)}>
+              <option value="" />{[...new Set([etat, ...ETATS_GENERAL])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+            </select>
+          }
+        />
       </div>
-    </>
+      <BarreEnregistrer
+        modifie={modifie} pending={pending}
+        onEnregistrer={() =>
+          start(async () => {
+            await updateTechnique(immeubleId, { year_constru: parse(annee), Etat: etat || undefined });
+            enBase.current = courant;
+          })
+        }
+      />
+
+      {COMPOSANTS_STANDARD.map((t) => (
+        <LigneComposant key={t} b={b} type={t} composant={parType(t)} />
+      ))}
+      {enPlus.map((c) => (
+        <LigneComposant key={String(c._id)} b={b} type={S(c.Type_composant)} composant={c} />
+      ))}
+    </div>
   );
 }
 
@@ -375,7 +468,6 @@ export function TechniqueTabs({ b, tab: pilote, onTab }: {
   const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   return (
     <>
-      <EnTete b={b} />
       <div className="ftabs">
         <button type="button" className={`ftab${tab === "composants" ? " on" : ""}`} onClick={() => setTab("composants")}>
           <Picto nom="composants" className="ftab-ic" />Composants{b.composants.length > 0 && <span className="n">{b.composants.length}</span>}

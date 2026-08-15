@@ -2,15 +2,16 @@
 
 // État locatif — sous-onglets Lots · Baux · Locataires · Charges (réplique BO)
 // avec bandeau de synthèse par destination.
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { dmy, euros } from "@/lib/format";
 import { LotsEditor } from "@/components/lots-editor";
 import {
   addBail, addCharge, addLocataire,
-  deleteBail, deleteCharge, deleteLocataire,
+  deleteBail, deleteCharge, deleteLocataire, updateCharge,
 } from "@/lib/bo/actions";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
 import { TAXES, TYPES_BAIL as TYPES_BAIL_ALL, TYPES_CHARGE } from "@/lib/referentiels";
 
@@ -23,6 +24,7 @@ const STATUTS_BAIL = [
   { key: "expulsion", label: "Expulsion en cours" },
 ] as const;
 
+const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 
@@ -342,46 +344,141 @@ function AddLocataireButton({ b }: { b: BienData }) {
 
 /* ---------- Charges ---------- */
 
+/* La taxe foncière figure sur tous les immeubles : plutôt que d'obliger à la
+   créer, sa ligne est toujours là, vide, et se remplit à la volée (#89). */
+const LIGNE_TF = "Taxe Foncière";
+
+/** Ligne de charge du BO : libellé, détail, montant non récupérable. */
+function LigneCharge({
+  titre, detail, montant, enfants, onSupprimer,
+}: {
+  titre: React.ReactNode; detail?: React.ReactNode; montant?: React.ReactNode;
+  enfants?: React.ReactNode;
+  /** Absent = ligne standard, non supprimable (cadenas). */
+  onSupprimer?: () => void;
+}) {
+  return (
+    <div className="chg">
+      <span className="chg-ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 7h10M5 7l-2.5 6h5zM19 7l-2.5 6h5z" /><path d="M2.5 13a2.5 2.5 0 0 0 5 0M16.5 13a2.5 2.5 0 0 0 5 0" /></svg></span>
+      <span className="chg-c">
+        <b>{titre}</b>
+        {detail && <i>{detail}</i>}
+        {enfants}
+      </span>
+      <span className="chg-v">{montant}</span>
+      {onSupprimer ? (
+        <button className="chg-x" type="button" title="Supprimer la charge" onClick={onSupprimer}>
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
+        </button>
+      ) : (
+        <span className="chg-lock" title="Ligne permanente : elle ne se supprime pas">
+          <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Taxe foncière : toujours affichée, saisie sur place. */
+function LigneTaxeFonciere({ b }: { b: BienData }) {
+  const immeubleId = String(b.im._id);
+  const ligne = b.charges.find((c) => String(c.Type_charge ?? "") === LIGNE_TF);
+  const [pending, start] = useTransition();
+  const [total, setTotal] = useState(S(num(ligne?.total_an)));
+  const [recup, setRecup] = useState(S(num(ligne?.recup_an)));
+
+  const enBase = useRef("");
+  const courant = JSON.stringify({ total, recup });
+  if (!enBase.current) enBase.current = courant;
+  const modifie = courant !== enBase.current;
+
+  const t = parse(total);
+  const r = parse(recup);
+  const nonRecup = t !== undefined ? t - (r ?? 0) : undefined;
+
+  const enregistrer = () =>
+    start(async () => {
+      const patch = { total_an: t, recup_an: r, non_recup_an: nonRecup };
+      if (ligne) await updateCharge(immeubleId, String(ligne._id), patch);
+      else await addCharge(immeubleId, { Type_charge: LIGNE_TF, ...patch });
+      enBase.current = courant;
+    });
+
+  return (
+    <>
+      <LigneCharge
+        titre={LIGNE_TF}
+        detail={
+          <span className="chg-saisie">
+            <input className={`min${total ? "" : " requis"}`} placeholder="Total" value={total}
+              onChange={(e) => setTotal(e.target.value)} /> €/an
+            <span className="tiret">−</span>
+            <input className="min" placeholder="Récupérable" value={recup}
+              onChange={(e) => setRecup(e.target.value)} /> €/an récupérables
+          </span>
+        }
+        montant={nonRecup !== undefined ? <>{euros(nonRecup) ?? "0 €"}<i>/an</i></> : <span className="nc">n.c.</span>}
+      />
+      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} />
+    </>
+  );
+}
+
 function ChargesTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
-  const taxes = b.charges.filter((c) => TAXES.has(String(c.Type_charge ?? "")));
+  const taxes = b.charges.filter((c) => TAXES.has(String(c.Type_charge ?? "")) && String(c.Type_charge ?? "") !== LIGNE_TF);
   const autres = b.charges.filter((c) => !TAXES.has(String(c.Type_charge ?? "")));
-  const total = (rows: Record<string, unknown>[]) =>
-    rows.reduce((s, c) => s + (num(c.total_an) ?? 0), 0);
+  const total = b.charges.reduce((s, c) => s + (num(c.total_an) ?? 0), 0);
+  const nonRecup = b.charges.reduce((s, c) => s + (num(c.non_recup_an) ?? 0), 0);
 
   const Row = ({ c }: { c: Record<string, unknown> }) => (
-    <div className="chrow">
-      <span className="t">{String(c.Type_charge ?? "")}{c.type_autre ? ` — ${c.type_autre}` : ""}</span>
-      {c.commentaire ? <span className="c">{String(c.commentaire)}</span> : null}
-      <span className="sp" style={{ flex: 1 }} />
-      <span className="v">{euros(c.total_an) ?? "n.c."}{num(c.total_an) !== undefined ? "/an" : ""}</span>
-      {num(c.non_recup_an) !== undefined && num(c.non_recup_an)! > 0 && (
-        <span className="nr">− {euros(c.non_recup_an)}/an</span>
-      )}
-      <button
-        className="xdel" type="button" title="Supprimer la charge"
-        onClick={() => {
-          if (!confirm("Supprimer cette charge ? (récupérable dans la corbeille)")) return;
-          start(() => deleteCharge(immeubleId, String(c._id)));
-        }}
-      >✕</button>
-    </div>
+    <LigneCharge
+      titre={`${String(c.Type_charge ?? "")}${c.type_autre ? ` — ${c.type_autre}` : ""}`}
+      detail={
+        <>
+          {euros(c.total_an) ?? "n.c."}/an
+          {num(c.recup_an) ? ` − ${euros(c.recup_an)}/an récupérables` : ""}
+          {c.commentaire ? ` · ${String(c.commentaire)}` : ""}
+        </>
+      }
+      montant={
+        // Une charge entièrement récupérable pèse zéro sur le vendeur : il
+        // faut l'écrire, pas laisser la case vide.
+        num(c.non_recup_an) !== undefined
+          ? <>{euros(c.non_recup_an) ?? "0 €"}<i>/an</i></>
+          : <>{euros(c.total_an) ?? "n.c."}<i>/an</i></>
+      }
+      onSupprimer={() => {
+        if (!confirm("Supprimer cette charge ? (récupérable dans la corbeille)")) return;
+        start(() => deleteCharge(immeubleId, String(c._id)));
+      }}
+    />
   );
 
   return (
     <div style={pending ? { opacity: 0.6 } : undefined}>
-      <div className="lband2">
-        <span className="dst">
-          {euros(b.im.fin_charges_total) ?? euros(total(b.charges)) ?? "0 €"}/an de charges
-          {num(b.im.fin_charges_non_recup) !== undefined && <> · dont {euros(b.im.fin_charges_non_recup)}/an non récupérables</>}
-        </span>
-        <span className="sp" style={{ flex: 1 }} />
-        <AddChargeButton b={b} />
+      <div className="blor">
+        <div className="blor-t">
+          <svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2" /><path d="M2.5 10h19M6 14.5h4" /></svg>
+          Charges
+        </div>
+        <div className="blor-chips">
+          <span className={`fchip${total ? "" : " off"}`}>
+            <b>{euros(b.im.fin_charges_total) ?? euros(total) ?? "0 €"}</b> /an
+          </span>
+          <span className={`fchip${nonRecup ? "" : " off"}`}>
+            dont <b>{euros(b.im.fin_charges_non_recup) ?? euros(nonRecup) ?? "0 €"}</b> non récupérables
+          </span>
+        </div>
       </div>
+      <div className="blor-add"><AddChargeButton b={b} /></div>
+
       <div className="fsub">Taxes et impôts</div>
-      {taxes.length === 0 ? <div className="fempty">Aucune taxe saisie.</div> : taxes.map((c) => <Row key={String(c._id)} c={c} />)}
-      <div className="fsub" style={{ marginTop: 14 }}>Charges</div>
+      <LigneTaxeFonciere b={b} />
+      {taxes.map((c) => <Row key={String(c._id)} c={c} />)}
+
+      <div className="fsub" style={{ marginTop: 16 }}>Charges</div>
       {autres.length === 0 ? <div className="fempty">Aucune charge saisie.</div> : autres.map((c) => <Row key={String(c._id)} c={c} />)}
     </div>
   );
