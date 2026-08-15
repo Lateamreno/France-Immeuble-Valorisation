@@ -20,6 +20,7 @@ import { MOTIFS_VENTE } from "@/lib/referentiels";
 import { AddPhotoButton, DeletePhotoButton, DocumentsCoffre } from "@/components/fichiers";
 import { ContactPicker } from "@/components/contact-picker";
 import { copierTexte } from "@/components/copier";
+import { PrixEcran } from "@/components/prix";
 
 
 
@@ -582,21 +583,11 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
 }
 
 function PrixSection({ b }: { b: BienData }) {
-  const im = b.im;
   return (
     <>
-      <SectTitle icon={I.info} title="Description et prix" chips={<span className="fchip gold">{euros(im.prix_hai)} HAI</span>} />
-      <div className="fcards">
-        <div className="fcard"><div><div className="k">Net vendeur</div><div className="v">{euros(im.prix_nv) ?? "n.c."}</div></div></div>
-        <div className="fcard"><div><div className="k">Honoraires TTC</div><div className="v">{euros(im.prix_honos_ttc) ?? "n.c."} · charge {String(im.prix_Charge_honos ?? "n.c.")}</div></div></div>
-        <div className="fcard"><div><div className="k">Prix HAI</div><div className="v">{euros(im.prix_hai) ?? "n.c."} ({String(im.prix_hai_m2 ?? "?")} €/m²)</div></div></div>
-        <div className="fcard"><div><div className="k">Rendement brut</div><div className="v">{String(im.fin_renta_ba ?? "?")} % actuel · {String(im.fin_renta_bm ?? "?")} % potentiel</div></div></div>
-        <div className="fcard"><div><div className="k">Loyers</div><div className="v">{euros(im.fin_loyers_an)}/an · max {euros(im.fin_loyers_an_max)}/an</div></div></div>
-        <div className="fcard"><div><div className="k">Charges</div><div className="v">{euros(im.fin_charges_total) ?? "n.c."}/an</div></div></div>
-      </div>
-      <div className="fh2">Modifier le prix</div>
-      <PrixForm b={b} />
-      <div className="fh2">Descriptif</div>
+      <SectTitle icon={I.info} title="Description et prix" />
+      <PrixEcran b={b} />
+      <div className="fh2" style={{ marginTop: 20 }}>Descriptif</div>
       <DescriptifForm b={b} />
     </>
   );

@@ -1667,6 +1667,9 @@ export async function updateBien(
     prix_nv: number;
     prix_honos_ttc: number;
     prix_hai: number;
+    prix_nv_min: number;
+    prix_financement: boolean;
+    prix_permis: boolean;
     Motif_vente: string;
     notes: string;
   }>,
@@ -1674,11 +1677,79 @@ export async function updateBien(
   const clean = Object.fromEntries(
     Object.entries(patch).filter(([, v]) => v !== undefined && v !== null && v !== ""),
   );
+  // Un « non » explicite doit s'enregistrer : le filtre ci-dessus l'écarterait
+  // s'il valait false uniquement par défaut.
+  for (const k of ["prix_financement", "prix_permis"] as const) {
+    if (typeof patch[k] === "boolean") clean[k] = patch[k];
+  }
   if (Object.keys(clean).length === 0) return;
   if (typeof clean.prix_nv === "number" && typeof clean.prix_honos_ttc === "number") {
     clean.prix_hai = clean.prix_nv + clean.prix_honos_ttc;
   }
   await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: clean });
+  refresh(immeubleId);
+}
+
+/**
+ * Enregistre un nouveau prix : il devient le prix de la fiche et laisse une
+ * ligne dans l'historique (#93, #94). Les rendements sont recalculés avec les
+ * formules de l'estimation, pour que les deux racontent la même chose.
+ */
+export async function enregistrerPrix(
+  immeubleId: string,
+  input: { hai: number; honosTtc: number; motif: string; remarque?: string },
+) {
+  const im = await bqOne("bo_immeuble", immeubleId);
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  const loyers = n(im?.fin_loyers_an);
+  const loyersMax = n(im?.fin_loyers_an_max) || loyers;
+  const charges = n(im?.fin_charges_non_recup);
+  const travaux = n(im?.fin_travaux);
+  const surface = n(im?.fin_surface_carrez);
+
+  const hai = Math.round(input.hai);
+  const honos = Math.round(input.honosTtc);
+  const nv = hai - honos;
+  const haiTravaux = hai + travaux;
+  const pc = (x: number) => Math.round(x * 1000) / 10;
+  const now = new Date().toISOString();
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_prix",
+    p_id: newId(),
+    p_doc: cleanPatch({
+      in_IMMEUBLE: immeubleId,
+      in_Data_source: "Fiche",
+      in_Motif: input.motif,
+      in_remarque: input.remarque,
+      in_prix_hai: hai,
+      in_honos_ttc: honos,
+      in_loyers: loyers,
+      in_loyers_max: loyersMax,
+      in_charges: charges,
+      in_travaux: travaux,
+      in_surface: surface,
+      out_prix_nv: nv,
+      out_prix_hai_travaux: haiTravaux,
+      "out_honos_taux_%": nv > 0 ? Math.round((honos / nv) * 1000) / 10 : 0,
+      out_prix_m2: surface > 0 ? Math.round(hai / surface) : 0,
+      out_prix_m2_max: surface > 0 ? Math.round(haiTravaux / surface) : 0,
+      out_rba: hai > 0 ? pc(loyers / hai) : 0,
+      out_rbm: haiTravaux > 0 ? pc(loyersMax / haiTravaux) : 0,
+      out_rna: hai > 0 ? pc((loyers - charges) / hai) : 0,
+      out_rnm: haiTravaux > 0 ? pc((loyersMax - charges) / haiTravaux) : 0,
+      out_rnaema: hai > 0 ? pc((loyers - charges) / (hai * 1.075)) : 0,
+      out_rnaemm: haiTravaux > 0 ? pc((loyersMax - charges) / (haiTravaux * 1.075)) : 0,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: { prix_hai: hai, prix_nv: nv, prix_honos_ttc: honos, "Modified Date": now },
+  });
   refresh(immeubleId);
 }
 

@@ -530,6 +530,8 @@ export type BienData = {
   }[];
   lots: Record<string, unknown>[];
   parcelles: Record<string, unknown>[];
+  /** Historique des prix (bo_prix), le plus récent en tête. */
+  prixHisto: Record<string, unknown>[];
   /** Typologies de lot ajoutées à la main par les agents (retour #22). */
   typologies: { destination: string; label: string }[];
   /** Adresse géocodée (type Bubble « adresse ») : geo.lat / geo.lng / maps_url. */
@@ -559,7 +561,7 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
   const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
-  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, adresses, typologies, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres] =
+  const [suivisR, lots, baux, locataires, chargesById, chargesByIm, parcelles, secteur, adresses, typologies, composants, travaux, photos, documents, estimations, mandats, dossiers, propositions, visites, offres, prixHisto] =
     await Promise.all([
       fetchAll("suivi", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 100).catch(() => []),
       fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250),
@@ -585,6 +587,8 @@ export async function getBien(id: string): Promise<BienData | null> {
       bq("proposition", { constraints: [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], limit: 10 }),
       fetchAll("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
       fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
+      // Historique des prix : chaque changement laisse une ligne (#93).
+      fetchAll("prix", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: id }], 60).catch(() => []),
     ]);
 
   const proprietaire = im.PROPRIETAIRE
@@ -631,6 +635,9 @@ export async function getBien(id: string): Promise<BienData | null> {
     // le numéro de lot reste le repère par défaut.
     lots: [...lots].sort((a, b) => rangLot(a) - rangLot(b)),
     parcelles,
+    prixHisto: [...prixHisto].sort((a, b) =>
+      String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
+    ),
     adr: adresses[0] ?? null,
     typologies,
     secteur,
