@@ -17,6 +17,7 @@ import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
+import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -168,11 +169,23 @@ function AdresseTab({ b }: { b: BienData }) {
     setErreur(null);
     setAvant({ poi, pop, rev });
     try {
-      const r = await fetch(
-        `/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`,
-      );
+      /* Deux sources en parallèle : la route serveur (chiffres de commune,
+         annuaire des entreprises) et OpenStreetMap depuis le navigateur, qui
+         connaît les gares, arrêts, écoles et commerces. */
+      const [r, osm] = await Promise.all([
+        fetch(`/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`),
+        chercherPoi(lat!, lon!).catch(() => ({})),
+      ]);
       if (!r.ok) throw new Error(`Récupération impossible (${r.status})`);
       const d = (await r.json()) as Enrichissement;
+      // OpenStreetMap passe devant quand il a trouvé ; les propositions du
+      // serveur complètent la liste sans doublon de nom.
+      d.poi = { ...d.poi };
+      for (const [cle, liste] of Object.entries(osm) as [CleP, Suggestion[]][]) {
+        if (!liste?.length) continue;
+        const noms = new Set(liste.map((p) => p.nom));
+        d.poi[cle] = [...liste, ...(d.poi[cle] ?? []).filter((p) => !noms.has(p.nom))].slice(0, 8);
+      }
       setSugg(d);
       // On pré-remplit uniquement ce qui est vide : jamais d'écrasement d'une
       // saisie de l'agent.
