@@ -11,6 +11,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updateLots, type LotPatch } from "@/lib/bo/actions";
 import { PhotosDuLot } from "@/components/photos";
+import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
@@ -189,6 +190,8 @@ type OptKey = (typeof OPTIONS)[number]["key"];
 const OPTIONS_LARGES: OptKey[] = ["batiment", "sol", "baux", "m2", "photos"];
 /** En dessous, les colonnes secondaires ne tiennent plus lisiblement. */
 const SEUIL_COMPACT = 1000;
+/** En dessous, aucun tableau ne tient : on passe aux cartes (téléphone). */
+const SEUIL_MOBILE = 640;
 
 /* Largeurs relevées sur la capture du BO, en poids relatifs. Elles sont
    normalisées à 100 % sur les seules colonnes affichées : masquer une colonne
@@ -241,13 +244,19 @@ export function LotsEditor({ b }: { b: BienData }) {
   // compacte plutôt que de comprimer vingt colonnes à 17 px.
   const wrap = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
+  const [mobile, setMobile] = useState(false);
   useEffect(() => {
     const el = wrap.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(([e]) => setCompact(e.contentRect.width < SEUIL_COMPACT));
+    const ro = new ResizeObserver(([e]) => {
+      setCompact(e.contentRect.width < SEUIL_COMPACT);
+      setMobile(e.contentRect.width < SEUIL_MOBILE);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  /** Lot ouvert en plein écran sur téléphone (null = la liste de cartes). */
+  const [lotOuvert, setLotOuvert] = useState<string | null>(null);
 
   const compacte = compact;
   const on = (k: OptKey) => opts[k] && !(compacte && OPTIONS_LARGES.includes(k));
@@ -570,6 +579,32 @@ export function LotsEditor({ b }: { b: BienData }) {
       {/* Bord à bord : le tableau sort du gouttières de la fiche pour toucher
           les deux sidebars, comme dans le BO (retour #49). */}
       <div ref={wrap} className="ltable-wrap bord-a-bord" style={pending ? { opacity: 0.6 } : undefined}>
+        {/* Sur téléphone, le tableau laisse la place aux cartes : une grille
+            sert à comparer des lignes, or en visite on ne compare rien — on
+            remplit un lot puis le suivant. */}
+        {mobile ? (
+          <>
+            <LotsCartes
+              lignes={visibles} b={b} dirty={dirty}
+              onOuvrir={setLotOuvert}
+              onAjouter={() => { addRow(); }}
+            />
+            {lotOuvert && visibles.some((r) => r.id === lotOuvert) && (
+              <LotPleinEcran
+                lignes={visibles}
+                index={visibles.findIndex((r) => r.id === lotOuvert)}
+                b={b} dirty={dirty} enregistrement={pending}
+                onChange={edit}
+                onFermer={() => setLotOuvert(null)}
+                onNaviguer={(d) => {
+                  const i = visibles.findIndex((r) => r.id === lotOuvert) + d;
+                  if (i >= 0 && i < visibles.length) setLotOuvert(visibles[i].id);
+                }}
+                onEnregistrer={save}
+              />
+            )}
+          </>
+        ) : (
         <table className="ltable v2">
           {/* Largeurs relevées au pixel sur la capture du BO (retour #49),
               renormalisées sur les seules colonnes affichées (retour #52). */}
@@ -717,6 +752,7 @@ export function LotsEditor({ b }: { b: BienData }) {
             )}
           </tbody>
         </table>
+        )}
       </div>
 
       {/* Barre d'outils sticky, libellés visibles, import/export */}

@@ -2883,3 +2883,149 @@ select.pr-in { cursor: pointer; }
   .ml-corps { flex-direction: column; }
   .ml-liste { width: auto; border-right: 0; border-bottom: 1px solid var(--line); max-height: 42vh; }
 }
+
+/* =========================================================== Téléphone
+   Le responsive s'arrêtait à « fenêtre étroite sur un portable » (760 px).
+   Ici on descend au téléphone réel : le rail de la fiche se replie en bandeau,
+   l'état locatif passe en cartes, et le lot s'ouvre en plein écran pour la
+   saisie en visite. */
+
+/* --- L'état locatif en cartes --- */
+.lmob { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 4px; }
+.lmob-c {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--slate-2);
+  border-radius: 5px; padding: 10px 12px; font-family: inherit;
+}
+.lmob-c.modif { border-left-color: var(--gold-bo); background: #fffdf6; }
+.lmob-c .l1 { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.lmob-c .l1 b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }
+.lmob-c .l1 .ty { font-size: 13px; color: var(--gray-txt); }
+.lmob-c .l1 .etg { font-size: 11.5px; color: var(--gray-lt); }
+.lmob-c .l1 .et {
+  margin-left: auto; border-radius: 3px; font-size: 10.5px; font-weight: 700;
+  padding: 2px 7px; font-family: var(--font-title);
+}
+.lmob-c .l1 .et.occ { background: #fdefe0; color: #a3550a; }
+.lmob-c .l1 .et.libre { background: var(--cols); color: var(--gray-txt); }
+.lmob-c .l2 { display: flex; gap: 16px; margin-top: 8px; }
+.lmob-c .l2 .v {
+  display: flex; flex-direction: column; font-family: var(--font-title);
+  font-size: 14px; font-weight: 700; color: var(--slate); font-variant-numeric: tabular-nums;
+}
+.lmob-c .l2 .v i {
+  font-style: normal; font-family: var(--font-body); font-size: 10.5px;
+  font-weight: 400; color: var(--gray-lt); text-transform: uppercase; letter-spacing: .04em;
+}
+.lmob-c .l3 { display: flex; align-items: center; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.lmob-c .l3 .ch {
+  background: var(--cols); color: var(--gray-txt); border-radius: 3px;
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px;
+}
+.lmob-c .l3 .ch.rouge { background: #fdeaea; color: var(--red); }
+.lmob-c .l3 .ch.jaune { background: #fdf6e5; color: #8a6d1a; }
+.lmob-c .l3 .chev { margin-left: auto; color: var(--gray-lt); font-size: 20px; line-height: 1; }
+.lmob-add {
+  border: 1px dashed var(--line); background: #fff; border-radius: 5px; cursor: pointer;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--slate-2);
+  padding: 12px; margin-top: 2px;
+}
+
+/* --- Le lot en plein écran --- */
+.lfs {
+  position: fixed; inset: 0; z-index: 1000; background: var(--bg);
+  display: flex; flex-direction: column;
+}
+.lfs-h {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  background: var(--slate); color: #fff; padding: 12px 14px;
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+.lfs-x { border: 0; background: none; color: #cfd3d7; font-size: 19px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.lfs-h .t { font-family: var(--font-title); font-size: 16px; font-weight: 700; }
+.lfs-h .t i { display: block; font-style: normal; font-size: 11px; font-weight: 400; color: #b6bcc2; }
+.lfs-modif {
+  margin-left: auto; background: var(--gold-bo); color: #2f2a12; border-radius: 3px;
+  font-size: 10.5px; font-weight: 700; padding: 3px 8px; font-family: var(--font-title);
+}
+
+.lfs-b { flex: 1; overflow-y: auto; padding: 12px 14px 20px; -webkit-overflow-scrolling: touch; }
+.lfs-sec {
+  font-family: var(--font-title); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gold-bo);
+  margin: 16px 0 7px; padding-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.lfs-b > .lfs-sec:first-child { margin-top: 0; }
+.lfs-l2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.lfs-l3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+.lfs-ch { display: flex; flex-direction: column; gap: 3px; margin-bottom: 9px; }
+.lfs-ch > span:first-child { font-size: 11.5px; color: var(--gray-txt); }
+.lfs-num { position: relative; display: block; }
+.lfs-num i {
+  position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+  font-style: normal; font-size: 12px; color: var(--gray-lt); pointer-events: none;
+}
+.lfs-in {
+  width: 100%; border: 1px solid #cfcfcf; border-radius: 5px; background: #fff;
+  /* 16 px minimum : en dessous, iOS zoome sur le champ à la mise au point. */
+  font-family: var(--font-body); font-size: 16px; color: var(--slate);
+  padding: 11px 12px; min-height: 44px;
+}
+.lfs-in:focus { border-color: var(--gold-bo); outline: none; }
+.lfs-in.rouge { border-color: var(--red); color: var(--red); }
+.lfs-ta { min-height: 76px; resize: vertical; }
+.lfs-seg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.lfs-seg button {
+  border: 1px solid #cfcfcf; background: #fff; border-radius: 20px; cursor: pointer;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--slate-2);
+  padding: 8px 14px; min-height: 38px;
+}
+.lfs-seg button.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+
+.lfs-ph { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lfs-ph img { width: 74px; height: 56px; object-fit: cover; border-radius: 4px; display: block; }
+.lfs-ph-add {
+  border: 1px dashed var(--gold-bo); background: #fdfaf0; border-radius: 5px; cursor: pointer;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: #7d6f30;
+  padding: 12px 16px; min-height: 56px;
+}
+.lfs-ph-att { font-size: 12px; color: var(--gray-lt); }
+
+.lfs-f {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  background: #fff; border-top: 1px solid var(--line); padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  box-shadow: 0 -3px 12px rgba(0, 0, 0, .07);
+}
+.lfs-nav {
+  border: 1px solid #cfcfcf; background: #fff; border-radius: 5px; cursor: pointer;
+  font-size: 22px; line-height: 1; color: var(--slate); width: 46px; min-height: 44px;
+}
+.lfs-nav:disabled { opacity: .35; }
+.lfs-f .savebar-go { min-height: 44px; }
+
+/* --- La fiche sur téléphone : le rail passe en bandeau au-dessus --- */
+@media (max-width: 640px) {
+  .fiche { flex-direction: column; min-height: 0; }
+  .brail {
+    order: -1; width: 100%; position: static; max-height: none;
+    border-left: 0; border-bottom: 1px solid var(--line);
+  }
+  .brail-head { padding: 10px 12px; }
+  .bthumb { width: 44px; height: 44px; }
+  .brail nav {
+    display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; border-top: 1px solid var(--line-lt);
+  }
+  .brail nav::-webkit-scrollbar { display: none; }
+  .brail nav > div, .brail nav > button { flex: none; }
+  .brail .srow2 { white-space: nowrap; border-bottom: 0; padding: 10px 12px; }
+  /* Les sous-onglets sont déjà repris en haut du contenu (retour #50) :
+     les répéter ici ne ferait qu'allonger le bandeau. */
+  .brail .srow2.sub { display: none; }
+  .fiche-main { padding: 12px 12px 30px; }
+  .fiche-inner { max-width: none; }
+  .modal { width: calc(100vw - 20px); max-width: none; }
+  .gph-grid { grid-template-columns: repeat(2, 1fr); }
+  .ml-liste { max-height: 38vh; }
+}

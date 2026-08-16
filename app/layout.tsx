@@ -18,7 +18,11 @@ export const metadata: Metadata = {
     "Back-office France Immeuble : prospection, commercialisation et bouclage des ventes d'immeubles de rapport.",
   icons: {
     icon: [{ url: preview ? "/favicon-preview.svg" : "/favicon.svg", type: "image/svg+xml" }],
+    // iOS ignore les icônes du manifeste pour l'écran d'accueil : sans
+    // celle-ci, « Ajouter à l'écran d'accueil » pose une capture de la page.
+    apple: [{ url: "/icone-192.png", sizes: "192x192", type: "image/png" }],
   },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "France Immeuble" },
 };
 
 export const viewport: Viewport = {
