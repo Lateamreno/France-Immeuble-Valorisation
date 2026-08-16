@@ -11,6 +11,8 @@ export type KCard = {
   photo?: boolean;
   /** URL réelle de la photo (photo_main_compressed Bubble). */
   photoUrl?: string;
+  /** Adresse complète, pour aller chercher une vue de rue faute de photo. */
+  adresseGeo?: string;
   rv?: boolean;
   /** Texte du badge orange (initiales de l'agent, ex. « RV », « MAV »). */
   rvText?: string;

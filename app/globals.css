@@ -3095,3 +3095,12 @@ body.ecran-tel .col.deplie .cchev { transform: none; }
 /* Une colonne repliée n'a plus besoin de sa hauteur minimale de colonne. */
 body.ecran-tel .col { min-height: 0; }
 body.ecran-tel .col-head { padding: 12px 12px; }
+
+/* Vue de rue en remplacement d'une photo absente (dashboard). Le bandeau dit
+   d'où vient l'image : c'est un repère, pas la photo du bien. */
+.kthumb .kvue {
+  position: absolute; left: 0; right: 0; top: 0;
+  background: rgba(38, 50, 56, .72); color: #fff;
+  font-size: 9px; font-weight: 700; letter-spacing: .03em;
+  text-align: center; padding: 1px 0; font-family: var(--font-title);
+}

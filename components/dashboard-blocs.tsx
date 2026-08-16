@@ -79,16 +79,7 @@ function Card({
   };
   const top = (
     <>
-        <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
-          {c.photoUrl ? (
-            <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          ) : c.photo ? (
-            <svg viewBox="0 0 24 24">{COL_IC.building}</svg>
-          ) : (
-            <svg viewBox="0 0 24 24">{COL_IC.form}</svg>
-          )}
-          {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
-        </div>
+        <Vignette c={c} />
         <div className="kbody">
           <div className="krow1">
             <span className="kt">{c.ville}</span>
@@ -310,6 +301,48 @@ function Card({
 
 /** Vrai quand le dashboard est en mode téléphone (classe posée par Burger). */
 const estTel = () => typeof document !== "undefined" && document.body.classList.contains("ecran-tel");
+
+
+/**
+ * La vignette d'une carte du dashboard.
+ *
+ * Ordre de repli : la photo du bien, puis — faute de photo — la façade en vue
+ * de rue, puis le pictogramme. Les deux premières colonnes du dashboard
+ * n'ont presque jamais de photo (les immeubles viennent d'arriver) : sans la
+ * vue de rue, l'agent trie une liste de pictogrammes identiques.
+ *
+ * La vue de rue est un repère DANS l'outil : les conditions d'usage de Google
+ * interdisent de la réutiliser comme photo du bien, dossier de vente ou
+ * annonce comprises.
+ */
+function Vignette({ c }: { c: KCard }) {
+  /* La route répond 404 quand la clé manque, que l'adresse est trop imprécise
+     ou qu'aucune prise de vue n'existe : on retombe alors sur le pictogramme
+     plutôt que d'afficher un cadre cassé. */
+  const [rueKo, setRueKo] = useState(false);
+  const rue = !c.photoUrl && !rueKo && c.adresseGeo
+    ? `/api/streetview?a=${encodeURIComponent(c.adresseGeo)}`
+    : null;
+
+  return (
+    <div className={`kthumb${c.photoUrl || rue ? " has-photo" : ""}`}>
+      {c.photoUrl ? (
+        <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : rue ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={rue} alt="" loading="lazy" onError={() => setRueKo(true)} />
+          <span className="kvue" title="Vue de rue Google — repère, pas photo du bien">Vue de rue</span>
+        </>
+      ) : c.photo ? (
+        <svg viewBox="0 0 24 24">{COL_IC.building}</svg>
+      ) : (
+        <svg viewBox="0 0 24 24">{COL_IC.form}</svg>
+      )}
+      {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
+    </div>
+  );
+}
 
 function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(b.openDefault);

@@ -324,6 +324,10 @@ export async function getDashboardLive(
       photoUrl: photo
         ? `/api/photo?u=${encodeURIComponent((im.photo_main_compressed as string).replace(/^\/\//, "https://"))}`
         : undefined,
+      // Faute de photo, la vignette ira chercher la façade en vue de rue :
+      // sur les deux premières colonnes du dashboard, moins d'un immeuble sur
+      // cinq a une photo — ils viennent d'arriver.
+      adresseGeo: !photo && typeof im.adresse === "string" ? (im.adresse as string) : undefined,
       rv: true,
       rvText: agent.initials,
       history: !!suivi,
