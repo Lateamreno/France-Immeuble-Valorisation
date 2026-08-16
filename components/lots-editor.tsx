@@ -13,8 +13,9 @@ import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updat
 import { PhotosDuLot } from "@/components/photos";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
-  DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
+  DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES,
 } from "@/lib/referentiels";
+import { typesFor } from "@/lib/typologies";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -35,30 +36,6 @@ const IC_DEST: Record<string, React.ReactNode> = {
   Cave: <><path d="M4 20V8l8-4 8 4v12z" /><path d="M9 20v-7h6v7" /></>,
   Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
   Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
-};
-
-/* Typologies proposées selon la destination (un bureau n'est jamais un T2). */
-const TYPES_PAR_DESTINATION: Record<string, string[]> = {
-  Logement: TYPES_LOT.filter((t) =>
-    /^(Studio|T[1-7]|Duplex|Loft|Maison|Chambre)/.test(t)),
-  Commerce: [
-    "Boutique", "Local commercial", "Grande enseigne", "Espace de vente", "Show-room",
-    "Agence de voyages", "Agence immobiliere", "Assurance", "Banque", "Boucherie",
-    "Boulangerie", "Café", "Charcuterie", "Concession", "Epicerie", "Fromagerie",
-    "Magasin d'ameublement", "Magasin de vetements", "Pharmacie", "Pizzeria",
-    "Poissonnerie", "Poste", "Restaurant", "Salon de coiffure", "Supermarche", "Association",
-  ],
-  Bureau: ["Bureaux", "Plateau", "Local d'activites", "Show-room"],
-  Logistique: ["Atelier", "Espace de stockage", "Local d'activites", "Reserve", "Sous-sol"],
-  Cave: ["Cave", "Sous-sol", "Reserve"],
-  Parking: ["Parking", "Box"],
-  Annexe: ["WC", "Chambre", "Cave", "Box", "Autre"],
-};
-const typesFor = (dest: string, current?: string, ajouts: { destination: string; label: string }[] = []) => {
-  const base = TYPES_PAR_DESTINATION[dest] ?? TYPES_LOT;
-  const perso = ajouts.filter((t) => t.destination === dest).map((t) => t.label);
-  const list = [...base, ...perso.filter((t) => !base.includes(t)), "Autre"];
-  return current && !list.includes(current) ? [current, ...list] : list;
 };
 
 /** Cellule Typologie : liste filtrée par destination, et saisie libre dès que
@@ -586,8 +563,9 @@ export function LotsEditor({ b }: { b: BienData }) {
           <>
             <LotsCartes
               lignes={visibles} b={b} dirty={dirty}
+              onChange={edit}
               onOuvrir={setLotOuvert}
-              onAjouter={() => { addRow(); }}
+              onAjouter={addRow}
             />
             {lotOuvert && visibles.some((r) => r.id === lotOuvert) && (
               <LotPleinEcran

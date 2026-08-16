@@ -20,6 +20,7 @@ import { rafraichirFiche, uploadPhoto } from "@/lib/bo/actions";
 import {
   DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
+import { typesFor } from "@/lib/typologies";
 
 /** La ligne d'édition, telle que la tient `LotsEditor`. */
 export type LigneLot = {
@@ -41,45 +42,149 @@ const nb = (s: string) => {
 
 /* ------------------------------------------------------------- la liste --- */
 
+/**
+ * La liste de cartes.
+ *
+ * Les quatre informations qui se saisissent en marchant — destination, type,
+ * surface Carrez, loyer hors charges — sont modifiables directement sur la
+ * carte. On n'ouvre le plein écran que pour le reste (bail, DPE, travaux,
+ * commentaire).
+ *
+ * La vignette photo tient lieu de repère : sur un palier, on reconnaît un lot
+ * à sa porte bien plus vite qu'à son numéro. La toucher ouvre l'appareil.
+ */
 export function LotsCartes({
-  lignes, b, dirty, onOuvrir, onAjouter,
+  lignes, b, dirty, onChange, onOuvrir, onAjouter,
 }: {
   lignes: LigneLot[];
   b: BienData;
   dirty: Set<string>;
+  onChange: (id: string, champ: Champ, valeur: string) => void;
   onOuvrir: (id: string) => void;
   onAjouter: () => void;
 }) {
   return (
     <div className="lmob">
-      {lignes.map((r) => {
-        const loyer = nb(r.loyer) ?? 0;
-        const photos = b.photos.filter((p) => p.type === "Lot" && p.lotId === r.id).length;
-        return (
-          <button key={r.id} type="button" className={`lmob-c${dirty.has(r.id) ? " modif" : ""}`} onClick={() => onOuvrir(r.id)}>
-            <span className="l1">
-              <b>Lot {r.numero || "?"}</b>
-              <span className="ty">{r.Type_lot || r.Destination || "—"}</span>
-              {r.etage && <span className="etg">{r.etage}</span>}
-              <span className={`et${loyer > 0 ? " occ" : " libre"}`}>{loyer > 0 ? "Occupé" : "Libre"}</span>
-            </span>
-            <span className="l2">
-              <span className="v"><i>Carrez</i>{r.surface_carrez ? `${r.surface_carrez} m²` : "—"}</span>
-              <span className="v"><i>Loyer HC</i>{loyer > 0 ? `${euros(loyer)}` : "—"}</span>
-              <span className="v"><i>DPE</i>{r.Type_dpe && r.Type_dpe !== "n.c." ? r.Type_dpe : "—"}</span>
-            </span>
-            <span className="l3">
-              {r.Etat && r.Etat !== "n.c." && <span className={`ch${r.Etat === "Travaux" ? " rouge" : ""}`}>{r.Etat}</span>}
-              {nb(r.travaux) ? <span className="ch">{euros(nb(r.travaux))} de travaux</span> : null}
-              {photos > 0 && <span className="ch">{photos} photo{photos > 1 ? "s" : ""}</span>}
-              {dirty.has(r.id) && <span className="ch jaune">Non enregistré</span>}
-              <span className="chev">›</span>
-            </span>
-          </button>
-        );
-      })}
+      {lignes.map((r) => (
+        <CarteLot key={r.id} r={r} b={b} modifie={dirty.has(r.id)} onChange={onChange} onOuvrir={onOuvrir} />
+      ))}
       {lignes.length === 0 && <div className="fempty">Aucun lot — touchez « Ajouter un lot ».</div>}
+      {/* Ajout depuis la liste : le lot naît sur place, prêt à être rempli,
+          sans ouvrir d'écran ni perdre le fil de la visite. */}
       <button type="button" className="lmob-add" onClick={onAjouter}>+ Ajouter un lot</button>
+    </div>
+  );
+}
+
+function CarteLot({
+  r, b, modifie, onChange, onOuvrir,
+}: {
+  r: LigneLot;
+  b: BienData;
+  modifie: boolean;
+  onChange: (id: string, champ: Champ, valeur: string) => void;
+  onOuvrir: (id: string) => void;
+}) {
+  const [envoi, setEnvoi] = useState(false);
+  const appareil = useRef<HTMLInputElement>(null);
+  const [, start] = useTransition();
+
+  const photos = b.photos.filter((p) => p.type === "Lot" && p.lotId === r.id);
+  const loyer = nb(r.loyer) ?? 0;
+  const types = typesFor(r.Destination, r.Type_lot, b.typologies);
+
+  const prendrePhoto = (fichiers: FileList | null) => {
+    const f = fichiers?.[0];
+    if (!f) return;
+    setEnvoi(true);
+    start(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("file", f);
+        await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
+        await rafraichirFiche(String(b.im._id));
+      } catch {
+        /* l'écran de détail affiche l'erreur en clair */
+      }
+      setEnvoi(false);
+      if (appareil.current) appareil.current.value = "";
+    });
+  };
+
+  return (
+    <div className={`lmob-c${modifie ? " modif" : ""}`}>
+      <div className="lmob-hd">
+        {/* Vignette : la photo du lot, ou l'appareil si le lot n'en a pas. */}
+        <button
+          type="button" className="lmob-ph" disabled={r.isNew || envoi}
+          title={r.isNew ? "Enregistrez le lot avant d'y ajouter une photo" : "Prendre une photo du lot"}
+          onClick={() => appareil.current?.click()}
+        >
+          {photos[0]?.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photos[0].url} alt="" />
+          ) : (
+            <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.5-3h5L16 7" /><circle cx="12" cy="13" r="3.4" /></svg>
+          )}
+          {photos.length > 1 && <i>{photos.length}</i>}
+          {envoi && <b>…</b>}
+        </button>
+        <input
+          ref={appareil} type="file" accept="image/*" capture="environment" hidden
+          onChange={(e) => prendrePhoto(e.target.files)}
+        />
+
+        <div className="lmob-id">
+          <span className="num">Lot {r.numero || "?"}</span>
+          {r.etage && <span className="etg">{r.etage}</span>}
+          <span className={`et${loyer > 0 ? " occ" : " libre"}`}>{loyer > 0 ? "Occupé" : "Libre"}</span>
+          {modifie && <span className="ch jaune">Non enregistré</span>}
+        </div>
+      </div>
+
+      {/* Les quatre champs de la visite, modifiables sans ouvrir la fiche. */}
+      <div className="lmob-4">
+        <label>
+          <span>Destination</span>
+          <select
+            value={r.Destination}
+            onChange={(e) => { onChange(r.id, "Destination", e.target.value); onChange(r.id, "Type_lot", ""); }}
+          >
+            <option value="">—</option>
+            {DESTINATIONS.map((d) => <option key={d}>{d}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Type</span>
+          <select value={r.Type_lot} onChange={(e) => onChange(r.id, "Type_lot", e.target.value)}>
+            <option value="">—</option>
+            {types.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Surface Carrez</span>
+          <span className="u">
+            <input inputMode="decimal" value={r.surface_carrez} onChange={(e) => onChange(r.id, "surface_carrez", e.target.value)} />
+            <i>m²</i>
+          </span>
+        </label>
+        <label>
+          <span>Loyer HC</span>
+          <span className="u">
+            <input inputMode="decimal" value={r.loyer} onChange={(e) => onChange(r.id, "loyer", e.target.value)} />
+            <i>€</i>
+          </span>
+        </label>
+      </div>
+
+      <button type="button" className="lmob-plus" onClick={() => onOuvrir(r.id)}>
+        <span className="ch2">
+          {r.Etat && r.Etat !== "n.c." ? r.Etat : "Détails"}
+          {r.Type_dpe && r.Type_dpe !== "n.c." ? ` · DPE ${r.Type_dpe}` : ""}
+          {nb(r.travaux) ? ` · ${euros(nb(r.travaux))} de travaux` : ""}
+        </span>
+        <span className="chev">›</span>
+      </button>
     </div>
   );
 }
