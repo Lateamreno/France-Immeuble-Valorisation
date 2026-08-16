@@ -22,13 +22,16 @@ import { PhotosEcran } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { copierTexte } from "@/components/copier";
 import { PrixEcran } from "@/components/prix";
+import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
+import type { OperationDecoupe } from "@/lib/bubble/server";
+import { PHASES, phase as phaseDe } from "@/lib/decoupe";
 
 
 
 type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
   | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs"
-  | "acheteurs" | "notes"
+  | "acheteurs" | "notes" | "decoupe"
   /* Écran greffé sur la fiche (l'estimation) : il reste monté pendant qu'on
      visite les autres sections, pour ne rien perdre de la saisie (#96). */
   | "encours";
@@ -51,6 +54,7 @@ const I = {
   phone: <><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></>,
   maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
+  decoupe: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></>,
   sablier: <><path d="M7 3h10M7 21h10" /><path d="M8 3v3.5c0 2 4 3.3 4 5.5s-4 3.5-4 5.5V21M16 3v3.5c0 2-4 3.3-4 5.5s4 3.5 4 5.5V21" /></>,
 };
 
@@ -85,8 +89,10 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
 }
 
-export function BienFiche({ b, contenu }: {
+export function BienFiche({ b, contenu, operation }: {
   b: BienData;
+  /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
+  operation?: OperationDecoupe | null;
   /** Contenu qui remplace les sections de la fiche (estimation en cours) :
    *  le rail de droite reste affiché pour garder l'accès aux informations de
    *  l'immeuble pendant la saisie. */
@@ -157,6 +163,9 @@ export function BienFiche({ b, contenu }: {
               <DocumentsCoffre b={b} />
             </>
           )}
+          {sect === "decoupe" && operation && (
+            <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
+          )}
           {sect === "acheteurs" && <AcheteursSection b={b} />}
           {sect === "notes" && <NotesSection b={b} />}
         </div>
@@ -205,6 +214,19 @@ export function BienFiche({ b, contenu }: {
               ))}
             </div>
           ))}
+          {operation && (
+            <button
+              type="button"
+              className={`srow2 sdecoupe${sect === "decoupe" ? " on" : ""}`}
+              onClick={() => setSect("decoupe")}
+            >
+              <span className="sic2"><svg viewBox="0 0 24 24">{I.decoupe}</svg></span>
+              Découpe
+              <span className="right">
+                <span className="pill-dec">{phaseDe(operation.phase).n}/{PHASES.length}</span>
+              </span>
+            </button>
+          )}
           <div className="srow2" style={{ cursor: "default" }}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.folder}</svg></span>
             Documents
@@ -225,6 +247,16 @@ export function BienFiche({ b, contenu }: {
             <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
             Notes
           </button>
+          {/* Tant qu'aucune opération n'est ouverte, l'entrée « Découpe »
+              n'existe pas : c'est ce bouton qui la fait naître. */}
+          {!operation && (
+            <div className="brail-act">
+              <PasserEnDecoupe
+                immeubleId={String(im._id)}
+                valeurBloc={typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined}
+              />
+            </div>
+          )}
         </nav>
         <div className="brail-foot">
           <button className="kbtn" type="button" aria-label="Autres actions">

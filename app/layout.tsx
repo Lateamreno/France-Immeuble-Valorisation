@@ -6,6 +6,7 @@ import { getAgents } from "@/lib/bubble/server";
 import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
 import { listFeedback } from "@/lib/bo/feedback";
+import { lireMode } from "@/lib/bo/mode";
 
 /** Un déploiement de recette porte la marque en négatif et le dit dans le
  *  titre : avec le tableau de bord Vercel, la preview et la production
@@ -39,7 +40,7 @@ export default async function RootLayout({
       <body>
         <div className="shell">
           <Burger />
-          <Rail />
+          <Rail mode={await lireMode()} />
           <div className="main">
             {children}
             <QuickCreate agents={await getAgents().catch(() => [])} />

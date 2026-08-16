@@ -10,6 +10,7 @@ export type NavItem = {
   tool?: "toggle" | "switch-onoff";
 };
 
+/** Menu du mode « Vente en bloc » — l'application telle qu'elle existe. */
 export const NAV: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/mails", label: "Mails" },
@@ -50,3 +51,18 @@ export const AGENTS = [
   "François",
   "Romain",
 ] as const;
+
+/**
+ * Menu du mode « Découpe ».
+ *
+ * En bloc on vend un objet à un investisseur ; en découpe on pilote une
+ * opération sur dix-huit mois. Les deux métiers ne partagent que l'annuaire
+ * des contacts et la messagerie — d'où deux menus, et non un menu commun avec
+ * des entrées grisées.
+ */
+export const NAV_DECOUPE: NavItem[] = [
+  { href: "/decoupe", label: "Dashboard" },
+  { href: "/decoupe/operations", label: "Opérations" },
+  { href: "/mails", label: "Mails" },
+  { href: "/contacts", label: "Contacts" },
+];

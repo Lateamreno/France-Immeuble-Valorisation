@@ -2403,3 +2403,84 @@ export async function noterRetourMail(input: {
   revalidatePath("/mails");
   return suiviId;
 }
+
+/* ---------- Découpe : la couche opération (option A, ce back-office) ---------- */
+
+/**
+ * Ouvre une opération de découpe sur un immeuble — le bouton « Passer en
+ * découpe » de la fiche.
+ *
+ * L'immeuble ne bouge pas : ni son statut de vente, ni ses lots, ni ses
+ * photos. On pose une couche au-dessus, et la fiche gagne une section. Un
+ * immeuble peut donc être en découpe ET suivi en vente en bloc — c'est
+ * précisément ce qui permet de comparer les deux valeurs.
+ */
+export async function ouvrirOperation(immeubleId: string, valeurBloc?: number) {
+  const existante = await operationDe(immeubleId);
+  if (existante) return String(existante._id);
+
+  const id = newId();
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_operation",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      statut: "Prospection",
+      phase: 1,
+      valeur_bloc: valeurBloc,
+      ouverte_le: now,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  refresh(immeubleId);
+  revalidatePath("/decoupe");
+  return id;
+}
+
+/** Relit l'opération d'un immeuble (il y en a au plus une — index unique). */
+async function operationDe(immeubleId: string): Promise<Record<string, unknown> | null> {
+  if (!SB_KEY) return null;
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_operation?data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&select=data&limit=1`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  return rows[0]?.data ?? null;
+}
+
+/** Met à jour l'opération : phase franchie, statut, valeurs, notes. */
+export async function majOperation(
+  immeubleId: string,
+  operationId: string,
+  patch: {
+    phase?: number;
+    statut?: string;
+    valeur_bloc?: number;
+    valeur_decoupe?: number;
+    notes?: string;
+  },
+) {
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_operation",
+    p_id: operationId,
+    p_patch: { ...cleanPatch(patch as Record<string, unknown>), "Modified Date": now },
+  });
+  refresh(immeubleId);
+  revalidatePath("/decoupe");
+}
+
+/** Referme l'opération. La ligne reste : c'est l'historique de l'affaire. */
+export async function cloturerOperation(immeubleId: string, operationId: string) {
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_operation",
+    p_id: operationId,
+    p_patch: { statut: "Clôturée", fermee_le: now, "Modified Date": now },
+  });
+  refresh(immeubleId);
+  revalidatePath("/decoupe");
+}

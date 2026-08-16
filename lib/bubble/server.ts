@@ -1702,3 +1702,87 @@ export async function mailsDuContact(contactId: string): Promise<FilMail[]> {
     })
     .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
 }
+
+/* ========================================================= Découpe (option A)
+ *
+ * La couche opération vit dans CE projet, au-dessus de bo_immeuble : c'est là
+ * que sont les 1 827 immeubles, les contacts, les mandats et les agents.
+ */
+
+export type OperationDecoupe = {
+  id: string;
+  immeubleId: string;
+  statut: string;
+  phase: number;
+  valeurBloc?: number;
+  valeurDecoupe?: number;
+  notes?: string;
+  ouverteLe?: string;
+  fermeeLe?: string;
+  /** Repères de l'immeuble, pour lister sans recharger la fiche. */
+  ville?: string;
+  adresse?: string;
+  photoUrl?: string;
+  adresseGeo?: string;
+  /** Lots de l'immeuble : total, et ceux qui ne sont plus occupés. */
+  lots?: number;
+  lotsLibres?: number;
+};
+
+const versOperation = (o: Record<string, unknown>): OperationDecoupe => ({
+  id: String(o._id),
+  immeubleId: String(o.IMMEUBLE ?? ""),
+  statut: typeof o.statut === "string" ? (o.statut as string) : "Prospection",
+  phase: Number(o.phase ?? 1) || 1,
+  valeurBloc: typeof o.valeur_bloc === "number" ? (o.valeur_bloc as number) : undefined,
+  valeurDecoupe: typeof o.valeur_decoupe === "number" ? (o.valeur_decoupe as number) : undefined,
+  notes: typeof o.notes === "string" ? (o.notes as string) : undefined,
+  ouverteLe: typeof o.ouverte_le === "string" ? (o.ouverte_le as string) : undefined,
+  fermeeLe: typeof o.fermee_le === "string" ? (o.fermee_le as string) : undefined,
+});
+
+/** L'opération d'un immeuble, s'il en a une. */
+export async function getOperation(immeubleId: string): Promise<OperationDecoupe | null> {
+  const rows = await fetchAll("operation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 1)
+    .catch(() => []);
+  return rows[0] ? versOperation(rows[0]) : null;
+}
+
+/** Toutes les opérations, enrichies des repères de leur immeuble. */
+export async function listOperations(): Promise<OperationDecoupe[]> {
+  const rows = await fetchAll("operation", undefined, 200, { field: "Created Date", desc: true }).catch(() => []);
+  if (rows.length === 0) return [];
+  const ops = rows.map(versOperation);
+  const ims = await imLabelMap(ops.map((o) => o.immeubleId));
+
+  // Les lots servent au « x/y vendus » du tableau de bord : on les compte en
+  // une seule requête pour tous les immeubles, pas une par opération.
+  const lots = await fetchAll(
+    "lot",
+    [{ key: "IMMEUBLE", constraint_type: "in", value: ops.map((o) => o.immeubleId).filter(Boolean) }],
+    500,
+  ).catch(() => []);
+  const parIm = new Map<string, { total: number; libres: number }>();
+  for (const l of lots) {
+    const k = String(l.IMMEUBLE ?? "");
+    const e = parIm.get(k) ?? { total: 0, libres: 0 };
+    e.total++;
+    if (!(typeof l.loyer === "number" && (l.loyer as number) > 0)) e.libres++;
+    parIm.set(k, e);
+  }
+
+  return ops.map((o) => {
+    const im = ims.get(o.immeubleId);
+    const c = parIm.get(o.immeubleId);
+    const photo = typeof im?.photo_main_compressed === "string" && im.photo_main_compressed.length > 0;
+    return {
+      ...o,
+      ville: im ? `${im.adresse_ville ?? ""} (${im.adresse_dpt ?? ""})` : undefined,
+      adresse: im ? [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ") : undefined,
+      photoUrl: photo ? photoProxy(im!.photo_main_compressed) : undefined,
+      adresseGeo: !photo && typeof im?.adresse === "string" ? (im.adresse as string) : undefined,
+      lots: c?.total ?? 0,
+      lotsLibres: c?.libres ?? 0,
+    };
+  });
+}

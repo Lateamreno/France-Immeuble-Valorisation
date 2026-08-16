@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BienFiche } from "@/components/bien-fiche";
-import { getBien } from "@/lib/bubble/server";
+import { getBien, getOperation } from "@/lib/bubble/server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,8 @@ export default async function BienPage({
   } catch (e) {
     err = e instanceof Error ? e.message : "erreur";
   }
+  // L'opération de découpe, s'il y en a une : elle ajoute une section au rail.
+  const operation = data ? await getOperation(id).catch(() => null) : null;
 
   if (!data) {
     return (
@@ -34,5 +36,5 @@ export default async function BienPage({
     );
   }
 
-  return <BienFiche b={data} />;
+  return <BienFiche b={data} operation={operation} />;
 }

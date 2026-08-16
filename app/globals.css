@@ -3102,3 +3102,151 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   font-size: 9px; font-weight: 700; letter-spacing: .03em;
   text-align: center; padding: 1px 0; font-family: var(--font-title);
 }
+
+/* ==================================================== Mode Découpe
+   Le sélecteur change le menu et le tableau de bord — jamais la fiche
+   immeuble, qui reste unique et partagée entre les deux métiers. */
+.modesw {
+  display: flex; margin: 10px 12px 5px; border-radius: 5px; overflow: hidden;
+  border: 1px solid #5a5a61;
+}
+.modesw button {
+  flex: 1; border: 0; background: transparent; color: #a9abaf; cursor: pointer;
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 600; padding: 7px 4px;
+}
+.modesw button.on { background: var(--slate); color: #fff; }
+.modesw button:disabled { opacity: .7; cursor: default; }
+.side.mode-decoupe .modesw button.on { background: var(--gold-bo); color: #2f2a12; }
+.modelab {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: #7e8085; padding: 2px 16px 8px;
+}
+.side.mode-decoupe a.sel { box-shadow: inset 3px 0 0 var(--gold-bo); }
+
+/* --- Dashboard découpe --- */
+.dec { padding: 16px 18px 40px; }
+.dec-top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.dec-h { font-family: var(--font-title); font-size: 20px; font-weight: 700; color: var(--slate); }
+.dec-sub { font-size: 12.5px; color: var(--gray-lt); }
+
+.dec-tuiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+.dec-tuile { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; }
+.dec-tuile .k { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--gray-txt); }
+.dec-tuile .v {
+  font-family: var(--font-title); font-size: 21px; font-weight: 700; color: var(--slate);
+  line-height: 1.25; font-variant-numeric: tabular-nums;
+}
+.dec-tuile .v.vert { color: var(--green); }
+.dec-tuile .d { font-size: 11.5px; color: var(--gray-lt); }
+
+.dec-liste { display: flex; flex-direction: column; gap: 10px; }
+.dec-op { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--gold-bo); border-radius: 5px; }
+.dec-op-h { display: flex; gap: 12px; padding: 11px 13px; align-items: flex-start; }
+.dec-op .vign {
+  width: 76px; height: 60px; flex: none; border-radius: 4px; overflow: hidden;
+  background: #eceae7; display: grid; place-items: center;
+}
+.dec-op .vign img { width: 100%; height: 100%; object-fit: cover; }
+.dec-op .vign svg { width: 24px; height: 24px; stroke: var(--gray-lt); fill: none; stroke-width: 1.6; }
+.dec-op-id { flex: 1; min-width: 0; }
+.dec-op-id .v { font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); text-decoration: none; }
+.dec-op-id .a { display: block; font-size: 12px; color: var(--gray-lt); }
+.dec-op-id .chips { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+.dec-op-id .chip {
+  background: var(--cols); color: var(--gray-txt); border-radius: 3px;
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px; font-family: var(--font-title);
+}
+.dec-op-val {
+  flex: none; display: grid; grid-template-columns: auto auto; gap: 1px 10px;
+  align-items: baseline; text-align: right;
+}
+.dec-op-val .l { font-size: 10.5px; color: var(--gray-lt); text-transform: uppercase; }
+.dec-op-val b { font-family: var(--font-title); font-size: 14px; color: var(--slate); font-variant-numeric: tabular-nums; }
+.dec-op-val .ec {
+  grid-column: 1 / -1; font-family: var(--font-title); font-size: 15px; font-weight: 700; margin-top: 3px;
+}
+.dec-op-val .ec.vert { color: var(--green); }
+.dec-op-val .ec.rouge { color: var(--red); }
+
+.dec-op-ph {
+  display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer;
+  border: 0; border-top: 1px solid var(--line-lt); background: none;
+  padding: 8px 13px; font-family: inherit; text-align: left;
+}
+.dec-op-ph .jauge { width: 90px; height: 5px; background: var(--band); border-radius: 3px; overflow: hidden; flex: none; }
+.dec-op-ph .jauge i { display: block; height: 100%; background: var(--gold-bo); }
+.dec-op-ph .t { font-size: 12.5px; color: var(--slate); font-weight: 700; font-family: var(--font-title); }
+.dec-op-ph .chev { margin-left: auto; color: var(--gray-lt); font-size: 17px; line-height: 1; }
+
+.dec-op-d { padding: 0 13px 12px; }
+.dec-op-d .d { font-size: 12px; color: var(--gray-txt); margin-bottom: 9px; }
+.dec-op-d .lk { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 11.5px; }
+.dec-op-d .lk a { color: var(--gold-bo); font-weight: 700; }
+.dec-op-d .lk .st { color: var(--gray-lt); }
+
+/* Les sept phases, cliquables : c'est le pilotage de l'opération. */
+.dec-phs, .dec-op-d .phs { display: flex; flex-wrap: wrap; gap: 6px; }
+.dec-phs .ph, .dec-op-d .ph {
+  border: 1px solid #d5d5d5; background: #fff; border-radius: 20px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12px; font-weight: 600; color: var(--slate-2);
+  padding: 7px 13px; min-height: 36px;
+}
+.dec-phs .ph b, .dec-op-d .ph b { color: var(--gray-lt); margin-right: 3px; }
+.dec-phs .ph.faite, .dec-op-d .ph.faite { background: #f2f5f1; border-color: #cfe0c9; color: #3f6b36; }
+.dec-phs .ph.faite b, .dec-op-d .ph.faite b { color: #6a9960; }
+.dec-phs .ph.on, .dec-op-d .ph.on { background: var(--gold-bo); border-color: var(--gold-bo); color: #fff; }
+.dec-phs .ph.on b, .dec-op-d .ph.on b { color: #fff; }
+.dec-phs .ph:disabled, .dec-op-d .ph:disabled { opacity: .6; cursor: default; }
+
+/* --- La section Découpe de la fiche --- */
+.srow2.sdecoupe { color: var(--gold-bo); font-weight: 700; border-top: 1px solid var(--line); }
+.srow2.sdecoupe .sic2 svg { stroke: var(--gold-bo); }
+.pill-dec {
+  background: var(--gold-bo); color: #fff; border-radius: 9px;
+  font-size: 10.5px; font-weight: 700; padding: 1px 7px; font-family: var(--font-title);
+}
+.brail-act { padding: 10px 13px; border-top: 1px solid var(--line); }
+.brail-act .fadd { width: 100%; }
+
+.dec-fiche-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.dec-fiche-h .st {
+  background: var(--slate); color: #fff; border-radius: 3px; font-size: 11px;
+  font-weight: 700; padding: 3px 9px; font-family: var(--font-title);
+}
+.dec-fiche-h .ph { font-family: var(--font-title); font-size: 13.5px; font-weight: 700; color: var(--slate); }
+.dec-fiche-h .jauge { flex: 1; min-width: 90px; height: 5px; background: var(--band); border-radius: 3px; overflow: hidden; }
+.dec-fiche-h .jauge i { display: block; height: 100%; background: var(--gold-bo); }
+.dec-fiche-d { font-size: 12.5px; color: var(--gray-txt); margin-bottom: 6px; }
+
+.dec-vals { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+.dec-vals label { display: flex; flex-direction: column; gap: 3px; }
+.dec-vals label > span:first-child { font-size: 11.5px; color: var(--gray-txt); }
+.dec-vals .u { position: relative; display: block; }
+.dec-vals .u i {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-style: normal; font-size: 12px; color: var(--gray-lt); pointer-events: none;
+}
+.dec-vals input {
+  width: 100%; border: 1px solid #cfcfcf; border-radius: 4px; background: #fff;
+  font-family: var(--font-body); font-size: 16px; color: var(--slate);
+  padding: 9px 30px 9px 11px; min-height: 42px;
+}
+.dec-vals input:focus { border-color: var(--gold-bo); outline: none; }
+.dec-vals .ec { display: flex; flex-direction: column; align-items: flex-end; }
+.dec-vals .ec > span { font-size: 11.5px; color: var(--gray-txt); }
+.dec-vals .ec b { font-family: var(--font-title); font-size: 20px; color: var(--slate); }
+.dec-vals .ec b.vert { color: var(--green); }
+.dec-vals .ec b.rouge { color: var(--red); }
+.dec-vals .ec i { font-style: normal; font-size: 11.5px; color: var(--gray-lt); }
+
+/* --- Téléphone : le tableau de bord découpe se replie --- */
+@media (max-width: 900px) { .dec-tuiles { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) {
+  .dec { padding: 12px 12px 30px; }
+  .dec-tuiles { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .dec-op-h { flex-wrap: wrap; }
+  .dec-op-val { width: 100%; text-align: left; grid-template-columns: auto 1fr; }
+  .dec-op-val .ec { text-align: left; }
+  .dec-vals { grid-template-columns: 1fr 1fr; }
+  .dec-vals .ec { grid-column: 1 / -1; align-items: flex-start; }
+}
