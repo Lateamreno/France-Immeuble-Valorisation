@@ -1329,7 +1329,7 @@ export async function envoyerEstimation(input: {
   /** Fichiers ajoutés à la volée depuis le poste de l'agent. */
   fichiers?: FormData;
 }) {
-  const { envoyerMail, mailConfigure } = await import("./mail");
+  const { envoyerMail, mailConfigure, domaineEnvoi } = await import("./mail");
   if (!mailConfigure()) throw new Error("Envoi non configuré");
   if (!input.to.includes("@")) throw new Error("Adresse du destinataire manquante");
 
@@ -1416,7 +1416,15 @@ export async function envoyerEstimation(input: {
     throw new Error("Pièces jointes trop lourdes (20 Mo maximum au total)");
   }
 
+  // Le jeton de rattachement voyage dans l'identifiant du message : toute
+  // réponse le renverra dans `In-Reply-To`, y compris si le vendeur répond
+  // depuis son téléphone. C'est ce qui permet à la boîte métier de recoller
+  // la réponse sur CETTE estimation, sans deviner. Voir lib/bo/rattachement.
+  const { nouveauJeton, messageIdDuJeton } = await import("./rattachement");
+  const jeton = nouveauJeton();
+
   const messageId = await envoyerMail({
+    messageId: messageIdDuJeton(jeton, domaineEnvoi()),
     to: input.to,
     cc: input.cc?.trim() || undefined,
     bccSup: input.cci?.trim() || undefined,
@@ -1436,7 +1444,8 @@ export async function envoyerEstimation(input: {
       sent: true, sent_at: now, sent_to: input.to,
       sent_cc: input.cc?.trim() || undefined,
       sent_pj: pieces.map((p) => p.filename).join(", "),
-      sent_message_id: messageId, statut: "3 - Envoyée", "Modified Date": now,
+      sent_message_id: messageId, sent_jeton: jeton,
+      statut: "3 - Envoyée", "Modified Date": now,
     }),
   });
   refresh(input.immeubleId);
@@ -2335,4 +2344,62 @@ export async function setLotTravaux(
   }
   await rpc("bo_recompute_travaux", { p_id: immeubleId });
   refresh(immeubleId);
+}
+
+/* ---------- Module Mails (livraison 1) ---------- */
+
+/**
+ * « Noter le retour » : la carte dorée du fil.
+ *
+ * Écrit une ligne de suivi sur l'immeuble, la relie au mail (la clé `MAIL` de
+ * `bo_suivi` existe depuis Bubble, on ne fait que la renseigner enfin) et
+ * consigne le retour sur l'estimation. Un seul geste, trois écritures.
+ */
+export async function noterRetourMail(input: {
+  mailId: string;
+  immeubleId?: string;
+  contactId?: string;
+  estimationId?: string;
+  retour: string;
+}) {
+  if (!input.immeubleId) throw new Error("Ce message n'est rattaché à aucun immeuble");
+  const now = new Date().toISOString();
+  const suiviId = newId();
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: suiviId,
+    p_doc: cleanPatch({
+      Type: "Retour e-mail",
+      CONTACT: input.contactId,
+      IMMEUBLEs: [input.immeubleId],
+      MAIL: input.mailId,
+      Canals: ["Email"],
+      notes: input.retour,
+      date_start: now,
+      Statut: "Traité",
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+
+  // Le mail garde la trace du suivi qu'il a produit : c'est ce qui évite de
+  // reproposer la carte au prochain affichage du fil.
+  await rpc("bo_patch_doc", {
+    p_table: "bo_mail",
+    p_id: input.mailId,
+    p_patch: { SUIVI: suiviId, retour_note: input.retour, "Modified Date": now },
+  });
+
+  if (input.estimationId) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_estimation",
+      p_id: input.estimationId,
+      p_patch: { retour_vendeur: input.retour, retour_at: now, "Modified Date": now },
+    });
+  }
+
+  refresh(input.immeubleId);
+  revalidatePath("/mails");
+  return suiviId;
 }

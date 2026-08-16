@@ -1582,3 +1582,119 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
     },
   };
 }
+
+/* ============================================================ Module Mails
+ *
+ * Livraison 1 : l'écran est servi par `bo_mail`, la table que le BO Bubble
+ * remplit depuis toujours à chaque envoi (657 lignes, déjà rattachées à
+ * l'immeuble, l'estimation et le suivi). La relève IMAP viendra alimenter la
+ * même table avec les messages entrants — l'écran n'aura pas à changer.
+ */
+
+export type FilMail = {
+  id: string;
+  /** Entrant ou sortant. Tant qu'IMAP n'est pas branché : tout est sortant. */
+  entrant: boolean;
+  objet: string;
+  extrait: string;
+  corps: string;
+  /** Nom lisible de l'interlocuteur (pas de l'agent). */
+  qui: string;
+  adresse: string;
+  date?: string;
+  contactId?: string;
+  immeubleId?: string;
+  immeubleLabel?: string;
+  estimationId?: string;
+  suiviId?: string;
+  /** Nombre de pièces jointes. */
+  pj: number;
+  /** Pile d'affichage : rattaché à une affaire, ou à classer. */
+  pile: "affaires" | "a_classer";
+};
+
+/** Le corps des mails du BO porte un balisage façon BBCode : on le retire. */
+const texteBrut = (v: unknown) =>
+  typeof v === "string"
+    ? v.replace(/\[url=[^\]]*\]|\[\/?[a-z]+\]/gi, "").replace(/\s+/g, " ").trim()
+    : "";
+
+export async function listMails(limite = 200): Promise<FilMail[]> {
+  const rows = await fetchAll("mail", undefined, limite, { field: "Created Date", desc: true }).catch(() => []);
+  if (rows.length === 0) return [];
+
+  const ims = await imLabelMap(rows.map((m) => String(m.IMMEUBLE ?? "")));
+  const contactIds = [...new Set(rows.flatMap((m) => [String(m.TO ?? ""), String(m.FROM ?? "")]).filter(Boolean))];
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < contactIds.length; i += 100) {
+    const lot = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: contactIds.slice(i, i + 100) }]).catch(() => []);
+    for (const c of lot) contacts.set(String(c._id), c);
+  }
+
+  return rows.map((m) => {
+    // Sans direction enregistrée, un mail de `bo_mail` est un envoi du BO :
+    // c'est la seule chose que Bubble écrivait. IMAP posera `direction`.
+    const entrant = m.direction === "in";
+    const imId = typeof m.IMMEUBLE === "string" ? (m.IMMEUBLE as string) : undefined;
+    // L'interlocuteur, c'est toujours l'autre : le destinataire d'un envoi,
+    // l'expéditeur d'une réception.
+    const autreId = String((entrant ? m.FROM : m.TO) ?? "");
+    const autre = contacts.get(autreId);
+    const corps = texteBrut(m.body);
+    const im = imId ? ims.get(imId) : undefined;
+    return {
+      id: String(m._id),
+      entrant,
+      objet: typeof m.subject === "string" && m.subject ? (m.subject as string) : "(sans objet)",
+      extrait: corps.slice(0, 150),
+      corps,
+      qui: contactLabel(autre) || String(m.to ?? m.sender_name ?? "—"),
+      adresse: String((entrant ? m.from : m.to) ?? ""),
+      date: typeof m.date_envoi === "string" ? (m.date_envoi as string)
+        : typeof m["Created Date"] === "string" ? (m["Created Date"] as string) : undefined,
+      contactId: autreId || undefined,
+      immeubleId: imId,
+      immeubleLabel: im ? String(im.adresse_ville ?? "") : undefined,
+      estimationId: typeof m.ESTIMATION === "string" ? (m.ESTIMATION as string) : undefined,
+      suiviId: typeof m.SUIVI === "string" ? (m.SUIVI as string) : undefined,
+      pj: Array.isArray(m.FILEs) ? (m.FILEs as unknown[]).length : 0,
+      pile: imId || m.ESTIMATION ? "affaires" : "a_classer",
+    } satisfies FilMail;
+  });
+}
+
+/** Les échanges d'un contact, pour l'onglet « Échanges » de sa fiche. */
+export async function mailsDuContact(contactId: string): Promise<FilMail[]> {
+  const [recus, envoyes] = await Promise.all([
+    fetchAll("mail", [{ key: "FROM", constraint_type: "equals", value: contactId }], 100).catch(() => []),
+    fetchAll("mail", [{ key: "TO", constraint_type: "equals", value: contactId }], 100).catch(() => []),
+  ]);
+  const rows = [...recus, ...envoyes].filter((m, i, t) => t.findIndex((x) => x._id === m._id) === i);
+  if (rows.length === 0) return [];
+  const ims = await imLabelMap(rows.map((m) => String(m.IMMEUBLE ?? "")));
+  return rows
+    .map((m) => {
+      const corps = texteBrut(m.body);
+      const imId = typeof m.IMMEUBLE === "string" ? (m.IMMEUBLE as string) : undefined;
+      const im = imId ? ims.get(imId) : undefined;
+      return {
+        id: String(m._id),
+        entrant: m.direction === "in" || m.FROM === contactId,
+        objet: typeof m.subject === "string" && m.subject ? (m.subject as string) : "(sans objet)",
+        extrait: corps.slice(0, 150),
+        corps,
+        qui: "",
+        adresse: String(m.to ?? ""),
+        date: typeof m.date_envoi === "string" ? (m.date_envoi as string)
+          : typeof m["Created Date"] === "string" ? (m["Created Date"] as string) : undefined,
+        contactId,
+        immeubleId: imId,
+        immeubleLabel: im ? String(im.adresse_ville ?? "") : undefined,
+        estimationId: typeof m.ESTIMATION === "string" ? (m.ESTIMATION as string) : undefined,
+        suiviId: typeof m.SUIVI === "string" ? (m.SUIVI as string) : undefined,
+        pj: Array.isArray(m.FILEs) ? (m.FILEs as unknown[]).length : 0,
+        pile: imId ? "affaires" : "a_classer",
+      } satisfies FilMail;
+    })
+    .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+}

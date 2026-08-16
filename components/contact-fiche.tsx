@@ -6,8 +6,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Copier } from "@/components/copier";
-import type { ContactData } from "@/lib/bubble/server";
+import type { ContactData, FilMail } from "@/lib/bubble/server";
 import { dmy, euros } from "@/lib/format";
+import { EchangesContact } from "@/components/mails";
 import { archiverContact, updateContact } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -25,7 +26,11 @@ function AjouterDepuisBarre({ quoi }: { quoi: string }) {
   );
 }
 
-export function ContactFiche({ d }: { d: ContactData }) {
+export function ContactFiche({ d, echanges = [] }: {
+  d: ContactData;
+  /** E-mails échangés avec ce contact (module Mails). */
+  echanges?: FilMail[];
+}) {
   const c = d.c;
   const id = String(c._id);
   const [tab, setTab] = useState("infos");
@@ -78,6 +83,8 @@ export function ContactFiche({ d }: { d: ContactData }) {
     { key: "visites", label: "Visites", n: d.visites.length },
     { key: "offres", label: "Offres", n: d.offres.length },
     { key: "suivis", label: "Suivis", n: d.suivis.length },
+    // Les e-mails échangés avec ce contact (module Mails).
+    { key: "echanges", label: "Échanges", n: echanges.length },
   ];
 
   return (
@@ -315,6 +322,12 @@ export function ContactFiche({ d }: { d: ContactData }) {
                 <span className="badge-o">{S(s.Motif_standby ?? s.Type)}</span>
               </div>
             ))}
+          </>
+        )}
+        {tab === "echanges" && (
+          <>
+            <div className="fsub">Échanges par e-mail</div>
+            <EchangesContact mails={echanges} />
           </>
         )}
       </div>

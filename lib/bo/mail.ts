@@ -37,6 +37,12 @@ export function mailConfigure() {
   return !!(c.host && c.user && c.pass && c.from);
 }
 
+/** Domaine d'envoi, pour fabriquer les identifiants de message. */
+export function domaineEnvoi() {
+  const from = CONF().from ?? "";
+  return from.split("@")[1]?.replace(/[>\s]/g, "") || "france-immeuble.fr";
+}
+
 export async function envoyerMail(m: {
   to: string;
   subject: string;
@@ -49,6 +55,9 @@ export async function envoyerMail(m: {
   bcc?: string;
   /** Copie cachée demandée par l'agent, en plus de la sienne. */
   bccSup?: string;
+  /** Identifiant de message imposé — il porte le jeton de rattachement, que
+   *  toute réponse renverra dans `In-Reply-To`. Voir lib/bo/rattachement.ts. */
+  messageId?: string;
   attachments?: PieceJointe[];
 }) {
   const c = CONF();
@@ -70,6 +79,7 @@ export async function envoyerMail(m: {
     // En redirection, pas de copie cachée : tout arrive déjà au même endroit.
     bcc: vers ? undefined : [m.bcc, m.bccSup].filter(Boolean).join(", ") || undefined,
     replyTo: m.replyTo || undefined,
+    messageId: m.messageId,
     subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
     text: vers
       ? `— Envoi de recette. Destinataire réel : ${m.to}${m.cc ? ` · copie : ${m.cc}` : ""}${m.bcc ? ` · copie cachée : ${m.bcc}` : ""} —\n\n${m.text}`
