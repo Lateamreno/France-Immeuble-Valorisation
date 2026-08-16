@@ -113,33 +113,28 @@ function CarteLot({
 
   return (
     <div className={`lmob-c${modifie ? " modif" : ""}`}>
-      <div className="lmob-hd">
-        {/* Vignette : la photo du lot, ou l'appareil si le lot n'en a pas. */}
+      <div className="lmob-id">
+        <span className="num">Lot {r.numero || "?"}</span>
+        {r.etage && <span className="etg">{r.etage}</span>}
+        <span className={`et${loyer > 0 ? " occ" : " libre"}`}>{loyer > 0 ? "Occupé" : "Libre"}</span>
+        {modifie && <span className="ch jaune">Non enregistré</span>}
+
+        {/* Pas de vignette : afficher les photos sur la tuile la rendait trop
+            haute pour une liste qu'on parcourt en marchant. Juste l'appareil,
+            avec le nombre de prises déjà faites. On les regarde dans le
+            détail du lot ou dans l'écran Photos. */}
         <button
-          type="button" className="lmob-ph" disabled={r.isNew || envoi}
+          type="button" className="lmob-cam" disabled={r.isNew || envoi}
           title={r.isNew ? "Enregistrez le lot avant d'y ajouter une photo" : "Prendre une photo du lot"}
           onClick={() => appareil.current?.click()}
         >
-          {photos[0]?.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photos[0].url} alt="" />
-          ) : (
-            <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.5-3h5L16 7" /><circle cx="12" cy="13" r="3.4" /></svg>
-          )}
-          {photos.length > 1 && <i>{photos.length}</i>}
-          {envoi && <b>…</b>}
+          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.5-3h5L16 7" /><circle cx="12" cy="13" r="3.4" /></svg>
+          {envoi ? <i>…</i> : photos.length > 0 ? <i>{photos.length}</i> : null}
         </button>
         <input
           ref={appareil} type="file" accept="image/*" capture="environment" hidden
           onChange={(e) => prendrePhoto(e.target.files)}
         />
-
-        <div className="lmob-id">
-          <span className="num">Lot {r.numero || "?"}</span>
-          {r.etage && <span className="etg">{r.etage}</span>}
-          <span className={`et${loyer > 0 ? " occ" : " libre"}`}>{loyer > 0 ? "Occupé" : "Libre"}</span>
-          {modifie && <span className="ch jaune">Non enregistré</span>}
-        </div>
       </div>
 
       {/* Les quatre champs de la visite, modifiables sans ouvrir la fiche. */}

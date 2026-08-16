@@ -2901,23 +2901,7 @@ select.pr-in { cursor: pointer; }
 }
 .lmob-c.modif { border-left-color: var(--gold-bo); background: #fffdf6; }
 
-.lmob-hd { display: flex; gap: 10px; align-items: flex-start; }
-.lmob-ph {
-  position: relative; flex: none; width: 56px; height: 56px; border-radius: 4px;
-  border: 1px solid var(--line); background: #eceae7; overflow: hidden; cursor: pointer;
-  display: grid; place-items: center; padding: 0;
-}
-.lmob-ph img { width: 100%; height: 100%; object-fit: cover; }
-.lmob-ph svg { width: 22px; height: 22px; stroke: var(--gray-lt); fill: none; stroke-width: 1.6; }
-.lmob-ph i {
-  position: absolute; right: 2px; bottom: 2px; font-style: normal;
-  background: var(--slate); color: #fff; border-radius: 2px;
-  font-size: 9.5px; font-weight: 700; padding: 0 4px;
-}
-.lmob-ph b { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,.75); font-size: 18px; }
-.lmob-ph:disabled { opacity: .55; cursor: default; }
-
-.lmob-id { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 2px; }
+.lmob-id { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .lmob-id .num { font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); }
 .lmob-id .etg { font-size: 11.5px; color: var(--gray-lt); }
 .lmob-id .et, .lmob-id .ch {
@@ -2927,6 +2911,20 @@ select.pr-in { cursor: pointer; }
 .lmob-id .et.occ { background: #fdefe0; color: #a3550a; }
 .lmob-id .et.libre { background: var(--cols); color: var(--gray-txt); }
 .lmob-id .ch.jaune { background: #fdf6e5; color: #8a6d1a; }
+/* L'appareil photo, discret, calé à droite de la ligne d'identité. */
+.lmob-cam {
+  margin-left: auto; flex: none; position: relative; cursor: pointer;
+  border: 1px solid #d5d5d5; background: #fff; border-radius: 5px;
+  width: 40px; height: 34px; display: grid; place-items: center; padding: 0;
+}
+.lmob-cam svg { width: 18px; height: 18px; stroke: var(--slate-2); fill: none; stroke-width: 1.7; }
+.lmob-cam:hover:not(:disabled) { border-color: var(--gold-bo); }
+.lmob-cam:disabled { opacity: .4; cursor: default; }
+.lmob-cam i {
+  position: absolute; top: -6px; right: -6px; font-style: normal;
+  background: var(--slate); color: #fff; border-radius: 9px;
+  font-size: 9.5px; font-weight: 700; padding: 1px 5px; font-family: var(--font-title);
+}
 
 /* Les quatre champs, en deux lignes de deux. */
 .lmob-4 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
