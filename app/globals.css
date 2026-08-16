@@ -3029,3 +3029,37 @@ select.pr-in { cursor: pointer; }
   .gph-grid { grid-template-columns: repeat(2, 1fr); }
   .ml-liste { max-height: 38vh; }
 }
+
+/* ============================== Dashboard repliable (demande MAV, mobile)
+   Les trois bandeaux étaient déjà repliables, mais rien ne le disait : un
+   chevron l'annonce désormais. Les neuf colonnes le deviennent à leur tour.
+
+   Le pli par défaut n'est pas le même selon l'écran, et c'est le CSS qui en
+   décide — pas React. Le serveur et le navigateur rendent donc exactement le
+   même HTML : ni clignotement au chargement, ni alerte d'hydratation. Les
+   classes `plie` / `deplie` ne portent que les choix explicites de l'agent,
+   et gagnent toujours sur le défaut. */
+.bchev, .cchev {
+  flex: none; color: var(--gray-lt); font-size: 13px; line-height: 1;
+  transition: transform .16s ease; transform: rotate(-90deg);
+}
+.bchev.on { transform: none; }
+.bloc-band { cursor: pointer; }
+
+/* Le sous-titre devient un bouton : on lui retire l'habillage natif. */
+.col-head { cursor: pointer; width: 100%; text-align: left; font-family: inherit; border: 0; background: none; }
+.col-head .cchev { margin-left: 6px; }
+/* Écran large : tout est ouvert, comme aujourd'hui. Seul un pli explicite ferme. */
+.col .cchev { transform: none; }
+.col.plie .col-body { display: none; }
+.col.plie .cchev { transform: rotate(-90deg); }
+
+/* Téléphone : tout est replié, pour lire les neuf en-têtes et leurs compteurs
+   d'un seul coup d'œil. Seul un dépli explicite ouvre. */
+body.ecran-tel .col-body { display: none; }
+body.ecran-tel .col .cchev { transform: rotate(-90deg); }
+body.ecran-tel .col.deplie .col-body { display: flex; }
+body.ecran-tel .col.deplie .cchev { transform: none; }
+/* Une colonne repliée n'a plus besoin de sa hauteur minimale de colonne. */
+body.ecran-tel .col { min-height: 0; }
+body.ecran-tel .col-head { padding: 12px 12px; }

@@ -9,15 +9,21 @@ import { usePathname } from "next/navigation";
 
 /** Même seuil que la bascule des barres latérales côté CSS. */
 const SEUIL = 1100;
+/** Téléphone : en dessous, le dashboard replie ses colonnes par défaut. */
+const SEUIL_TEL = 640;
 
 export function Burger() {
   const chemin = usePathname();
   const [etroit, setEtroit] = useState(false);
+  const [tel, setTel] = useState(false);
   const [ouvert, setOuvert] = useState<"nav" | "fiche" | null>(null);
   const [aFiche, setAFiche] = useState(false);
 
   useEffect(() => {
-    const mesurer = () => setEtroit(window.innerWidth < SEUIL);
+    const mesurer = () => {
+      setEtroit(window.innerWidth < SEUIL);
+      setTel(window.innerWidth < SEUIL_TEL);
+    };
     mesurer();
     window.addEventListener("resize", mesurer);
     return () => window.removeEventListener("resize", mesurer);
@@ -33,10 +39,11 @@ export function Burger() {
   useEffect(() => {
     const c = document.body.classList;
     c.toggle("nav-etroite", etroit);
+    c.toggle("ecran-tel", tel);
     c.toggle("nav-ouverte", ouvert === "nav");
     c.toggle("fiche-ouverte", ouvert === "fiche");
-    return () => { c.remove("nav-etroite", "nav-ouverte", "fiche-ouverte"); };
-  }, [etroit, ouvert]);
+    return () => { c.remove("nav-etroite", "ecran-tel", "nav-ouverte", "fiche-ouverte"); };
+  }, [etroit, tel, ouvert]);
 
   // Échap referme, comme partout ailleurs dans l'outil.
   useEffect(() => {

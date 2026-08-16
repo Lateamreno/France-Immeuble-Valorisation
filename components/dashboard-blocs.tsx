@@ -308,8 +308,24 @@ function Card({
   );
 }
 
+/** Vrai quand le dashboard est en mode téléphone (classe posée par Burger). */
+const estTel = () => typeof document !== "undefined" && document.body.classList.contains("ecran-tel");
+
 function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(b.openDefault);
+  /* Colonnes repliées / dépliées EXPLICITEMENT par l'agent. Deux ensembles
+     plutôt qu'un booléen : le pli par défaut n'est pas le même sur téléphone
+     (tout replié, pour lire les neuf en-têtes d'un coup d'œil) et sur écran
+     large (tout ouvert, comme aujourd'hui). En laissant le défaut au CSS, le
+     rendu du serveur et celui du navigateur restent identiques — aucun
+     clignotement, aucune alerte d'hydratation. */
+  const [plies, setPlies] = useState<Set<string>>(new Set());
+  const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  const basculerCol = (cle: string) => {
+    const ouverteMaintenant = deplies.has(cle) || (!plies.has(cle) && !estTel());
+    setPlies((s) => { const n = new Set(s); if (ouverteMaintenant) n.add(cle); else n.delete(cle); return n; });
+    setDeplies((s) => { const n = new Set(s); if (ouverteMaintenant) n.delete(cle); else n.add(cle); return n; });
+  };
   return (
     <section className="bloc">
       <div className="bloc-band" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
@@ -325,6 +341,8 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
         )}
         {b.nred > 0 && <span className="nred">{b.nred}</span>}
         <span className="nsq">{b.nsq}</span>
+        {/* Rien n'indiquait que le bandeau était cliquable (retour MAV). */}
+        <span className={`bchev${open ? " on" : ""}`} aria-hidden>˅</span>
       </div>
       {open && b.ventes && (
         <div className="vbar">
@@ -335,13 +353,17 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
       {open && (
         <div className="cols">
           {b.cols.map((col) => (
-            <div className="col" key={col.key}>
-              <div className="col-head">
+            <div
+              className={`col${plies.has(col.key) ? " plie" : ""}${deplies.has(col.key) ? " deplie" : ""}`}
+              key={col.key}
+            >
+              <button type="button" className="col-head" onClick={() => basculerCol(col.key)}>
                 <span className="cic"><svg viewBox="0 0 24 24">{COL_IC[col.icon]}</svg></span>
                 <span className="t">{col.titre}</span>
                 {col.fee && <span className="kchip">{col.fee}</span>}
                 <span className="n">{col.count}</span>
-              </div>
+                <span className="cchev" aria-hidden>˅</span>
+              </button>
               <div className="col-body">
                 {col.cards.map((c) => (
                   <Card key={c.id} c={c} mock={mock} agents={agents} />
