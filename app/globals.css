@@ -3109,6 +3109,12 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .modesw {
   display: flex; margin: 10px 12px 5px; border-radius: 5px; overflow: hidden;
   border: 1px solid #5a5a61;
+  /* `.side` est une colonne flex. Un enfant qui porte un `overflow` autre que
+     `visible` passe en `min-height: 0` au lieu de `auto` : il perd le droit de
+     garder la hauteur de son contenu et se fait écraser à l'épaisseur de ses
+     bordures. D'où `flex: none`, sans quoi le sélecteur est bien rendu… sur
+     2 px de haut, donc invisible. */
+  flex: none;
 }
 .modesw button {
   flex: 1; border: 0; background: transparent; color: #a9abaf; cursor: pointer;
@@ -3119,7 +3125,7 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .side.mode-decoupe .modesw button.on { background: var(--gold-bo); color: #2f2a12; }
 .modelab {
   font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-  color: #7e8085; padding: 2px 16px 8px;
+  color: #7e8085; padding: 2px 16px 8px; flex: none;
 }
 .side.mode-decoupe a.sel { box-shadow: inset 3px 0 0 var(--gold-bo); }
 
