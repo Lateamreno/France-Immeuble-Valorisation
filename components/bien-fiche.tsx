@@ -89,14 +89,17 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
 }
 
-export function BienFiche({ b, contenu, operation }: {
+export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
   operation?: OperationDecoupe | null;
-  /** Contenu qui remplace les sections de la fiche (estimation en cours) :
-   *  le rail de droite reste affiché pour garder l'accès aux informations de
-   *  l'immeuble pendant la saisie. */
+  /** Contenu qui remplace les sections de la fiche (estimation en cours,
+   *  mandat en cours de rédaction) : le rail de droite reste affiché pour
+   *  garder l'accès aux informations de l'immeuble pendant la saisie. */
   contenu?: React.ReactNode;
+  /** Ce que le rail annonce pour cet écran. Défaut : l'estimation. */
+  contenuLabel?: string;
+  contenuIcone?: "estimation" | "mandat";
 }) {
   const [sect, setSect] = useState<SectionKey>(contenu ? "encours" : "suivi");
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
@@ -191,8 +194,10 @@ export function BienFiche({ b, contenu, operation }: {
               className={`srow2 encours${sect === "encours" ? " on" : ""}`}
               onClick={() => setSect("encours")}
             >
-              <span className="sic2"><svg viewBox="0 0 24 24">{I.calc}</svg></span>
-              Estimation en cours
+              <span className="sic2">
+                <svg viewBox="0 0 24 24">{contenuIcone === "mandat" ? I.brief : I.calc}</svg>
+              </span>
+              {contenuLabel ?? "Estimation en cours"}
               <span className="right"><span className="pastille" /></span>
             </button>
           )}
@@ -803,7 +808,7 @@ function MandatsSection({ b }: { b: BienData }) {
           <Row key={m._id as string}>
             <div className="grow">
               <div className="t">
-                <Link href={`/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
+                <Link href={`/bien/${String(b.im._id)}/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
                   {String(m.Type ?? "Vente")} {String(m.Type_exclu ?? "")} {m.numero ? `· #${m.numero}` : "· Pas de numéro"}
                 </Link>
               </div>

@@ -737,10 +737,18 @@ export async function getEstimation(id: string): Promise<Record<string, unknown>
   return r.results[0] ?? null;
 }
 
-/** Un mandat + son immeuble principal (pour la fiche mandat). */
+/**
+ * Un mandat, son immeuble, et l'état locatif de cet immeuble.
+ *
+ * Les lots ne sont pas un supplément d'âme : depuis les retours #102 et #103,
+ * l'onglet Objet est SERVI par eux (occupation, surfaces, descriptif légal).
+ * Les charger ici évite que l'écran mandat aille les rechercher lui-même.
+ */
 export async function getMandat(id: string): Promise<{
   m: Record<string, unknown>;
   im: Record<string, unknown> | null;
+  lots: Record<string, unknown>[];
+  agent: Agent | null;
 } | null> {
   const r = await bq("mandat", {
     constraints: [{ key: "_id", constraint_type: "equals", value: id }],
@@ -749,10 +757,22 @@ export async function getMandat(id: string): Promise<{
   const m = r.results[0];
   if (!m) return null;
   const imId = Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as string[])[0] : undefined;
-  const im = imId
-    ? (await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: imId }], limit: 1 })).results[0] ?? null
-    : null;
-  return { m, im };
+  const [im, lots, tousAgents] = await Promise.all([
+    imId
+      ? bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: imId }], limit: 1 })
+          .then((x) => x.results[0] ?? null)
+          .catch(() => null)
+      : Promise.resolve(null),
+    imId
+      ? fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: imId }], 200).catch(() => [])
+      : Promise.resolve([] as Record<string, unknown>[]),
+    agents().catch(() => [] as Agent[]),
+  ]);
+  const lotsTries = [...lots].sort(
+    (a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0),
+  );
+  const agent = tousAgents.find((a) => a.id === String(m.AGENT ?? "")) ?? null;
+  return { m, im, lots: lotsTries, agent };
 }
 
 /* ---------- Vues listes (réplique des modules de la sidebar) ---------- */

@@ -32,7 +32,7 @@ export function AddMandatButton({ b }: { b: BienData }) {
         remarques: rem || undefined,
       });
       setOpen(false);
-      router.push(`/mandat/${id}`);
+      router.push(`/bien/${immeubleId}/mandat/${id}`);
     });
 
   return (

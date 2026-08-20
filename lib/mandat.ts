@@ -1,0 +1,408 @@
+// Socle métier du mandat — tout ce qui se déduit, rien qui s'affiche.
+//
+// Trois idées structurent ce fichier :
+//   1. Les mandants sont des CONTACTS, pas des chaînes de caractères. Le modèle
+//      plat du BO (prénom_m1/nom_m1, prénom_m2/nom_m2) plafonne à deux ; on le
+//      garde alimenté pour Bubble mais la vérité est la liste `mandants`.
+//   2. L'objet du mandat ne se saisit pas : il se lit dans l'état locatif.
+//      Occupation, surface bâtie, nombre de lots, baux — tout est déjà là, et
+//      le recopier à la main c'est se garantir un mandat qui ment.
+//   3. Le prix a quatre cases et deux degrés de liberté. On résout selon les
+//      deux dernières cases touchées (retour #104).
+
+import { group } from "./format";
+
+/* ---------------------------------------------------------------- Mandants */
+
+export type Societe = {
+  nom?: string;
+  siren?: string;
+  rcs?: string;
+  capital?: number;
+  siege?: string;
+};
+
+export type Mandant = {
+  /** Identifiant local de la ligne (les contacts peuvent manquer). */
+  uid: string;
+  contactId?: string;
+  qualite?: string;
+  prenom?: string;
+  nom?: string;
+  dateNaissance?: string;
+  lieuNaissance?: string;
+  adresse?: string;
+  email?: string;
+  /** Personne physique, ou personne morale représentée par ce contact. */
+  personne: "physique" | "morale";
+  /** Sa qualité dans CE mandat : gérant, indivisaire, usufruitier… */
+  fonction?: string;
+  societe?: Societe;
+  /** Pièces déposées : URL de lecture. */
+  cni?: string;
+  kbis?: string;
+};
+
+/**
+ * Les qualités rencontrées, relevées sur les 253 mandats du BO — le champ
+ * `qualité_m1` y porte « Gérant », « Président », « Directeur Général »… et
+ * pas la civilité. La liste ci-dessous n'est qu'une aide à la saisie : le
+ * champ reste libre, parce qu'un mandant peut aussi être « gérant dûment
+ * habilité » ou « co-indivisaire ».
+ */
+export const FONCTIONS_MANDANT = [
+  "Propriétaire",
+  "Indivisaire",
+  "Usufruitier",
+  "Nu-propriétaire",
+  "Gérant",
+  "Gérante",
+  "Cogérant",
+  "Président",
+  "Présidente",
+  "Directeur Général",
+  "Associé",
+  "Mandataire",
+  "Tuteur / curateur",
+];
+
+const uid = (i: number) => `m${i}-${Math.random().toString(36).slice(2, 8)}`;
+
+const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/**
+ * Lit les mandants du document. Priorité à la liste moderne ; à défaut on
+ * reconstitue depuis les champs plats, pour que les 253 mandats déjà en base
+ * s'affichent sans migration.
+ */
+export function lireMandants(m: Record<string, unknown>): Mandant[] {
+  const liste = m.mandants;
+  if (Array.isArray(liste) && liste.length) {
+    return (liste as Record<string, unknown>[]).map((x, i) => ({
+      uid: S(x.uid) ?? uid(i),
+      contactId: S(x.contactId),
+      qualite: S(x.qualite),
+      prenom: S(x.prenom),
+      nom: S(x.nom),
+      dateNaissance: S(x.dateNaissance),
+      lieuNaissance: S(x.lieuNaissance),
+      adresse: S(x.adresse),
+      email: S(x.email),
+      personne: x.personne === "morale" ? "morale" : "physique",
+      fonction: S(x.fonction),
+      societe: (x.societe as Societe | undefined) ?? undefined,
+      cni: S(x.cni),
+      kbis: S(x.kbis),
+    }));
+  }
+
+  // Repli : modèle plat hérité de Bubble.
+  const morale = String(m.Type_personne ?? "").toLowerCase().includes("moral");
+  const societe: Societe | undefined = morale
+    ? {
+        nom: S(m.raison_sociale),
+        siren: S(m.siren),
+        rcs: S(m.rcs),
+        capital: N(m.capital),
+        siege: S(geoTexte(m.siege_geo)),
+      }
+    : undefined;
+  const out: Mandant[] = [];
+  const contacts = Array.isArray(m.MANDANTs) ? (m.MANDANTs as unknown[]).map(String) : [];
+  if (S(m.nom_m1) || S(m["prénom_m1"]) || societe?.nom) {
+    out.push({
+      uid: "m1",
+      contactId: contacts[0],
+      // Piège du modèle Bubble : `qualité_m1` porte « Gérant », « Président »,
+      // « Directeur Général »… c'est la QUALITÉ AU MANDAT, pas la civilité.
+      // Le prendre pour une civilité produisait « représentée par Gerant Eric
+      // BRIARD » dans le mandat généré.
+      fonction: S(m["qualité_m1"]),
+      prenom: S(m["prénom_m1"]),
+      nom: S(m.nom_m1),
+      dateNaissance: S(m.date_naissance_m1),
+      lieuNaissance: geoTexte(m.lieu_naissance_geo_m1),
+      adresse: geoTexte(m.adresse_m1_geo),
+      personne: morale ? "morale" : "physique",
+      societe,
+      cni: S(m.cni_m1),
+      kbis: S(m.kbis),
+    });
+  }
+  if (S(m.nom_m2) || S(m["prénom_m2"])) {
+    out.push({
+      uid: "m2",
+      contactId: contacts[1],
+      prenom: S(m["prénom_m2"]),
+      nom: S(m.nom_m2),
+      dateNaissance: S(m.date_naissance_m2),
+      lieuNaissance: geoTexte(m.lieu_naissance_geo_m2),
+      adresse: geoTexte(m.adresse_m2_geo),
+      personne: "physique",
+      cni: S(m.cni_m2),
+    });
+  }
+  return out;
+}
+
+/** Les champs « adresse » de Bubble sont soit du texte, soit un objet geo. */
+export function geoTexte(v: unknown): string | undefined {
+  if (typeof v === "string") return v.trim() || undefined;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return S(o.address) ?? S(o.adresse) ?? undefined;
+  }
+  return undefined;
+}
+
+export const mandantVide = (i: number): Mandant => ({ uid: uid(i), personne: "physique" });
+
+/** « M. Jean DUPONT » ou « SCI DU MOULIN ». */
+export function nomMandant(x: Mandant): string {
+  if (x.personne === "morale") return x.societe?.nom ?? "Société à renseigner";
+  return [x.qualite, x.prenom, x.nom].filter(Boolean).join(" ") || "Mandant à renseigner";
+}
+
+/** Les pièces d'identité obligatoires pour ce mandant. */
+export function piecesMandant(x: Mandant): { cle: "cni" | "kbis"; label: string; url?: string }[] {
+  const pieces: { cle: "cni" | "kbis"; label: string; url?: string }[] = [
+    { cle: "cni", label: "Pièce d'identité", url: x.cni },
+  ];
+  if (x.personne === "morale") pieces.push({ cle: "kbis", label: "Kbis (moins de 3 mois)", url: x.kbis });
+  return pieces;
+}
+
+/* -------------------------------------------------- Objet servi par les lots */
+
+export type SyntheseLocative = {
+  lots: number;
+  occupes: number;
+  libres: number;
+  surface: number;
+  loyerMensuel: number;
+  /** Détail par destination, pour le descriptif légal. */
+  parDestination: { destination: string; nb: number; surface: number }[];
+  baux: string[];
+  /** Un seul lot libre suffit à interdire « vendu occupé » sans réserve. */
+  occupation: "occupe" | "libre" | "mixte";
+};
+
+const LIBRE = new Set(["Vide", "", "n.c."]);
+
+/** Ce que l'état locatif dit du bien — la seule source de l'onglet Objet. */
+export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
+  let occupes = 0;
+  let surface = 0;
+  let loyerMensuel = 0;
+  const parDest = new Map<string, { nb: number; surface: number }>();
+  const baux = new Set<string>();
+
+  for (const l of lots) {
+    const bail = String(l.Type_bail ?? "");
+    const occupe = !LIBRE.has(bail);
+    if (occupe) {
+      occupes++;
+      baux.add(bail);
+      loyerMensuel += N(l.loyer) ?? 0;
+    }
+    const s = N(l.surface_carrez) ?? N(l.surface_sol) ?? 0;
+    surface += s;
+    const d = String(l.Destination ?? "Autre");
+    const acc = parDest.get(d) ?? { nb: 0, surface: 0 };
+    parDest.set(d, { nb: acc.nb + 1, surface: acc.surface + s });
+  }
+
+  return {
+    lots: lots.length,
+    occupes,
+    libres: lots.length - occupes,
+    surface: Math.round(surface),
+    loyerMensuel: Math.round(loyerMensuel),
+    parDestination: [...parDest.entries()]
+      .map(([destination, v]) => ({ destination, ...v, surface: Math.round(v.surface) }))
+      .sort((a, b) => b.nb - a.nb),
+    baux: [...baux].sort(),
+    occupation: occupes === 0 ? "libre" : occupes === lots.length ? "occupe" : "mixte",
+  };
+}
+
+const pluriel = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
+
+/**
+ * Le descriptif que la loi attend dans un mandat : désignation du bien,
+ * consistance, situation locative. Rédigé depuis l'état locatif, modifiable à
+ * la main si l'agent veut le préciser (retour #103).
+ */
+export function descriptifLegal(
+  im: Record<string, unknown>,
+  lots: Record<string, unknown>[],
+  refCadastre?: string,
+  surfaceTerrain?: number,
+): string {
+  const s = synthese(lots);
+  const adresse = adresseImmeuble(im);
+  const phrases: string[] = [];
+
+  phrases.push(
+    `Un immeuble de rapport situé ${adresse}` +
+      (refCadastre ? `, cadastré ${refCadastre}` : "") +
+      (surfaceTerrain ? `, sur un terrain de ${group(surfaceTerrain)} m²` : "") +
+      ".",
+  );
+
+  if (s.lots > 0) {
+    const detail = s.parDestination
+      .map((d) => `${pluriel(d.nb, "lot")} à destination ${d.destination.toLowerCase()}${d.surface ? ` (${group(d.surface)} m²)` : ""}`)
+      .join(", ");
+    phrases.push(
+      `L'immeuble comporte ${pluriel(s.lots, "lot")} pour une surface habitable et utile totale de ${group(s.surface)} m² : ${detail}.`,
+    );
+  }
+
+  if (s.occupation === "libre") {
+    phrases.push("L'immeuble est vendu libre de toute occupation.");
+  } else {
+    const bail = s.baux.length ? ` (${s.baux.join(", ")})` : "";
+    const loyer = s.loyerMensuel
+      ? ` Le montant total des loyers en cours s'élève à ${group(s.loyerMensuel)} € hors charges par mois, soit ${group(s.loyerMensuel * 12)} € par an.`
+      : "";
+    phrases.push(
+      s.occupation === "occupe"
+        ? `L'immeuble est vendu occupé : l'ensemble des lots est loué${bail}.${loyer}`
+        : `L'immeuble est vendu partiellement occupé : ${pluriel(s.occupes, "lot")} ${s.occupes > 1 ? "sont loués" : "est loué"}${bail} et ${pluriel(s.libres, "lot")} ${s.libres > 1 ? "sont libres" : "est libre"} de toute occupation.${loyer}`,
+    );
+    phrases.push(
+      "Le mandant déclare que les baux en cours seront transmis à l'acquéreur et qu'aucun congé, ni aucune procédure, n'est en cours à la date des présentes, sauf mention contraire portée ci-dessus.",
+    );
+  }
+
+  return phrases.join("\n\n");
+}
+
+export function adresseImmeuble(im: Record<string, unknown>): string {
+  const rue = [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ");
+  const ville = [S(im.adresse_zipcode), S(im.adresse_ville)].filter(Boolean).join(" ");
+  return [rue, ville].filter(Boolean).join(", ") || "adresse à renseigner";
+}
+
+/* ------------------------------------------------------------------- Prix */
+
+export type Prix = { nv?: number; hai?: number; taux?: number; honos?: number };
+export type ChampPrix = keyof Prix;
+
+const arrondi = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Quatre cases, deux degrés de liberté : on résout les deux cases restantes à
+ * partir des deux dernières saisies. `pilotes` est l'historique des champs
+ * touchés, du plus ancien au plus récent.
+ */
+export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
+  const deux = [...pilotes].reverse().filter((c, i, t) => t.indexOf(c) === i).slice(0, 2);
+  const a = new Set(deux);
+  const v = (k: ChampPrix) => (typeof p[k] === "number" && p[k]! > 0 ? p[k]! : undefined);
+  const nv = v("nv"), hai = v("hai"), taux = v("taux"), honos = v("honos");
+
+  const out = (r: Prix): Prix => ({
+    nv: r.nv !== undefined ? Math.round(r.nv) : undefined,
+    hai: r.hai !== undefined ? Math.round(r.hai) : undefined,
+    honos: r.honos !== undefined ? Math.round(r.honos) : undefined,
+    taux: r.taux !== undefined ? arrondi(r.taux) : undefined,
+  });
+
+  if (a.has("nv") && a.has("taux") && nv && taux) {
+    const h = nv * (taux / 100);
+    return out({ nv, taux, honos: h, hai: nv + h });
+  }
+  if (a.has("nv") && a.has("honos") && nv && honos) {
+    return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
+  }
+  if (a.has("nv") && a.has("hai") && nv && hai) {
+    const h = hai - nv;
+    return out({ nv, hai, honos: h, taux: (h / nv) * 100 });
+  }
+  if (a.has("hai") && a.has("taux") && hai && taux) {
+    const n = hai / (1 + taux / 100);
+    return out({ hai, taux, nv: n, honos: hai - n });
+  }
+  if (a.has("hai") && a.has("honos") && hai && honos) {
+    const n = hai - honos;
+    return out({ hai, honos, nv: n, taux: n > 0 ? (honos / n) * 100 : undefined });
+  }
+  if (a.has("taux") && a.has("honos") && taux && honos) {
+    const n = honos / (taux / 100);
+    return out({ taux, honos, nv: n, hai: n + honos });
+  }
+  // Pas encore deux cases exploitables : on complète ce qu'on peut.
+  if (nv && taux) {
+    const h = nv * (taux / 100);
+    return out({ nv, taux, honos: h, hai: nv + h });
+  }
+  return out({ nv, hai, taux, honos });
+}
+
+/* -------------------------------------------------------- Pièces & blocages */
+
+export type Manque = { cle: string; label: string; onglet: string };
+
+/**
+ * Ce qui empêche de générer le mandat (retour #105). On ne bloque QUE sur ce
+ * qui rend le document faux ou incomplet : identité des parties, pièces
+ * justificatives, objet, prix, durée. Le reste est facultatif.
+ */
+export function manques(
+  m: Record<string, unknown>,
+  mandants: Mandant[],
+  im: Record<string, unknown> | null,
+): Manque[] {
+  const out: Manque[] = [];
+  const push = (cle: string, label: string, onglet: string) => out.push({ cle, label, onglet });
+
+  if (mandants.length === 0) push("mandants", "Aucun mandant renseigné", "Mandants");
+  mandants.forEach((x, i) => {
+    const qui = nomMandant(x);
+    const rang = mandants.length > 1 ? ` (mandant ${i + 1})` : "";
+    if (x.personne === "physique" && !(x.prenom && x.nom)) push(`m${i}-nom`, `Nom et prénom manquants${rang}`, "Mandants");
+    if (x.personne === "morale" && !x.societe?.nom) push(`m${i}-rs`, `Raison sociale manquante${rang}`, "Mandants");
+    if (!x.adresse) push(`m${i}-adr`, `Adresse de ${qui}`, "Mandants");
+    if (!x.cni) push(`m${i}-cni`, `Pièce d'identité de ${qui}`, "Mandants");
+    if (x.personne === "morale" && !x.kbis) push(`m${i}-kbis`, `Kbis de ${x.societe?.nom ?? qui}`, "Mandants");
+  });
+
+  if (!im) push("immeuble", "Aucun immeuble rattaché", "Objet");
+  if (!S(m.justif_propriete)) push("titre", "Titre de propriété", "Objet");
+  if (!S(m.description)) push("descriptif", "Descriptif du bien", "Objet");
+  if (!N(m.prix_nv)) push("prix", "Prix net vendeur", "Prix");
+  if (!N(m.honos_ttc)) push("honos", "Montant des honoraires", "Prix");
+  if (!S(m.date_effet)) push("date", "Date de prise d'effet", "Conditions");
+  if (!N(m["durée_tot_month"])) push("duree", "Durée du mandat", "Conditions");
+
+  return out;
+}
+
+/**
+ * Le mandat est-il figé, et pourquoi ?
+ *
+ * Attention au champ `locked` hérité de Bubble : il est posé sur presque tous
+ * les mandats anciens, y compris un qui est encore « A rédiger ». S'y fier
+ * seul verrouillait des mandats en cours de saisie. La vérité, c'est la
+ * signature d'abord, le statut ensuite ; `locked` ne sert que de renfort sur
+ * les statuts déjà terminaux.
+ */
+export function verrou(m: Record<string, unknown>): string | null {
+  const statut = String(m.Statut ?? "");
+  const enRedaction = statut === "Attente infos" || statut === "A rédiger";
+  if (S(m.date_signature) || S(m.pdf_signed)) {
+    const d = S(m.date_signature);
+    return `Mandat signé${d ? ` le ${new Date(d).toLocaleDateString("fr-FR")}` : ""} — il n'est plus modifiable.`;
+  }
+  if (statut === "Annulé") return "Mandat annulé — il reste consultable, mais n'est plus modifiable.";
+  if (statut === "Expiré") return "Mandat expiré — il n'est plus modifiable.";
+  if (statut === "Vendu") return "Le bien est vendu sous ce mandat — il n'est plus modifiable.";
+  if (m.locked === true && !enRedaction) return "Mandat verrouillé — il n'est plus modifiable.";
+  return null;
+}
+
+/** Publication en ligne : oui par défaut, le vendeur peut la retirer. */
+export const publicationWeb = (m: Record<string, unknown>) => m.publication_web_yn !== false;

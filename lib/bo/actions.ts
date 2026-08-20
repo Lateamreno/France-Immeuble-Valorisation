@@ -1720,6 +1720,10 @@ export type MandatPatch = Partial<{
   // Conditions
   date_effet: string; "durée_tot_month": number; "durée_exclu_jours": number;
   "durée_irrevoc_days": number; renouvelable_yn: boolean; date_fin: string;
+  // Pièces et diffusion
+  justif_propriete: string; kbis: string;
+  /** Publication en ligne : « oui » par défaut, retirable à la demande du client. */
+  publication_web_yn: boolean;
 }>;
 
 /** Crée un mandat (modale « Nouveau mandat ») rattaché à un immeuble. */
@@ -1768,8 +1772,10 @@ export async function createMandat(
 export async function updateMandat(mandatId: string, immeubleId: string, patch: MandatPatch) {
   const clean = cleanPatch(patch as Record<string, unknown>);
   if (Object.keys(clean).length === 0) return;
-  // Prix : recalcul HAI si net vendeur + taux fournis.
-  if (typeof clean.prix_nv === "number") {
+  /* Prix : l'écran résout lui-même les quatre cases (retour #104) et envoie
+     les quatre valeurs. On ne recalcule ici que si l'appelant ne l'a pas fait
+     — sinon on écraserait un net vendeur déduit d'un prix HAI saisi. */
+  if (typeof clean.prix_nv === "number" && clean.honos_ttc === undefined) {
     const taux = typeof clean.honos_taux === "number" ? clean.honos_taux : 5;
     clean.honos_ttc = Math.round((clean.prix_nv as number) * (taux / 100));
     clean.prix_hai = (clean.prix_nv as number) + (clean.honos_ttc as number);
@@ -1781,8 +1787,7 @@ export async function updateMandat(mandatId: string, immeubleId: string, patch: 
     clean.date_fin = d.toISOString();
   }
   await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: clean });
-  refresh(immeubleId);
-  revalidatePath(`/mandat/${mandatId}`);
+  rafraichirMandat(mandatId, immeubleId);
 }
 
 /** Réserve le prochain numéro du registre (séquentiel, immuable, sans trou). */
@@ -1812,6 +1817,253 @@ export async function cancelMandat(mandatId: string, immeubleId: string, motif: 
   });
   refresh(immeubleId);
   revalidatePath(`/mandat/${mandatId}`);
+}
+
+/**
+ * Enregistre la liste des mandants (retour #101).
+ *
+ * Deux écritures pour un seul geste : la liste moderne `mandants` (illimitée,
+ * avec fonction et société), ET les champs plats du BO — `MANDANTs`,
+ * prénom/nom m1 et m2, `Type_personne` — pour que les écrans Bubble encore en
+ * service et le champ de recherche continuent de fonctionner.
+ */
+export async function majMandants(
+  mandatId: string,
+  immeubleId: string,
+  mandants: MandantEnregistre[],
+) {
+  const plat: Record<string, unknown> = {
+    mandants,
+    MANDANTs: mandants.map((x) => x.contactId).filter(Boolean),
+    Type_personne: mandants.some((x) => x.personne === "morale") ? "Morale" : "Physique",
+  };
+  const [a, b] = mandants;
+  // `qualité_m1` porte la qualité au mandat (Gérant, Président…), pas la civilité.
+  plat["qualité_m1"] = a?.fonction ?? null;
+  plat["prénom_m1"] = a?.prenom ?? null;
+  plat.nom_m1 = a?.nom ?? null;
+  plat.date_naissance_m1 = a?.dateNaissance ?? null;
+  plat.adresse_m1_geo = a?.adresse ?? null;
+  plat.lieu_naissance_geo_m1 = a?.lieuNaissance ?? null;
+  plat.cni_m1 = a?.cni ?? null;
+  plat["prénom_m2"] = b?.prenom ?? null;
+  plat.nom_m2 = b?.nom ?? null;
+  plat.date_naissance_m2 = b?.dateNaissance ?? null;
+  plat.adresse_m2_geo = b?.adresse ?? null;
+  plat.cni_m2 = b?.cni ?? null;
+  const morale = mandants.find((x) => x.personne === "morale");
+  plat.raison_sociale = morale?.societe?.nom ?? null;
+  plat.siren = morale?.societe?.siren ?? null;
+  plat.rcs = morale?.societe?.rcs ?? null;
+  plat.capital = morale?.societe?.capital ?? null;
+  plat.siege_geo = morale?.societe?.siege ?? null;
+  plat.kbis = morale?.kbis ?? null;
+  plat.searchfield = mandants
+    .map((x) => [x.prenom, x.nom, x.societe?.nom].filter(Boolean).join(" "))
+    .join(" · ");
+  plat["Modified Date"] = new Date().toISOString();
+
+  await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: plat });
+  rafraichirMandat(mandatId, immeubleId);
+}
+
+export type MandantEnregistre = {
+  uid: string;
+  contactId?: string;
+  qualite?: string;
+  prenom?: string;
+  nom?: string;
+  dateNaissance?: string;
+  lieuNaissance?: string;
+  adresse?: string;
+  email?: string;
+  personne: "physique" | "morale";
+  fonction?: string;
+  societe?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+  cni?: string;
+  kbis?: string;
+};
+
+function rafraichirMandat(mandatId: string, immeubleId: string) {
+  refresh(immeubleId);
+  revalidatePath(`/mandat/${mandatId}`);
+  if (immeubleId) revalidatePath(`/bien/${immeubleId}/mandat/${mandatId}`);
+}
+
+/**
+ * Dépose une pièce du dossier de mandat.
+ *
+ * La CNI et le Kbis ne sont pas des pièces « du mandat » : ce sont des pièces
+ * DU CONTACT, qui resserviront au mandat suivant, au compromis, à la vente.
+ * On les range donc sur la fiche contact (`cni`, `entreprise_kbis`) et on ne
+ * garde sur le mandat qu'un renvoi — c'est ce que demandait le retour #101.
+ */
+export async function deposerPieceMandat(
+  mandatId: string,
+  immeubleId: string,
+  cle: "cni" | "kbis" | "titre",
+  contactId: string | undefined,
+  fd: FormData,
+): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+  try {
+    const file = fd.get("file");
+    if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+    if (file.size > 15 * 1024 * 1024) throw new Error("Fichier trop lourd (15 Mo max)");
+    const path = `mandats/${mandatId}/${cle}-${newId()}-${safeName(file.name)}`;
+    await uploadToBucket(path, file);
+    const url = `/api/photo?s=${encodeURIComponent(path)}`;
+
+    if (cle === "titre") {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_mandat",
+        p_id: mandatId,
+        p_patch: { justif_propriete: url, "Modified Date": new Date().toISOString() },
+      });
+    } else if (contactId) {
+      // La pièce enrichit la fiche contact — elle vivra plus longtemps que ce mandat.
+      await rpc("bo_patch_doc", {
+        p_table: "bo_contact",
+        p_id: contactId,
+        p_patch: {
+          [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
+          "Modified Date": new Date().toISOString(),
+        },
+      });
+    }
+    // Le coffre de l'immeuble garde une trace, comme pour tout document déposé.
+    await rpc("bo_insert_doc", {
+      p_table: "bo_app_document",
+      p_id: newId(),
+      p_doc: cleanPatch({
+        IMMEUBLE: immeubleId,
+        MANDAT: mandatId,
+        name: cle === "cni" ? "Pièce d'identité" : cle === "kbis" ? "Kbis" : "Titre de propriété",
+        file_name: file.name,
+        path,
+        format: file.type,
+        size_kB: Math.round(file.size / 1024),
+        "Created Date": new Date().toISOString(),
+        "Modified Date": new Date().toISOString(),
+      }),
+    });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true, url };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Fabrique le PDF du mandat depuis sa page imprimable et le range au coffre. */
+export async function genererMandat(immeubleId: string, mandatId: string) {
+  try {
+    const { pdfDepuisUrl } = await import("./pdf");
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+    const url = `${proto}://${hote}/bien/${immeubleId}/mandat/${mandatId}/imprimer?nu=1`;
+    const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+
+    const now = new Date().toISOString();
+    const m = await bqOne("bo_mandat", mandatId);
+    const numero = m?.numero ? String(m.numero) : mandatId.slice(-6);
+    const path = `mandats/${mandatId}/mandat-${numero}.pdf`;
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/pdf",
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(pdf),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+    const docId = newId();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_app_document",
+      p_id: docId,
+      p_doc: cleanPatch({
+        IMMEUBLE: immeubleId,
+        MANDAT: mandatId,
+        name: `Mandat ${numero}`,
+        file_name: `Mandat-${numero}.pdf`,
+        path,
+        format: "application/pdf",
+        size_kB: Math.round(pdf.length / 1024),
+        "Created Date": now,
+        "Modified Date": now,
+      }),
+    });
+    await rpc("bo_patch_doc", {
+      p_table: "bo_mandat",
+      p_id: mandatId,
+      p_patch: { pdf_mandat: `/api/photo?s=${encodeURIComponent(path)}`, date_generation: now, "Modified Date": now },
+    });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const, url: `/api/photo?s=${encodeURIComponent(path)}`, ko: Math.round(pdf.length / 1024) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[pdf mandat]", message);
+    return { ok: false as const, message };
+  }
+}
+
+/**
+ * Journalise l'envoi à la signature. Le connecteur Docusign n'est pas encore
+ * branché : l'app prépare et trace, l'envoi effectif se fait depuis Docusign
+ * jusqu'à ce que le connecteur soit ouvert (doctrine « validation humaine
+ * avant tout envoi »).
+ */
+export async function envoyerMandatSignature(
+  mandatId: string,
+  immeubleId: string,
+  destinataires: string[],
+) {
+  const now = new Date().toISOString();
+  const m = await bqOne("bo_mandat", mandatId);
+  const envois = Array.isArray(m?.MANDAT_ENVOYEs) ? (m!.MANDAT_ENVOYEs as unknown[]) : [];
+  await rpc("bo_patch_doc", {
+    p_table: "bo_mandat",
+    p_id: mandatId,
+    p_patch: {
+      Statut: "Attente signature",
+      date_last_envoi: now,
+      MANDAT_ENVOYEs: [...envois, { at: now, to: destinataires }],
+      "Modified Date": now,
+    },
+  });
+  rafraichirMandat(mandatId, immeubleId);
+}
+
+/** Retour de signature : le mandat est figé, le registre est clos sur ce numéro. */
+export async function marquerMandatSigne(
+  mandatId: string,
+  immeubleId: string,
+  dateSignature: string,
+  fd?: FormData,
+) {
+  try {
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      Statut: "En cours",
+      date_signature: dateSignature || now,
+      locked: true,
+      "Modified Date": now,
+    };
+    const file = fd?.get("file");
+    if (file instanceof File && file.size > 0) {
+      const path = `mandats/${mandatId}/signe-${safeName(file.name)}`;
+      await uploadToBucket(path, file);
+      patch.pdf_signed = `/api/photo?s=${encodeURIComponent(path)}`;
+    }
+    await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: patch });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Met à jour des champs simples du bien (descriptif, prix…). */

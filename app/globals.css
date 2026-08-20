@@ -3256,3 +3256,366 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   .dec-vals { grid-template-columns: 1fr 1fr; }
   .dec-vals .ec { grid-column: 1 / -1; align-items: flex-start; }
 }
+
+/* =====================================================================
+   MANDAT — l'écran de rédaction (retours #100 à #105)
+   =====================================================================
+   Il vit dans .fiche-inner.wide : pleine largeur, rail de droite conservé.
+   Aucune largeur fixe, tout se replie sous 900 px puis sous 640 px, parce
+   qu'un mandat se relit aussi bien depuis le téléphone en rendez-vous. */
+
+.mdt { padding: 2px 0 40px; }
+
+/* --- Bandeau d'identité --- */
+.mdt-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "id act" "meta act";
+  gap: 6px 16px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.mdt-id { grid-area: id; display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.mdt-id .t { font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); }
+.mdt-id .n { font-family: var(--font-title); font-size: 14px; font-weight: 600; color: var(--red); }
+.mdt-id .n.on { color: var(--slate); }
+.mdt-id .h { font-size: 13px; color: var(--gold-bo); font-weight: 600; }
+.mdt-meta { grid-area: meta; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mdt-meta .dts { font-size: 12px; color: var(--gray-txt); }
+.mdt-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--gray-txt);
+  background: var(--cols); border-radius: 3px; padding: 3px 8px;
+}
+.mdt-tag svg { width: 12px; height: 12px; fill: currentColor; stroke: none; opacity: .75; }
+.mdt-act { grid-area: act; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+
+.mdt-go {
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  background: var(--green); color: #fff; border: 0; border-radius: 4px;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600;
+  padding: 8px 14px; cursor: pointer; white-space: nowrap;
+}
+.mdt-go:disabled { opacity: .45; cursor: not-allowed; }
+.mdt-go .ch { font-weight: 700; }
+.mdt-x {
+  background: #fff; color: var(--red); border: 1px solid #e6b3b3; border-radius: 4px;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  padding: 7px 14px; cursor: pointer; white-space: nowrap;
+}
+.mdt-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: var(--slate); border: 1px solid #cfcfcf; border-radius: 4px;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600;
+  padding: 8px 14px; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.mdt-lien {
+  background: none; border: 0; padding: 0;
+  font-family: var(--font-title); font-size: 12px; font-weight: 600;
+  color: var(--gold-bo); text-decoration: underline; cursor: pointer;
+}
+
+.mdt-lock, .mdt-note {
+  margin-top: 10px; padding: 9px 12px; border-radius: 4px;
+  font-size: 12.5px; line-height: 1.5;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.mdt-lock { background: #f2f6f2; border: 1px solid #cfe0cf; color: #2c5c2c; }
+.mdt-note { background: #fbf8ee; border: 1px solid #e6dcb8; color: #6d5f28; }
+
+/* --- Onglets --- */
+.mdt-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 0; overflow-x: auto; }
+.mdt-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-title); font-size: 13.5px; font-weight: 600;
+  color: var(--gray-txt); background: none; border: 0;
+  border-bottom: 2px solid transparent; padding: 9px 18px 10px;
+  cursor: pointer; white-space: nowrap;
+}
+.mdt-tab:hover { color: var(--slate); }
+.mdt-tab.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
+.mdt-tab .wn { color: var(--red); font-size: 12px; }
+.mdt-tab .okv { color: var(--green); font-size: 12px; }
+.mdt-tab .lk { font-size: 11px; filter: grayscale(1); }
+
+.mdt-body { padding: 18px 2px 0; }
+
+.mdt-titre { margin-bottom: 16px; }
+.mdt-titre h2 {
+  font-family: var(--font-title); font-size: 16px; font-weight: 700;
+  color: var(--slate); margin: 0 0 3px;
+}
+.mdt-titre p { margin: 0; font-size: 12.5px; color: var(--gray-txt); line-height: 1.55; max-width: 720px; }
+
+.mdt-sub {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-title); font-size: 12px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--gold-bo);
+  margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line-lt);
+}
+.mdt-tgl {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--gray-txt); cursor: pointer;
+}
+.mdt-hint { display: block; font-size: 11.5px; color: var(--gray-lt); line-height: 1.5; margin-top: 8px; }
+
+/* --- La grille de saisie : toutes les cases alignées (retour #101) --- */
+.mdt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+.mdt-ch { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mdt-ch.lg { grid-column: span 2; }
+.mdt-ch > span { font-size: 11.5px; color: var(--gray-txt); }
+.mi {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff;
+  font-family: var(--font-body); font-size: 14px; color: var(--slate);
+  padding: 8px 10px; min-height: 38px;
+}
+.mi:focus { border-color: var(--gold-bo); outline: none; }
+.mi:disabled { background: #f6f6f6; color: var(--gray-txt); }
+.mi.maj { text-transform: uppercase; }
+.mi.gris { background: #f2f2f2; color: var(--gray-txt); border-style: dashed; }
+.mi.ta { font-size: 13.5px; line-height: 1.6; resize: vertical; }
+
+/* --- Segments Physique / Morale, Vendeur / Acheteur --- */
+.seg { display: inline-flex; border: 1px solid #cfcfcf; border-radius: 4px; overflow: hidden; }
+.seg button {
+  background: #fff; border: 0; border-right: 1px solid #e3e3e3;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  color: var(--gray-txt); padding: 7px 14px; cursor: pointer; white-space: nowrap;
+}
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--slate); color: #fff; }
+.seg button:disabled { cursor: not-allowed; opacity: .75; }
+.seg.lg button { padding: 9px 20px; font-size: 13px; }
+
+/* --- Cartes mandants --- */
+.mdt-mandants { display: flex; flex-direction: column; gap: 14px; }
+.mdt-md { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px 16px; background: #fff; }
+.mdt-md-h { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.mdt-md-h .r {
+  font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--slate);
+}
+.mdt-md-ct {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--cols); border-radius: 4px; padding: 8px 12px; margin-bottom: 14px;
+}
+.mdt-md-ct .ic svg { width: 16px; height: 16px; fill: none; stroke: var(--gray-txt); stroke-width: 1.6; }
+.mdt-md-ct .nm { font-size: 13px; color: var(--gray-lt); }
+.mdt-md-ct .nm.on { color: var(--slate); font-weight: 600; }
+
+/* --- Pièces justificatives --- */
+.mdt-pieces { display: flex; flex-wrap: wrap; gap: 10px; }
+.mdt-pc {
+  display: flex; align-items: center; gap: 9px; flex: 1 1 280px;
+  border: 1px dashed #d5d5d5; border-radius: 5px; padding: 9px 12px; background: #fcfcfc;
+}
+.mdt-pc.ok { border-style: solid; border-color: #cfe0cf; background: #f6faf6; }
+.mdt-pc .ic svg { width: 16px; height: 16px; fill: none; stroke: var(--gray-lt); stroke-width: 1.8; }
+.mdt-pc.ok .ic svg { stroke: var(--green); }
+.mdt-pc .l { font-size: 13px; color: var(--slate); font-weight: 600; font-family: var(--font-title); }
+.mdt-pc .mq { font-size: 11.5px; color: var(--red); }
+.mdt-pc .er { font-size: 11.5px; color: var(--red); flex: 1 1 100%; }
+.mdt-up {
+  margin-left: auto; cursor: pointer;
+  font-family: var(--font-title); font-size: 12px; font-weight: 600; color: var(--gold-bo);
+  border: 1px solid #e0d8b8; border-radius: 3px; padding: 4px 10px; background: #fff;
+  white-space: nowrap;
+}
+.mdt-up input { display: none; }
+.mdt-up.gros { margin-left: 0; padding: 9px 16px; font-size: 13px; }
+
+.mdt-add {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+  background: #fff; border: 1px dashed #c9c9c9; border-radius: 5px;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--slate);
+  padding: 9px 16px; cursor: pointer;
+}
+.mdt-add svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.mdt-add:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+
+/* --- Objet : la carte du bien, servie par l'état locatif --- */
+.mdt-bien { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.mdt-bien-h {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 16px; background: var(--cols); border-bottom: 1px solid var(--line);
+}
+.mdt-bien-h .ad b { display: block; font-family: var(--font-title); font-size: 15px; color: var(--slate); }
+.mdt-bien-h .ad span { font-size: 12.5px; color: var(--gray-txt); }
+.mdt-occ {
+  font-family: var(--font-title); font-size: 12px; font-weight: 700;
+  border-radius: 3px; padding: 4px 10px;
+}
+.mdt-occ.o { background: #fbf1e2; color: #8a5a10; }
+.mdt-occ.v { background: #eef6ec; color: #2c6b22; }
+.mdt-occ.m { background: #f0f1f6; color: #414c78; }
+.mdt-bien-h .mdt-lien { margin-left: auto; }
+.mdt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.mdt-st { padding: 12px 16px; border-right: 1px solid var(--line-lt); }
+.mdt-st:last-child { border-right: 0; }
+.mdt-st .k { display: block; font-size: 11px; color: var(--gray-txt); text-transform: uppercase; letter-spacing: .05em; }
+.mdt-st b { display: block; font-family: var(--font-title); font-size: 17px; color: var(--slate); margin-top: 2px; }
+.mdt-st .d { display: block; font-size: 11px; color: var(--gray-lt); }
+.mdt-dest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 14px; }
+.mdt-dest .pill {
+  font-size: 11.5px; color: var(--slate); background: #f4f4f4;
+  border-radius: 12px; padding: 3px 11px;
+}
+.mdt-dest .pill b { color: var(--gold-bo); }
+
+.mdt-auto {
+  border: 1px solid var(--line); border-left: 3px solid var(--gold-bo);
+  border-radius: 4px; background: #fcfbf7; padding: 14px 16px 10px; position: relative;
+}
+.mdt-auto p { margin: 0 0 9px; font-size: 13.5px; line-height: 1.62; color: var(--slate); }
+.mdt-auto .tag {
+  display: inline-block; font-size: 11px; color: var(--gold-bo);
+  font-family: var(--font-title); font-weight: 600;
+}
+
+/* --- Prix : quatre cases qui se répondent (retour #104) --- */
+.mdt-prix { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+.mdt-prix .op {
+  font-family: var(--font-title); font-size: 18px; color: var(--gray-lt);
+  padding-bottom: 9px; font-weight: 600;
+}
+.mdt-prix .op.sep { font-size: 12px; }
+.mdt-cp { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }
+.mdt-cp .l {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--gray-txt);
+}
+.mdt-cp .l i {
+  font-style: normal; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+  background: var(--gold-bo); color: #fff; border-radius: 2px; padding: 1px 5px;
+}
+.mdt-cp .in { position: relative; display: block; }
+.mdt-cp .in i {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-style: normal; font-size: 12px; color: var(--gray-lt); pointer-events: none;
+}
+.mdt-cp input {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #f7f7f7;
+  font-family: var(--font-title); font-size: 17px; color: var(--gray-txt);
+  padding: 9px 28px 9px 11px; min-height: 44px; text-align: right;
+}
+.mdt-cp.pilote input { background: #fff; color: var(--slate); border-color: var(--gold-bo); }
+.mdt-cp.fort input { font-size: 19px; font-weight: 700; }
+.mdt-cp input:focus { outline: none; border-color: var(--gold-bo); }
+
+.mdt-doctrine {
+  margin-top: 12px; padding: 11px 14px; border-radius: 4px;
+  background: #fbf8ee; border: 1px solid #e6dcb8; color: #5f5322;
+  font-size: 12.5px; line-height: 1.6;
+}
+.mdt-rend {
+  margin-top: 12px; font-size: 13px; color: var(--gray-txt);
+  border-left: 3px solid var(--line); padding-left: 12px; line-height: 1.6;
+}
+
+/* --- Conditions : les trois types de mandat, expliqués --- */
+.mdt-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.mdt-ty {
+  text-align: left; background: #fff; border: 1px solid var(--line);
+  border-radius: 6px; padding: 12px 14px; cursor: pointer;
+}
+.mdt-ty b { display: block; font-family: var(--font-title); font-size: 14px; color: var(--slate); margin-bottom: 4px; }
+.mdt-ty span { display: block; font-size: 12px; color: var(--gray-txt); line-height: 1.5; }
+.mdt-ty.on { border-color: var(--gold-bo); background: #fcfbf7; box-shadow: inset 0 0 0 1px var(--gold-bo); }
+.mdt-ty:disabled { cursor: not-allowed; opacity: .7; }
+
+.mdt-web {
+  display: flex; align-items: flex-start; gap: 14px; width: 100%; text-align: left;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  padding: 14px 16px; cursor: pointer;
+}
+.mdt-web .sw {
+  flex: none; width: 44px; height: 24px; border-radius: 12px;
+  background: #cfcfcf; position: relative; transition: background .15s;
+}
+.mdt-web .sw i {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; transition: left .15s;
+}
+.mdt-web.on .sw { background: var(--green); }
+.mdt-web.on .sw i { left: 23px; }
+.mdt-web .tx b { display: block; font-family: var(--font-title); font-size: 14px; color: var(--slate); }
+.mdt-web .tx span { display: block; font-size: 12.5px; color: var(--gray-txt); line-height: 1.55; margin-top: 3px; }
+
+/* --- Envoi : les quatre étapes --- */
+.mdt-etape {
+  display: flex; gap: 14px; padding: 16px;
+  border: 1px solid var(--line); border-radius: 6px; margin-bottom: 12px; background: #fff;
+}
+.mdt-etape.ok { border-color: #cfe0cf; background: #fafcfa; }
+.mdt-etape.ko { border-color: #e6b3b3; background: #fffafa; }
+.mdt-etape.off { opacity: .5; }
+.mdt-etape .n {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--slate); color: #fff;
+  font-family: var(--font-title); font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.mdt-etape.ok .n { background: var(--green); }
+.mdt-etape.ko .n { background: var(--red); }
+.mdt-etape .c { flex: 1; min-width: 0; }
+.mdt-etape .c > b { display: block; font-family: var(--font-title); font-size: 14.5px; color: var(--slate); margin-bottom: 4px; }
+.mdt-etape .c > span { display: block; font-size: 12.5px; color: var(--gray-txt); line-height: 1.6; }
+.mdt-etape .c .er { color: var(--red); margin-top: 6px; }
+.mdt-etape .c .okmsg { color: #2c6b22; margin-top: 6px; }
+.mdt-btns { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.mdt-trous { margin: 8px 0 0; padding-left: 18px; }
+.mdt-trous li { font-size: 12.5px; color: var(--slate); margin: 3px 0; }
+.mdt-trous button {
+  background: none; border: 0; padding: 0 0 0 8px; cursor: pointer;
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 600; color: var(--gold-bo);
+}
+
+/* --- Barre d'enregistrement collée en bas (règle générale du BO) --- */
+.mdt-save {
+  position: sticky; bottom: 0; z-index: 4;
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 22px; padding: 10px 2px;
+  background: linear-gradient(to top, var(--bg) 70%, rgba(250, 250, 250, 0));
+  border-top: 1px solid var(--line);
+}
+.mdt-save .nt { font-size: 11.5px; color: var(--gray-lt); }
+
+/* --- Téléphone --- */
+@media (max-width: 900px) {
+  .mdt-head { grid-template-columns: 1fr; grid-template-areas: "id" "meta" "act"; }
+  .mdt-act { flex-direction: row; flex-wrap: wrap; }
+  .mdt-ch.lg { grid-column: span 1; }
+}
+@media (max-width: 640px) {
+  .mdt-tabs { gap: 0; }
+  .mdt-tab { padding: 9px 12px; font-size: 12.5px; }
+  /* Cinq onglets doivent tenir sur 390 px : le voyant passe en pastille
+     et laisse la place au libellé, sinon « Envoi » sort de l'écran. */
+  .mdt-tab { gap: 4px; padding: 9px 7px; }
+  .mdt-tab .wn, .mdt-tab .okv, .mdt-tab .lk { font-size: 0; }
+  .mdt-tab .wn::before, .mdt-tab .okv::before, .mdt-tab .lk::before {
+    content: ""; display: block; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .mdt-tab .lk::before { background: var(--gray-lt); }
+  .mdt-grid { grid-template-columns: 1fr 1fr; }
+  .mdt-ch.lg { grid-column: 1 / -1; }
+  .mdt-md { padding: 12px; }
+  /* Sur téléphone la bascule physique/morale passe sous le titre, et la croix
+     de suppression reste sur la première ligne avec lui — sinon elle se
+     retrouvait seule, orpheline, sous le sélecteur. */
+  .mdt-md-h { flex-wrap: wrap; }
+  .mdt-md-h .seg { order: 3; flex: 1 0 100%; }
+  .mdt-md-h .xdel { order: 2; margin-left: auto; }
+  .mdt-prix .op { display: none; }
+  .mdt-cp { flex: 1 1 45%; }
+  .mdt-st { border-right: 0; border-bottom: 1px solid var(--line-lt); }
+  .mdt-etape { padding: 12px; gap: 10px; }
+}
