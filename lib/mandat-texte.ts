@@ -14,9 +14,12 @@
 //   • art. 7    — la clause pénale forfaitaire est remplacée par la clause
 //     « acquéreur présenté » : un juge réduit ou écarte la première, et
 //     applique la seconde. Elle se lit aussi mieux côté client.
-//   • art. 4.3  — honoraires charge vendeur et prix notifié non majoré dès
-//     qu'un lot est préemptable (loi 75, Pinel). Doctrine maison, jurisprudence
-//     constante.
+//   • art. 4.3  — la subrogation du préempteur est CONSERVÉE (elle protège les
+//     honoraires face à une commune qui préempte), mais assortie d'une réserve
+//     expresse pour le locataire préempteur, à qui le prix doit être notifié
+//     net vendeur non majoré. Cette réserve ne s'écrit que quand un locataire
+//     peut réellement préempter — découpe, ou immeuble mono-locataire — pas
+//     sur les ventes en bloc multi-locataires, qui restent charge acquéreur.
 //   • art. 6.4  — publication en ligne à deux branches, « oui » par défaut,
 //     retirable d'un bouton dans le BO.
 //
@@ -24,7 +27,10 @@
 // qui répond avant la première ligne à la question que le vendeur se pose.
 
 import { dmy, group } from "./format";
-import { adresseImmeuble, nomMandant, publicationWeb, synthese, type Mandant } from "./mandat";
+import {
+  adresseImmeuble, modeVente, nomMandant, publicationWeb, regimeHonoraires, synthese,
+  type Mandant,
+} from "./mandat";
 import { MENTIONS, SOCIETE } from "./bo/textes-cible";
 
 export type Bloc =
@@ -134,12 +140,13 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
   const irrevoc = N(m["durée_irrevoc_days"]) ?? 14;
   const effet = S(m.date_effet);
   const fin = S(m.date_fin);
-  const preemptable = s.occupes > 0;
-  /* La doctrine préemption l'emporte sur ce qui est enregistré : dès qu'un lot
-     est occupé, les honoraires sont charge vendeur. Sinon on générerait un
-     mandat qui contredit son propre article 4.3 — c'est arrivé sur un mandat
-     du BO dont `Charge_hono` valait encore « Acheteur ». */
-  const chargeVendeur = preemptable || S(m.Charge_hono) !== "Acheteur";
+  /* La charge des honoraires suit la doctrine maison (voir regimeHonoraires) :
+     charge acquéreur en bloc multi-locataires — l'immense majorité des mandats
+     — et charge vendeur seulement quand un locataire peut préempter, c'est-à-
+     dire à la découpe ou sur un immeuble mono-locataire. */
+  const regime = regimeHonoraires(lots, modeVente(m), S(m.Charge_hono));
+  const preemptable = regime.clauseLocataire;
+  const chargeVendeur = regime.charge === "Vendeur";
 
   /* ---- Article 1 — Les parties ---- */
   const a1: Bloc[] = [
@@ -242,23 +249,39 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
       ],
     },
   ];
-  if (preemptable) {
-    a4.push({
-      t: "sous",
-      titre: "4.3 Lots occupés et droits de préemption",
-      blocs: [
-        p(
-          "Le bien comportant des lots occupés, susceptibles d'ouvrir un droit de préemption au profit du locataire (loi du 31 décembre 1975, statut des baux commerciaux), les honoraires restent en toute hypothèse à la charge du vendeur pour ces lots.",
-        ),
-        p(
-          "En conséquence, le prix notifié au titulaire du droit de préemption est le prix net revenant au mandant, non majoré des honoraires. Le mandant et le mandataire s'interdisent toute stipulation contraire.",
-        ),
-      ],
-    });
-  }
+  /* 4.3 — la subrogation du préempteur. Elle figure dans tous les mandats FI
+     et elle est utile : elle évite que la commune qui préempte fasse tomber
+     les honoraires. Mais telle qu'elle est rédigée aujourd'hui, elle vaut
+     aussi face au LOCATAIRE préempteur — et là elle est contra legem : le prix
+     notifié au locataire doit être le net vendeur non majoré. D'où deux
+     alinéas au lieu d'un : la subrogation pour les préempteurs publics, et une
+     réserve expresse pour le locataire. Le second alinéa n'est écrit que
+     lorsqu'un locataire peut effectivement préempter — inutile d'alourdir un
+     mandat de vente en bloc multi-locataires. */
   a4.push({
     t: "sous",
-    titre: preemptable ? "4.4 Durée" : "4.3 Durée",
+    titre: "4.3 Exercice d'un droit de préemption",
+    blocs: [
+      p(
+        "En cas d'exercice d'un droit de préemption par une personne publique ou par tout titulaire autre que le locataire du bien, le préempteur est subrogé dans tous les droits et obligations de l'acquéreur, si bien que la rémunération incombant éventuellement à l'acquéreur reste due dans les mêmes conditions et à la charge du préempteur.",
+      ),
+      ...(preemptable
+        ? [
+            p(
+              "Par exception, lorsque le droit de préemption appartient au locataire du bien, les honoraires du mandataire sont à la charge du mandant et le prix notifié au locataire est le prix net revenant au mandant, non majoré des honoraires. Le mandant et le mandataire s'interdisent toute stipulation contraire.",
+            ),
+            p(
+              modeVente(m) === "decoupe"
+                ? "Le présent mandat portant sur une vente à la découpe, chaque locataire est susceptible d'exercer un tel droit sur le lot qu'il occupe : les honoraires sont en conséquence à la charge du mandant pour l'ensemble des lots."
+                : "Le bien étant occupé par un locataire unique, susceptible d'exercer un tel droit sur l'ensemble vendu, les honoraires sont en conséquence à la charge du mandant.",
+            ),
+          ]
+        : []),
+    ],
+  });
+  a4.push({
+    t: "sous",
+    titre: "4.4 Durée",
     blocs: [
       p(
         `Le présent mandat est consenti pour une durée de ${duree} mois à compter du ${
@@ -275,7 +298,7 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
   });
   a4.push({
     t: "sous",
-    titre: preemptable ? "4.5 Droit de rétractation" : "4.4 Droit de rétractation",
+    titre: "4.5 Droit de rétractation",
     blocs: [
       p(
         "Lorsque le présent mandat est signé à distance ou hors de l'établissement du mandataire, le mandant dispose d'un délai de quatorze (14) jours à compter de sa signature pour se rétracter, sans avoir à motiver sa décision ni à supporter de frais, conformément aux articles L221-18 et suivants du code de la consommation.",

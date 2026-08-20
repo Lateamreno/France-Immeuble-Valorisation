@@ -1724,6 +1724,8 @@ export type MandatPatch = Partial<{
   justif_propriete: string; kbis: string;
   /** Publication en ligne : « oui » par défaut, retirable à la demande du client. */
   publication_web_yn: boolean;
+  /** « bloc » ou « decoupe » : commande la charge des honoraires (art. 4.3). */
+  vente_mode: string;
 }>;
 
 /** Crée un mandat (modale « Nouveau mandat ») rattaché à un immeuble. */

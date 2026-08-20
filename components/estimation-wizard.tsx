@@ -86,27 +86,57 @@ const Ok = () => <span className="est-ok" title="Complet">✓</span>;
 const Ko = () => <span className="est-ko" title="Information manquante — allez la compléter sur la fiche">!</span>;
 const Etat = ({ ok }: { ok: boolean }) => (ok ? <Ok /> : <Ko />);
 
+/**
+ * Une estimation déjà faite, qu'on rouvre pour l'envoyer (retour #98).
+ *
+ * MAV : « Si j'ai des estimations à envoyer il faut que je puisse les envoyer
+ * en cliquant dessus sinon ça m'oblige à en refaire une. » On ne recalcule
+ * donc rien : on remonte l'écran directement sur l'étape Envoi, avec le
+ * dossier PDF déjà fabriqué et les chiffres figés de l'estimation d'origine —
+ * pas ceux de la fiche, qui ont pu bouger depuis.
+ */
+export type RepriseEstimation = {
+  id: string;
+  titre?: string;
+  /** Le dossier PDF déjà au coffre, s'il existe. */
+  pdfUrl?: string;
+  /** Son poids, pour l'afficher en pièce jointe sans le retélécharger. */
+  pdfKo?: number;
+  /** Chiffres figés au jour de l'estimation, pour le corps du mail. */
+  hai?: number;
+  nv?: number;
+  creeLe?: string;
+  statut?: string;
+};
+
 export function EstimationWizard({
-  b, secteur, envoiActif,
+  b, secteur, envoiActif, reprise,
 }: {
   b: BienData;
   secteur: Record<string, unknown> | null;
   /** Vrai quand la boîte d'envoi est configurée : l'app envoie elle-même. */
   envoiActif?: boolean;
+  /** Renseigné quand on rouvre une estimation existante pour l'envoyer. */
+  reprise?: RepriseEstimation;
 }) {
   const router = useRouter();
   const im = b.im;
   const immeubleId = String(im._id);
   /* Espace de noms de la mémoire d'écran : la saisie survit à une balade
      dans les autres menus, y compris hors de la fiche (#96). */
-  const NS = `est:${immeubleId}:`;
+  /* Une reprise a sa propre mémoire d'écran : sinon renvoyer une vieille
+     estimation écraserait la saisie d'une nouvelle en cours. */
+  const NS = reprise ? `est:${immeubleId}:${reprise.id}:` : `est:${immeubleId}:`;
   const useMem = <T,>(cle: string, initial: T | (() => T)) => useMemoire<T>(NS + cle, initial);
 
-  const [step, setStep] = useMem("step", 0);
+  const [step, setStep] = useMem("step", reprise ? 4 : 0);
   const [pending, start] = useTransition();
-  const [estId, setEstId] = useMem<string | null>("estId", null);
+  const [estId, setEstId] = useMem<string | null>("estId", reprise?.id ?? null);
   /** Le PDF du dossier, fabriqué juste après l'estimation. */
-  const [pdf, setPdf] = useMem<{ url: string; ko: number } | null>("pdf", null);
+  const [pdf, setPdf] = useMem<{ url: string; ko: number } | null>(
+    "pdf",
+    reprise?.pdfUrl ? { url: reprise.pdfUrl, ko: reprise.pdfKo ?? 0 } : null,
+  );
   const [pdfKo, setPdfKo] = useState<string | null>(null);
   /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
   const [envoye, setEnvoye] = useMem<string | null>("envoye", null);
@@ -256,13 +286,18 @@ export function EstimationWizard({
   const okLocatif = agg.tot > 0 && agg.carrez > 0;
   const okSecteur = rLoyer > 0 && rPrix > 0 && rRenta > 0;
   const okPrixAnalyse = hai > 0 && analyse.trim().length > 0;
-  const etatEtape: ("ok" | "warn" | "lock")[] = [
-    okAdresse && okPoi && okCharges && okLocatif ? "ok" : "warn",
-    okSecteur ? "ok" : "warn",
-    okPrixAnalyse ? "ok" : "warn",
-    estId ? "ok" : step >= 3 ? "warn" : "lock",
-    estId ? "ok" : "lock",
-  ];
+  /* Sur une reprise, les trois premières étapes sont derrière nous : elles
+     s'affichent faites, pas en alerte sur des données de fiche qui ont pu
+     bouger depuis (retour #98). */
+  const etatEtape: ("ok" | "warn" | "lock")[] = reprise
+    ? ["ok", "ok", "ok", "ok", "ok"]
+    : [
+        okAdresse && okPoi && okCharges && okLocatif ? "ok" : "warn",
+        okSecteur ? "ok" : "warn",
+        okPrixAnalyse ? "ok" : "warn",
+        estId ? "ok" : step >= 3 ? "warn" : "lock",
+        estId ? "ok" : "lock",
+      ];
 
   /* Le dossier d'estimation est déjà en pièce jointe : le proposer une
      seconde fois dans la liste des documents n'aurait pas de sens. */
@@ -371,12 +406,18 @@ export function EstimationWizard({
   );
 
   const mailObjet = `Estimation de votre immeuble à ${S(im.adresse_ville)}`;
+  /* Sur une reprise, le mail annonce les chiffres de l'estimation d'origine.
+     Ceux de la fiche ont pu bouger depuis — un lot reloué, des travaux
+     ressaisis — et le dossier joint, lui, n'a pas changé. */
+  const haiMail = reprise?.hai ?? hai;
+  const nvMail = reprise?.nv ?? nv;
+  const baseMail = reprise?.hai ?? haiTravaux;
   const mailCorps = [
     `Bonjour${b.proprietaire ? ` ${S(b.proprietaire["Civilité"]) === "Madame" ? "Madame" : "Monsieur"} ${S(b.proprietaire.nom).toUpperCase()}` : ""},`,
     "",
     `Comme convenu, vous trouverez ci-joint l'estimation de votre immeuble sis ${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} à ${S(im.adresse_ville)}.`,
     "",
-    `Nous avons estimé l'immeuble à ${euros(hai)} HAI (${euros(nv)}) soit ${agg.carrez > 0 ? group(haiTravaux / agg.carrez) : "—"} €/m² et ${haiTravaux > 0 ? fr1((agg.loyersMaxAn / haiTravaux) * 100) : "—"} % de rendement brut après travaux et relocation.${travauxTot > 0 ? ` Pour les travaux nous sommes partis sur ${euros(travauxTot)}.` : ""}`,
+    `Nous avons estimé l'immeuble à ${euros(haiMail)} HAI (${euros(nvMail)}) soit ${agg.carrez > 0 ? group(baseMail / agg.carrez) : "—"} €/m² et ${baseMail > 0 ? fr1((agg.loyersMaxAn / baseMail) * 100) : "—"} % de rendement brut après travaux et relocation.${travauxTot > 0 ? ` Pour les travaux nous sommes partis sur ${euros(travauxTot)}.` : ""}`,
     "",
     "Ce prix correspond-il à vos attentes ? Seriez-vous disponible demain pour en discuter ?",
     "",
@@ -387,20 +428,32 @@ export function EstimationWizard({
 
   return (
     <div className="est">
+      {/* Plus de croix de fermeture ici (retour #99) : cet écran n'est pas une
+          fenêtre posée sur la fiche, c'est une section de la fiche. On en sort
+          en cliquant une autre entrée du rail, comme partout ailleurs. */}
       <div className="est-head">
-        <span className="est-titre">{estId ? "Estimation" : "Nouvelle estimation"}</span>
-        {/* La saisie est mémorisée pour l'onglet : ce bouton est le seul moyen
-            de repartir d'une page blanche (#96). */}
-        <button
-          type="button" className="est-reset"
-          title="Vider la saisie et repartir de zéro"
-          onClick={() => {
-            if (!confirm("Effacer la saisie en cours et recommencer l'estimation ?")) return;
-            oublier(NS);
-            window.location.reload();
-          }}
-        >Recommencer</button>
-        <Link href={`/bien/${immeubleId}`} className="est-close" title="Fermer l'estimation">✕</Link>
+        <span className="est-titre">
+          {reprise
+            ? `Envoyer — ${reprise.titre || "estimation"}${reprise.creeLe ? ` du ${dmyfr(reprise.creeLe)}` : ""}`
+            : estId ? "Estimation" : "Nouvelle estimation"}
+        </span>
+        {reprise ? (
+          <span className="est-sous">
+            Estimation déjà faite : rien n&apos;est recalculé, le dossier joint est celui d&apos;origine.
+          </span>
+        ) : (
+          /* La saisie est mémorisée pour l'onglet : ce bouton est le seul moyen
+             de repartir d'une page blanche (#96). */
+          <button
+            type="button" className="est-reset"
+            title="Vider la saisie et repartir de zéro"
+            onClick={() => {
+              if (!confirm("Effacer la saisie en cours et recommencer l'estimation ?")) return;
+              oublier(NS);
+              window.location.reload();
+            }}
+          >Recommencer</button>
+        )}
       </div>
 
       <div className="est-prog"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>

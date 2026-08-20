@@ -18,9 +18,9 @@ import { dmy, euros, group } from "@/lib/format";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { ContactPicker } from "@/components/contact-picker";
 import {
-  FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques,
-  mandantVide, nomMandant, piecesMandant, publicationWeb, resoudrePrix, synthese, verrou,
-  type ChampPrix, type Mandant, type Prix,
+  FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
+  nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
+  type ChampPrix, type Mandant, type Mode, type Prix,
 } from "@/lib/mandat";
 import {
   cancelMandat, deposerPieceMandat, envoyerMandatSignature, genererMandat, majMandants,
@@ -562,9 +562,10 @@ function OngletPrix({
   });
   /* Les deux dernières cases touchées pilotent les deux autres (retour #104). */
   const [pilotes, setPilotes] = useState<ChampPrix[]>(["nv", "taux"]);
-  const [charge, setCharge] = useState(S(m.Charge_hono) || "Vendeur");
+  const [charge, setCharge] = useState(S(m.Charge_hono) || "Acheteur");
+  const [mode, setMode] = useState<Mode>(modeVente(m));
   const s = useMemo(() => synthese(lots), [lots]);
-  const preemptable = s.occupes > 0;
+  const regime = useMemo(() => regimeHonoraires(lots, mode, charge), [lots, mode, charge]);
 
   const saisir = (cle: ChampPrix) => (v: string) => {
     const suite = [...pilotes.filter((c) => c !== cle), cle];
@@ -576,7 +577,8 @@ function OngletPrix({
     start(() =>
       updateMandat(mandatId, immeubleId, {
         prix_nv: p.nv, prix_hai: p.hai, honos_taux: p.taux, honos_ttc: p.honos,
-        Charge_hono: preemptable ? "Vendeur" : charge,
+        Charge_hono: regime.charge,
+        vente_mode: mode,
       } as MandatPatch),
     );
 
@@ -601,26 +603,38 @@ function OngletPrix({
         <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={locked} onChange={saisir("taux")} decimal />
       </div>
 
+      {/* La nature de la vente commande la charge des honoraires : c'est le
+          droit de préemption du locataire qui décide, pas l'occupation. */}
+      <div className="mdt-sub">Nature de la vente</div>
+      <div className="seg lg">
+        {([["bloc", "Vente en bloc"], ["decoupe", "Vente à la découpe"]] as const).map(([v, l]) => (
+          <button key={v} type="button" className={mode === v ? "on" : undefined}
+            disabled={locked} onClick={() => setMode(v)}>{l}</button>
+        ))}
+      </div>
+
       <div className="mdt-sub">Charge des honoraires</div>
       <div className="seg lg">
         {CHARGES_HONOS.map((c) => (
-          <button key={c} type="button" className={(preemptable ? "Vendeur" : charge) === c ? "on" : undefined}
-            disabled={locked || preemptable} onClick={() => setCharge(c)}>
+          <button key={c} type="button" className={regime.charge === c ? "on" : undefined}
+            disabled={locked || regime.impose !== null} onClick={() => setCharge(c)}>
             Charge {c.toLowerCase()}
           </button>
         ))}
       </div>
-      {preemptable && (
-        <div className="mdt-doctrine">
-          {/* Attention aux espaces en JSX : un texte qui commence juste après
-              une accolade ET qui passe à la ligne perd son espace de tête.
-              D'où les `{" "}` explicites — sans eux on lisait « occupés: le ». */}
-          <b>Honoraires charge vendeur imposés.</b> {s.occupes} lot{s.occupes > 1 ? "s" : ""} occupé{s.occupes > 1 ? "s" : ""}{" "}
-          : le locataire peut être titulaire d&apos;un droit de préemption (loi du 31 décembre 1975, baux commerciaux).
-          Le prix qui lui est notifié doit être le <b>net vendeur non majoré</b> — une charge acquéreur sur ces lots
-          fait tomber la notification, et avec elle les honoraires. L&apos;article 4.3 du mandat le stipule.
-        </div>
-      )}
+      <div className={regime.impose ? "mdt-doctrine" : "mdt-doctrine libre"}>
+        {regime.impose ? (
+          <>
+            <b>Charge vendeur imposée.</b> {regime.motif}{" "}
+            L&apos;article 4.3 du mandat porte la réserve correspondante : la subrogation du préempteur
+            reste acquise face à une commune, mais elle est expressément écartée face au locataire.
+          </>
+        ) : (
+          <>
+            <b>Charge libre.</b> {regime.motif}
+          </>
+        )}
+      </div>
 
       {rendement !== undefined && (
         <div className="mdt-rend">

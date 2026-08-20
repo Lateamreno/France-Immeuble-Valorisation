@@ -342,6 +342,74 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
   return out({ nv, hai, taux, honos });
 }
 
+/* ------------------------------------------- Doctrine « charge des honoraires »
+
+   Règle maison, dictée par le droit de préemption du locataire — et par rien
+   d'autre. Le réflexe « lot occupé donc charge vendeur » est FAUX : sur les
+   253 mandats du BO, 243 sont en charge acquéreur, et ce sont des immeubles
+   de rapport loués. Vendre un immeuble multi-locataires EN BLOC n'ouvre aucun
+   droit de préemption individuel : les honoraires restent charge acquéreur.
+
+   Deux cas, et deux seulement, imposent la charge vendeur :
+
+     • la vente À LA DÉCOUPE — chaque locataire est titulaire d'un droit de
+       préemption sur son lot (loi du 31 décembre 1975, baux commerciaux) ;
+     • l'immeuble MONO-LOCATAIRE vendu en bloc — le locataire unique préempte
+       sur l'ensemble, c'est le cas où l'on se ferait avoir.
+
+   Dans ces deux cas le prix notifié au locataire doit être le net vendeur non
+   majoré : d'où la charge vendeur, qui laisse les honoraires dans le prix. */
+
+export type Mode = "bloc" | "decoupe";
+
+export const modeVente = (m: Record<string, unknown>): Mode =>
+  m.vente_mode === "decoupe" ? "decoupe" : "bloc";
+
+export type RegimeHonoraires = {
+  /** Charge imposée par la doctrine, ou `null` si l'agent reste libre. */
+  impose: "Vendeur" | null;
+  /** Charge à appliquer, imposée ou choisie. */
+  charge: "Vendeur" | "Acheteur";
+  motif: string;
+  /** Le mandat porte-t-il la clause préemption locataire (art. 4.3) ? */
+  clauseLocataire: boolean;
+};
+
+export function regimeHonoraires(
+  lots: Record<string, unknown>[],
+  mode: Mode,
+  choix: string | undefined,
+): RegimeHonoraires {
+  const s = synthese(lots);
+  if (mode === "decoupe") {
+    return {
+      impose: "Vendeur",
+      charge: "Vendeur",
+      clauseLocataire: true,
+      motif:
+        "Vente à la découpe : chaque locataire est titulaire d'un droit de préemption sur son lot. Le prix qui lui est notifié doit être le net vendeur non majoré — d'où la charge vendeur.",
+    };
+  }
+  if (s.occupes === 1) {
+    return {
+      impose: "Vendeur",
+      charge: "Vendeur",
+      clauseLocataire: true,
+      motif:
+        "Immeuble mono-locataire vendu en bloc : le locataire unique préempte sur l'ensemble. Charge acquéreur, la notification tombe et les honoraires avec.",
+    };
+  }
+  return {
+    impose: null,
+    charge: choix === "Vendeur" ? "Vendeur" : "Acheteur",
+    clauseLocataire: false,
+    motif:
+      s.occupes > 1
+        ? `Vente en bloc, ${s.occupes} locataires : aucun droit de préemption individuel, honoraires charge acquéreur comme d'usage. À vérifier tout de même — si l'acquéreur ne s'engage pas à proroger les baux d'habitation six ans, l'article 10-1 de la loi du 31 décembre 1975 rouvre un droit de préemption d'ensemble.`
+        : "Immeuble libre de toute occupation : aucun droit de préemption, la charge se négocie librement.",
+  };
+}
+
 /* -------------------------------------------------------- Pièces & blocages */
 
 export type Manque = { cle: string; label: string; onglet: string };

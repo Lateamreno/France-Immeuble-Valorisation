@@ -770,30 +770,80 @@ function PhotosSection({ b }: { b: BienData }) {
 }
 
 function EstimationsSection({ b }: { b: BienData }) {
+  const immeubleId = String(b.im._id);
   return (
     <>
       <SectTitle icon={I.calc} title="Estimations" chips={<span className="fchip gold">{euros(b.im.prix_hai_estim) ?? euros(b.im.prix_hai)} HAI</span>} />
-      <Link className="fbtn" href={`/bien/${String(b.im._id)}/estimation`} style={{ margin: "0 auto 14px", display: "flex", textDecoration: "none", width: "fit-content" }}>+ Estimer</Link>
+      <MenuEstimer b={b} />
       {b.estimations.map((e) => {
         const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
         const isApp = String(e._id).startsWith("app_");
         return (
           <Row key={e._id as string}>
             <div className="grow">
-              <div className="t">{String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}</div>
+              {/* Cliquer sur l'estimation l'ouvre à l'étape Envoi : plus besoin
+                  d'en refaire une pour pouvoir la renvoyer (retour #98). */}
+              <div className="t">
+                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}`} style={{ color: "inherit" }}>
+                  {String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}
+                </Link>
+              </div>
               <div className="s">
                 {dmy(e["Created Date"])}
                 {isApp && (
-                  <> · <Link href={`/bien/${String(b.im._id)}/estimation/${String(e._id)}/imprimer`} target="_blank">version imprimable</Link></>
+                  <> · <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/imprimer`} target="_blank">version imprimable</Link></>
                 )}
               </div>
             </div>
             <span className={st === "Envoyée" ? "badge-g" : st === "PDF manquant" ? "badge-r" : "badge-o"}>{st}</span>
+            <Link className="fbtn" href={`/bien/${immeubleId}/estimation/${String(e._id)}`}>
+              {st === "Envoyée" ? "Renvoyer" : "Envoyer"}
+            </Link>
           </Row>
         );
       })}
       {b.estimations.length === 0 && <div className="fempty">Aucune estimation.</div>}
     </>
+  );
+}
+
+/**
+ * « Estimer » ouvre un menu au lieu de partir droit sur une page blanche
+ * (retour #99) : neuf fois sur dix ce qu'on veut, c'est renvoyer celle qui
+ * existe déjà, pas en refaire une.
+ */
+function MenuEstimer({ b }: { b: BienData }) {
+  const [ouvert, setOuvert] = useState(false);
+  const immeubleId = String(b.im._id);
+  const recentes = b.estimations.slice(0, 5);
+
+  return (
+    <div className="estm">
+      <button type="button" className="fbtn" onClick={() => setOuvert((v) => !v)} aria-expanded={ouvert}>
+        + Estimer <span className="chev">{ouvert ? "˄" : "˅"}</span>
+      </button>
+      {ouvert && (
+        <>
+          <button type="button" className="estm-fond" aria-label="Fermer" onClick={() => setOuvert(false)} />
+          <div className="estm-menu">
+            <Link className="estm-it neuf" href={`/bien/${immeubleId}/estimation`}>
+              <b>Nouvelle estimation</b>
+              <span>Repartir des données de la fiche et refaire le calcul.</span>
+            </Link>
+            {recentes.length > 0 && <div className="estm-sep">Renvoyer une estimation existante</div>}
+            {recentes.map((e) => (
+              <Link key={String(e._id)} className="estm-it" href={`/bien/${immeubleId}/estimation/${String(e._id)}`}>
+                <b>{String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? "—"}</b>
+                <span>
+                  {dmy(e["Created Date"])} · {String(e.Statut ?? "").replace(/^\d+ - /, "")}{" "}
+                  — rien n&apos;est recalculé.
+                </span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
