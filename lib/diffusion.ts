@@ -317,15 +317,25 @@ export function chargeUtile(
   );
 
   /* Travaux : la liste réelle de l'état technique, pas une estimation en
-     bloc. C'est ce qui permet à un acquéreur de chiffrer son projet. */
+     bloc. C'est ce qui permet à un acquéreur de chiffrer son projet.
+
+     Chaque ligne dit si elle est PORTÉE PAR DES LOTS ou non. La distinction
+     n'est pas cosmétique : une toiture, un ravalement, une cage d'escalier
+     n'appartiennent à aucun lot, et la marketplace doit pouvoir les ranger
+     à part — sinon ils disparaissent du calcul du rendement potentiel, qu'ils
+     gonflent alors artificiellement. */
   const travaux = b.travaux.map((t) => ({
     description: S(t.description) ?? S(t.commentaire) ?? "Travaux",
     montant: N(t.montant),
     urgence: S(t.Urgence),
     devis: t.YN_devis === true,
+    porte_par_lots: Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0,
   }));
   const travauxTotal = travaux.reduce((sum, t) => sum + (t.montant ?? 0), 0);
-  const travauxLots = lots.reduce((sum, l) => sum + (l.travaux_previsionnels_eur ?? 0), 0);
+  /** Ce qui ne se rattache à aucun lot : les travaux supplémentaires. */
+  const travauxSupplementaires = travaux
+    .filter((t) => !t.porte_par_lots)
+    .reduce((sum, t) => sum + (t.montant ?? 0), 0);
 
   return {
     reference: `FI:${String(im._id)}`,
@@ -366,14 +376,13 @@ export function chargeUtile(
         : undefined,
       travaux_estimation_eur: travauxTotal || undefined,
       travaux_prevus_total_eur: travauxTotal || undefined,
-      /* Le détail par lot ne couvre PAS la toiture ni les parties communes.
-         Or `recalculer_agregats_listing` écrase `travaux_prevus_total_eur`
-         par la seule somme des lots — les travaux d'immeuble disparaissent
-         alors du dénominateur du rendement potentiel, qu'ils gonflent
-         artificiellement. On isole donc explicitement le reliquat pour que
-         la marketplace puisse le réintégrer. */
-      travaux_parties_communes_eur: Math.max(0, Math.round(travauxTotal - travauxLots)) || undefined,
-      travaux_lots_eur: Math.round(travauxLots) || undefined,
+      /* Les deux sources, séparées : ce que les lots portent déjà, et ce qui
+         reste à la charge de l'immeuble. `recalculer_agregats_listing` ne
+         voit aujourd'hui que la première — d'où l'envoi explicite de la
+         seconde, pour qu'elle puisse être réintégrée au dénominateur du
+         rendement potentiel. */
+      travaux_lots_eur: Math.round(lots.reduce((sum, l) => sum + (l.travaux_previsionnels_eur ?? 0), 0)) || undefined,
+      travaux_parties_communes_eur: Math.round(travauxSupplementaires) || undefined,
       travaux_devis: travaux.some((t) => t.devis),
       detail: travaux,
     },
