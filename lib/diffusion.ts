@@ -121,7 +121,7 @@ export type LotAnnonce = {
   etage?: number;
   surface_m2?: number;
   surface_carrez?: number;
-  statut: "loue" | "libre";
+  statut: "occupe" | "libre";
   type_bail?: string;
   loyer_mensuel_hc?: number;
   loyer_marche_estime?: number;
@@ -129,7 +129,7 @@ export type LotAnnonce = {
   etat?: string;
   travaux_previsionnels_eur?: number;
   /** Nature seule : jamais de nom. Garde-fou RGPD, voir plus bas. */
-  locataire_nature?: "physique" | "morale";
+  locataire_nature?: "personne_physique" | "personne_morale";
 };
 
 export type ChargeUtile = {
@@ -145,18 +145,61 @@ export type ChargeUtile = {
   documents: { nom: string; url: string; type: string }[];
 };
 
-/** Destination BO → type de lot Plein Bail. */
-const TYPE_LOT: Record<string, string> = {
-  Logement: "appartement",
-  Commerce: "commerce",
-  Bureau: "bureau",
-  Logistique: "local_activite",
-  Cave: "cave",
-  Parking: "stationnement",
-  Annexe: "autre",
+/* ---- Correspondances avec les énumérations RÉELLES de Plein Bail ----
+   Relevées sur `listing_lots` le 21/08. Attention : ce ne sont pas celles
+   qu'on devine. `type_lot` ne connaît ni « appartement », ni « stationnement »,
+   ni « local_activite » ; le statut d'un lot loué est `occupe`, pas `loue` ;
+   et la nature du preneur s'écrit `personne_physique`. Une seule valeur
+   fausse et l'insertion entière est rejetée. */
+
+/** Type de lot : `habitation_t1 | … | t5plus | commerce | bureau | parking |
+ *  cave | autre | habitation_maison | parking_ext | parking_ss | box |
+ *  box_ss | hotel`. On combine la destination ET la typologie du BO. */
+function typeLot(destination: string, typeBo: string | undefined): string {
+  const t = (typeBo ?? "").toLowerCase();
+  if (destination === "Commerce") return "commerce";
+  if (destination === "Bureau") return "bureau";
+  if (destination === "Cave") return "cave";
+  if (destination === "Parking") return t.includes("box") ? "box" : "parking";
+  // Pas de « local d'activité » côté marketplace : la logistique tombe en autre.
+  if (destination === "Logistique" || destination === "Annexe") return "autre";
+
+  // Logement : la marketplace veut le nombre de pièces, pas le libellé.
+  if (t.includes("maison")) return "habitation_maison";
+  if (/t5|t6|t7/.test(t)) return "habitation_t5plus";
+  if (t.includes("t4")) return "habitation_t4";
+  if (t.includes("t3") || t.includes("loft")) return "habitation_t3";
+  if (t.includes("t2")) return "habitation_t2";
+  if (t.includes("t1") || t.includes("studio") || t.includes("chambre")) return "habitation_t1";
+  return "autre";
+}
+
+/** Type de bail : `nu_89 | meuble | mobilite | commercial_369 | professionnel |
+ *  derogatoire | civil | precaire`. La loi de 48 n'a pas de valeur dédiée —
+ *  on la rattache au bail nu, faute de mieux, en attendant qu'elle existe. */
+const TYPE_BAIL: Record<string, string> = {
+  "Nu": "nu_89",
+  "Loi 89": "nu_89",
+  "Loi 48": "nu_89",
+  "Meuble": "meuble",
+  "Airbnb": "meuble",
+  "3/6/9": "commercial_369",
+  "Précaire": "precaire",
+  "Civil": "civil",
+  "Ferme": "civil",
 };
 
-/** État BO → énumération `etat_general` de Plein Bail. */
+/** État du LOT : `bon | moyen | rafraichissement | travaux` — à ne pas
+ *  confondre avec `etat_general` de l'annonce, qui a d'autres valeurs. */
+const ETAT_LOT: Record<string, string> = {
+  Neuf: "bon",
+  Renove: "bon",
+  "Bon etat": "bon",
+  "Etat d'usage": "moyen",
+  Travaux: "travaux",
+};
+
+/** État de l'IMMEUBLE : énumération `etat_general` de `listings`. */
 const ETAT: Record<string, string> = {
   Neuf: "neuf",
   Renove: "renove",
@@ -164,6 +207,14 @@ const ETAT: Record<string, string> = {
   "Etat d'usage": "rafraichissement",
   Travaux: "a_renover",
 };
+
+/** DPE : la marketplace ne connaît que A à G. « G+ » retombe sur G, le reste tombe. */
+function classeEnergie(v: unknown): string | undefined {
+  const s = S(v);
+  if (!s) return undefined;
+  if (s === "G+") return "G";
+  return /^[A-G]$/.test(s) ? s : undefined;
+}
 
 const LIBRE = new Set(["Vide", "", "n.c."]);
 
@@ -225,25 +276,30 @@ export function chargeUtile(
     const dest = String(l.Destination ?? "Annexe");
     return {
       designation: `Lot ${T(l.numero) ?? "?"}${S(l.Type_lot) ? ` — ${S(l.Type_lot)}` : ""}`,
-      type_lot: TYPE_LOT[dest] ?? "autre",
+      type_lot: typeLot(dest, S(l.Type_lot)),
       etage: N(l.etage),
       surface_m2: N(l.surface_sol) ?? N(l.surface_carrez),
       surface_carrez: N(l.surface_carrez),
-      statut: loue ? "loue" : "libre",
-      type_bail: loue ? bail : undefined,
+      statut: loue ? "occupe" : "libre",
+      type_bail: loue ? TYPE_BAIL[bail] : undefined,
       loyer_mensuel_hc: loue ? N(l.loyer) : undefined,
+      /* Le loyer de marché part sur TOUS les lots. Plein Bail ne s'en sert
+         que pour les lots libres — son `loyer_annuel_hc_potentiel` garde le
+         loyer en place sur les lots loués — mais l'envoyer partout permet au
+         BO d'afficher le potentiel « tout reloué », qui est celui que France
+         Immeuble annonce dans ses descriptifs. */
       loyer_marche_estime: N(l.loyer_max),
-      dpe_lot: S(l.Type_dpe) === "n.c." ? undefined : S(l.Type_dpe),
-      etat: ETAT[String(l.Etat ?? "")],
+      dpe_lot: classeEnergie(l.Type_dpe),
+      etat: ETAT_LOT[String(l.Etat ?? "")],
       travaux_previsionnels_eur: N(l.travaux),
       /* RGPD, garde-fou n°1 du projet : le nom du locataire ne franchit
          jamais la frontière. Plein Bail a bien un champ pour ça — il est
          fait pour les annonceurs tiers, pas pour nous. On n'envoie que la
          nature, et encore, seulement quand le lot est loué. */
       locataire_nature: loue
-        ? (String(l.Type_bail) === "3/6/9" || dest === "Commerce" || dest === "Bureau"
-            ? "morale"
-            : "physique")
+        ? (bail === "3/6/9" || dest === "Commerce" || dest === "Bureau"
+            ? "personne_morale"
+            : "personne_physique")
         : undefined,
     };
   });
@@ -269,6 +325,7 @@ export function chargeUtile(
     devis: t.YN_devis === true,
   }));
   const travauxTotal = travaux.reduce((sum, t) => sum + (t.montant ?? 0), 0);
+  const travauxLots = lots.reduce((sum, l) => sum + (l.travaux_previsionnels_eur ?? 0), 0);
 
   return {
     reference: `FI:${String(im._id)}`,
@@ -309,6 +366,14 @@ export function chargeUtile(
         : undefined,
       travaux_estimation_eur: travauxTotal || undefined,
       travaux_prevus_total_eur: travauxTotal || undefined,
+      /* Le détail par lot ne couvre PAS la toiture ni les parties communes.
+         Or `recalculer_agregats_listing` écrase `travaux_prevus_total_eur`
+         par la seule somme des lots — les travaux d'immeuble disparaissent
+         alors du dénominateur du rendement potentiel, qu'ils gonflent
+         artificiellement. On isole donc explicitement le reliquat pour que
+         la marketplace puisse le réintégrer. */
+      travaux_parties_communes_eur: Math.max(0, Math.round(travauxTotal - travauxLots)) || undefined,
+      travaux_lots_eur: Math.round(travauxLots) || undefined,
       travaux_devis: travaux.some((t) => t.devis),
       detail: travaux,
     },

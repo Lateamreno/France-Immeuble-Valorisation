@@ -179,10 +179,32 @@ function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
 
   const prix = Number(charge.prix.prix_eur) || 0;
   const surface = Number(charge.bien.surface_totale) || 0;
+  /* Deux rendements, et ils ne disent pas la même chose.
+
+     L'ACTUEL, sur les loyers en place : c'est ce qu'un acquéreur encaisse
+     dès demain. Sur un immeuble à moitié vide, ou sous loi de 48, il est
+     bas — et c'est justement l'intérêt du dossier.
+
+     Le POTENTIEL, sur les loyers de marché de tous les lots, rapporté au
+     prix TRAVAUX COMPRIS : c'est la promesse. C'est la formule que MAV
+     écrit lui-même dans ses descriptifs, et sans elle l'annonce d'un
+     immeuble à repositionner n'a aucun sens. */
   const loyerAn = charge.lots.reduce((s, l) => s + (l.loyer_mensuel_hc ?? 0), 0) * 12;
+  const loyerPotentielAn =
+    charge.lots.reduce((s, l) => s + (l.loyer_marche_estime ?? l.loyer_mensuel_hc ?? 0), 0) * 12;
+  const travaux = Number(charge.travaux.travaux_estimation_eur) || 0;
   const rendement = prix > 0 && loyerAn > 0 ? (loyerAn / prix) * 100 : undefined;
+  const rendementPotentiel =
+    prix > 0 && loyerPotentielAn > 0 ? (loyerPotentielAn / (prix + travaux)) * 100 : undefined;
+  /* On ne montre le potentiel que s'il apporte quelque chose : sur un
+     immeuble déjà au prix du marché, deux chiffres identiques ne font que
+     du bruit. */
+  const potentielUtile =
+    rendementPotentiel !== undefined && rendement !== undefined
+      ? rendementPotentiel - rendement > 0.2
+      : rendementPotentiel !== undefined;
   const prixM2 = prix > 0 && surface > 0 ? prix / surface : undefined;
-  const loues = charge.lots.filter((l) => l.statut === "loue").length;
+  const loues = charge.lots.filter((l) => l.statut === "occupe").length;
 
   // Plein Bail déduit l'amplitude DPE des lots : on montre la même chose.
   const dpes = charge.lots.map((l) => l.dpe_lot).filter((d): d is string => !!d && CLASSES_DPE.includes(d));
@@ -262,8 +284,25 @@ function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
 
             {/* Les chiffres que regarde un investisseur, dans son ordre à lui. */}
             <div className="anp-kpi">
-              <Kpi k="Rendement brut" v={rendement ? `${rendement.toFixed(2).replace(".", ",")} %` : "—"} fort />
-              <Kpi k="Loyers annuels HC" v={euros(loyerAn) ?? "—"} />
+              <Kpi
+                k="Rendement actuel"
+                v={rendement ? `${rendement.toFixed(2).replace(".", ",")} %` : "—"}
+                d="sur les loyers en place"
+                fort
+              />
+              {potentielUtile && (
+                <Kpi
+                  k="Rendement potentiel"
+                  v={rendementPotentiel ? `${rendementPotentiel.toFixed(2).replace(".", ",")} %` : "—"}
+                  d={travaux > 0 ? "tout reloué, travaux compris" : "tout reloué"}
+                  fort
+                />
+              )}
+              <Kpi
+                k="Loyers annuels HC"
+                v={euros(loyerAn) ?? "—"}
+                d={potentielUtile ? `${euros(loyerPotentielAn) ?? "—"} en potentiel` : undefined}
+              />
               <Kpi k="Surface" v={surface ? `${Math.round(surface)} m²` : "—"} />
               <Kpi k="Lots" v={`${charge.lots.length}`} d={`${loues} loué${loues > 1 ? "s" : ""}`} />
               <Kpi k="Taxe foncière" v={tfTotal} d={tfRecup} />
@@ -300,8 +339,8 @@ function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
                           <td>{l.etage ?? "—"}</td>
                           <td>{l.surface_carrez ?? l.surface_m2 ? `${Math.round(l.surface_carrez ?? l.surface_m2 ?? 0)} m²` : "—"}</td>
                           <td>
-                            <span className={`anp-st ${l.statut}`}>{l.statut === "loue" ? "Loué" : "Libre"}</span>
-                            {l.locataire_nature && <i> · {l.locataire_nature === "morale" ? "personne morale" : "particulier"}</i>}
+                            <span className={`anp-st ${l.statut}`}>{l.statut === "occupe" ? "Loué" : "Libre"}</span>
+                            {l.locataire_nature && <i> · {l.locataire_nature === "personne_morale" ? "personne morale" : "particulier"}</i>}
                           </td>
                           <td>{l.type_bail ?? "—"}</td>
                           <td className="n">{l.loyer_mensuel_hc ? `${Math.round(l.loyer_mensuel_hc).toLocaleString("fr-FR")} €` : "—"}</td>

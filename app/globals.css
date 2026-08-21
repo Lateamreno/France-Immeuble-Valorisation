@@ -3951,7 +3951,7 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   font-family: var(--font-title); font-size: 10.5px; font-weight: 700;
   border-radius: 3px; padding: 2px 7px;
 }
-.anp-st.loue { background: #eef6ec; color: #2c6b22; }
+.anp-st.occupe { background: #eef6ec; color: #2c6b22; }
 .anp-st.libre { background: #f0f1f6; color: #414c78; }
 .anp-dpe {
   display: inline-grid; place-items: center; width: 20px; height: 20px;
