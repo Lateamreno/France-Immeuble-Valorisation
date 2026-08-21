@@ -56,8 +56,15 @@ export function statutCible(b: BienData, mandat: Record<string, unknown> | null)
   }
   if (rang === 0) return { statut: "suspended", motif: "Immeuble retiré." };
   if (rang === 11) return { statut: "vendu", motif: "Bien vendu." };
-  if (rang >= 7 && rang <= 10) {
-    return { statut: "sous_offre", motif: "Sous offre ou sous compromis — l'annonce reste visible, marquée." };
+  /* La frontière est l'ACCEPTATION de l'offre, pas sa réception. Une offre
+     reçue ne change rien : le bien reste en ligne, marqué « sous offre », ce
+     qui attire des acquéreurs de repli si elle tombe. Dès que le vendeur
+     accepte, on passe en compromis et l'annonce sort de la diffusion. */
+  if (rang >= 8 && rang <= 10) {
+    return { statut: "suspended", motif: "Offre acceptée, dossier au compromis — l'annonce est retirée." };
+  }
+  if (rang === 7) {
+    return { statut: "sous_offre", motif: "Offre reçue, non encore acceptée — l'annonce reste en ligne, marquée." };
   }
   if (rang >= 5) return { statut: "online", motif: "Commercialisé." };
   return { statut: null, motif: "Le bien n'est pas encore au stade de la commercialisation." };
@@ -193,12 +200,13 @@ export function chargeUtile(
 ): ChargeUtile {
   const im = b.im;
   const s = synthese(b.lots);
-  const occupe = s.occupes > 0;
 
-  /* Adresse : exacte sur un immeuble libre, ville et quartier dès qu'il y a
-     un locataire. Un locataire ne doit pas apprendre la vente de son
-     immeuble en tombant sur l'annonce. */
-  const affichage = occupe ? "ville_quartier" : "exacte";
+  /* L'adresse exacte est transmise — Plein Bail en a besoin pour situer le
+     bien et calculer ses repères — mais elle n'est JAMAIS publiée. Règle de
+     maison sans exception, occupé ou pas : un immeuble de rapport en vente
+     ne s'affiche pas au numéro près, ni pour les locataires, ni pour les
+     confrères. D'où `ville_quartier`, toujours. */
+  const affichage = "ville_quartier";
 
   const photos = b.photos
     .filter((p) => p.dossier || p.type === "Principale")

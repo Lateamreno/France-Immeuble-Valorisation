@@ -8,7 +8,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { dmy, euros } from "@/lib/format";
-import { LIBELLE_STATUT, type Blocage } from "@/lib/diffusion";
+import { LIBELLE_STATUT, type Blocage, type ChargeUtile } from "@/lib/diffusion";
 import { apercuAnnonce, publierAnnonce, retirerAnnonce, type Apercu } from "@/lib/bo/diffusion";
 
 /* ------------------------------------------------ Section de la fiche bien */
@@ -115,11 +115,7 @@ export function SectionDiffusion({
             <Cellule k="Mandat" v={a.charge.prix.mandat_numero ? `n° ${a.charge.prix.mandat_numero}` : "—"} />
             <Cellule k="Lots" v={String(a.charge.lots.length)} />
             <Cellule k="Photos" v={String(a.charge.photos.length)} />
-            <Cellule
-              k="Adresse"
-              v={a.charge.bien.affichage_adresse === "exacte" ? "Exacte" : "Ville et quartier"}
-              d={a.charge.bien.affichage_adresse === "exacte" ? undefined : "Immeuble occupé"}
-            />
+            <Cellule k="Adresse publiée" v="Ville et quartier" d="L'adresse exacte n'est jamais publique" />
             <Cellule
               k="Contact"
               v={String(a.charge.contact.nom ?? "—")}
@@ -128,8 +124,13 @@ export function SectionDiffusion({
             />
           </div>
 
+          {/* L'annonce telle qu'elle s'affichera : c'est la seule vérification
+              qui vaille avant de publier. Un tableau de champs ne montre pas
+              qu'une photo est de travers ou qu'un descriptif tombe mal. */}
+          <ApercuAnnonce charge={a.charge} />
+
           <button type="button" className="dif-plus" onClick={() => setDetail((v) => !v)}>
-            {detail ? "Masquer" : "Voir"} ce qui sera envoyé
+            {detail ? "Masquer" : "Voir"} les données brutes envoyées
           </button>
           {detail && (
             <pre className="dif-json">{JSON.stringify(a.charge, null, 2)}</pre>
@@ -159,6 +160,205 @@ export function SectionDiffusion({
         L&apos;annonce se retire d&apos;elle-même à la fin du mandat, et se met à jour dès que l&apos;état
         locatif, les photos, les travaux, les charges ou le prix changent.
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------ L'annonce, telle qu'elle sera
+
+   Une maquette, pas un iframe : l'annonce n'existe pas encore côté Plein Bail
+   au moment où l'on veut la relire. On rejoue donc la même mise en page à
+   partir de la charge utile — même hiérarchie, mêmes chiffres, mêmes calculs
+   dérivés. Ce qu'on vérifie ici, c'est ce qu'un acquéreur verra. */
+
+const CLASSES_DPE = ["A", "B", "C", "D", "E", "F", "G"];
+
+function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
+  const [ouvert, setOuvert] = useState(true);
+  const [photo, setPhoto] = useState(0);
+
+  const prix = Number(charge.prix.prix_eur) || 0;
+  const surface = Number(charge.bien.surface_totale) || 0;
+  const loyerAn = charge.lots.reduce((s, l) => s + (l.loyer_mensuel_hc ?? 0), 0) * 12;
+  const rendement = prix > 0 && loyerAn > 0 ? (loyerAn / prix) * 100 : undefined;
+  const prixM2 = prix > 0 && surface > 0 ? prix / surface : undefined;
+  const loues = charge.lots.filter((l) => l.statut === "loue").length;
+
+  // Plein Bail déduit l'amplitude DPE des lots : on montre la même chose.
+  const dpes = charge.lots.map((l) => l.dpe_lot).filter((d): d is string => !!d && CLASSES_DPE.includes(d));
+  const rang = (d: string) => CLASSES_DPE.indexOf(d);
+  const dpeMin = dpes.length ? dpes.reduce((a, b) => (rang(b) < rang(a) ? b : a)) : undefined;
+  const dpeMax = dpes.length ? dpes.reduce((a, b) => (rang(b) > rang(a) ? b : a)) : undefined;
+
+  const tfTotal = euros(charge.charges.taxe_fonciere_eur) ?? "—";
+  const recup = euros(charge.charges.taxe_fonciere_recuperable_eur);
+  const tfRecup = recup ? `dont ${recup} récupérables` : undefined;
+
+  /* L'adresse exacte n'est JAMAIS publique : elle est transmise à Plein Bail
+     pour la géolocalisation, mais l'annonce n'affiche que la ville et le
+     quartier. Règle posée par MAV le 21/08, sans exception. */
+  const adresse = `${charge.bien.ville} (${String(charge.bien.code_postal ?? "").slice(0, 2)})`;
+
+  /* Attention : `charge.bien.description` est typé `unknown`. Un
+     `unknown && <div/>` produit une expression `unknown`, que React refuse
+     comme enfant. D'où la conversion en texte AVANT le JSX. */
+  const description = charge.bien.description ? String(charge.bien.description) : "";
+  const titre = String(charge.bien.titre ?? "");
+
+  return (
+    <div className="anp-wrap">
+      <button type="button" className="anp-bascule" onClick={() => setOuvert((v) => !v)} aria-expanded={ouvert}>
+        {ouvert ? "▾" : "▸"} Aperçu de l&apos;annonce telle qu&apos;elle s&apos;affichera
+      </button>
+
+      {ouvert && (
+        <div className="anp">
+          <div className="anp-marque">
+            <b>plein bail</b>
+            <span>Aperçu — l&apos;annonce n&apos;est pas encore en ligne</span>
+          </div>
+
+          {/* Galerie */}
+          <div className="anp-gal">
+            {charge.photos.length > 0 ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="grande" src={charge.photos[photo]?.url} alt="" />
+                {charge.photos.length > 1 && (
+                  <div className="vign">
+                    {charge.photos.slice(0, 8).map((p, i) => (
+                      <button
+                        key={p.empreinte} type="button"
+                        className={i === photo ? "on" : undefined}
+                        onClick={() => setPhoto(i)} aria-label={`Photo ${i + 1}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.url} alt="" />
+                      </button>
+                    ))}
+                    {charge.photos.length > 8 && <span className="reste">+{charge.photos.length - 8}</span>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="vide">Aucune photo — l&apos;annonce partirait sans visuel</div>
+            )}
+          </div>
+
+          <div className="anp-corps">
+            <div className="anp-tete">
+              <h3>{titre}</h3>
+              <div className="anp-adr">{adresse}</div>
+              <div className="anp-prix">
+                <b>{euros(prix) ?? "—"}</b>
+                <span>
+                  {charge.prix.honoraires_charge === "vendeur"
+                    ? "honoraires charge vendeur"
+                    : "honoraires charge acquéreur inclus"}
+                  {prixM2 ? ` · ${Math.round(prixM2).toLocaleString("fr-FR")} €/m²` : ""}
+                </span>
+              </div>
+            </div>
+
+            {/* Les chiffres que regarde un investisseur, dans son ordre à lui. */}
+            <div className="anp-kpi">
+              <Kpi k="Rendement brut" v={rendement ? `${rendement.toFixed(2).replace(".", ",")} %` : "—"} fort />
+              <Kpi k="Loyers annuels HC" v={euros(loyerAn) ?? "—"} />
+              <Kpi k="Surface" v={surface ? `${Math.round(surface)} m²` : "—"} />
+              <Kpi k="Lots" v={`${charge.lots.length}`} d={`${loues} loué${loues > 1 ? "s" : ""}`} />
+              <Kpi k="Taxe foncière" v={tfTotal} d={tfRecup} />
+              <Kpi
+                k="DPE"
+                v={dpeMin && dpeMax ? (dpeMin === dpeMax ? dpeMin : `${dpeMin} à ${dpeMax}`) : "—"}
+                d={dpes.length ? `${dpes.length} lot${dpes.length > 1 ? "s" : ""} renseigné${dpes.length > 1 ? "s" : ""}` : "non renseigné"}
+              />
+            </div>
+
+            {description !== "" && (
+              <div className="anp-desc">
+                <h4>Descriptif</h4>
+                <p>{description}</p>
+              </div>
+            )}
+
+            {/* L'état locatif lot par lot : ce qu'aucun flux annonceur ne montre. */}
+            {charge.lots.length > 0 && (
+              <div className="anp-lots">
+                <h4>État locatif détaillé</h4>
+                <div className="tablewrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Lot</th><th>Étage</th><th>Surface</th><th>Situation</th>
+                        <th>Bail</th><th className="n">Loyer HC</th><th>DPE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {charge.lots.map((l, i) => (
+                        <tr key={i}>
+                          <td>{l.designation}</td>
+                          <td>{l.etage ?? "—"}</td>
+                          <td>{l.surface_carrez ?? l.surface_m2 ? `${Math.round(l.surface_carrez ?? l.surface_m2 ?? 0)} m²` : "—"}</td>
+                          <td>
+                            <span className={`anp-st ${l.statut}`}>{l.statut === "loue" ? "Loué" : "Libre"}</span>
+                            {l.locataire_nature && <i> · {l.locataire_nature === "morale" ? "personne morale" : "particulier"}</i>}
+                          </td>
+                          <td>{l.type_bail ?? "—"}</td>
+                          <td className="n">{l.loyer_mensuel_hc ? `${Math.round(l.loyer_mensuel_hc).toLocaleString("fr-FR")} €` : "—"}</td>
+                          <td>{l.dpe_lot ? <span className={`anp-dpe d${l.dpe_lot}`}>{l.dpe_lot}</span> : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="anp-rgpd">
+                  Aucun nom de locataire n&apos;apparaît : seule la nature du preneur est publiée.
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(charge.travaux.detail) && (charge.travaux.detail as { description: string; montant?: number; urgence?: string }[]).length > 0 && (
+              <div className="anp-tvx">
+                <h4>Travaux à prévoir · {euros(charge.travaux.travaux_estimation_eur) ?? "—"}</h4>
+                <ul>
+                  {(charge.travaux.detail as { description: string; montant?: number; urgence?: string }[]).map((t, i) => (
+                    <li key={i}>
+                      {t.description}
+                      {t.montant ? <b> {Math.round(t.montant).toLocaleString("fr-FR")} €</b> : null}
+                      {t.urgence ? <i> · urgence {t.urgence.toLowerCase()}</i> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Le contact : l'agent du dossier, pas le standard. */}
+            <div className="anp-contact">
+              <div className="av">{String(charge.contact.initiales ?? "FI")}</div>
+              <div className="qui">
+                <b>{String(charge.contact.nom ?? "France Immeuble")}</b>
+                <span>{String(charge.contact.poste ?? "")} · France Immeuble</span>
+                <span className="coord">
+                  {String(charge.contact.telephone ?? "")} · {String(charge.contact.email ?? "")}
+                </span>
+              </div>
+              <span className="mandat">
+                {charge.prix.mandat_numero ? `Mandat n° ${charge.prix.mandat_numero}` : "Mandat non numéroté"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Kpi({ k, v, d, fort }: { k: string; v: string; d?: string; fort?: boolean }) {
+  return (
+    <div className={`anp-kpi-c${fort ? " fort" : ""}`}>
+      <span className="k">{k}</span>
+      <b>{v}</b>
+      {d && <span className="d">{d}</span>}
     </div>
   );
 }

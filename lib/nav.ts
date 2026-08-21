@@ -29,12 +29,12 @@ export const NAV: NavItem[] = [
   { href: "/suivi", label: "Suivi / Rappels" },
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },
-  { href: "#notion", label: "Notion" },
-  { href: "#onoff", label: "", tool: "switch-onoff" },
   { href: "#mailing", label: "Mailing" },
-  { href: "#dimmax", label: "Dim_max", tool: "toggle" },
-  { href: "#debug", label: "Debug", tool: "toggle" },
 ];
+
+/* Retirés du menu le 21/08 sur demande de MAV : Notion, l'interrupteur
+   ON/OFF, Dim_max et Debug. C'étaient des outils de développement du BO
+   Bubble ; ils encombraient une colonne qui a mieux à faire. */
 
 /** Barre de création du bas (ordre du BO). */
 export const QUICK_CREATE = [
