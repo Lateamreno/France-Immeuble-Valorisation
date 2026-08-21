@@ -17,6 +17,9 @@ export const NAV: NavItem[] = [
   { href: "/estimation", label: "Estimations" },
   { href: "/immeubles", label: "Immeubles" },
   { href: "/mandats", label: "Mandats" },
+  // La diffusion est un métier à part : ce qui est en ligne, et ce que ça
+  // rapporte. Elle se pilote depuis les fiches, elle se surveille d'ici.
+  { href: "/diffusion", label: "Diffusion" },
   { href: "/recherches", label: "Recherches" },
   { href: "/contacts", label: "Contacts" },
   { href: "/propositions", label: "Propositions" },

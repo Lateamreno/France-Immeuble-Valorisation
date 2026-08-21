@@ -10,6 +10,8 @@ import { chargerAcheteurs, reactiver, setApporteur, setPropositionStatut, update
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
+import { SectionDiffusion } from "@/components/diffusion";
+import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
@@ -30,7 +32,7 @@ import { PHASES, phase as phaseDe } from "@/lib/decoupe";
 
 type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
-  | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs"
+  | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs" | "diffusion"
   | "acheteurs" | "notes" | "decoupe"
   /* Écran greffé sur la fiche (l'estimation) : il reste monté pendant qu'on
      visite les autres sections, pour ne rien perdre de la saisie (#96). */
@@ -56,6 +58,7 @@ const I = {
   maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
   decoupe: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></>,
   sablier: <><path d="M7 3h10M7 21h10" /><path d="M8 3v3.5c0 2 4 3.3 4 5.5s-4 3.5-4 5.5V21M16 3v3.5c0 2-4 3.3-4 5.5s4 3.5 4 5.5V21" /></>,
+  antenne: <><circle cx="12" cy="12" r="2.4" /><path d="M7.8 7.8a5.9 5.9 0 0 0 0 8.4M16.2 7.8a5.9 5.9 0 0 1 0 8.4M4.6 4.6a10.4 10.4 0 0 0 0 14.8M19.4 4.6a10.4 10.4 0 0 1 0 14.8" /></>,
 };
 
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
@@ -159,6 +162,9 @@ export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }:
           {sect === "photos" && <PhotosSection b={b} />}
           {sect === "estimations" && <EstimationsSection b={b} />}
           {sect === "mandats" && <MandatsSection b={b} />}
+          {sect === "diffusion" && (
+            <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
+          )}
           {sect === "dossiers" && <DossiersSection b={b} />}
           {sect === "tous-docs" && (
             <>
@@ -243,6 +249,21 @@ export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }:
               <span className="right">{s.indicator}</span>
             </button>
           ))}
+          {/* Diffusion : le bien vu de l'extérieur. Placée juste avant les
+              acheteurs, parce que c'est elle qui les amène. */}
+          <button type="button" className={`srow2${sect === "diffusion" ? " on" : ""}`} onClick={() => setSect("diffusion")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
+            Diffusion
+            <span className="right">
+              {typeof im.pb_listing_id === "string" && im.pb_listing_id ? (
+                im.pb_a_resynchroniser === true
+                  ? <span className="pill-dec">à republier</span>
+                  : <span className="okv">✓</span>
+              ) : (
+                <span className="ncount">—</span>
+              )}
+            </span>
+          </button>
           <button type="button" className={`srow2${sect === "acheteurs" ? " on" : ""}`} onClick={() => setSect("acheteurs")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
             Acheteurs

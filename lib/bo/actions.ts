@@ -3,6 +3,7 @@
 // Écritures du BO — uniquement vers Supabase (bo_*), jamais vers Bubble.
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -68,9 +69,28 @@ async function bqIn(table: string, ids: string[]): Promise<Record<string, unknow
 const newId = () =>
   `app_${Date.now()}x${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`;
 
+/**
+ * Le point de passage de TOUTES les écritures du BO.
+ *
+ * C'est ce qui rend la diffusion Plein Bail tenable : un lot modifié, une
+ * photo déposée, un prix corrigé, une charge saisie, un mandat signé —
+ * tout finit ici. On y marque donc la fiche « à resynchroniser », et la
+ * republication part APRÈS la réponse (`after`), jamais pendant : enregistrer
+ * une ligne de l'état locatif ne doit pas attendre le réseau.
+ */
 function refresh(immeubleId?: string) {
   revalidatePath("/", "layout");
   if (immeubleId) revalidatePath(`/bien/${immeubleId}`);
+  if (!immeubleId) return;
+  try {
+    after(async () => {
+      const { marquerAResynchroniser, synchroniserAnnonce } = await import("./diffusion");
+      await marquerAResynchroniser(immeubleId);
+      await synchroniserAnnonce(immeubleId).catch(() => undefined);
+    });
+  } catch {
+    /* Hors contexte de requête : la diffusion se rattrapera au tour suivant. */
+  }
 }
 
 /** Ajoute un suivi (réplique de la modale du BO), option mise en attente. */

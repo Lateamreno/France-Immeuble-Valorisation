@@ -1806,3 +1806,39 @@ export async function listOperations(): Promise<OperationDecoupe[]> {
     };
   });
 }
+
+/* ---------- Diffusion Plein Bail ---------- */
+
+/** Les immeubles dont une annonce existe côté marketplace. */
+export async function listDiffusion(): Promise<{
+  immeubleId: string;
+  ville: string;
+  adresse: string;
+  prix?: number;
+  statut?: string;
+  url?: string;
+  publieLe?: string;
+  empreintePubliee?: string;
+  aResynchroniser: boolean;
+  erreur?: string;
+}[]> {
+  // On ne peut pas filtrer sur un champ absent chez la plupart des fiches :
+  // on ramène les immeubles commercialisés et on garde ceux qui portent
+  // une annonce. Le parc diffusé se compte en dizaines, pas en milliers.
+  const rows = await fetchAll("immeuble", undefined, 3000).catch(() => []);
+  return rows
+    .filter((im) => typeof im.pb_listing_id === "string" && im.pb_listing_id)
+    .map((im) => ({
+      immeubleId: String(im._id),
+      ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""})`,
+      adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
+      prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+      statut: typeof im.pb_statut === "string" ? (im.pb_statut as string) : undefined,
+      url: typeof im.pb_url === "string" ? (im.pb_url as string) : undefined,
+      publieLe: typeof im.pb_publie_le === "string" ? (im.pb_publie_le as string) : undefined,
+      empreintePubliee: typeof im.pb_empreinte === "string" ? (im.pb_empreinte as string) : undefined,
+      aResynchroniser: im.pb_a_resynchroniser === true,
+      erreur: typeof im.pb_erreur === "string" ? (im.pb_erreur as string) : undefined,
+    }))
+    .sort((a, b) => (b.publieLe ?? "").localeCompare(a.publieLe ?? ""));
+}
