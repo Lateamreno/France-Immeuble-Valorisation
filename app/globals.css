@@ -3783,6 +3783,14 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 }
 .dif-note { font-size: 11.5px; color: var(--gray-lt); }
 .dif-msg { margin-top: 10px; font-size: 12.5px; color: var(--slate); }
+/* Avertissements de Plein Bail : l'annonce est passée, mais une valeur n'a pas
+   été comprise. Ni vert ni rouge — c'est un « regarde ça », pas un échec. */
+.dif-avis { margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+  background: #fffbeb; border: 1px solid #fde68a; font-size: 12.5px; color: #78350f; }
+.dif-avis b { display: block; margin-bottom: 4px; font-size: 12px; }
+.dif-avis ul { margin: 0 0 6px; padding-left: 18px; }
+.dif-avis li { margin: 2px 0; font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
+.dif-avis span { color: #92400e; }
 .dif-pied {
   margin-top: 16px; font-size: 11.5px; color: var(--gray-lt); line-height: 1.6;
   border-left: 3px solid var(--line); padding-left: 12px;

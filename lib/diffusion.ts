@@ -218,6 +218,9 @@ function classeEnergie(v: unknown): string | undefined {
 
 const LIBRE = new Set(["Vide", "", "n.c."]);
 
+/** Plafond du plan partenaire de France Immeuble. */
+export const MAX_PHOTOS = 15;
+
 /** Empreinte courte et stable d'une valeur — sert à détecter les écarts. */
 export function empreinte(v: unknown): string {
   const texte = JSON.stringify(v);
@@ -248,6 +251,10 @@ export function chargeUtile(
   mandat: Record<string, unknown> | null,
   agent: Record<string, unknown> | null,
   statut: StatutAnnonce,
+  /** Le barème d'honoraires, obligation Hoguet sur toute annonce en ligne.
+   *  Il vient de l'environnement et non d'ici : ce module est aussi chargé
+   *  côté navigateur pour l'aperçu. */
+  baremeUrl?: string,
 ): ChargeUtile {
   const im = b.im;
   const s = synthese(b.lots);
@@ -259,16 +266,20 @@ export function chargeUtile(
      confrères. D'où `ville_quartier`, toujours. */
   const affichage = "ville_quartier";
 
+  /* Le plan partenaire plafonne à 15 photos. On coupe ICI plutôt que de
+     laisser Plein Bail décider lesquelles sacrifier : l'ordre du BO est
+     celui que MAV a rangé à la main, et la 16ᵉ photo n'est pas celle qu'on
+     veut voir tomber au hasard. */
   const photos = b.photos
     .filter((p) => p.dossier || p.type === "Principale")
     .sort((x, y) => (x.type === "Principale" ? -1 : y.type === "Principale" ? 1 : x.ordre - y.ordre))
-    .map((p, i) => ({
+    .map((p) => ({
       url: p.urlPleine ?? p.url ?? "",
-      position: i,
-      is_cover: i === 0,
       empreinte: empreinte(p.urlPleine ?? p.url ?? p.id),
     }))
-    .filter((p) => p.url);
+    .filter((p) => p.url)
+    .slice(0, MAX_PHOTOS)
+    .map((p, i) => ({ ...p, position: i, is_cover: i === 0 }));
 
   const lots: LotAnnonce[] = b.lots.map((l) => {
     const bail = String(l.Type_bail ?? "");
@@ -350,17 +361,23 @@ export function chargeUtile(
       lat: N((b.adr?.geo as Record<string, unknown> | undefined)?.lat),
       lng: N((b.adr?.geo as Record<string, unknown> | undefined)?.lng),
       affichage_adresse: affichage,
-      surface_totale: N(im.surface_carrez) ?? s.surface,
-      nb_lots: b.lots.length,
       annee_construction: N(im.year_constru),
       etat_general: ETAT[String(im.Etat ?? "")],
-      occupation_statut: s.occupation === "libre" ? "libre_100" : s.occupation === "occupe" ? "occupe_100" : "partiel",
       copropriete: false,
+      /* Surface totale, nombre de lots et taux d'occupation ne sont PAS
+         envoyés : les déclencheurs de Plein Bail les recalculent depuis les
+         lots, et un champ envoyé pour l'un d'eux est ignoré sans erreur.
+         Les envoyer quand même, c'est entretenir l'illusion qu'on les
+         pilote — et prendre le risque d'afficher un chiffre qui contredit
+         celui de la marketplace le jour où nos deux formules divergent. */
     },
     prix: {
       prix_eur: N(im.prix_hai),
       honoraires_charge: String(im.prix_Charge_honos ?? "Acheteur") === "Vendeur" ? "vendeur" : "acquereur",
       honoraires_eur: N(im.prix_honos_ttc),
+      /* Obligation Hoguet : le barème doit être accessible depuis toute
+         annonce. Plein Bail prévoit le champ ; encore faut-il le remplir. */
+      honoraires_bareme_url: baremeUrl,
       mandat_numero: T(mandat?.numero),
     },
     charges: {
@@ -375,8 +392,11 @@ export function chargeUtile(
         ? travaux.map((t) => `${t.description}${t.montant ? ` — ${Math.round(t.montant)} €` : ""}`).join(" · ")
         : undefined,
       travaux_estimation_eur: travauxTotal || undefined,
-      travaux_prevus_total_eur: travauxTotal || undefined,
-      /* Les deux sources, séparées : ce que les lots portent déjà, et ce qui
+      /* `travaux_prevus_total_eur` n'est pas envoyé : c'est un agrégat que
+         `recalculer_agregats_listing()` réécrit. On envoie les deux sources
+         qui l'alimentent, à elle de faire la somme.
+
+         Les deux sources, séparées : ce que les lots portent déjà, et ce qui
          reste à la charge de l'immeuble. `recalculer_agregats_listing` ne
          voit aujourd'hui que la première — d'où l'envoi explicite de la
          seconde, pour qu'elle puisse être réintégrée au dénominateur du

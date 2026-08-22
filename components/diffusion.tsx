@@ -24,6 +24,7 @@ export function SectionDiffusion({
 }) {
   const [a, setA] = useState<Apercu | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [avis, setAvis] = useState<string[]>([]);
   const [detail, setDetail] = useState(false);
   const [pending, start] = useTransition();
 
@@ -34,8 +35,23 @@ export function SectionDiffusion({
   const publier = () =>
     start(async () => {
       setMsg(null);
+      setAvis([]);
       const r = await publierAnnonce(immeubleId);
-      setMsg(r.ok ? "Annonce publiée." : r.message);
+      if (r.ok) {
+        const p = r.photos;
+        setMsg(
+          `Annonce publiée — ${r.lots ?? 0} lots` +
+            (p ? `, ${p.copiees} photo${p.copiees > 1 ? "s" : ""} copiée${p.copiees > 1 ? "s" : ""}` : "") +
+            (p && p.ignorees ? `, ${p.ignorees} ignorée${p.ignorees > 1 ? "s" : ""}` : "") +
+            ".",
+        );
+        /* Ce que Plein Bail n'a pas compris. Il ne devine jamais : il laisse
+           le champ vide et le dit ici. Ne pas l'afficher, c'est publier une
+           annonce amputée sans le savoir. */
+        setAvis(r.avertissements ?? []);
+      } else {
+        setMsg(r.message);
+      }
       setA(await apercuAnnonce(immeubleId));
     });
 
@@ -154,6 +170,20 @@ export function SectionDiffusion({
         )}
       </div>
       {msg && <div className="dif-msg">{msg}</div>}
+      {avis.length > 0 && (
+        <div className="dif-avis">
+          <b>Plein Bail n&apos;a pas reconnu {avis.length === 1 ? "une valeur" : `${avis.length} valeurs`}</b>
+          <ul>
+            {avis.map((x, i) => (
+              <li key={i}>{x}</li>
+            ))}
+          </ul>
+          <span>
+            Le champ concerné reste vide plutôt que d&apos;afficher une information fausse. L&apos;annonce
+            est en ligne : corrigez la fiche puis republiez.
+          </span>
+        </div>
+      )}
 
       <div className="dif-pied">
         Aucun nom de locataire n&apos;est transmis : seule la nature du preneur part, physique ou morale.
@@ -178,7 +208,10 @@ function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
   const [photo, setPhoto] = useState(0);
 
   const prix = Number(charge.prix.prix_eur) || 0;
-  const surface = Number(charge.bien.surface_totale) || 0;
+  /* La surface totale ne s'envoie plus : Plein Bail la recalcule depuis les
+     lots. On applique donc la même règle qu'eux, pour montrer le chiffre qui
+     sera réellement affiché — et non celui que le BO croit juste. */
+  const surface = charge.lots.reduce((s, l) => s + (l.surface_carrez ?? l.surface_m2 ?? 0), 0);
   /* Deux rendements, et ils ne disent pas la même chose.
 
      L'ACTUEL, sur les loyers en place : c'est ce qu'un acquéreur encaisse

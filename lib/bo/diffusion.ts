@@ -19,8 +19,14 @@ import {
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PB_URL = process.env.PLEINBAIL_URL;
-const PB_TOKEN = process.env.PLEINBAIL_TOKEN;
+/* Plein Bail documente `PLEIN_BAIL_URL` / `PLEIN_BAIL_JETON`, le BO avait été
+   écrit sur `PLEINBAIL_URL` / `PLEINBAIL_TOKEN`. Les deux sont acceptés : une
+   variable mal nommée ne se voit pas — le pont reste simplement muet, et on
+   croit à une panne de réseau pendant une heure. */
+const PB_URL = process.env.PLEIN_BAIL_URL ?? process.env.PLEINBAIL_URL;
+const PB_TOKEN = process.env.PLEIN_BAIL_JETON ?? process.env.PLEINBAIL_TOKEN;
+/** Barème d'honoraires publié — obligation Hoguet sur toute annonce en ligne. */
+const PB_BAREME = process.env.FI_BAREME_HONORAIRES_URL;
 
 /** Le pont est-il branché, ou tourne-t-on à blanc ? */
 export async function diffusionConfiguree() {
@@ -105,7 +111,7 @@ export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
   const empeche = blocages(b, mandat);
   const { statut, motif } = statutCible(b, mandat);
   const agent = await getAgentFiche(String(b.im.AGENT ?? "")).catch(() => null);
-  const charge = statut ? chargeUtile(b, mandat, agent, statut) : null;
+  const charge = statut ? chargeUtile(b, mandat, agent, statut, PB_BAREME) : null;
   const emp = charge ? empreinte(charge) : undefined;
   const etat = lireEtat(b.im);
   return {
@@ -119,14 +125,28 @@ export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
   };
 }
 
-type Reponse = { listing_id: string; url?: string; status: StatutAnnonce; cree?: boolean };
+type Reponse = {
+  listing_id: string;
+  url?: string;
+  status: StatutAnnonce;
+  cree?: boolean;
+  lots?: number;
+  photos?: { copiees: number; conservees: number; ignorees: number };
+  /* Le canal par lequel Plein Bail signale qu'il n'a PAS compris une valeur.
+     Il ne devine jamais : il laisse le champ vide et le dit ici. Ignorer ce
+     tableau, c'est perdre une donnée en silence — un type de bail effacé sur
+     une annonce d'immeuble de rapport, personne ne le remarque avant qu'un
+     acquéreur pose la question. */
+  avertissements?: string[];
+};
 
-async function appeler(charge: ChargeUtile, action: "publier" | "retirer"): Promise<Reponse> {
+/** Le corps d'un appel : la charge utile pour publier, l'os pour retirer. */
+async function appeler(corps: Record<string, unknown>): Promise<Reponse> {
   if (!PB_URL || !PB_TOKEN) throw new Error("Pont Plein Bail non configuré");
   const res = await fetch(PB_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...charge, action }),
+    body: JSON.stringify(corps),
     cache: "no-store",
   });
   const texte = await res.text();
@@ -173,7 +193,8 @@ export async function publierAnnonce(immeubleId: string) {
       )
     ).filter(Boolean) as ChargeUtile["photos"];
 
-    const r = await appeler({ ...a.charge, photos }, "publier");
+    const r = await appeler({ ...a.charge, photos, action: "publier" });
+    const avertissements = r.avertissements ?? [];
     await memoriser(immeubleId, {
       pb_listing_id: r.listing_id,
       pb_url: r.url ?? null,
@@ -183,8 +204,21 @@ export async function publierAnnonce(immeubleId: string) {
       pb_synchro_le: new Date().toISOString(),
       pb_a_resynchroniser: false,
       pb_erreur: null,
+      pb_lots: r.lots ?? null,
+      pb_photos: r.photos ? `${r.photos.copiees} copiées · ${r.photos.conservees} conservées · ${r.photos.ignorees} ignorées` : null,
+      /* Un avertissement n'est pas une erreur : l'annonce est en ligne. Mais
+         il faut qu'il se voie, sinon il n'existe pas. */
+      pb_avertissements: avertissements.length ? avertissements : null,
     });
-    return { ok: true as const, url: r.url, statut: r.status, cree: r.cree !== false };
+    return {
+      ok: true as const,
+      url: r.url,
+      statut: r.status,
+      cree: r.cree !== false,
+      lots: r.lots,
+      photos: r.photos,
+      avertissements,
+    };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await memoriser(immeubleId, { pb_erreur: message, pb_synchro_le: new Date().toISOString() }).catch(() => {});
@@ -199,11 +233,12 @@ export async function retirerAnnonce(immeubleId: string, motif: string) {
     if (!b) return { ok: false as const, message: "Fiche introuvable" };
     const etat = lireEtat(b.im);
     if (!etat.listingId) return { ok: false as const, message: "Aucune annonce publiée." };
+    /* Retirer ne prend QUE la référence. Renvoyer la charge complète, comme
+       on le faisait, aurait remplacé l'annonce par un envoi amputé de ses
+       photos juste avant de la suspendre — et republier n'aurait plus rien
+       remonté. La suspension conserve messages, offres et statistiques. */
     if (PB_URL && PB_TOKEN) {
-      const mandat = mandatEnVigueur(b.mandats);
-      const agent = await getAgentFiche(String(b.im.AGENT ?? "")).catch(() => null);
-      const charge = chargeUtile(b, mandat, agent, "suspended");
-      await appeler({ ...charge, photos: [] }, "retirer");
+      await appeler({ action: "retirer", reference: `FI:${immeubleId}` });
     }
     await memoriser(immeubleId, {
       pb_statut: "suspended",
@@ -262,17 +297,28 @@ export async function marquerAResynchroniser(immeubleId: string) {
 /** Les retombées d'une annonce, lues chez Plein Bail. */
 export type Retombees = {
   reference: string;
+  listing_id?: string;
+  /** Fiches ouvertes, dédoublonnées par visiteur et par heure. */
   vues?: number;
+  /** Apparitions dans une liste de résultats. */
+  impressions?: number;
+  clics_photos?: number;
+  clics_documents?: number;
   contacts: number;
   telephones: number;
   favoris: number;
   offres: number;
+  partages?: number;
+  derniere_vue?: string;
 };
 
 /**
- * Demande les retombées à Plein Bail. Le décompte des vues n'existe pas encore
- * côté marketplace (aucune table ne les enregistre) : le champ reste vide tant
- * que ce n'est pas ajouté là-bas, et l'écran le dit plutôt que d'afficher zéro.
+ * Demande les retombées à Plein Bail.
+ *
+ * La réponse est un OBJET `{ retombees, inconnues }`, pas un tableau : le lire
+ * comme un tableau rendait toujours zéro, sans erreur — le pire des cas. Les
+ * références inconnues sont journalisées : ce sont des annonces que le BO croit
+ * en ligne et qui n'existent plus chez eux.
  */
 export async function retombeesAnnonces(references: string[]): Promise<Retombees[]> {
   if (!PB_URL || !PB_TOKEN || references.length === 0) return [];
@@ -284,8 +330,51 @@ export async function retombeesAnnonces(references: string[]): Promise<Retombees
       cache: "no-store",
     });
     if (!res.ok) return [];
-    return (await res.json()) as Retombees[];
+    const j = (await res.json()) as { retombees?: Retombees[]; inconnues?: string[] };
+    if (j.inconnues?.length) {
+      console.warn("[Plein Bail] références sans annonce :", j.inconnues.join(", "));
+    }
+    return Array.isArray(j.retombees) ? j.retombees : [];
   } catch {
     return [];
+  }
+}
+
+/* ------------------------------------------------------------- Vitrine */
+
+/**
+ * La page publique de l'agence — `/vendeur/france-immeuble` — qui figure au
+ * bas de chacune de nos annonces. Aucun flux du marché ne transporte un logo
+ * ni un texte de présentation : c'est au back-office de les pousser.
+ *
+ * Contrairement à une annonce, seuls les champs ENVOYÉS sont écrits : un champ
+ * absent veut dire « je ne le connais pas », jamais « efface-le ». Pour vider,
+ * il faut envoyer `""` explicitement.
+ */
+export type Vitrine = {
+  slogan?: string;
+  presentation?: string;
+  site_web?: string;
+  zone_intervention?: string;
+  logo?: { url: string; empreinte?: string } | null;
+};
+
+export async function publierVitrine(v: Vitrine) {
+  if (!PB_URL || !PB_TOKEN) {
+    return { ok: false as const, simulation: true as const, message: "Pont Plein Bail non configuré." };
+  }
+  try {
+    const res = await fetch(PB_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "vitrine", agence: v }),
+      cache: "no-store",
+    });
+    const texte = await res.text();
+    if (!res.ok) return { ok: false as const, message: `Plein Bail ${res.status} : ${texte.slice(0, 300)}` };
+    const j = JSON.parse(texte) as { slug: string; url: string; champs: string[]; logo?: string };
+    return { ok: true as const, ...j };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }
 }
