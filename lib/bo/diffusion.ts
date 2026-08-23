@@ -16,6 +16,7 @@ import {
   blocages, chargeUtile, empreinte, lireEtat, statutCible,
   type ChargeUtile, type StatutAnnonce,
 } from "@/lib/diffusion";
+import { BAREME_HONORAIRES, LIMITES, type VitrineSaisie } from "@/lib/vitrine";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,8 +26,11 @@ const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
    croit à une panne de réseau pendant une heure. */
 const PB_URL = process.env.PLEIN_BAIL_URL ?? process.env.PLEINBAIL_URL;
 const PB_TOKEN = process.env.PLEIN_BAIL_JETON ?? process.env.PLEINBAIL_TOKEN;
-/** Barème d'honoraires publié — obligation Hoguet sur toute annonce en ligne. */
-const PB_BAREME = process.env.FI_BAREME_HONORAIRES_URL;
+/* Barème d'honoraires publié — obligation de l'arrêté du 10 janvier 2017 sur
+   tout support publicitaire, annonce en ligne comprise. La valeur par défaut
+   est le PDF déjà publié par France Immeuble ; l'environnement peut la
+   remplacer le jour où le barème change d'adresse. */
+const PB_BAREME = process.env.FI_BAREME_HONORAIRES_URL ?? BAREME_HONORAIRES;
 
 /** Le pont est-il branché, ou tourne-t-on à blanc ? */
 export async function diffusionConfiguree() {
@@ -351,23 +355,65 @@ export async function retombeesAnnonces(references: string[]): Promise<Retombees
  * absent veut dire « je ne le connais pas », jamais « efface-le ». Pour vider,
  * il faut envoyer `""` explicitement.
  */
-export type Vitrine = {
-  slogan?: string;
-  presentation?: string;
-  site_web?: string;
-  zone_intervention?: string;
-  logo?: { url: string; empreinte?: string } | null;
-};
-
-export async function publierVitrine(v: Vitrine) {
-  if (!PB_URL || !PB_TOKEN) {
-    return { ok: false as const, simulation: true as const, message: "Pont Plein Bail non configuré." };
+/**
+ * Le logo est-il vraiment téléchargeable depuis l'extérieur ?
+ *
+ * Plein Bail répond `"logo": "ignoree"` quand il n'arrive pas à le récupérer,
+ * et laisse l'existant tranquille — donc en silence, pour qui ne lit pas la
+ * réponse. On vérifie AVANT d'envoyer : une URL servie par une préproduction
+ * protégée, ou un chemin qui n'existe pas, se voit ici et pas trois jours plus
+ * tard sur une page publique sans logo.
+ */
+export async function verifierLogo(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" && u.protocol !== "http:") {
+      return { ok: false as const, message: "L'adresse doit être en http ou https." };
+    }
+    const res = await fetch(url, { method: "GET", cache: "no-store", redirect: "follow" });
+    if (!res.ok) return { ok: false as const, message: `Le logo répond ${res.status} — Plein Bail ne pourra pas le télécharger.` };
+    const type = res.headers.get("content-type") ?? "";
+    if (!type.startsWith("image/")) {
+      return { ok: false as const, message: `L'adresse répond « ${type || "type inconnu"} », pas une image. Une page de connexion répond souvent 200 en HTML.` };
+    }
+    const octets = (await res.arrayBuffer()).byteLength;
+    if (octets > 2 * 1024 * 1024) {
+      return { ok: false as const, message: `Le logo pèse ${Math.round(octets / 1024)} Ko — le plafond est de 2 Mo.` };
+    }
+    return { ok: true as const, type, octets };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+export async function publierVitrine(v: VitrineSaisie) {
+  if (!PB_URL || !PB_TOKEN) {
+    return {
+      ok: false as const,
+      simulation: true as const,
+      message: "Mode simulation : PLEIN_BAIL_URL et PLEIN_BAIL_JETON ne sont pas renseignés, rien n'a été envoyé.",
+    };
+  }
+  // On ne pousse pas un logo qu'on sait injoignable : il serait ignoré en silence.
+  const logo = await verifierLogo(v.logo_url);
+  if (!logo.ok) return { ok: false as const, message: `Logo : ${logo.message}` };
+
+  const agence = {
+    slogan: v.slogan.slice(0, LIMITES.slogan),
+    presentation: v.presentation.slice(0, LIMITES.presentation),
+    site_web: v.site_web,
+    zone_intervention: v.zone_intervention.slice(0, LIMITES.zone),
+    /* L'empreinte évite de retélécharger le même fichier à chaque appel. Elle
+       porte sur l'adresse ET la taille : un logo remplacé au même chemin change
+       de taille, donc d'empreinte, donc il repart. */
+    logo: { url: v.logo_url, empreinte: empreinte([v.logo_url, logo.octets]) },
+  };
+
   try {
     const res = await fetch(PB_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "vitrine", agence: v }),
+      body: JSON.stringify({ action: "vitrine", agence }),
       cache: "no-store",
     });
     const texte = await res.text();

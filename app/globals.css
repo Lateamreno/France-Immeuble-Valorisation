@@ -3791,6 +3791,41 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .dif-avis ul { margin: 0 0 6px; padding-left: 18px; }
 .dif-avis li { margin: 2px 0; font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
 .dif-avis span { color: #92400e; }
+
+/* ---------------------------------------------------- Vitrine de l'agence */
+.vit { margin-top: 18px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; }
+.vit-tete { display: flex; align-items: baseline; gap: 12px; padding: 14px 16px; cursor: pointer; user-select: none; }
+.vit-tete h2 { margin: 0; font-size: 14px; font-weight: 650; }
+.vit-sous { flex: 1; font-size: 12px; color: var(--slate, #64748b); }
+.vit-sous code { font-size: 11.5px; }
+.vit-chevron { color: var(--slate, #64748b); font-size: 12px; }
+.vit-corps { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.vit-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--slate, #64748b); }
+.vit-l { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
+.vit-l input, .vit-l textarea {
+  font: inherit; font-weight: 400; font-size: 13px; padding: 8px 10px;
+  border: 1px solid var(--line, #e5e7eb); border-radius: 7px; background: #fff; width: 100%;
+}
+.vit-l textarea { line-height: 1.6; resize: vertical; }
+.vit-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Le libellé et son compteur tiennent sur une ligne, le compteur poussé à
+   droite. Un `float` dans un conteneur en colonne le renvoyait à la ligne. */
+.vit-l > span:first-child { display: flex; align-items: baseline; gap: 8px; }
+.vit-cpt { margin-left: auto; font-weight: 400; color: var(--slate, #64748b); }
+.vit-trop { color: #b91c1c; font-weight: 600; }
+.vit-logo { padding: 14px 16px; border: 1px dashed var(--line, #e5e7eb); border-radius: 8px; background: #fafafa; }
+.vit-logo img { max-width: 300px; max-height: 70px; display: block; }
+.vit-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vit-b, .vit-b2 { font: inherit; font-size: 12.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+.vit-b { background: #0A0A0A; color: #fff; border: 1px solid #0A0A0A; }
+.vit-b:hover:not(:disabled) { background: #9C7C54; border-color: #9C7C54; }
+.vit-b2 { background: #fff; color: #0A0A0A; border: 1px solid var(--line, #e5e7eb); }
+.vit-b:disabled, .vit-b2:disabled { opacity: .5; cursor: default; }
+.vit-msg { font-size: 12.5px; padding: 9px 12px; border-radius: 8px; }
+.vit-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+.vit-ko { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
+.vit-champs { margin-top: 4px; font-size: 11.5px; opacity: .8; }
+@media (max-width: 720px) { .vit-duo { grid-template-columns: 1fr; } }
 .dif-pied {
   margin-top: 16px; font-size: 11.5px; color: var(--gray-lt); line-height: 1.6;
   border-left: 3px solid var(--line); padding-left: 12px;

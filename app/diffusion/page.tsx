@@ -1,6 +1,9 @@
+import { headers } from "next/headers";
 import { listDiffusion } from "@/lib/bubble/server";
 import { diffusionConfiguree, retombeesAnnonces } from "@/lib/bo/diffusion";
 import { ParcDiffusion, type LigneDiffusion } from "@/components/diffusion";
+import { Vitrine } from "@/components/vitrine";
+import { vitrineParDefaut } from "@/lib/vitrine";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,15 @@ export default async function DiffusionPage() {
     };
   });
 
+  /* L'origine réelle du BO, lue sur la requête : le logo doit être servi par
+     une adresse que Plein Bail sait atteindre, et elle n'est pas la même en
+     local, en préversion et en production. */
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  // En local le serveur est en clair ; derrière Vercel, x-forwarded-proto tranche.
+  const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+  const origine = `${proto}://${hote}`;
+
   return (
     <div className="wrap">
       <ParcDiffusion
@@ -45,6 +57,7 @@ export default async function DiffusionPage() {
         configuree={configuree}
         vuesDisponibles={retombees.some((r) => typeof r.vues === "number")}
       />
+      <Vitrine initial={vitrineParDefaut(origine)} configuree={configuree} />
     </div>
   );
 }
