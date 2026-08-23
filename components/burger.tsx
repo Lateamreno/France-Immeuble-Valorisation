@@ -64,10 +64,13 @@ export function Burger() {
           aria-expanded={ouvert === "nav"} onClick={() => bascule("nav")}>
           <Traits /> Menu
         </button>
+        {/* Poussé à droite par le `space-between` de la barre : c'est le bord
+            d'où sort le sommaire. Sur les très petits écrans le libellé se
+            réduit à « Sommaire », sinon les deux boutons se chevauchent. */}
         {aFiche && (
           <button type="button" className={`brg${ouvert === "fiche" ? " on" : ""}`}
             aria-expanded={ouvert === "fiche"} onClick={() => bascule("fiche")}>
-            <Traits /> Sommaire de la fiche
+            <Traits /> {tel ? "Sommaire" : "Sommaire de la fiche"}
           </button>
         )}
       </div>

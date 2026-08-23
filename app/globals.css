@@ -405,14 +405,30 @@ button { font-family: inherit; cursor: pointer; }
 }
 @media (max-width: 760px) {
   :root { --side-w: 0px; }
-  .side { position: fixed; inset: auto 0 var(--bottbar-h) 0; width: 100%; height: 48px; flex-direction: row; overflow-x: auto; }
-  .side a, .side .srow { border-bottom: 0; padding: 8px 12px; font-size: 12px; flex: none; }
-  .main { margin-left: 0; padding-bottom: calc(var(--bottbar-h) + 62px); }
+  /* La barre latérale garde sa mise en page VERTICALE, comme sur ordinateur.
+     Elle était couchée en bande horizontale scrollable au-dessus de la barre
+     du bas — un reste d'avant le burger. Deux dégâts : le menu devenait
+     illisible, et surtout ses entrées mises côte à côte forçaient la page à
+     472 px de large sur un écran de 390. D'où l'en-tête décalé et les icônes
+     du bas coupées : tout le document débordait, pas seulement le menu.
+     C'est le burger qui la rappelle maintenant, en superposition. */
+  .main { margin-left: 0; padding-bottom: var(--bottbar-h); }
   .bottbar { left: 0; }
   .bottbar button { font-size: 0; gap: 0; }
   .bottbar button svg { width: 19px; height: 19px; }
-  .topbar { padding: 0 12px; }
+  /* Le titre et les compteurs tenaient sur une seule ligne indéformable :
+     ensemble ils réclamaient 472 px, et le téléphone dézoomait toute la page
+     pour les faire tenir. La barre passe donc sur deux lignes, et les
+     compteurs défilent DANS leur propre bande plutôt que d'élargir le
+     document — un débordement horizontal doit toujours rester enfermé. */
+  .topbar {
+    padding: 8px 12px; height: auto; min-height: var(--topbar-h);
+    flex-wrap: wrap; row-gap: 8px;
+  }
   .topbar .tt { font-size: 20px; }
+  .pills { flex: 1 1 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .pills::-webkit-scrollbar { display: none; }
+  .pill { flex: none; }
   .agentbtn { display: none; }
 }
 
@@ -644,6 +660,8 @@ button { font-family: inherit; cursor: pointer; }
 
 body.nav-etroite .main { margin-left: 0; padding-top: 42px; }
 body.nav-etroite .side {
+  position: fixed; top: 42px; left: 0; right: auto; bottom: var(--bottbar-h);
+  width: min(280px, 86vw); height: auto; flex-direction: column; overflow-y: auto;
   transform: translateX(-100%); transition: transform .18s ease; z-index: 940;
 }
 body.nav-etroite.nav-ouverte .side { transform: none; box-shadow: 2px 0 14px rgba(0, 0, 0, .3); }
@@ -659,9 +677,12 @@ body.nav-etroite .fiche-main { padding-left: 14px; padding-right: 14px; }
 body.nav-etroite .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -14px; }
 body.nav-etroite .ltools.v2 { left: 0; }
 
+/* Chaque burger du côté d'où sort son panneau : Menu à gauche, Sommaire à
+   droite. Le geste devient prévisible — on tire le panneau du bord qu'on
+   touche. Avec un seul bouton, `space-between` le laisse à gauche. */
 .brg-bar {
   position: fixed; top: 0; left: 0; right: 0; height: 42px; z-index: 950;
-  display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px;
   background: var(--slate); border-bottom: 1px solid #2c3036;
 }
 .brg {
@@ -673,6 +694,15 @@ body.nav-etroite .ltools.v2 { left: 0; }
 .brg:hover { background: #3a3f47; }
 .brg.on { background: var(--gold-bo); border-color: var(--gold-bo); color: #fff; }
 .brg-voile { position: fixed; inset: 42px 0 0; background: rgba(0, 0, 0, .35); z-index: 935; }
+
+/* Sur téléphone, un panneau de 300 px sur un écran de 390 laisse une bande
+   inutile et rétrécit le texte pour rien : il prend toute la largeur. La barre
+   des burgers reste au-dessus (z-index 950 contre 940), donc le même bouton
+   qui l'a ouvert le referme — sans quoi un panneau plein écran serait un
+   piège. */
+body.ecran-tel.nav-etroite .side,
+body.ecran-tel.nav-etroite .brail { width: 100%; max-width: 100vw; }
+body.ecran-tel.nav-etroite .side { top: 42px; bottom: var(--bottbar-h); inset-inline: 0 auto; }
 
 /* Édition inline du tableau des lots */
 .lcell {
@@ -3034,25 +3064,15 @@ select.pr-in { cursor: pointer; }
 .lfs-nav:disabled { opacity: .35; }
 .lfs-f .savebar-go { min-height: 44px; }
 
-/* --- La fiche sur téléphone : le rail passe en bandeau au-dessus --- */
+/* --- La fiche sur téléphone --- */
 @media (max-width: 640px) {
-  .fiche { flex-direction: column; min-height: 0; }
-  .brail {
-    order: -1; width: 100%; position: static; max-height: none;
-    border-left: 0; border-bottom: 1px solid var(--line);
-  }
+  /* Le sommaire garde sa mise en page verticale, celle de l'ordinateur, et se
+     rappelle par le burger de droite. Il était couché en bandeau scrollable
+     au-dessus du contenu : illisible, et il mangeait le haut de l'écran en
+     permanence sur la vue qu'on consulte le plus. Les sous-onglets
+     redeviennent visibles du même coup — ils l'étaient déjà sur ordinateur. */
   .brail-head { padding: 10px 12px; }
   .bthumb { width: 44px; height: 44px; }
-  .brail nav {
-    display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; border-top: 1px solid var(--line-lt);
-  }
-  .brail nav::-webkit-scrollbar { display: none; }
-  .brail nav > div, .brail nav > button { flex: none; }
-  .brail .srow2 { white-space: nowrap; border-bottom: 0; padding: 10px 12px; }
-  /* Les sous-onglets sont déjà repris en haut du contenu (retour #50) :
-     les répéter ici ne ferait qu'allonger le bandeau. */
-  .brail .srow2.sub { display: none; }
   .fiche-main { padding: 12px 12px 30px; }
   .fiche-inner { max-width: none; }
   .modal { width: calc(100vw - 20px); max-width: none; }
