@@ -48,28 +48,85 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
+/** Une URL signée sur notre bucket, valable une heure. */
+async function signer(chemin: string): Promise<string | null> {
+  if (!SB_KEY) return null;
+  const res = await fetch(`${SB_URL}/storage/v1/object/sign/bo-files/${chemin}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn: 3600 }),
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const { signedURL } = (await res.json()) as { signedURL?: string };
+  return signedURL ? `${SB_URL}/storage/v1${signedURL}` : null;
+}
+
+/**
+ * Recopie une image encore hébergée chez Bubble dans notre Storage.
+ *
+ * Bubble sert ses `fileupload` en 401 à toute requête anonyme : il faut le
+ * jeton d'API, et ce jeton ne sort pas d'ici. Donner son URL à Plein Bail
+ * revenait donc à lui donner une porte fermée — c'est ce qui a fait échouer
+ * les neuf photos de Drancy.
+ *
+ * Le chemin de destination dérive de l'empreinte de la source : une photo
+ * n'est recopiée qu'une fois, et une republication ne retransfère rien. Si
+ * l'opération est interrompue à mi-parcours, ce qui est déjà passé reste
+ * acquis et la republication suivante finit le travail.
+ */
+async function rapatrier(source: string): Promise<string | null> {
+  if (!SB_KEY) return null;
+  const nom = (source.split("?")[0].split("/").pop() ?? "photo").toLowerCase();
+  const ext = /\.(jpe?g|png|webp|gif|avif)$/.exec(nom)?.[1] ?? "jpg";
+  const chemin = `diffusion/${empreinte(source)}.${ext}`;
+
+  const dejaLa = await fetch(`${SB_URL}/storage/v1/object/bo-files/${chemin}`, {
+    method: "HEAD",
+    headers: { Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).then((r) => r.ok).catch(() => false);
+
+  if (!dejaLa) {
+    const jeton = process.env.BUBBLE_API_TOKEN;
+    const amont = await fetch(source, {
+      headers: jeton && new URL(source).hostname === "vente.france-immeuble.fr"
+        ? { Authorization: `Bearer ${jeton}` }
+        : {},
+      redirect: "follow",
+      cache: "no-store",
+    });
+    if (!amont.ok) return null;
+    const corps = await amont.arrayBuffer();
+    if (corps.byteLength === 0) return null;
+    const depot = await fetch(`${SB_URL}/storage/v1/object/bo-files/${chemin}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": amont.headers.get("Content-Type") ?? `image/${ext === "jpg" ? "jpeg" : ext}`,
+        "x-upsert": "true",
+      },
+      body: corps,
+      cache: "no-store",
+    });
+    if (!depot.ok) return null;
+  }
+  return signer(chemin);
+}
+
 /**
  * Les photos du BO vivent soit dans notre Storage, soit encore chez Bubble.
  * Plein Bail doit pouvoir les télécharger : on remplace donc le relais interne
- * `/api/photo` par une URL que le monde extérieur sait atteindre — signée une
- * heure pour le Storage, telle quelle pour Bubble qui les sert publiquement.
+ * `/api/photo` par une URL signée que le monde extérieur sait atteindre — en
+ * rapatriant d'abord l'image quand elle est encore chez Bubble.
  */
 async function urlTelechargeable(proxy: string): Promise<string | null> {
   try {
     const q = new URLSearchParams(proxy.split("?")[1] ?? "");
-    const direct = q.get("u");
-    if (direct) return direct;
     const chemin = q.get("s");
-    if (!chemin || !SB_KEY) return null;
-    const res = await fetch(`${SB_URL}/storage/v1/object/sign/bo-files/${chemin}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ expiresIn: 3600 }),
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const { signedURL } = (await res.json()) as { signedURL?: string };
-    return signedURL ? `${SB_URL}/storage/v1${signedURL}` : null;
+    if (chemin) return signer(chemin);
+    const direct = q.get("u");
+    return direct ? rapatrier(direct) : null;
   } catch {
     return null;
   }
@@ -200,8 +257,28 @@ export async function publierAnnonce(immeubleId: string) {
       )
     ).filter(Boolean) as ChargeUtile["photos"];
 
+    /* Une photo qu'on n'arrive pas à rendre lisible disparaissait en silence.
+       Or la synchronisation des photos est COMPLÈTE chez Plein Bail : publier
+       une annonce sans photo ne se contente pas de ne rien ajouter, ça retire
+       celles qui sont en ligne. On refuse donc plutôt que d'abîmer l'annonce,
+       et on le dit — c'est exactement ce qui s'est joué sur Drancy. */
+    const perdues = a.charge.photos.length - photos.length;
+    if (a.charge.photos.length > 0 && photos.length === 0) {
+      return {
+        ok: false as const,
+        message:
+          `Aucune des ${a.charge.photos.length} photos n'a pu être préparée pour l'envoi — publication annulée ` +
+          "pour ne pas retirer celles déjà en ligne. Vérifiez que le jeton Bubble est renseigné.",
+      };
+    }
+
     const r = await appeler({ ...a.charge, photos, action: "publier" });
-    const avertissements = r.avertissements ?? [];
+    const avertissements = [
+      ...(perdues > 0
+        ? [`${perdues} photo${perdues > 1 ? "s" : ""} non transmise${perdues > 1 ? "s" : ""} : image source illisible.`]
+        : []),
+      ...(r.avertissements ?? []),
+    ];
     await memoriser(immeubleId, {
       pb_listing_id: r.listing_id,
       pb_url: r.url ?? null,
