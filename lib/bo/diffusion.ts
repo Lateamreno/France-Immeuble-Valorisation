@@ -13,8 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { getAgentFiche, getBien } from "@/lib/bubble/server";
 import {
-  blocages, chargeUtile, empreinte, lireEtat, statutCible,
-  type ChargeUtile, type StatutAnnonce,
+  alertes, blocages, chargeUtile, empreinte, lireEtat, statutCible,
+  type Alerte, type ChargeUtile, type StatutAnnonce,
 } from "@/lib/diffusion";
 import { BAREME_HONORAIRES, LIMITES, type VitrineSaisie } from "@/lib/vitrine";
 
@@ -93,6 +93,8 @@ function mandatEnVigueur(mandats: Record<string, unknown>[]): Record<string, unk
 export type Apercu = {
   /** Ce qui empêche de publier, s'il y a lieu. */
   blocages: { cle: string; label: string; ou: string }[];
+  /** Ce qui n'empêche pas, mais mérite un regard. */
+  alertes: Alerte[];
   statut: StatutAnnonce | null;
   motif: string;
   charge: ChargeUtile | null;
@@ -109,7 +111,7 @@ export type Apercu = {
 export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
   const b = await getBien(immeubleId);
   if (!b) {
-    return { blocages: [{ cle: "fiche", label: "Fiche introuvable", ou: "" }], statut: null, motif: "", charge: null, ecart: false, configuree: !!(PB_URL && PB_TOKEN) };
+    return { blocages: [{ cle: "fiche", label: "Fiche introuvable", ou: "" }], alertes: [], statut: null, motif: "", charge: null, ecart: false, configuree: !!(PB_URL && PB_TOKEN) };
   }
   const mandat = mandatEnVigueur(b.mandats);
   const empeche = blocages(b, mandat);
@@ -120,6 +122,7 @@ export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
   const etat = lireEtat(b.im);
   return {
     blocages: empeche,
+    alertes: alertes(b),
     statut,
     motif,
     charge,
@@ -197,7 +200,32 @@ export async function publierAnnonce(immeubleId: string) {
       )
     ).filter(Boolean) as ChargeUtile["photos"];
 
-    const r = await appeler({ ...a.charge, photos, action: "publier" });
+    // Les documents aussi : Plein Bail les copie, il doit pouvoir les lire.
+    const documents = a.charge.documents
+      ? ((
+          await Promise.all(
+            a.charge.documents.map(async (d) => {
+              const url = await urlTelechargeable(d.url);
+              return url ? { ...d, url } : null;
+            }),
+          )
+        ).filter(Boolean) as NonNullable<ChargeUtile["documents"]>)
+      : undefined;
+
+    const r = await appeler({
+      ...a.charge,
+      photos,
+      /* Les deux clés sont d'abord effacées, puis `documents` remise SI elle a
+         un contenu signé. Chez eux, `documents` présente vaut synchronisation
+         complète : un tableau vide — ou une liste d'URL internes qu'ils ne
+         savent pas lire — effacerait les pièces déposées à la main dans
+         l'espace de l'agence. `documentsRetenus`, lui, est de la matière
+         d'écran et n'a rien à faire dans un appel. */
+      documents: undefined,
+      documentsRetenus: undefined,
+      ...(documents?.length ? { documents } : {}),
+      action: "publier",
+    });
     const avertissements = r.avertissements ?? [];
     await memoriser(immeubleId, {
       pb_listing_id: r.listing_id,
@@ -341,6 +369,122 @@ export async function retombeesAnnonces(references: string[]): Promise<Retombees
     return Array.isArray(j.retombees) ? j.retombees : [];
   } catch {
     return [];
+  }
+}
+
+/* ------------------------------------------------------------ Audience */
+
+export type Audience = {
+  acheteurs: number | null;
+  alertes: number | null;
+  /** Renseigné quand le compte est sous le plancher d'anonymat. */
+  plancher: string | null;
+  prix?: number;
+  statut?: string;
+};
+
+/**
+ * Combien d'acquéreurs inscrits ont une recherche qui correspond à ce bien.
+ *
+ * C'est le chiffre qui change une conversation de rendez-vous de mandat : « à
+ * ce prix, 34 acquéreurs le reçoivent dès demain ; à +10 %, six ». Il vient du
+ * moteur de recherche de la marketplace — celui-là même qui fera partir les
+ * alertes — donc ce qu'on montre au vendeur est ce qui se passera.
+ *
+ * Il faut une annonce déposée, fût-elle en brouillon. Le brouillon n'est visible
+ * de personne : c'est la façon de sonder AVANT de publier.
+ */
+export async function audienceAnnonce(immeubleId: string): Promise<
+  { ok: true; a: Audience } | { ok: false; message: string; sansAnnonce?: true }
+> {
+  if (!PB_URL || !PB_TOKEN) return { ok: false, message: "Pont Plein Bail non configuré." };
+  const b = await getBien(immeubleId).catch(() => null);
+  if (!b) return { ok: false, message: "Fiche introuvable." };
+  if (!lireEtat(b.im).listingId) {
+    return {
+      ok: false,
+      sansAnnonce: true,
+      message: "Aucune annonce déposée : il faut un brouillon chez Plein Bail pour interroger l'audience.",
+    };
+  }
+  try {
+    const res = await fetch(PB_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "audience", reference: `FI:${immeubleId}` }),
+      cache: "no-store",
+    });
+    const texte = await res.text();
+    if (!res.ok) return { ok: false, message: `Plein Bail ${res.status} : ${texte.slice(0, 200)}` };
+    const j = JSON.parse(texte) as {
+      acheteurs_correspondants: number | null;
+      dont_alertes_actives: number | null;
+      plancher: string | null;
+      prix_eur?: number;
+      statut?: string;
+    };
+    return {
+      ok: true,
+      a: {
+        acheteurs: j.acheteurs_correspondants,
+        alertes: j.dont_alertes_actives,
+        plancher: j.plancher,
+        prix: j.prix_eur,
+        statut: j.statut,
+      },
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Dépose l'annonce en BROUILLON pour pouvoir sonder l'audience.
+ *
+ * Un brouillon n'est visible de personne — ni du public, ni des autres agences.
+ * C'est ce qui permet de sonder avant d'avoir un mandat signé, donc avant
+ * d'avoir le droit de publier. La distinction n'est pas cosmétique : publier
+ * sans mandat serait une faute, déposer un brouillon interne ne l'est pas.
+ */
+export async function deposerBrouillon(immeubleId: string) {
+  try {
+    if (!PB_URL || !PB_TOKEN) return { ok: false as const, message: "Pont Plein Bail non configuré." };
+    const b = await getBien(immeubleId);
+    if (!b) return { ok: false as const, message: "Fiche introuvable." };
+    if (typeof b.im.prix_hai !== "number" || !b.im.prix_hai) {
+      return { ok: false as const, message: "Prix de vente HAI manquant : l'audience se mesure sur un prix." };
+    }
+    const mandat = mandatEnVigueur(b.mandats);
+    const agent = await getAgentFiche(String(b.im.AGENT ?? "")).catch(() => null);
+    const charge = chargeUtile(b, mandat, agent, "draft", PB_BAREME);
+
+    const photos = (
+      await Promise.all(
+        charge.photos.map(async (p) => {
+          const url = await urlTelechargeable(p.url);
+          return url ? { ...p, url } : null;
+        }),
+      )
+    ).filter(Boolean) as ChargeUtile["photos"];
+
+    const r = await appeler({
+      ...charge,
+      photos,
+      documents: undefined,
+      documentsRetenus: undefined,
+      action: "publier",
+    });
+    await memoriser(immeubleId, {
+      pb_listing_id: r.listing_id,
+      pb_url: r.url ?? null,
+      pb_statut: r.status,
+      pb_empreinte: empreinte(charge),
+      pb_synchro_le: new Date().toISOString(),
+      pb_erreur: null,
+    });
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }
 }
 

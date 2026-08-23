@@ -9,7 +9,10 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { dmy, euros } from "@/lib/format";
 import { LIBELLE_STATUT, type Blocage, type ChargeUtile } from "@/lib/diffusion";
-import { apercuAnnonce, publierAnnonce, retirerAnnonce, type Apercu } from "@/lib/bo/diffusion";
+import {
+  apercuAnnonce, audienceAnnonce, deposerBrouillon, publierAnnonce, retirerAnnonce,
+  type Apercu, type Audience,
+} from "@/lib/bo/diffusion";
 
 /* ------------------------------------------------ Section de la fiche bien */
 
@@ -25,6 +28,7 @@ export function SectionDiffusion({
   const [a, setA] = useState<Apercu | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [avis, setAvis] = useState<string[]>([]);
+  const [aud, setAud] = useState<Audience | null>(null);
   const [detail, setDetail] = useState(false);
   const [pending, start] = useTransition();
 
@@ -53,6 +57,34 @@ export function SectionDiffusion({
         setMsg(r.message);
       }
       setA(await apercuAnnonce(immeubleId));
+    });
+
+  /* Sonder l'audience suppose une annonce déposée chez eux. Quand il n'y en a
+     pas, on propose de déposer un BROUILLON : invisible de tous, y compris des
+     autres agences. C'est ce qui permet de mesurer avant d'avoir un mandat
+     signé, donc avant d'avoir le droit de publier — la distinction n'est pas
+     cosmétique, et la confirmation le dit en toutes lettres. */
+  const sonder = () =>
+    start(async () => {
+      setMsg(null);
+      let r = await audienceAnnonce(immeubleId);
+      if (!r.ok && r.sansAnnonce) {
+        const ok = confirm(
+          "Aucune annonce n'est déposée chez Plein Bail.\n\n" +
+            "Déposer un BROUILLON pour mesurer l'audience ? Un brouillon n'est visible de " +
+            "personne — ni du public, ni des autres agences. Rien n'est publié.",
+        );
+        if (!ok) return;
+        const d = await deposerBrouillon(immeubleId);
+        if (!d.ok) {
+          setMsg(d.message);
+          return;
+        }
+        r = await audienceAnnonce(immeubleId);
+        setA(await apercuAnnonce(immeubleId));
+      }
+      if (r.ok) setAud(r.a);
+      else setMsg(r.message);
     });
 
   const retirer = () =>
@@ -121,6 +153,18 @@ export function SectionDiffusion({
         <div className="dif-bloc ko"><b>Dernière tentative en échec</b>{etat.derniereErreur}</div>
       )}
 
+      {/* --- Ce qui n'empêche pas, mais mérite un regard --- */}
+      {a.alertes.length > 0 && (
+        <div className="dif-bloc att">
+          <b>À vérifier avant de publier</b>
+          <ul>
+            {a.alertes.map((x) => (
+              <li key={x.cle}>{x.texte}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* --- Ce qui part --- */}
       {a.charge && (
         <>
@@ -131,6 +175,11 @@ export function SectionDiffusion({
             <Cellule k="Mandat" v={a.charge.prix.mandat_numero ? `n° ${a.charge.prix.mandat_numero}` : "—"} />
             <Cellule k="Lots" v={String(a.charge.lots.length)} />
             <Cellule k="Photos" v={String(a.charge.photos.length)} />
+            <Cellule
+              k="Documents"
+              v={String(a.charge.documents?.length ?? 0)}
+              d={a.charge.documentsRetenus?.length ? `${a.charge.documentsRetenus.length} gardés au BO` : undefined}
+            />
             <Cellule k="Adresse publiée" v="Ville et quartier" d="L'adresse exacte n'est jamais publique" />
             <Cellule
               k="Contact"
@@ -144,6 +193,27 @@ export function SectionDiffusion({
               qui vaille avant de publier. Un tableau de champs ne montre pas
               qu'une photo est de travers ou qu'un descriptif tombe mal. */}
           <ApercuAnnonce charge={a.charge} />
+
+          {/* Un document qu'on ne publie pas sans dire pourquoi passe pour un
+              oubli. Le coffre du BO n'a qu'un libellé libre : on ne transmet
+              que ce qu'on reconnaît sans ambiguïté, et jamais une pièce
+              nominative — rien ici ne caviarde un PDF. */}
+          {a.charge.documentsRetenus?.length ? (
+            <details className="dif-docs">
+              <summary>
+                {a.charge.documentsRetenus.length} document
+                {a.charge.documentsRetenus.length > 1 ? "s" : ""} du coffre ne part
+                {a.charge.documentsRetenus.length > 1 ? "ent" : ""} pas
+              </summary>
+              <ul>
+                {a.charge.documentsRetenus.map((d, i) => (
+                  <li key={i}>
+                    <b>{d.nom}</b> — {d.motif}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
 
           <button type="button" className="dif-plus" onClick={() => setDetail((v) => !v)}>
             {detail ? "Masquer" : "Voir"} les données brutes envoyées
@@ -164,11 +234,38 @@ export function SectionDiffusion({
             Retirer l&apos;annonce
           </button>
         )}
+        <button className="dif-x" type="button" disabled={pending || !a.configuree} onClick={sonder}>
+          Sonder l&apos;audience
+        </button>
         <span style={{ flex: 1 }} />
         {etat.derniereSynchro && (
           <span className="dif-note">Dernière synchronisation {dmy(etat.derniereSynchro)}</span>
         )}
       </div>
+
+      {/* L'audience : combien d'acquéreurs inscrits reçoivent ce bien à ce
+          prix. C'est le chiffre qui change un rendez-vous de mandat — et il
+          vient du moteur qui fera partir les alertes, donc ce qu'on montre au
+          vendeur est ce qui se passera. */}
+      {aud && (
+        <div className="dif-aud">
+          {aud.acheteurs === null ? (
+            <b>{aud.plancher ?? "Moins de 5 acquéreurs"}</b>
+          ) : (
+            <b>
+              {aud.acheteurs} acquéreur{aud.acheteurs > 1 ? "s" : ""} inscrit
+              {aud.acheteurs > 1 ? "s" : ""} correspondent à ce bien
+            </b>
+          )}
+          <span>
+            {aud.alertes !== null && aud.alertes > 0
+              ? `Dont ${aud.alertes} avec une alerte active : ils le recevront par mail dès la mise en ligne. `
+              : ""}
+            {aud.prix ? `Mesuré au prix de ${euros(aud.prix)}. ` : ""}
+            Changez le prix, republiez, resondez : vous avez la courbe.
+          </span>
+        </div>
+      )}
       {msg && <div className="dif-msg">{msg}</div>}
       {avis.length > 0 && (
         <div className="dif-avis">
