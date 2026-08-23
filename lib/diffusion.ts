@@ -174,14 +174,6 @@ export type LotAnnonce = {
   locataire_nature?: "personne_physique" | "personne_morale";
 };
 
-export type DocumentAnnonce = {
-  nom: string;
-  url: string;
-  type: string;
-  empreinte: string;
-  public?: boolean;
-};
-
 export type ChargeUtile = {
   reference: string;
   statut_cible: StatutAnnonce;
@@ -192,14 +184,13 @@ export type ChargeUtile = {
   contact: Record<string, unknown>;
   lots: LotAnnonce[];
   photos: PhotoAnnonce[];
-  /* Absent quand il n'y a rien à publier — et c'est important : chez Plein
-     Bail, une clé `documents` présente déclenche une synchronisation COMPLÈTE,
-     donc un tableau vide efface les pièces que l'agence a déposées à la main
-     dans son espace. La clé ne part que quand elle a quelque chose à dire. */
-  documents?: DocumentAnnonce[];
-  /* Ce que le BO garde pour lui, et pourquoi. Jamais envoyé — c'est de la
-     matière d'écran, pour que l'agent voie ce qui ne part pas. */
-  documentsRetenus?: { nom: string; motif: string }[];
+  /* Pas de clé `documents`, jamais. Le coffre documentaire est un outil
+     interne — diagnostics, plans, taxe foncière, PV d'AG servent à monter le
+     dossier et à répondre aux acquéreurs qu'on a qualifiés, pas à garnir une
+     annonce publique. Décision de MAV, et elle nous arrange : Plein Bail ne
+     touche à rien quand la clé est absente, alors qu'une clé présente
+     déclenche une synchronisation complète. Ne rien envoyer est donc aussi le
+     geste le plus sûr. */
 };
 
 /* ---- Correspondances avec les énumérations RÉELLES de Plein Bail ----
@@ -281,68 +272,6 @@ const LIBRE = new Set(["Vide", "", "n.c."]);
 /** Plafond du plan partenaire de France Immeuble. */
 export const MAX_PHOTOS = 15;
 
-/* ------------------------------------------------------------ Documents */
-
-/* Le coffre du BO ne range pas ses pièces par type : il n'a qu'un libellé
-   libre, saisi à la main. Il faut donc deviner — et deviner sur un document,
-   ce n'est pas comme deviner sur un type de bail. Un bail publié porte le nom
-   d'un locataire, sa date de naissance parfois, le montant de son dépôt de
-   garantie. Ça ne se rattrape pas.
-
-   D'où une LISTE BLANCHE, et non une liste noire : seules les pièces dont le
-   libellé désigne sans ambiguïté un type inoffensif franchissent la frontière.
-   Tout le reste — y compris ce qui ne ressemble à rien — reste au BO. On perd
-   quelques points de complétude ; c'est le bon côté où se tromper. */
-const TYPES_DOC: { type: string; motif: RegExp; public?: boolean }[] = [
-  // Le DPE est la seule pièce que la loi impose d'afficher dans l'annonce.
-  { type: "dpe", motif: /\bdpe\b|diagnostic\s+de\s+performance|performance\s+[ée]nerg/i, public: true },
-  { type: "audit_energetique", motif: /audit\s+[ée]nerg/i },
-  { type: "amiante", motif: /amiante/i },
-  { type: "plomb", motif: /plomb|crep\b/i },
-  { type: "electricite", motif: /[ée]lectricit[ée]|[ée]lectrique/i },
-  { type: "gaz", motif: /\bgaz\b/i },
-  { type: "erp", motif: /\berp\b|risques?\s+et\s+pollutions|[ée]tat\s+des\s+risques/i },
-  { type: "taxe_fonciere", motif: /taxe\s+fonci[èe]re|\btf\b\s*20\d\d/i },
-  { type: "reglement_copro", motif: /r[èe]glement\s+de\s+copro/i },
-  { type: "edd", motif: /\bedd\b|[ée]tat\s+descriptif\s+de\s+division/i },
-  { type: "pv_ag", motif: /\bpv\b.*\bag\b|proc[èe]s[- ]verbal|assembl[ée]e\s+g[ée]n[ée]rale/i },
-  /* « Plan » tout seul est un piège : « plan de financement », « plan de
-     trésorerie » sont des documents internes. On n'accepte que les plans qui
-     désignent le bâti. */
-  {
-    type: "plans",
-    motif: /plan\s+(de\s+masse|cadastral|de\s+niveau|des?\s+[ée]tages?|du\s+(rez|sous-sol))|plans?\s+de\s+l['’]immeuble|^plans?$/i,
-  },
-  { type: "carnet_entretien", motif: /carnet\s+d.entretien/i },
-];
-
-/* Les documents de travail de l'agence. Ils ne sont pas nominatifs comme un
-   bail, mais ils portent notre raisonnement de valorisation, le prix
-   d'arbitrage, la marge visée — exactement ce qu'un acquéreur ne doit pas
-   lire. Nommés explicitement pour que l'écran dise « document interne »
-   plutôt que « type non reconnu » : la nuance aide l'agent à comprendre que
-   ce n'est pas un oubli de classement. */
-const DOC_INTERNES =
-  /estimation|dossier\s+d|financement|tr[ée]sorerie|bilan|mandat|propal|proposition|compromis|offre|honoraires?\s+n[ée]goci/i;
-
-/* Les deux types que le BO ne publiera JAMAIS, même reconnus. Plein Bail les
-   accepte contre une déclaration `caviarde: true` — une déclaration que nous
-   ne pouvons pas faire honnêtement : rien, dans le BO, ne caviarde un PDF.
-   Déclarer caviardé ce qui ne l'est pas serait pire que de ne rien envoyer. */
-const DOC_INTERDITS = /bail|baux|[ée]tat\s+locatif|quittance|locataire/i;
-
-export function classerDocument(nom: string): { type: string; public?: boolean } | { refus: string } {
-  if (DOC_INTERDITS.test(nom)) {
-    return { refus: "Pièce nominative (bail, état locatif) — non transmise, faute de caviardage." };
-  }
-  if (DOC_INTERNES.test(nom)) {
-    return { refus: "Document de travail de l'agence — ne quitte pas le BO." };
-  }
-  const t = TYPES_DOC.find((x) => x.motif.test(nom));
-  if (!t) return { refus: "Type non reconnu depuis le libellé — gardé au BO par précaution." };
-  return { type: t.type, public: t.public };
-}
-
 /** Empreinte courte et stable d'une valeur — sert à détecter les écarts. */
 export function empreinte(v: unknown): string {
   const texte = JSON.stringify(v);
@@ -402,30 +331,6 @@ export function chargeUtile(
     .filter((p) => p.url)
     .slice(0, MAX_PHOTOS)
     .map((p, i) => ({ ...p, position: i, is_cover: i === 0 }));
-
-  /* Le coffre documentaire, trié par la liste blanche ci-dessus. Ce qui reste
-     au BO est gardé à part pour que l'écran puisse le dire : un document qu'on
-     ne publie pas sans expliquer pourquoi passe pour un oubli. */
-  const documents: DocumentAnnonce[] = [];
-  const documentsRetenus: { nom: string; motif: string }[] = [];
-  for (const d of b.documents) {
-    const nom = S(d.name) ?? S(d.file_name) ?? "Document";
-    const chemin = S(d.path);
-    if (!chemin) continue;
-    const c = classerDocument(nom);
-    if ("refus" in c) {
-      documentsRetenus.push({ nom, motif: c.refus });
-      continue;
-    }
-    documents.push({
-      nom,
-      // Signée au moment de l'envoi, comme les photos (voir lib/bo/diffusion).
-      url: `/api/photo?s=${encodeURIComponent(chemin)}`,
-      type: c.type,
-      empreinte: empreinte([chemin, d.size_kB]),
-      ...(c.public ? { public: true } : {}),
-    });
-  }
 
   const lots: LotAnnonce[] = b.lots.map((l) => {
     const bail = String(l.Type_bail ?? "");
@@ -563,9 +468,6 @@ export function chargeUtile(
     },
     lots,
     photos,
-    // La clé n'existe que s'il y a quelque chose dedans : voir ChargeUtile.
-    ...(documents.length ? { documents } : {}),
-    ...(documentsRetenus.length ? { documentsRetenus } : {}),
   };
 }
 

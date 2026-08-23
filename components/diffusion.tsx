@@ -175,11 +175,6 @@ export function SectionDiffusion({
             <Cellule k="Mandat" v={a.charge.prix.mandat_numero ? `n° ${a.charge.prix.mandat_numero}` : "—"} />
             <Cellule k="Lots" v={String(a.charge.lots.length)} />
             <Cellule k="Photos" v={String(a.charge.photos.length)} />
-            <Cellule
-              k="Documents"
-              v={String(a.charge.documents?.length ?? 0)}
-              d={a.charge.documentsRetenus?.length ? `${a.charge.documentsRetenus.length} gardés au BO` : undefined}
-            />
             <Cellule k="Adresse publiée" v="Ville et quartier" d="L'adresse exacte n'est jamais publique" />
             <Cellule
               k="Contact"
@@ -193,27 +188,6 @@ export function SectionDiffusion({
               qui vaille avant de publier. Un tableau de champs ne montre pas
               qu'une photo est de travers ou qu'un descriptif tombe mal. */}
           <ApercuAnnonce charge={a.charge} />
-
-          {/* Un document qu'on ne publie pas sans dire pourquoi passe pour un
-              oubli. Le coffre du BO n'a qu'un libellé libre : on ne transmet
-              que ce qu'on reconnaît sans ambiguïté, et jamais une pièce
-              nominative — rien ici ne caviarde un PDF. */}
-          {a.charge.documentsRetenus?.length ? (
-            <details className="dif-docs">
-              <summary>
-                {a.charge.documentsRetenus.length} document
-                {a.charge.documentsRetenus.length > 1 ? "s" : ""} du coffre ne part
-                {a.charge.documentsRetenus.length > 1 ? "ent" : ""} pas
-              </summary>
-              <ul>
-                {a.charge.documentsRetenus.map((d, i) => (
-                  <li key={i}>
-                    <b>{d.nom}</b> — {d.motif}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
 
           <button type="button" className="dif-plus" onClick={() => setDetail((v) => !v)}>
             {detail ? "Masquer" : "Voir"} les données brutes envoyées

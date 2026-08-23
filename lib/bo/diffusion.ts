@@ -200,32 +200,7 @@ export async function publierAnnonce(immeubleId: string) {
       )
     ).filter(Boolean) as ChargeUtile["photos"];
 
-    // Les documents aussi : Plein Bail les copie, il doit pouvoir les lire.
-    const documents = a.charge.documents
-      ? ((
-          await Promise.all(
-            a.charge.documents.map(async (d) => {
-              const url = await urlTelechargeable(d.url);
-              return url ? { ...d, url } : null;
-            }),
-          )
-        ).filter(Boolean) as NonNullable<ChargeUtile["documents"]>)
-      : undefined;
-
-    const r = await appeler({
-      ...a.charge,
-      photos,
-      /* Les deux clés sont d'abord effacées, puis `documents` remise SI elle a
-         un contenu signé. Chez eux, `documents` présente vaut synchronisation
-         complète : un tableau vide — ou une liste d'URL internes qu'ils ne
-         savent pas lire — effacerait les pièces déposées à la main dans
-         l'espace de l'agence. `documentsRetenus`, lui, est de la matière
-         d'écran et n'a rien à faire dans un appel. */
-      documents: undefined,
-      documentsRetenus: undefined,
-      ...(documents?.length ? { documents } : {}),
-      action: "publier",
-    });
+    const r = await appeler({ ...a.charge, photos, action: "publier" });
     const avertissements = r.avertissements ?? [];
     await memoriser(immeubleId, {
       pb_listing_id: r.listing_id,
@@ -467,13 +442,7 @@ export async function deposerBrouillon(immeubleId: string) {
       )
     ).filter(Boolean) as ChargeUtile["photos"];
 
-    const r = await appeler({
-      ...charge,
-      photos,
-      documents: undefined,
-      documentsRetenus: undefined,
-      action: "publier",
-    });
+    const r = await appeler({ ...charge, photos, action: "publier" });
     await memoriser(immeubleId, {
       pb_listing_id: r.listing_id,
       pb_url: r.url ?? null,
