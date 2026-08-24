@@ -6,18 +6,19 @@ export const dynamic = "force-dynamic";
 export default async function ImmeublesPage() {
   const rows = await listImmeubles().catch(() => []);
   return (
-    <div className="lst-page">
-      <h1 className="lst-title">Immeubles</h1>
-      <ListeShell
-        filtres
-        rows={rows}
-        searchPlaceholder="Recherchez un immeuble..."
-        tabs={[
-          { key: "en_cours", label: "En cours" },
-          { key: "en_attente", label: "En attente" },
-          { key: "archives", label: "Archivés" },
-        ]}
-      />
-    </div>
+    /* Pleine largeur : la barre de recherche est collée en haut d'un bord à
+       l'autre, et le panneau de filtres colle à gauche. C'est la disposition
+       du BO (retour #110) — la marge centrée d'avant écrasait les deux. */
+    <ListeShell
+      filtres
+      titre="Immeubles"
+      rows={rows}
+      searchPlaceholder="Recherchez un immeuble..."
+      tabs={[
+        { key: "en_cours", label: "En cours" },
+        { key: "en_attente", label: "En attente" },
+        { key: "archives", label: "Archivés" },
+      ]}
+    />
   );
 }

@@ -585,6 +585,9 @@ export async function getDashboardLive(
 
 /* ===================== Fiche Bien ===================== */
 
+/** Une chaîne non vide, ou rien. Utilitaire des facettes de liste. */
+const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
 const rangLot = (l: Record<string, unknown>) =>
   typeof l.ordre === "number" ? (l.ordre as number) : Number(l.numero ?? 0);
 
@@ -875,7 +878,16 @@ export type ListCard = {
   /** Valeurs numériques exploitées par le panneau de filtres du BO. */
   mesures?: { surface?: number; renta?: number; occupation?: number; prix?: number };
   /** Facettes filtrables (listes déroulantes du panneau). */
-  facettes?: { ideal?: string; destination?: string; statut?: string };
+  facettes?: {
+    ideal?: string;
+    destination?: string;
+    statut?: string;
+    /* La localisation se filtre comme dans les recherches : plusieurs villes,
+       départements ou régions à la fois, en OU. */
+    ville?: string;
+    departement?: string;
+    region?: string;
+  };
   /** Note A/B/C/D du contact — le classement acquéreur du BO, affiché
    *  partout à côté du nom (il pilote « Commercialisés aux clients A et B »). */
   grade?: string;
@@ -963,7 +975,10 @@ export async function listImmeubles(): Promise<ListCard[]> {
       // « Idéal pour » du BO = liste des cibles acquéreur de l'immeuble.
       ideal: Array.isArray(im.Cibles) ? String((im.Cibles as string[])[0] ?? "") || undefined : undefined,
       destination: typeof im.Destination_principale === "string" ? (im.Destination_principale as string) : undefined,
-      statut: String(im.Statut ?? "").replace(/^\d+ - /, "") || undefined,
+      statut: String(im.Statut ?? "") || undefined,
+      ville: S2(im.adresse_ville),
+      departement: S2(im.adresse_zipcode)?.slice(0, 2),
+      region: S2(im.adresse_region) ?? S2(im.region),
     },
     group,
     date: typeof im["Modified Date"] === "string" ? (im["Modified Date"] as string) : undefined,

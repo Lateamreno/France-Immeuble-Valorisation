@@ -15,11 +15,14 @@ export function ListeShell({
   searchPlaceholder,
   /** Affiche la colonne de filtres du BO (Immeubles, Recherches). */
   filtres = false,
+  titre,
 }: {
   rows: ListCard[];
   tabs: { key: string; label: string }[];
   searchPlaceholder: string;
   filtres?: boolean;
+  /** Repris dans la barre collée quand les filtres sont affichés. */
+  titre?: string;
 }) {
   const [tab, setTab] = useState(tabs[0]?.key ?? "");
   const [q, setQ] = useState("");
@@ -41,22 +44,44 @@ export function ListeShell({
   const slice = filtered.slice((cur - 1) * taille, cur * taille);
   const countOf = (k: string) => rows.filter((r) => r.group === k).length;
 
+  /* Avec les filtres, la recherche monte dans une barre collée en haut, sur
+     toute la largeur, et les onglets deviennent un interrupteur à sa droite —
+     c'est la disposition du BO (retour #110). Sans filtres, on garde la barre
+     simple : les écrans concernés n'ont pas de colonne à gauche. */
+  const barre = (
+    <div className={filtres ? "lstx-top" : "lst-bar"}>
+      {filtres && titre && <h1 className="lstx-titre">{titre}</h1>}
+      <div className="lst-search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
+        <input placeholder={searchPlaceholder} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+      </div>
+      {filtres ? (
+        <div className="lstx-sw" role="group" aria-label="Vue">
+          {tabs.map((t) => (
+            <button key={t.key} type="button" className={tab === t.key ? "on" : undefined}
+              onClick={() => { setTab(t.key); setPage(1); }}>
+              {t.label}{countOf(t.key) > 0 && <span className="n">{countOf(t.key)}</span>}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span className="lst-count">{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</span>
+      )}
+    </div>
+  );
+
   const contenu = (
     <div className="lst">
-      <div className="lst-bar">
-        <div className="lst-search">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
-          <input placeholder={searchPlaceholder} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+      {!filtres && barre}
+      {!filtres && (
+        <div className="ftabs">
+          {tabs.map((t) => (
+            <button key={t.key} type="button" className={`ftab${tab === t.key ? " on" : ""}`} onClick={() => { setTab(t.key); setPage(1); }}>
+              {t.label}{countOf(t.key) > 0 && <span className="n">{countOf(t.key)}</span>}
+            </button>
+          ))}
         </div>
-        <span className="lst-count">{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</span>
-      </div>
-      <div className="ftabs">
-        {tabs.map((t) => (
-          <button key={t.key} type="button" className={`ftab${tab === t.key ? " on" : ""}`} onClick={() => { setTab(t.key); setPage(1); }}>
-            {t.label}{countOf(t.key) > 0 && <span className="n">{countOf(t.key)}</span>}
-          </button>
-        ))}
-      </div>
+      )}
 
       {slice.map((r) => {
         const inner = (
@@ -119,10 +144,13 @@ export function ListeShell({
 
   if (!filtres) return contenu;
   return (
-    <div className="lst-avec-filtres">
-      <PanneauFiltres rows={rows.filter((r) => r.group === tab)} f={f}
-        onChange={(nf) => { setF(nf); setPage(1); }} />
-      <div className="lst-col">{contenu}</div>
+    <div className="lstx">
+      {barre}
+      <div className="lst-avec-filtres">
+        <PanneauFiltres rows={rows.filter((r) => r.group === tab)} f={f}
+          onChange={(nf) => { setF(nf); setPage(1); }} />
+        <div className="lst-col">{contenu}</div>
+      </div>
     </div>
   );
 }

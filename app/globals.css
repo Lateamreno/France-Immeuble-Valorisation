@@ -1561,28 +1561,93 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .note.nD { background: var(--pill-gray); }
 
 /* --- Colonne de filtres des listes (reprise du BO) --- */
-.lst-avec-filtres { display: flex; gap: 22px; align-items: flex-start; }
-.lst-col { flex: 1; min-width: 0; }
-.fltr { flex: none; width: 268px; display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
-.fltr-l { display: flex; flex-direction: column; gap: 5px; }
-.fltr-l > span { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gray-txt); }
-.fltr-l > span svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; flex: none; }
-.fltr-l select, .fltr-r input {
-  border: 0; border-bottom: 1px solid var(--line); background: none;
-  padding: 5px 2px; font-size: 13px; color: var(--slate); width: 100%;
+/* ---- Vue liste avec filtres, façon BO (retours #110 à #113) ----
+   Barre de recherche collée en haut d'un bord à l'autre, interrupteur de vue
+   à sa droite, colonne de filtres grise collée à gauche. */
+.lstx { display: flex; flex-direction: column; min-height: calc(100vh - var(--bottbar-h)); }
+.lstx-top {
+  position: sticky; top: 0; z-index: 28;
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border-bottom: 1px solid var(--line);
+  padding: 10px 20px; min-height: 56px;
 }
+.lstx-titre {
+  font-family: var(--font-title); font-size: 20px; font-weight: 700;
+  color: var(--slate); margin: 0; flex: none;
+}
+.lstx-top .lst-search { flex: 1; max-width: none; }
+.lstx-sw { display: flex; flex: none; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.lstx-sw button {
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+  border: 0; border-left: 1px solid var(--line); background: #fff;
+  color: var(--gray-txt); padding: 8px 14px; cursor: pointer; white-space: nowrap;
+}
+.lstx-sw button:first-child { border-left: 0; }
+.lstx-sw button:hover { background: #f6f6f6; }
+.lstx-sw button.on { background: var(--slate); color: #fff; }
+.lstx-sw .n { margin-left: 6px; background: var(--red); color: #fff; border-radius: 9px; font-size: 10.5px; padding: 1px 6px; }
+.lstx-sw button.on .n { background: #fff; color: var(--slate); }
+
+.lst-avec-filtres { display: flex; gap: 0; align-items: stretch; flex: 1; min-height: 0; }
+.lst-col { flex: 1; min-width: 0; padding: 14px 20px 0; display: flex; flex-direction: column; }
+/* Fond gris, cases blanches, libellé et champ sur la MÊME ligne, un filet
+   entre chaque ligne : c'est ce qui rend la colonne lisible en diagonale. */
+.fltr {
+  flex: none; width: 300px; display: flex; flex-direction: column;
+  background: #f2f2f2; border-right: 1px solid var(--line);
+  padding: 6px 0 16px; position: sticky; top: 56px; align-self: flex-start;
+  max-height: calc(100vh - 56px); overflow-y: auto;
+}
+.fltr-l {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid #e4e4e4;
+}
+.fltr-l > span {
+  display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  color: var(--gray-txt); flex: none; width: 120px;
+}
+.fltr-l > span svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; flex: none; }
+.fltr-l select, .fltr-r input, .fltr-lieu {
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 6px 8px; font-size: 12.5px; color: var(--slate); width: 100%;
+  font-family: inherit;
+}
+.fltr-lieu { text-align: left; cursor: pointer; }
+.fltr-lieu:hover { border-color: var(--slate); }
 .fltr-l select:focus, .fltr-r input:focus { outline: 0; border-color: var(--slate); }
-.fltr-r { display: flex; align-items: center; gap: 5px; }
+.fltr-r { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
 .fltr-r input { min-width: 0; }
 .fltr-r i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
 .fltr-r em { font-style: normal; font-size: 12px; color: var(--gray-lt); padding: 0 2px; }
+
+/* Choix des emplacements : plusieurs villes, départements ou régions. */
+.modal.lieu-modal { max-width: 620px; }
+.lieu-corps { padding: 14px 16px; max-height: 56vh; overflow-y: auto; }
+.lieu-aide { margin: 0 0 12px; font-size: 12.5px; color: var(--gray-txt); }
+.lieu-groupe { margin-bottom: 14px; }
+.lieu-titre {
+  font-family: var(--font-title); font-size: 11px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gray-lt); margin-bottom: 7px;
+}
+.lieu-puces { display: flex; flex-wrap: wrap; gap: 6px; }
+.lieu-puce {
+  border: 1px solid var(--line); border-radius: 999px; background: #fff;
+  padding: 5px 12px; font-size: 12.5px; color: var(--slate); cursor: pointer; font-family: inherit;
+}
+.lieu-puce:hover { border-color: var(--slate); }
+.lieu-puce.on { background: var(--slate); border-color: var(--slate); color: #fff; }
 .fltr-raz {
   align-self: flex-end; border: 1px solid var(--line); border-radius: 4px; background: #fff;
   padding: 6px 12px; font-size: 12.5px; color: var(--gray-txt); cursor: pointer; margin-top: 6px;
 }
 .fltr-raz:hover:not(:disabled) { background: #f4f4f4; color: var(--slate); }
 .fltr-raz:disabled { opacity: .45; cursor: default; }
-@media (max-width: 1100px) { .lst-avec-filtres { flex-direction: column; } .fltr { width: 100%; } }
+@media (max-width: 1100px) {
+  .lst-avec-filtres { flex-direction: column; }
+  .fltr { width: 100%; position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+  .lstx-top { flex-wrap: wrap; row-gap: 8px; }
+  .lstx-top .lst-search { order: 3; flex: 1 1 100%; }
+}
 
 /* Bandeau « + Ajouter … » des onglets de la fiche contact. */
 .cf-add {
