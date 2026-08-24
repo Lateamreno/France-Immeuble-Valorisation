@@ -17,7 +17,7 @@ import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
 import { archiverContact, noterProposition, updateContact } from "@/lib/bo/actions";
 import {
-  CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT,
+  CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
   SOURCES_CONTACT as SOURCES,
 } from "@/lib/referentiels";
 
@@ -155,7 +155,12 @@ export function ContactFiche({ d, echanges = [] }: {
 
         <div className="cfx-id">
           <div className="cfx-nom">
-            {note && <b className={`note n${note}`} title={`Classement acquéreur ${note}`}>{note}</b>}
+            {(note || d.promotion) && (
+              <b className={`note n${d.promotion && !note ? d.promotion.note : note}`}
+                title={`Classement acquéreur ${note || d.promotion?.note}`}>
+                {note || d.promotion?.note}
+              </b>
+            )}
             <span>{nomComplet}</span>
             {entreprise && <i>(société {entreprise})</i>}
           </div>
@@ -260,6 +265,14 @@ export function ContactFiche({ d, echanges = [] }: {
                     <option value="">Non classé</option>
                     {NOTES_CONTACT.map((n) => <option key={n.cle} value={n.cle}>{n.label}</option>)}
                   </select>
+                  {/* Le classement monte avec les actes : on le propose plutôt
+                      que de réécrire la fiche sans le dire. */}
+                  {d.promotion && rangNote(d.promotion.note) < rangNote(note) && (
+                    <button type="button" className="cfx-promo" onClick={() => setNote(d.promotion!.note)}>
+                      ↑ Passer en <b className={`note n${d.promotion.note}`}>{d.promotion.note}</b>
+                      <i>{d.promotion.motif}</i>
+                    </button>
+                  )}
                 </Ligne>
               </Bloc>
 

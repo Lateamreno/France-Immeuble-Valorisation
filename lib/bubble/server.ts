@@ -261,6 +261,7 @@ async function count(type: string, constraints?: Constraint[]) {
 /* ---------- helpers de présentation ---------- */
 
 import { dmy, euros, keur } from "@/lib/format";
+import { rangNote } from "@/lib/referentiels";
 
 function contactLabel(c?: Record<string, unknown>) {
   if (!c) return "";
@@ -1485,6 +1486,10 @@ export type ContactData = {
   aRelancer: number;
   /** Un mandat de recherche en cours : le BO le signale sur chaque recherche. */
   mandatRechercheActif: boolean;
+  /** La note que les actes justifient, quand elle est meilleure que celle
+   *  enregistrée : le classement monte tout seul dès qu'un acquéreur visite,
+   *  fait une offre ou achète. Absente quand la fiche est déjà à jour. */
+  promotion?: { note: string; motif: string };
 };
 
 const jjmmaa = (v: unknown) => dmy(v);
@@ -1685,6 +1690,26 @@ export async function getContact(id: string): Promise<ContactData | null> {
 
     mandatRechercheActif: mandats.some((m) =>
       String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),
+
+    promotion: (() => {
+      /* A : il a acheté, ou son offre est allée jusqu'à l'acceptation.
+         B : il a visité ou déposé une offre, quelle qu'en soit l'issue.
+         C : on l'a contacté — une proposition partie ou un suivi écrit. */
+      const abouti = offres.find((o) =>
+        ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"].includes(String(o.Statut ?? "")));
+      const merite = abouti ? "A" : offres.length > 0 || visites.length > 0 ? "B"
+        : propositions.length > 0 || suivis.length > 0 ? "C" : undefined;
+      if (!merite || rangNote(merite) >= rangNote(S2(c.Note))) return undefined;
+      const st = String(abouti?.Statut ?? "");
+      const quand = jjmmaa(abouti?.date_acte ?? abouti?.date_compromis ?? abouti?.date);
+      const motif = merite === "A"
+        ? `${st === "Vendu" ? "vendu" : `offre ${st.toLowerCase()}`}${quand ? ` le ${quand}` : ""}`
+        : merite === "B"
+          ? [offres.length ? `${offres.length} offre${offres.length > 1 ? "s" : ""}` : "",
+             visites.length ? `${visites.length} visite${visites.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" et ")
+          : `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} envoyée${propositions.length > 1 ? "s" : ""}`;
+      return { note: merite, motif };
+    })(),
   };
 }
 

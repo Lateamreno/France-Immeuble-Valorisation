@@ -4571,3 +4571,10 @@ a.cfc-t:hover { text-decoration: underline; }
 .cfc-saisie::placeholder { color: var(--gray-lt); font-style: italic; }
 .cfc-saisie:focus { outline: none; border-bottom-color: var(--gold-bo); }
 .cfc-saisie.occupe { opacity: .5; }
+.cfx-promo {
+  display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 5px;
+  border: 1px solid var(--gold-bo); border-radius: 3px; background: #fffaeb; cursor: pointer;
+  padding: 5px 9px; font: inherit; font-size: 12px; font-weight: 600; color: var(--slate);
+}
+.cfx-promo:hover { background: #fff3d2; }
+.cfx-promo i { font-style: normal; font-weight: 400; color: var(--gray-txt); }

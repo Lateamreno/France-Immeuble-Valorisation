@@ -118,14 +118,21 @@ export const PROFILS_CONTACT = [
   "Banquier", "Avocat", "Architecte", "Lotisseur", "Technicien", "Locataire",
 ];
 
-/** Classement acquéreur. Le libellé du A est relevé sur le BO ; les trois
- *  autres sont à confirmer par MAV. */
+/** Classement acquéreur — libellés donnés par MAV.
+ *
+ *  Le classement est une échelle d'engagement, pas une appréciation : il monte
+ *  tout seul quand l'acquéreur agit. Une visite ou une offre le fait passer en
+ *  B, un achat ou une offre acceptée en A. D'où `notePromue()` plus bas, qui
+ *  relit les actes plutôt que de faire confiance à la lettre enregistrée. */
 export const NOTES_CONTACT: { cle: string; label: string }[] = [
-  { cle: "A", label: "A (Acheté / très bonne offre)" },
-  { cle: "B", label: "B (Actif / offres sérieuses)" },
-  { cle: "C", label: "C (À qualifier)" },
-  { cle: "D", label: "D (Sans suite)" },
+  { cle: "A", label: "A (Acheteur connu sur la place ou ayant déjà acheté — ou offre au prix sur un dossier)" },
+  { cle: "B", label: "B (Client ayant déjà visité ou fait une offre)" },
+  { cle: "C", label: "C (Acheteur contacté)" },
+  { cle: "D", label: "D (Acheteur jamais contacté ou mauvais acquéreur)" },
 ];
+
+/** Rang d'une note : A vaut mieux que B, qui vaut mieux que C… */
+export const rangNote = (n?: string) => ({ A: 0, B: 1, C: 2, D: 3 }[n ?? ""] ?? 4);
 export const SOURCES_CONTACT = [
   "Site web", "Site - Formulaire Vendre", "Site - Formulaire Estimer", "Site - Formulaire Contact",
   "Site - Formulaire Alerte", "Site - Formulaire Off Market", "Site - Formulaire Besoin d'un conseil",
