@@ -238,8 +238,12 @@ function RevuePanel({
 }) {
   const [gravite, setGravite] = useState<Feedback["gravite"]>("ecart");
   const [commentaire, setCommentaire] = useState("");
-  const [capture, setCapture] = useState<File | null>(null);
-  const [apercu, setApercu] = useState<string | null>(null);
+  /* Plusieurs captures par retour (retour #119) : un écart se montre souvent
+     mieux à deux images — l'écran actuel et celui du BO qui sert de référence.
+     Avant, il fallait ouvrir deux retours pour une seule remarque. */
+  const [captures, setCaptures] = useState<{ f: File; apercu: string }[]>([]);
+  const ajouter = (fs: File[]) =>
+    setCaptures((c) => [...c, ...fs.map((f) => ({ f, apercu: URL.createObjectURL(f) }))]);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
   const [pending, start] = useTransition();
@@ -251,12 +255,13 @@ function RevuePanel({
   // principal : MAV fait une capture de son BO actuel et la colle ici.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
-      const f = item?.getAsFile();
-      if (f) {
-        setCapture(f);
-        setApercu(URL.createObjectURL(f));
-      }
+      // Chaque collage AJOUTE : on colle trois captures à la suite sans que
+      // la deuxième efface la première.
+      const fs = [...(e.clipboardData?.items ?? [])]
+        .filter((i) => i.type.startsWith("image/"))
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => !!f);
+      if (fs.length) ajouter(fs);
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -278,7 +283,7 @@ function RevuePanel({
         fd.set("viewport_w", String(window.innerWidth));
         fd.set("gravite", gravite);
         fd.set("commentaire", commentaire);
-        if (capture) fd.set("capture", capture);
+        for (const c of captures) fd.append("capture", c.f);
         await addFeedback(fd);
         setOk(true);
         setTimeout(onClose, 900);
@@ -331,27 +336,35 @@ function RevuePanel({
             onChange={(e) => setCommentaire(e.target.value)}
           />
           <div className="rv-paste">
-            {apercu ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={apercu} alt="capture" />
-            ) : (
-              <span>Collez une capture de votre BO (Ctrl/Cmd + V) ou</span>
+            {captures.length === 0 && (
+              <span>Collez une ou plusieurs captures (Ctrl/Cmd + V) ou</span>
             )}
+            {captures.map((c, i) => (
+              <span className="rv-vig" key={i}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={c.apercu} alt={`capture ${i + 1}`} />
+                <button
+                  type="button" className="xdel" title="Retirer cette capture"
+                  onClick={() => setCaptures((v) => v.filter((_, j) => j !== i))}
+                >✕</button>
+              </span>
+            ))}
             <label className="fadd">
-              {apercu ? "Remplacer" : "choisir un fichier"}
+              {captures.length ? "Ajouter" : "choisir des fichiers"}
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setCapture(f);
-                  setApercu(f ? URL.createObjectURL(f) : null);
+                  ajouter([...(e.target.files ?? [])]);
+                  // Sans ça, rechoisir le même fichier ne déclencherait rien.
+                  e.target.value = "";
                 }}
               />
             </label>
-            {apercu && (
-              <button type="button" className="xdel" onClick={() => { setCapture(null); setApercu(null); }}>✕</button>
+            {captures.length > 1 && (
+              <span className="rv-cnt">{captures.length} captures</span>
             )}
           </div>
           {err && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{err}</div>}

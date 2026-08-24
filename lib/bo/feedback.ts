@@ -24,6 +24,8 @@ export type Feedback = {
   gravite: "bloquant" | "ecart" | "detail" | "idee";
   commentaire: string;
   capture_path: string | null;
+  /** Toutes les captures du retour ; `capture_path` est la première. */
+  captures: string[] | null;
   statut: "ouvert" | "corrige" | "ecarte";
   reponse: string | null;
 };
@@ -44,25 +46,37 @@ async function sb(path: string, init?: RequestInit) {
   return res;
 }
 
-/** Enregistre un retour (avec capture collée optionnelle). */
-export async function addFeedback(fd: FormData) {
-  const capture = fd.get("capture");
-  let capture_path: string | null = null;
+/** Dépose une capture dans le coffre et rend son chemin. */
+async function deposerCapture(f: File): Promise<string> {
+  if (f.size > 10 * 1024 * 1024) throw new Error(`« ${f.name || "capture"} » dépasse 10 Mo.`);
+  const ext = (f.type.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "") || "png";
+  const chemin = `feedback/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${chemin}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": f.type || "image/png",
+      "x-upsert": "true",
+    },
+    body: Buffer.from(await f.arrayBuffer()),
+  });
+  if (!up.ok) throw new Error(`Upload capture ${up.status}`);
+  return chemin;
+}
 
-  if (capture instanceof File && capture.size > 0) {
-    if (capture.size > 10 * 1024 * 1024) throw new Error("Capture trop lourde (10 Mo max).");
-    capture_path = `feedback/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${capture_path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": capture.type || "image/png",
-        "x-upsert": "true",
-      },
-      body: Buffer.from(await capture.arrayBuffer()),
-    });
-    if (!up.ok) throw new Error(`Upload capture ${up.status}`);
-  }
+/**
+ * Enregistre un retour, avec autant de captures qu'il en faut.
+ *
+ * Une seule était acceptée, et MAV en avait souvent plusieurs à montrer pour
+ * un même écart — il devait alors ouvrir deux retours pour une seule remarque.
+ * `capture_path` reste renseigné avec la première : les 62 retours déjà
+ * enregistrés continuent de s'afficher sans reprise.
+ */
+export async function addFeedback(fd: FormData) {
+  const fichiers = fd.getAll("capture").filter((c): c is File => c instanceof File && c.size > 0);
+  // Déposées ensemble : trois captures ne doivent pas coûter trois attentes.
+  const captures = await Promise.all(fichiers.map(deposerCapture));
+  const capture_path = captures[0] ?? null;
 
   const num = (k: string) => {
     const v = fd.get(k);
@@ -89,6 +103,7 @@ export async function addFeedback(fd: FormData) {
       gravite: str("gravite") ?? "ecart",
       commentaire: str("commentaire") ?? "",
       capture_path,
+      captures: captures.length ? captures : null,
     }),
   });
   revalidatePath("/revue");

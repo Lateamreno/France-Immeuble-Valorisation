@@ -77,12 +77,14 @@ export default async function RevuePage({
                 )}
                 <FeedbackActions id={f.id} statut={f.statut} />
               </div>
-              {f.capture_path && (
-                <a href={`/api/photo?s=${encodeURIComponent(f.capture_path)}`} target="_blank" rel="noreferrer">
+              {/* Les retours d'avant le multi-fichiers n'ont que `capture_path` :
+                  on le prend en repli pour qu'ils s'affichent comme avant. */}
+              {(f.captures?.length ? f.captures : f.capture_path ? [f.capture_path] : []).map((c, i) => (
+                <a key={i} href={`/api/photo?s=${encodeURIComponent(c)}`} target="_blank" rel="noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img className="fb-shot" src={`/api/photo?s=${encodeURIComponent(f.capture_path)}`} alt="capture" />
+                  <img className="fb-shot" src={`/api/photo?s=${encodeURIComponent(c)}`} alt={`capture ${i + 1}`} />
                 </a>
-              )}
+              ))}
             </div>
           ))}
         </div>
