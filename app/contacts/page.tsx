@@ -26,7 +26,7 @@ export default async function ContactsPage({
     <ListeServeur
       titre="Contacts"
       rows={rows} total={total} page={page} taille={taille} q={q}
-      agents={agents.map((a) => ({ id: a.id, name: a.name }))}
+      agents={agents.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))}
       agent={agent}
       searchPlaceholder="Recherchez un contact..."
     />

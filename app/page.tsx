@@ -13,7 +13,8 @@ export default async function DashboardPage({
   const { agent = "marc-antoine", vue } = await searchParams;
   const onglet = vue === "attente" ? "attente" : "cours";
   const agentList = await getAgents().catch(() => []);
-  const slug = agentList.some((a) => a.slug === agent) ? agent : (agentList[0]?.slug ?? "marc-antoine");
+  const actifs = agentList.filter((a) => a.actif);
+  const slug = actifs.some((a) => a.slug === agent) ? agent : (actifs[0]?.slug ?? "marc-antoine");
 
   let blocs = DASHBOARD;
   let agentName = "Marc-Antoine";
@@ -39,11 +40,11 @@ export default async function DashboardPage({
   return (
     <>
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
-        agent={agentName} agentSlug={slug} agents={agentList.map((a) => ({ slug: a.slug, name: a.name.split(' ')[0] }))} />
+        agent={agentName} agentSlug={slug} agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0] }))} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}
-      <DashboardBlocs blocs={blocs} mock={!!liveError} agents={agentList.map((a) => ({ id: a.id, name: a.name }))} />
+      <DashboardBlocs blocs={blocs} mock={!!liveError} agents={agentList.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))} />
     </>
   );
 }

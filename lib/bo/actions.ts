@@ -180,7 +180,7 @@ export async function transfererImmeuble(
 ) {
   await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { AGENT: agentId } });
   if (proprietaireId) {
-    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: proprietaireId, p_patch: { agent: agentId } });
+    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: proprietaireId, p_patch: { SUIVI: agentId } });
   }
   refresh(immeubleId);
 }
@@ -1044,7 +1044,10 @@ export async function createContact(input: ContactPatch & { agentId?: string }) 
     p_id: id,
     p_doc: cleanPatch({
       ...rest,
-      agent: agentId,
+      /* `SUIVI` porte le commercial qui suit la fiche. `agent` est un BOOLÉEN
+         « est-ce un agent immobilier » : y écrire un identifiant faisait
+         passer chaque nouveau contact pour un confrère. */
+      SUIVI: agentId,
       "Created Date": now,
       "Modified Date": now,
     } as Record<string, unknown>),
@@ -2778,4 +2781,86 @@ export async function cloturerOperation(immeubleId: string, operationId: string)
   });
   refresh(immeubleId);
   revalidatePath("/decoupe");
+}
+
+/* ---------- Questions reçues depuis le site (retour #118) ---------- */
+
+/** Clôture une question, avec la remarque qui explique ce qui a été fait. */
+export async function cloturerQuestion(questionId: string, remarques: string, agentId?: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question",
+    p_id: questionId,
+    p_patch: {
+      ended: true,
+      date_cloture: new Date().toISOString(),
+      remarques_cloture: remarques || null,
+      ...(agentId ? { CLOTUROR: agentId } : {}),
+    },
+  });
+  revalidatePath("/questions");
+}
+
+/** Rouvre une question clôturée par erreur. */
+export async function rouvrirQuestion(questionId: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question",
+    p_id: questionId,
+    p_patch: { ended: false, date_cloture: null },
+  });
+  revalidatePath("/questions");
+}
+
+/**
+ * Crée le contact d'une question et l'y rattache.
+ *
+ * La question devient alors un suivi dans la fiche du contact : c'est ce que
+ * MAV demande — une demande venue du site ne doit pas rester dans un coin,
+ * elle rejoint l'historique de la personne. La question est rattachée mais
+ * PAS clôturée : créer la fiche n'est pas répondre.
+ */
+export async function creerContactDepuisQuestion(input: {
+  questionId: string;
+  agentId: string;
+  nom: string;
+  prenom?: string;
+  email?: string;
+  telephone?: string;
+  message?: string;
+}) {
+  const contactId = await createContact({
+    nom: input.nom,
+    "prénom": input.prenom,
+    email: input.email,
+    portable: input.telephone,
+    Source: "Site - Question",
+    agentId: input.agentId,
+  } as ContactPatch & { agentId?: string });
+
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question",
+    p_id: input.questionId,
+    p_patch: { CONTACT: contactId },
+  });
+
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: newId(),
+    p_doc: {
+      Type: "Question",
+      AGENT: input.agentId,
+      CONTACT: contactId,
+      IMMEUBLEs: [],
+      Canals: ["Formulaire"],
+      notes: input.message ?? "",
+      date_start: now,
+      "Created Date": now,
+      "Modified Date": now,
+      Statut: "Traité",
+    },
+  });
+
+  revalidatePath("/questions");
+  revalidatePath(`/contact/${contactId}`);
+  return contactId;
 }

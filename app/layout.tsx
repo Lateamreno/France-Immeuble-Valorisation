@@ -43,7 +43,7 @@ export default async function RootLayout({
           <Rail mode={await lireMode()} />
           <div className="main">
             {children}
-            <QuickCreate agents={await getAgents().catch(() => [])} />
+            <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
           </div>
           <RevueButton pins={await listFeedback().catch(() => [])} />
         </div>

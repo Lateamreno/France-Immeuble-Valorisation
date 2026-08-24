@@ -27,23 +27,34 @@ const ROOT = (process.env.BUBBLE_APP_URL || "https://vente.france-immeuble.fr")
 
 const REVALIDATE = 120; // secondes de cache par requête
 
-export type Agent = { id: string; slug: string; name: string; initials: string; color?: string };
+export type Agent = {
+  id: string; slug: string; name: string; initials: string; color?: string;
+  /** Un agent parti garde ses initiales et sa couleur : les fiches qu'il a
+   *  suivies lui appartiennent toujours. Il ne doit simplement plus être
+   *  proposé quand on choisit à qui attribuer quelque chose. */
+  actif: boolean;
+};
 
 /** Agents chargés depuis la table réelle `agentfi` du BO (initiales, couleur). */
 export async function getAgents(): Promise<Agent[]> {
   const rows = await fetchAll("agentfi", undefined, 50).catch(() => []);
   const slugify = (s: string) =>
     s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  /* TOUS les agents, y compris ceux qui ont quitté la maison. Les filtrer ici
+     faisait retomber sur « FI » toutes les fiches suivies par un ancien —
+     les questions du BO, par exemple, appartiennent presque toutes à François
+     DUGAST, parti depuis. Le tri actif/inactif se fait à l'affichage des
+     listes de choix, pas à la lecture du référentiel. */
   return rows
-    .filter((a) => a.activ !== false)
     .map((a) => ({
       id: String(a._id),
       slug: slugify(String(a["prénom"] ?? a.nom ?? a._id)),
       name: `${a["prénom"] ?? ""} ${a.nom ?? ""}`.trim(),
       initials: String(a.initiales ?? "FI"),
       color: typeof a.color_main === "string" ? (a.color_main as string) : undefined,
+      actif: a.activ !== false,
     }))
-    .sort((x, y) => x.name.localeCompare(y.name));
+    .sort((x, y) => Number(y.actif) - Number(x.actif) || x.name.localeCompare(y.name));
 }
 
 /* Le mémo par horodatage laissait passer les appels CONCURRENTS : deux parties
@@ -2101,5 +2112,69 @@ export async function listRecherchesBO(agentId = ""): Promise<RechercheCard[]> {
       group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",
       date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
     } satisfies RechercheCard;
+  });
+}
+
+/* ============================ Écran Questions ============================
+   Les demandes reçues depuis le site (retour #118). Chacune finit de trois
+   façons : on crée le contact, on la clôture, ou les deux. */
+
+export type QuestionCard = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  /** « Question du 16/07/26 - 15h11 ». */
+  quand: string;
+  source: string;
+  message: string;
+  telephone?: string;
+  email?: string;
+  projet?: string;
+  contact?: { id: string; nom: string; note?: string };
+  immeuble?: { id: string; libelle: string };
+  clos: boolean;
+  remarques?: string;
+  date?: string;
+};
+
+export async function listQuestionsBO(): Promise<QuestionCard[]> {
+  await loadInitials();
+  const rows = await fetchAll("question", undefined, 1000, { field: "Created Date", desc: true })
+    .catch(() => []);
+  const [ims, contacts] = await Promise.all([
+    imLabelMap(rows.map((q) => String(q.IMMEUBLE ?? ""))),
+    parIds("contact", rows.map((q) => q.CONTACT)),
+  ]);
+  const parId = new Map(contacts.map((c) => [String(c._id), c]));
+
+  return rows.map((q) => {
+    /* `suivi par` est une LISTE d'identifiants côté Bubble : la passer telle
+       quelle aux initiales renvoyait « FI » sur toutes les questions. */
+    const suivi = Array.isArray(q["suivi par"])
+      ? (q["suivi par"] as string[])[0]
+      : q["suivi par"];
+    const d = typeof q["Created Date"] === "string" ? new Date(q["Created Date"] as string) : null;
+    const c = parId.get(String(q.CONTACT ?? ""));
+    const im = ims.get(String(q.IMMEUBLE ?? ""));
+    return {
+      id: String(q._id),
+      agent: initialsOf(suivi),
+      agentCouleur: couleurOf(suivi),
+      quand: d
+        ? `${d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" })} - ${d
+            .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+            .replace(":", "h")}`
+        : "",
+      source: S2(q.source) ?? "Site",
+      message: (S2(q.message) ?? "").trim(),
+      telephone: S2(q["téléphone"]),
+      email: S2(q.email),
+      projet: S2(q.Projet),
+      contact: c ? { id: String(c._id), nom: contactLabel(c) || String(c.email ?? "Contact"), note: gradeOf(c) } : undefined,
+      immeuble: im ? { id: String(im._id), libelle: imLabel(im) } : undefined,
+      clos: q.ended === true,
+      remarques: S2(q.remarques_cloture),
+      date: typeof q["Created Date"] === "string" ? (q["Created Date"] as string) : undefined,
+    } satisfies QuestionCard;
   });
 }

@@ -4253,3 +4253,44 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .rc-det { display: grid; grid-template-columns: 130px 1fr; gap: 7px 12px; font-size: 13px; }
 .rc-det b { font-weight: 600; color: var(--gray-txt); font-size: 12.5px; }
 .rc-com { margin: 14px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--slate-2); white-space: pre-wrap; }
+
+/* ===================== Écran Questions (retour #118) =====================
+   Une demande venue du site. Trois issues possibles — créer le contact,
+   rappeler ou écrire, clôturer — donc trois gestes sur la carte. */
+.qc { display: flex; gap: 12px; margin-bottom: 10px; }
+.qc.clos { opacity: .62; }
+.qc-gauche { flex: none; width: 74px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 8px; }
+.qc-bulle { width: 30px; height: 30px; color: var(--slate); }
+.qc-bulle svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
+.qc-gauche .lav { width: 28px; height: 28px; font-size: 10px; border-radius: 4px; }
+.qc-corps { flex: 1; min-width: 0; }
+.qc-cadre { border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 10px 12px; }
+.qc-tete { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--slate-2); margin-bottom: 6px; }
+.qc-tete b { color: var(--slate); font-weight: 700; }
+.qc-tete i { color: var(--gray-lt); font-size: 12px; }
+.qc-ct {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
+  border-radius: 4px; padding: 3px 8px; font-size: 12.5px; color: var(--slate); background: #fff;
+}
+.qc-ct svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.qc-nc { font-size: 12.5px; color: var(--gray-lt); border: 1px solid var(--line-lt); border-radius: 4px; padding: 3px 8px; }
+.qc-projet { font-size: 12px; color: var(--gold-bo); font-weight: 600; margin-bottom: 3px; }
+.qc-msg { margin: 0 0 6px; font-size: 13px; line-height: 1.55; color: var(--slate); white-space: pre-wrap; }
+.qc-msg i { color: var(--gray-lt); }
+.qc-coord { display: flex; gap: 14px; font-size: 12px; color: var(--slate-2); }
+.qc-actions { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.qc-creer, .qc-b, .qc-clot {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: 4px;
+  padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  font-family: inherit; background: #fff;
+}
+.qc-creer { border: 1px solid var(--red); color: var(--red); }
+.qc-creer:hover { background: #fdeceb; }
+.qc-fait { font-size: 12.5px; color: var(--green); font-weight: 600; }
+.qc-b { border: 1px solid var(--line); color: var(--slate); }
+.qc-b:hover { border-color: var(--slate); }
+.qc-clot { border: 1px solid var(--green); color: var(--green); }
+.qc-clot:hover { background: #eefbe9; }
+.qc-im { font-size: 12px; color: var(--slate-2); border: 1px solid var(--line-lt); border-radius: 4px; padding: 5px 9px; }
+.qc-im.vide { color: var(--gray-lt); }
+.qc-rem { margin-top: 6px; font-size: 12px; color: var(--green); }

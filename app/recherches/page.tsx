@@ -11,7 +11,7 @@ export default async function RecherchesPage() {
   return (
     <EcranRecherches
       rows={rows}
-      agents={agents.map((a) => ({ id: a.id, name: a.name, initials: a.initials }))}
+      agents={agents.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name, initials: a.initials }))}
     />
   );
 }
