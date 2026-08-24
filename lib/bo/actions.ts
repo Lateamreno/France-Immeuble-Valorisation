@@ -983,6 +983,10 @@ export async function createImmeuble(input: {
 
 /* ---------- Contacts ---------- */
 
+/** Une adresse Bubble : toujours un objet, jamais une chaîne. La stocker à
+ *  plat rendait « [object Object] » à la relecture. */
+export type GeoPoint = { address: string; lat?: number; lng?: number };
+
 export type ContactPatch = Partial<{
   "Civilité": string;
   "prénom": string;
@@ -997,17 +1001,24 @@ export type ContactPatch = Partial<{
   remarques: string;
   entreprise_nom: string;
   entreprise_siren: string;
+  /* --- Société (retour #119) --- */
+  poste: string;
+  entreprise_capital: number;
+  entreprise_rcs: string;
+  entreprise_siege_geo: GeoPoint;
   /** Classement acquéreur A/B/C/D du BO. */
   Note: string;
   /** Profil du propriétaire, saisi librement depuis la fiche bien (#71). */
   profil: string;
   date_naissance: string;
-  lieu_naissance_geo: string;
-  adresse_geo: string;
+  lieu_naissance_geo: GeoPoint;
+  adresse_geo: GeoPoint;
   notif_sms: boolean;
   notif_email: boolean;
-  /** Agent France Immeuble qui suit le contact. */
-  agent: string;
+  /** Agent France Immeuble qui suit le contact. Bubble le range dans `SUIVI` ;
+   *  `agent` est un booléen (« ce contact est un agent immobilier »), pas un
+   *  propriétaire — les confondre attribuait toutes les fiches à « FI ». */
+  SUIVI: string;
   interagence: boolean;
   archived: boolean;
   motif_archivage: string;
@@ -2496,6 +2507,19 @@ export async function setPropositionStatut(
     p_patch: { ...patch, date_modif: now, "Modified Date": now },
   });
   revalidatePath(`/bien/${immeubleId}`);
+  revalidatePath("/propositions");
+}
+
+/** La note de suivi qu'on écrit sous une proposition, depuis la fiche contact
+ *  (retour #119). Le BO la propose en saisie directe sur la carte. */
+export async function noterProposition(propositionId: string, contactId: string, texte: string) {
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_proposition",
+    p_id: propositionId,
+    p_patch: { commentaire: texte.trim() || null, date_modif: now, "Modified Date": now },
+  });
+  revalidatePath(`/contact/${contactId}`);
   revalidatePath("/propositions");
 }
 

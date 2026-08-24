@@ -4294,3 +4294,280 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .qc-im { font-size: 12px; color: var(--slate-2); border: 1px solid var(--line-lt); border-radius: 4px; padding: 5px 9px; }
 .qc-im.vide { color: var(--gray-lt); }
 .qc-rem { margin-top: 6px; font-size: 12px; color: var(--green); }
+
+/* ================= Fiche contact reprise du BO (retour #119) =================
+   En-tête collé (qui, comment le joindre, quoi faire), barre d'onglets chiffrée
+   collée sous lui, puis le contenu. La colonne de droite de l'onglet
+   Informations porte les notes, les notifications et la source. */
+
+.cfx { display: flex; flex-direction: column; min-height: calc(100vh - var(--bottbar-h)); background: #fff; }
+
+/* En-tête + onglets collés ensemble : la hauteur de l'en-tête varie avec le
+   nombre de profils, un `top` fixe sur les onglets les ferait se chevaucher. */
+.cfx-colle { position: sticky; top: 0; z-index: 30; background: #fff; }
+.cfx-top {
+  display: flex; align-items: flex-start; gap: 18px;
+  background: #fff; border-bottom: 1px solid var(--line);
+  padding: 12px 20px 10px;
+}
+/* Silhouette + vignette du commercial, comme dans le BO. */
+.cfx-ava { position: relative; flex: none; width: 74px; height: 74px; }
+.cfx-ava > svg { width: 74px; height: 74px; fill: none; stroke: var(--slate); stroke-width: 1.2; }
+.cfx-vig {
+  position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%);
+  background: var(--pill-gray); color: #fff; border-radius: 3px;
+  font-family: var(--font-title); font-size: 9.5px; font-weight: 700;
+  padding: 1px 5px; letter-spacing: .3px; white-space: nowrap;
+}
+
+.cfx-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cfx-nom {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: var(--font-title); font-size: 17px; font-weight: 700; color: var(--slate);
+}
+.cfx-nom i { font-family: var(--font-body); font-size: 15px; font-weight: 700; font-style: italic; }
+
+.cfx-chips { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.cfx-q {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: #fff; color: var(--gray-lt);
+  border-radius: 4px; padding: 5px 10px;
+  font-family: var(--font-title); font-size: 12px; font-weight: 700; letter-spacing: .3px;
+}
+.cfx-q svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cfx-q.vend.on { border-color: var(--green); color: var(--green); }
+.cfx-q.ach.on { border-color: #2f8ed6; color: #2f8ed6; }
+.cfx-prof {
+  border: 1px solid #cfcfcf; border-radius: 4px; padding: 5px 10px;
+  font-size: 12.5px; color: var(--slate-2); background: #fff;
+}
+.cfx-prof.vide { color: var(--gray-lt); border-style: dashed; }
+
+.cfx-coord { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.cfx-cd { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--slate); }
+.cfx-cd > svg { width: 15px; height: 15px; fill: none; stroke: var(--slate-2); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.cfx-act { flex: none; display: flex; flex-direction: column; gap: 6px; width: 208px; }
+.cfx-b {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 4px; padding: 8px 12px; cursor: pointer; text-decoration: none;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; border: 1px solid transparent;
+}
+.cfx-b svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cfx-b.vert { background: var(--green); color: #fff; }
+.cfx-b.jaune { background: #f5c518; color: #3c3517; }
+.cfx-b.rouge { background: #fff; border-color: var(--red); color: var(--red); }
+.cfx-b.rouge:hover { background: #fdeceb; }
+.cfx-b.off { opacity: .4; pointer-events: none; }
+
+/* --- Barre d'onglets, bord à bord, chiffrée --- */
+.cfx-tabs {
+  display: flex; background: #f7f7f7; border-bottom: 1px solid var(--line);
+  overflow-x: auto; scrollbar-width: none;
+}
+.cfx-tabs::-webkit-scrollbar { display: none; }
+.cfx-tab {
+  flex: 1 1 0; min-width: 128px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border: 0; border-right: 1px solid var(--line); border-bottom: 3px solid transparent;
+  background: none; cursor: pointer; padding: 12px 8px; white-space: nowrap;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--slate-2);
+}
+.cfx-tab:last-child { border-right: 0; }
+.cfx-tab.vide { color: var(--gray-lt); }
+.cfx-tab.on { background: #fff; color: var(--slate); border-bottom-color: var(--gold-bo); }
+.cfx-tab .n {
+  background: var(--chip); color: var(--slate-2); border-radius: 3px;
+  font-size: 11px; font-weight: 700; padding: 1px 6px;
+}
+.cfx-tab.vide .n { color: var(--gray-lt); }
+.cfx-ic { display: inline-flex; width: 15px; height: 15px; }
+.cfx-ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cfx-ic.or svg { stroke: var(--gold-bo); }
+
+.cfx-body { flex: 1; background: var(--bg); padding: 16px 20px 130px; }
+/* La barre d'enregistrement laisse la place au bouton flottant « Signaler un
+   écart », qui vit dans le coin bas-droit sur tous les écrans. */
+@media (min-width: 901px) { .cfx > .savebar { padding-right: 280px; } }
+
+/* --- Onglet Informations : formulaire à gauche, encadrés à droite --- */
+.cfx-infos { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+.cfx-form { flex: 1 1 560px; min-width: 0; max-width: 700px; }
+.cfx-side { flex: 0 1 440px; min-width: 280px; display: flex; flex-direction: column; gap: 12px; }
+
+.cfx-bloc { margin-bottom: 16px; }
+.cfx-bloc h2 {
+  display: flex; align-items: center; gap: 7px; margin: 0 0 8px;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 700;
+  color: var(--gold-bo); letter-spacing: .2px;
+}
+.cfx-r {
+  display: grid; grid-template-columns: 148px minmax(0, 1fr); align-items: center;
+  gap: 8px 10px; margin-bottom: 7px;
+}
+.cfx-r.duo { grid-template-columns: 148px minmax(0, 1fr) 128px minmax(0, 1fr); }
+.cfx-r > label { font-size: 13px; color: var(--slate); }
+.cfx-r > label.d2 { padding-left: 10px; }
+.cfx-v { min-width: 0; }
+.cfx-v input, .cfx-v select, .cfx-v textarea {
+  width: 100%; background: #fff; border: 1px solid var(--line);
+  border-radius: 3px; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--slate);
+}
+.cfx-v input.droite { text-align: right; }
+.cfx-v select.court { max-width: 180px; }
+.cfx-cases { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+.cfx-cases label { display: inline-flex; align-items: center; gap: 6px; }
+.cfx-agent {
+  display: block; background: var(--pill-gray); color: #fff; border-radius: 3px;
+  padding: 6px 10px; font-family: var(--font-title); font-size: 12.5px; font-weight: 700;
+}
+
+/* La note occupe toute la largeur et se lit à la couleur, comme dans le BO. */
+.cfx-note {
+  width: 100%; border: 1px solid var(--line); border-radius: 3px; padding: 6px 8px;
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--slate); background: #fff;
+}
+.cfx-note.nA { background: var(--green); border-color: var(--green); color: #fff; }
+.cfx-note.nB { background: #2f8ed6; border-color: #2f8ed6; color: #fff; }
+.cfx-note.nC { background: var(--orange); border-color: var(--orange); color: #fff; }
+.cfx-note.nD { background: var(--pill-gray); border-color: var(--pill-gray); color: #fff; }
+
+/* Profil : une liste à cocher repliée, l'équivalent du multi-select Bubble. */
+.cfx-multi > summary {
+  list-style: none; cursor: pointer; background: #fff; border: 1px solid var(--line);
+  border-radius: 3px; padding: 6px 8px; font-size: 13px; color: var(--slate);
+}
+.cfx-multi > summary::-webkit-details-marker { display: none; }
+.cfx-multi > summary::after { content: "⌄"; float: right; color: var(--gray-lt); }
+.cfx-multi-l {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px 12px;
+  border: 1px solid var(--line); border-top: 0; border-radius: 0 0 3px 3px;
+  background: #fff; padding: 9px 10px; font-size: 12.5px;
+}
+.cfx-multi-l label { display: inline-flex; align-items: center; gap: 6px; }
+
+.cfx-pj {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--cols);
+  border: 1px solid var(--line); border-radius: 3px; padding: 5px 9px;
+  font-size: 12.5px; color: var(--slate); text-decoration: none; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cfx-pj svg { flex: none; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.cfx-pj.vide { color: var(--gray-lt); background: none; border-style: dashed; }
+
+.cfx-notes { border: 1px solid var(--line); border-radius: 4px; background: #fff; overflow: hidden; }
+.cfx-notes-h {
+  background: #3c3c3c; color: #fff; text-align: center; padding: 8px;
+  font-family: var(--font-title); font-size: 13px; font-weight: 700;
+}
+.cfx-notes textarea {
+  display: block; width: 100%; min-height: 190px; border: 0; resize: vertical;
+  padding: 12px 14px; font: inherit; font-size: 13px; line-height: 1.55; color: var(--slate);
+}
+.cfx-notif { display: flex; flex-direction: column; gap: 5px; }
+.cfx-radio { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--gray-txt); }
+.cfx-radio label { display: inline-flex; align-items: center; gap: 5px; }
+.cfx-src { border-top: 1px solid var(--line); padding-top: 9px; }
+.cfx-src select {
+  width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 3px;
+  padding: 6px 8px; font: inherit; font-size: 12.5px; color: var(--gray-txt);
+}
+.cfx-src p { margin: 7px 0 0; font-size: 12px; color: var(--gray-txt); }
+
+/* --- Onglets à cartes --- */
+.cfx-liste { max-width: 880px; margin: 0 auto; }
+.cfx-add {
+  display: block; width: max-content; margin: 0 auto 14px;
+  background: #f5c518; color: #3c3517; border-radius: 4px; padding: 8px 16px;
+  font-family: var(--font-title); font-size: 13px; font-weight: 600; text-decoration: none;
+}
+.cfx-relance {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  border: 1px dashed var(--red); border-radius: 4px; background: #fdeceb;
+  padding: 8px 10px 8px 14px; font-size: 13px; color: var(--red);
+}
+.cfx-relance-b {
+  background: var(--red); color: #fff; border-radius: 4px; padding: 6px 14px;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; text-decoration: none;
+}
+
+.cfc {
+  display: flex; gap: 12px; align-items: stretch; background: #fff;
+  border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; margin-bottom: 8px;
+}
+.cfc.arch, .cfc.pale { background: #fbfbfb; }
+.cfc-g { flex: none; width: 54px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.cfc-pic { display: grid; place-items: center; width: 30px; height: 30px; color: var(--slate-2); }
+.cfc-pic svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.cfc.arch .cfc-pic, .cfc.pale .cfc-pic { color: var(--gray-lt); }
+.cfc-g .lav { width: 28px; height: 28px; font-size: 10px; }
+.cfc-c { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.cfc-l1 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.cfc-t { font-family: var(--font-title); font-size: 13.5px; font-weight: 700; color: var(--slate); text-decoration: none; }
+a.cfc-t:hover { text-decoration: underline; }
+.cfc-date { font-size: 12.5px; color: var(--gray-txt); }
+.cfc-l2, .cfc-l3 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.cfc-st {
+  border: 1px solid #cfcfcf; border-radius: 3px; padding: 3px 8px;
+  font-size: 11.5px; font-weight: 600; color: var(--slate-2); background: #fff;
+}
+.cfc-st.vert { border-color: var(--green); color: var(--green); }
+.cfc-st.bleu { border-color: #2f8ed6; color: #2f8ed6; }
+.cfc-st.rouge { border-color: var(--red); color: var(--red); }
+.cfc-st.off { border-color: var(--line-lt); color: var(--gray-lt); }
+.cfc-num, .cfc-doc, .cfc-motif {
+  font-size: 11.5px; color: var(--slate-2); border: 1px solid var(--line-lt);
+  border-radius: 3px; padding: 3px 8px; background: #fff;
+}
+.cfc-motif { color: var(--gray-txt); font-style: italic; }
+.cfc-alerte {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--red);
+  color: var(--red); border-radius: 3px; padding: 3px 8px; font-size: 11.5px; font-weight: 600;
+}
+.cfc-arch {
+  border: 1px solid var(--red); background: #fdeceb; color: var(--red);
+  border-radius: 3px; padding: 3px 9px; font-size: 11.5px; font-weight: 600;
+}
+.cfc-m {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; color: var(--gray-lt);
+}
+.cfc-m.on { color: var(--slate); }
+.cfc-m svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cfc-prix { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+.cfc-im {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-lt);
+  border-radius: 3px; padding: 4px 9px; font-size: 12px; color: var(--slate-2);
+  text-decoration: none; background: #fff;
+}
+.cfc-im svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.cfc-im:hover { border-color: var(--slate); }
+.cfc-note { font-size: 12.5px; line-height: 1.5; color: var(--slate); white-space: pre-wrap; }
+.cfc-note i { color: var(--gray-lt); }
+
+/* La fiche contact occupe toute la largeur : pas de rail à droite. */
+@media (max-width: 900px) {
+  .cfx-top { flex-wrap: wrap; }
+  .cfx-act { width: 100%; flex-direction: row; }
+  .cfx-act .cfx-b { flex: 1; }
+  .cfx-r, .cfx-r.duo { grid-template-columns: 1fr; }
+  .cfx-r > label.d2 { padding-left: 0; }
+  .cfx-tab { flex: none; min-width: 0; }
+}
+.cfx-suite {
+  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+  border: 1px dashed var(--line); border-radius: 5px; background: #fff; cursor: pointer;
+  padding: 10px; margin-top: 4px;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate-2);
+}
+.cfx-suite:hover { border-color: var(--slate); }
+.cfx-suite i { font-style: normal; font-weight: 400; color: var(--gray-lt); font-size: 12px; }
+.rc-mention { font-size: 12px; font-weight: 600; color: var(--green); white-space: nowrap; }
+.cfc-saisie {
+  width: 100%; border: 0; border-bottom: 1px dashed var(--line); background: none;
+  resize: vertical; padding: 3px 0; font: inherit; font-size: 12.5px; color: var(--slate);
+}
+.cfc-saisie::placeholder { color: var(--gray-lt); font-style: italic; }
+.cfc-saisie:focus { outline: none; border-bottom-color: var(--gold-bo); }
+.cfc-saisie.occupe { opacity: .5; }

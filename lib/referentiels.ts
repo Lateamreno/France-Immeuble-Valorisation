@@ -109,6 +109,23 @@ export const CHARGES_HONOS = ["Vendeur", "Acheteur"];
 
 /* --- Contacts / recherches --- */
 export const CIBLES = ["Investisseur", "Marchand de biens", "Patrimonial", "Promoteur"];
+
+/** Profils d'un contact (champ `Types`) — valeurs réellement présentes en base,
+ *  dans l'ordre de fréquence : c'est la liste que propose le BO. */
+export const PROFILS_CONTACT = [
+  "Investisseur", "Marchand", "Promoteur", "Foncière", "Agent immobilier",
+  "Gestionnaire", "Exploitant", "Apporteur", "Partenaire", "Notaire",
+  "Banquier", "Avocat", "Architecte", "Lotisseur", "Technicien", "Locataire",
+];
+
+/** Classement acquéreur. Le libellé du A est relevé sur le BO ; les trois
+ *  autres sont à confirmer par MAV. */
+export const NOTES_CONTACT: { cle: string; label: string }[] = [
+  { cle: "A", label: "A (Acheté / très bonne offre)" },
+  { cle: "B", label: "B (Actif / offres sérieuses)" },
+  { cle: "C", label: "C (À qualifier)" },
+  { cle: "D", label: "D (Sans suite)" },
+];
 export const SOURCES_CONTACT = [
   "Site web", "Site - Formulaire Vendre", "Site - Formulaire Estimer", "Site - Formulaire Contact",
   "Site - Formulaire Alerte", "Site - Formulaire Off Market", "Site - Formulaire Besoin d'un conseil",

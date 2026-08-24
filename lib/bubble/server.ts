@@ -1382,41 +1382,309 @@ export async function getDatas() {
   };
 }
 
-/* ---------- Fiche Contact ---------- */
+/* ========================= Fiche Contact (retour #119) =========================
+   Le BO présente la fiche en trois temps : un en-tête collé qui dit qui est la
+   personne et comment la joindre, une barre d'onglets chiffrée, puis le contenu
+   de l'onglet. Tout est préparé ici, prêt à afficher : la vue ne recalcule
+   rien et ne relit pas la base. */
+
+/** Une ligne d'immeuble telle que la fiche l'affiche (carte du BO). */
+export type ImmeubleLigne = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  libelle: string;
+  statut?: string;
+  /** Rang numérique du statut (0 à 11) — pilote la couleur de la pastille. */
+  rang: number;
+  /** « Archivé le 03/03/26 car N'est pas propriétaire ». */
+  archive?: string;
+  /** « Dossier V4 » ou rien. */
+  dossier?: string;
+  mandat?: string;
+  surface?: string;
+  occupation?: string;
+  /** Loyers annuels HC, la 3ᵉ mesure de la carte du BO. */
+  loyers?: string;
+  renta?: string;
+  prix?: string;
+};
+
+/** Mandat vu depuis la fiche contact. */
+export type MandatLigne = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  titre: string;
+  periode?: string;
+  statut?: string;
+  numero?: string;
+  pdf?: string;
+  immeuble?: { id: string; libelle: string };
+  prix?: string;
+  recherche: boolean;
+};
+
+/** Proposition vue depuis la fiche contact. */
+export type PropositionLigne = {
+  id: string;
+  quand: string;
+  statut?: string;
+  motif?: string;
+  commentaire?: string;
+  immeuble?: { id: string; libelle: string };
+  /** Vraie quand la proposition entre dans le compteur « à relancer ». */
+  aRelancer: boolean;
+};
+
+/** Visite ou offre — même carte, deux jeux de valeurs. */
+export type ActeLigne = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  titre: string;
+  statut?: string;
+  ton: "green" | "red" | "orange";
+  details: string[];
+  commentaire?: string;
+  immeuble?: { id: string; libelle: string };
+};
+
+/** Ligne de suivi (le journal du contact). */
+export type SuiviLigne = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  quand: string;
+  type?: string;
+  statut?: string;
+  canal?: string;
+  relance?: string;
+  notes: string;
+  immeuble?: { id: string; libelle: string };
+};
 
 export type ContactData = {
   c: Record<string, unknown>;
-  immeubles: Record<string, unknown>[];
-  recherches: Record<string, unknown>[];
-  propositions: Record<string, unknown>[];
-  questions: Record<string, unknown>[];
-  visites: Record<string, unknown>[];
-  offres: Record<string, unknown>[];
-  suivis: Record<string, unknown>[];
-  mandats: Record<string, unknown>[];
-  /** Agent qui suit le contact, pour l'afficher en clair. */
-  agentNom?: string;
+  /** Commercial qui suit le contact (champ `SUIVI`, pas `agent`). */
+  agent?: { nom: string; initiales: string; couleur?: string };
+  /** Qui a créé la fiche, en clair, pour la ligne « Création … par … ». */
+  createur?: string;
+  /** « (il y a 2 276 jours) » — calculé au rendu serveur : appeler l'horloge
+   *  pendant le rendu d'un composant client n'est pas idempotent. */
+  anciennete?: string;
+  immeubles: ImmeubleLigne[];
+  recherches: RechercheCard[];
+  mandats: MandatLigne[];
+  propositions: PropositionLigne[];
+  questions: QuestionCard[];
+  visites: ActeLigne[];
+  offres: ActeLigne[];
+  suivis: SuiviLigne[];
+  /** Nombre de propositions encore ouvertes et relançables. */
+  aRelancer: number;
+  /** Un mandat de recherche en cours : le BO le signale sur chaque recherche. */
+  mandatRechercheActif: boolean;
+};
+
+const jjmmaa = (v: unknown) => dmy(v);
+
+/** « Archivé le 03/03/26 car N'est pas propriétaire ». */
+function phraseArchivage(im: Record<string, unknown>) {
+  if (im.archived !== true) return undefined;
+  const quand = jjmmaa(im.date_archivage);
+  /* Le motif libre dit ce qui s'est vraiment passé (« Locataire parti donc ça
+     vaut plus ce prix là ») ; la liste déroulante retombe souvent sur
+     « Autre ». On montre le texte quand il existe. */
+  const motif = S2(im.motif_archivage_txt) ?? S2(im.Motif_archivage);
+  return `Archivé${quand ? ` le ${quand}` : ""}${motif ? ` car ${motif}` : ""}`;
+}
+
+const nomFichier = (u: unknown) => {
+  const s = S2(u);
+  if (!s) return undefined;
+  try {
+    return decodeURIComponent(s.split("/").pop() ?? "") || undefined;
+  } catch {
+    return s.split("/").pop() || undefined;
+  }
 };
 
 export async function getContact(id: string): Promise<ContactData | null> {
   const one = await bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
   const c = one.results[0];
   if (!c) return null;
-  const [immeubles, recherches, propositions, questions, visites, offres, suivis, mandats] = await Promise.all([
-    fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 50).catch(() => []),
-    fetchAll("recherche", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
-    fetchAll("proposition", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 50).catch(() => []),
-    fetchAll("question", [{ key: "CONTACT", constraint_type: "equals", value: id }], 50).catch(() => []),
-    fetchAll("visite", [{ key: "VISITEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
-    fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 50).catch(() => []),
-    fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 100).catch(() => []),
-    fetchAll("mandat", [{ key: "MANDANTs", constraint_type: "contains", value: id }], 50).catch(() => []),
+  await loadInitials();
+
+  const [immeubles, recherchesBO, propositions, questionsBO, visites, offres, suivis, mandats] = await Promise.all([
+    fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 200).catch(() => []),
+    /* Les recherches passent par le moteur de l'écran Recherches : la carte de
+       la fiche est exactement celle de l'écran, compteur « à proposer »
+       compris. Les deux lectures sont mises en cache, l'appel est donc gratuit
+       en pratique. */
+    listRecherchesBO().catch(() => [] as RechercheCard[]),
+    fetchAll("proposition", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 500,
+      { field: "date_envoi", desc: true }).catch(() => []),
+    listQuestionsBO().catch(() => [] as QuestionCard[]),
+    fetchAll("visite", [{ key: "VISITEURs", constraint_type: "contains", value: id }], 200).catch(() => []),
+    fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 200).catch(() => []),
+    fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 300).catch(() => []),
+    fetchAll("mandat", [{ key: "MANDANTs", constraint_type: "contains", value: id }], 200).catch(() => []),
   ]);
-  const agent = (await agents()).find((a) => a.id === c.agent);
+
+  /* Un seul aller-retour pour tous les immeubles cités par les autres onglets. */
+  const ims = await imLabelMap([
+    ...propositions.map((p) => String(p.IMMEUBLE ?? "")),
+    ...visites.map((v) => String(v.IMMEUBLE ?? "")),
+    ...offres.map((o) => premier(o.IMMEUBLEs)),
+    ...suivis.map((s) => premier(s.IMMEUBLEs)),
+    ...mandats.map((m) => premier(m.IMMEUBLEs)),
+  ]);
+  const lien = (imId: string) => {
+    const im = ims.get(imId);
+    return im ? { id: imId, libelle: imLabel(im) } : undefined;
+  };
+
+  const tous = await agents();
+  const suivi = tous.find((a) => a.id === String(c.SUIVI ?? ""));
+  const createur = tous.find((a) => a.id === String(c["AGENT - Créateur"] ?? ""));
+
   return {
-    c, immeubles, recherches, propositions, questions, visites, offres, mandats,
-    agentNom: agent?.name,
-    suivis: [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
+    c,
+    agent: suivi ? { nom: suivi.name, initiales: suivi.initials, couleur: suivi.color } : undefined,
+    createur: createur?.name ?? "France Immeuble",
+    anciennete: (() => {
+      const iso = S2(c["Created Date"]);
+      if (!iso) return undefined;
+      const j = Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
+      return j > 0 ? ` (il y a ${j.toLocaleString("fr-FR")} jours)` : undefined;
+    })(),
+
+    immeubles: [...immeubles]
+      .sort((a, b) => String(a.archived === true) .localeCompare(String(b.archived === true))
+        || String(b["Modified Date"] ?? "").localeCompare(String(a["Modified Date"] ?? "")))
+      .map((im) => ({
+        id: String(im._id),
+        agent: initialsOf(im.AGENT),
+        agentCouleur: couleurOf(im.AGENT),
+        libelle: imLabel(im),
+        statut: String(im.Statut ?? "").replace(/^\d+ - /, "") || undefined,
+        rang: statutOf(im),
+        archive: phraseArchivage(im),
+        dossier: typeof im.dossier === "number" && im.dossier > 0 ? `Dossier V${im.dossier}` : undefined,
+        mandat: combien(im.MANDATs) > 0 ? `${combien(im.MANDATs)} mandat${combien(im.MANDATs) > 1 ? "s" : ""}` : undefined,
+        surface: typeof im.surface_carrez === "number" && im.surface_carrez > 0
+          ? `${Math.round(im.surface_carrez as number).toLocaleString("fr-FR")} m²` : undefined,
+        occupation: typeof im.occupation_lots === "number" ? `${Math.round(im.occupation_lots as number)} %` : undefined,
+        loyers: euros(im.fin_loyers_an) ?? undefined,
+        renta: typeof im.fin_renta_ba === "number" && im.fin_renta_ba > 0
+          ? `${(im.fin_renta_ba as number).toLocaleString("fr-FR")} %` : undefined,
+        prix: euros(im.prix_hai) ?? undefined,
+      } satisfies ImmeubleLigne)),
+
+    recherches: recherchesBO.filter((r) => r.contact?.id === id),
+
+    mandats: [...mandats]
+      .sort((a, b) => String(b.date_effet ?? "").localeCompare(String(a.date_effet ?? "")))
+      .map((m) => {
+        const st = S2(m.Statut);
+        const recherche = String(m.Type ?? "").toLowerCase().includes("recherche");
+        return {
+          id: String(m._id),
+          agent: initialsOf(m.AGENT),
+          agentCouleur: couleurOf(m.AGENT),
+          titre: `${S2(m.Type) ?? "Vente"}${S2(m.Type_exclu) ? ` ${m.Type_exclu}` : ""}`,
+          periode: [jjmmaa(m.date_effet), jjmmaa(m.date_fin)].filter(Boolean).join(" - ") || undefined,
+          statut: st,
+          numero: m.numero ? `# ${m.numero}` : undefined,
+          pdf: nomFichier(m.pdf_signed) ?? nomFichier(m.pdf),
+          immeuble: lien(premier(m.IMMEUBLEs)),
+          prix: euros(m.prix_hai) ? `${euros(m.prix_hai)} HAI` : undefined,
+          recherche,
+        } satisfies MandatLigne;
+      }),
+
+    /* « 85 propositions à relancer » : celles qui sont parties, sans réponse, et
+       dont on n'a pas coupé les relances. Règle recoupée sur le BO.
+       Le tri se fait ici : Supabase ordonne sur du texte JSON, ce qui range
+       le 06/07 avant le 13/07. */
+    propositions: [...propositions]
+      .sort((a, b) => String(b.date_envoi ?? b["Created Date"] ?? "").localeCompare(String(a.date_envoi ?? a["Created Date"] ?? "")))
+      .map((p) => {
+      const st = S2(p.Statut);
+      return {
+        id: String(p._id),
+        quand: `Proposition du ${jjmmaa(p.date_envoi) ?? jjmmaa(p["Created Date"]) ?? "?"}`,
+        statut: st,
+        motif: S2(p.motif_refus),
+        commentaire: S2(p.commentaire),
+        immeuble: lien(String(p.IMMEUBLE ?? "")),
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
+      } satisfies PropositionLigne;
+    }),
+
+    questions: questionsBO.filter((q) => q.contact?.id === id),
+
+    visites: [...visites]
+      .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
+      .map((v) => {
+        const st = S2(v.Statut);
+        return {
+          id: String(v._id),
+          agent: initialsOf(v.AGENT),
+          agentCouleur: couleurOf(v.AGENT),
+          titre: `Visite du ${jjmmaa(v.date) ?? "?"}`,
+          statut: st,
+          ton: st === "Effectuée" ? "green" : st === "Annulée" ? "red" : "orange",
+          details: [S2(v.source) ?? "", S2(v.motif_annulation) ?? ""].filter(Boolean),
+          commentaire: S2(v.commentaire_interne) ?? S2(v.rex_fi),
+          immeuble: lien(String(v.IMMEUBLE ?? "")),
+        } satisfies ActeLigne;
+      }),
+
+    offres: [...offres]
+      .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
+      .map((o) => {
+        const st = S2(o.Statut);
+        return {
+          id: String(o._id),
+          agent: initialsOf(premier(o.SUIVIs)),
+          agentCouleur: couleurOf(premier(o.SUIVIs)),
+          titre: `Offre du ${jjmmaa(o.date) ?? "?"}`,
+          statut: st,
+          ton: st && ["Acceptée", "Vendu", "Compromis signé", "Vente prévue"].includes(st)
+            ? "green" : st === "Refusée" ? "red" : "orange",
+          details: [
+            euros(o.prix_hai) ? `${euros(o.prix_hai)} HAI` : "",
+            euros(o.prix_nv) ? `${euros(o.prix_nv)} net vendeur` : "",
+            jjmmaa(o.date_compromis) ? `compromis le ${jjmmaa(o.date_compromis)}` : "",
+            jjmmaa(o.date_acte) ? `acte le ${jjmmaa(o.date_acte)}` : "",
+            S2(o.motif_refus) ?? "",
+          ].filter(Boolean),
+          commentaire: S2(o.commentaire),
+          immeuble: lien(premier(o.IMMEUBLEs)),
+        } satisfies ActeLigne;
+      }),
+
+    suivis: [...suivis]
+      .sort((a, b) => String(b.date_start ?? b["Created Date"] ?? "").localeCompare(String(a.date_start ?? a["Created Date"] ?? "")))
+      .map((s) => ({
+        id: String(s._id),
+        agent: initialsOf(s.AGENT),
+        agentCouleur: couleurOf(s.AGENT),
+        quand: jjmmaa(s.date_start ?? s["Created Date"]) ?? "?",
+        type: S2(s.Type),
+        statut: S2(s.Statut),
+        canal: Array.isArray(s.Canals) ? (s.Canals as string[]).join(", ") || undefined : S2(s.Canals),
+        relance: jjmmaa(s.date_relance),
+        notes: S2(s.notes) ?? "",
+        immeuble: lien(premier(s.IMMEUBLEs)),
+      } satisfies SuiviLigne)),
+
+    aRelancer: propositions.filter((p) => S2(p.Statut) === "Envoyée" && p.stop_relances_yn !== true).length,
+
+    mandatRechercheActif: mandats.some((m) =>
+      String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),
   };
 }
 
@@ -2023,7 +2291,7 @@ function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
   return a !== undefined ? `≥ ${fmt(a)}` : `≤ ${fmt(b!)}`;
 }
 
-export async function listRecherchesBO(agentId = ""): Promise<RechercheCard[]> {
+export async function listRecherchesBO(): Promise<RechercheCard[]> {
   await loadInitials();
   const [rechs, ims] = await Promise.all([
     fetchAll("recherche", undefined, 3000, { field: "Modified Date", desc: true }).catch(() => []),
