@@ -891,6 +891,13 @@ export type ListCard = {
   /** Note A/B/C/D du contact — le classement acquéreur du BO, affiché
    *  partout à côté du nom (il pilote « Commercialisés aux clients A et B »). */
   grade?: string;
+  /* --- Carte contact du BO (retour #115) --- */
+  /** Ce qu'on écrit sous le nom : « Particulier », la société, ou l'agence. */
+  qualite?: string;
+  /** Pilote l'avatar : un agent immobilier ne se présente pas comme un client. */
+  estAgent?: boolean;
+  /** Nombres de recherches et d'immeubles rattachés, affichés en pictos. */
+  compteurs?: { recherches?: number; immeubles?: number };
   /** Clé d'onglet (en_cours / termines / archives…). */
   group: string;
   date?: string;
@@ -1481,24 +1488,50 @@ async function sbPage(
 }
 
 /** Contacts : la table fait 42 800 lignes, tout passe par la base. */
-export async function listContactsPage(q: string, page: number, taille: number): Promise<PageListe> {
+/**
+ * La qualité d'un contact, telle que le BO l'écrit sous son nom.
+ *
+ * Un particulier reste « Particulier ». Une personne morale prend le nom de sa
+ * société. Un agent immobilier est nommé comme tel, son agence entre
+ * parenthèses quand on la connaît — c'est ce qui évite d'écrire à un confrère
+ * comme on écrirait à un vendeur.
+ */
+function qualiteContact(c: Record<string, unknown>): string {
+  const societe = S2(c.entreprise_nom);
+  const agent = c.agent === true
+    || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
+  if (agent) return societe ? `Agent immobilier (${societe})` : "Agent immobilier";
+  return societe ?? "Particulier";
+}
+
+const combien = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+
+export async function listContactsPage(
+  q: string, page: number, taille: number,
+  /** Identifiant d'agent, ou vide pour tous les contacts. */
+  agentId = "",
+): Promise<PageListe> {
   await loadInitials();
   const { rows, total } = await sbPage("contact", {
     q, page, taille,
     champs: ["searchfield", "nom", '"prénom"', "email", "portable", "entreprise_nom"],
+    egal: agentId ? { SUIVI: agentId } : undefined,
   });
   return {
     total,
     rows: rows.map((c) => {
       const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
-      const types = Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : "";
+      const estAgent = c.agent === true
+        || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
       return {
         id: String(c._id),
         href: `/contact/${c._id}`,
         avatar: initialsOf(c.SUIVI), avatarCouleur: couleurOf(c.SUIVI),
         title: nom || String(c.entreprise_nom ?? "Contact"),
         sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
-        note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
+        qualite: qualiteContact(c),
+        estAgent,
+        compteurs: { recherches: combien(c.RECHERCHEs), immeubles: combien(c.IMMEUBLES) },
         grade: gradeOf(c),
         group: "tous",
       } satisfies ListCard;

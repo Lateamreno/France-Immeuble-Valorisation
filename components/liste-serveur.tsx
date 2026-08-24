@@ -13,6 +13,7 @@ const TAILLES = [10, 25, 50, 100];
 
 export function ListeServeur({
   rows, total, page, taille, q, searchPlaceholder,
+  titre, agents, agent = "",
 }: {
   rows: ListCard[];
   total: number;
@@ -20,6 +21,11 @@ export function ListeServeur({
   taille: number;
   q: string;
   searchPlaceholder: string;
+  /** Repris dans la barre collée. */
+  titre?: string;
+  /** Sélecteur « suivis par » : présent seulement quand on le passe. */
+  agents?: { id: string; name: string }[];
+  agent?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,14 +52,30 @@ export function ListeServeur({
   }, [saisie]);
 
   return (
-    <div className="lst" style={pending ? { opacity: 0.6 } : undefined}>
-      <div className="lst-bar">
+    <div className={agents ? "lstx" : "lst"} style={pending ? { opacity: 0.6 } : undefined}>
+      {/* Barre collée pleine largeur, comme dans le BO : le titre, la
+          recherche, puis « suivis par » à droite. Tous les contacts sont
+          affichés par défaut — un administrateur travaille sur l'ensemble du
+          fichier, pas seulement sur le sien. */}
+      <div className={agents ? "lstx-top" : "lst-bar"}>
+        {agents && titre && <h1 className="lstx-titre">{titre}</h1>}
         <div className="lst-search">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder={searchPlaceholder} value={saisie} onChange={(e) => setSaisie(e.target.value)} />
         </div>
-        <span className="lst-count">{total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}</span>
+        {agents ? (
+          <select className="lstx-agent" value={agent}
+            onChange={(e) => aller({ agent: e.target.value, page: 1 })}>
+            <option value="">Tous les contacts</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>Suivis par {a.name}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="lst-count">{total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}</span>
+        )}
       </div>
+      <div className="lst-col-simple">
 
       {rows.map((r) => {
         const inner = (
@@ -61,10 +83,45 @@ export function ListeServeur({
             <span className="lav" style={r.avatarCouleur ? { background: r.avatarCouleur } : undefined}>
               {r.avatar}
             </span>
+            {/* Un agent immobilier ne se présente pas comme un client : le
+                BO lui donne une silhouette distincte, et c'est ce qui évite
+                d'écrire à un confrère comme on écrit à un vendeur. */}
+            {r.qualite !== undefined && (
+              <span className={`lsil${r.estAgent ? " agent" : ""}`} title={r.qualite}>
+                <svg viewBox="0 0 24 24">
+                  {r.estAgent ? (
+                    <>
+                      <circle cx="12" cy="8.5" r="3.4" />
+                      <path d="M5.5 20.5c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" />
+                      <path d="M6.6 7.4h4.2M13.2 7.4h4.2" />
+                      <circle cx="8.7" cy="8.2" r="2.1" /><circle cx="15.3" cy="8.2" r="2.1" />
+                    </>
+                  ) : (
+                    <>
+                      <circle cx="12" cy="8.5" r="3.6" />
+                      <path d="M5.5 20.5c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" />
+                    </>
+                  )}
+                </svg>
+              </span>
+            )}
             <div className="lmid">
               <div className="lt">{r.title}{r.note && <span className="lnote"> · {r.note}</span>}</div>
+              {r.qualite && <div className="lqual">{r.qualite}</div>}
               {r.sub && <div className="ls">{r.sub}</div>}
             </div>
+            {r.compteurs && (
+              <span className="lcpt">
+                <i title={`${r.compteurs.immeubles ?? 0} immeuble(s)`}>
+                  <svg viewBox="0 0 24 24"><path d="M5 3h9a1 1 0 0 1 1 1v17h4v1H4v-1h1V4a1 1 0 0 1 0-1z" /></svg>
+                  {r.compteurs.immeubles ?? 0}
+                </i>
+                <i title={`${r.compteurs.recherches ?? 0} recherche(s)`}>
+                  <svg viewBox="0 0 24 24"><circle cx="7" cy="14" r="3.6" /><circle cx="17" cy="14" r="3.6" /><path d="M7 10.4V6h3.4M17 10.4V6h-3.4M10.6 14h2.8" /></svg>
+                  {r.compteurs.recherches ?? 0}
+                </i>
+              </span>
+            )}
             {r.acquereur ? (
               <span className="lcont">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
@@ -104,6 +161,7 @@ export function ListeServeur({
           {TAILLES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <span className="pgl">éléments par page</span>
+      </div>
       </div>
     </div>
   );
