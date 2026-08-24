@@ -14,6 +14,7 @@
 
 import "server-only";
 import { unstable_cache } from "next/cache";
+import { correspond } from "@/lib/bo/matching";
 import { cache } from "react";
 
 const TOKEN = process.env.BUBBLE_API_TOKEN;
@@ -1955,4 +1956,150 @@ export async function listDiffusion(): Promise<{
       erreur: typeof im.pb_erreur === "string" ? (im.pb_erreur as string) : undefined,
     }))
     .sort((a, b) => (b.publieLe ?? "").localeCompare(a.publieLe ?? ""));
+}
+
+/* ============================ Écran Recherches ============================
+   Reprise du BO (retours #116 et #117). La carte d'une recherche dit tout
+   d'un coup d'œil : à qui elle appartient, où elle porte, ce qu'elle cherche,
+   et surtout combien d'immeubles on pourrait lui envoyer sans se répéter. */
+
+export type RechercheCard = {
+  id: string;
+  agent: string;
+  agentCouleur?: string;
+  /** « France entière », ou les régions, départements et villes visés. */
+  lieux: string[];
+  /** Destinations recherchées — pictos allumés ou éteints. */
+  destinations: string[];
+  cible?: string;
+  /** Libellés des quatre puces ; absent = critère non renseigné. */
+  surface?: string;
+  occupation?: string;
+  prix?: string;
+  renta?: string;
+  commentaire?: string;
+  contact?: {
+    id: string;
+    nom: string;
+    note?: string;
+    qualite: string;
+    tel?: string;
+    email?: string;
+    immeubles: number;
+    recherches: number;
+  };
+  /** Coordonnées brutes quand la fiche contact n'existe pas encore. */
+  orphelin?: { email?: string; tel?: string };
+  /** Immeubles en mandat qui correspondent et qu'on ne lui a jamais envoyés. */
+  aProposer: number;
+  group: "en_cours" | "en_attente" | "archivees";
+  date?: string;
+};
+
+const TITRES_CIBLE: Record<string, string> = {
+  Investisseur: "Investissement locatif",
+  Marchand: "Opération marchande",
+  Promoteur: "Opération de promotion",
+  Patrimonial: "Immeuble patrimonial",
+};
+
+/** Une fourchette en toutes lettres, ou rien si les deux bornes manquent. */
+function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
+  const a = typeof min === "number" && min > 0 ? min : undefined;
+  const b = typeof max === "number" && max > 0 ? max : undefined;
+  if (a === undefined && b === undefined) return undefined;
+  if (a !== undefined && b !== undefined) return `${fmt(a)} à ${fmt(b)}`;
+  return a !== undefined ? `≥ ${fmt(a)}` : `≤ ${fmt(b!)}`;
+}
+
+export async function listRecherchesBO(agentId = ""): Promise<RechercheCard[]> {
+  await loadInitials();
+  const [rechs, ims] = await Promise.all([
+    fetchAll("recherche", undefined, 3000, { field: "Modified Date", desc: true }).catch(() => []),
+    /* Les biens qu'on peut réellement proposer : commercialisés, pas encore
+       vendus ni retirés. Proposer un immeuble sous compromis ferait perdre du
+       temps à tout le monde. */
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000)
+      .catch(() => []),
+  ]);
+
+  const dispo = ims.filter((im) => {
+    const rang = statutOf(im);
+    return rang >= 5 && rang <= 7;
+  });
+
+  const contacts = new Map<string, Record<string, unknown>>();
+  for (const c of await parIds("contact", rechs.map((r) => r.ACHETEUR))) {
+    contacts.set(String(c._id), c);
+  }
+
+  /* Le dédoublonnage demandé : un immeuble déjà envoyé à un acquéreur sur SA
+     recherche marchand ne doit plus apparaître comme « à proposer » sur sa
+     recherche investisseur. On raisonne donc par personne, pas par recherche. */
+  const dejaVuParContact = new Map<string, Set<string>>();
+  for (const r of rechs) {
+    const cid = String(r.ACHETEUR ?? "") || `orphelin:${r._id}`;
+    const set = dejaVuParContact.get(cid) ?? new Set<string>();
+    for (const id of (Array.isArray(r.IMMEUBLEs_proposed) ? r.IMMEUBLEs_proposed : []) as string[]) set.add(String(id));
+    for (const id of (Array.isArray(r.IMMEUBLES_hidden) ? r.IMMEUBLES_hidden : []) as string[]) set.add(String(id));
+    dejaVuParContact.set(cid, set);
+  }
+
+  const criteres = dispo.map((im) => ({
+    immeubleId: String(im._id),
+    prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+    surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
+    occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
+    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+    ville: S2(im.adresse_ville),
+    departement: S2(im.adresse_zipcode)?.slice(0, 2),
+    destinations: typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
+    cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+  }));
+
+  return rechs.map((r) => {
+    const c = contacts.get(String(r.ACHETEUR ?? ""));
+    const cid = String(r.ACHETEUR ?? "") || `orphelin:${r._id}`;
+    const vus = dejaVuParContact.get(cid) ?? new Set<string>();
+
+    const aProposer = r.archived === true || r.standby === true
+      ? 0
+      : criteres.filter((b) => !vus.has(b.immeubleId) && correspond(r, b)).length;
+
+    const lieux = [
+      ...(Array.isArray(r.villes) ? (r.villes as string[]) : []).filter((v) => !/^\d{13}x\d+$/.test(v)),
+      ...(Array.isArray(r.dpts) ? (r.dpts as string[]) : []).filter((d) => /^\d{2,3}[AB]?$/.test(d)),
+    ];
+
+    return {
+      id: String(r._id),
+      agent: initialsOf(r.SUIVI),
+      agentCouleur: couleurOf(r.SUIVI),
+      lieux: lieux.length ? lieux : ["France entière"],
+      destinations: Array.isArray(r.Destinations) ? (r.Destinations as string[]) : [],
+      cible: TITRES_CIBLE[String(r.Cible ?? "")] ?? S2(r.Cible),
+      surface: fourchette(r.surface_min, r.surface_max, (v) => `${Math.round(v)} m²`),
+      occupation: fourchette(r.occup_min, r.occup_max, (v) => `${Math.round(v)} %`),
+      prix: fourchette(r.prix_min, r.prix_max, (v) => euros(v) ?? `${v}`),
+      renta: typeof r.renta === "number" && r.renta > 0
+        ? `≥ ${(r.renta as number).toLocaleString("fr-FR")} %` : undefined,
+      commentaire: S2(r.commentaire),
+      contact: c
+        ? {
+            id: String(c._id),
+            nom: contactLabel(c) || String(c.entreprise_nom ?? "Contact"),
+            note: gradeOf(c),
+            qualite: qualiteContact(c),
+            tel: S2(c.portable_formatted) ?? S2(c.portable),
+            email: S2(c.email),
+            immeubles: combien(c.IMMEUBLES),
+            recherches: combien(c.RECHERCHEs),
+          }
+        : undefined,
+      orphelin: c ? undefined : { email: S2(r.email), tel: S2(r.phone) },
+      aProposer,
+      group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",
+      date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
+    } satisfies RechercheCard;
+  });
 }

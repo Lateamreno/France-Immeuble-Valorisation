@@ -1,22 +1,17 @@
-import { listRecherches } from "@/lib/bubble/server";
-import { ListeShell } from "@/components/liste";
+import { getAgents, listRecherchesBO } from "@/lib/bubble/server";
+import { EcranRecherches } from "@/components/recherches";
 
 export const dynamic = "force-dynamic";
 
 export default async function RecherchesPage() {
-  const rows = await listRecherches().catch(() => []);
+  const [rows, agents] = await Promise.all([
+    listRecherchesBO().catch(() => []),
+    getAgents().catch(() => []),
+  ]);
   return (
-    <div className="lst-page">
-      <h1 className="lst-title">Recherches</h1>
-      <ListeShell
-        filtres
-        rows={rows}
-        searchPlaceholder="Recherchez une recherche acquéreur..."
-        tabs={[
-          { key: "en_cours", label: "En cours" },
-          { key: "archivees", label: "Archivées" },
-        ]}
-      />
-    </div>
+    <EcranRecherches
+      rows={rows}
+      agents={agents.map((a) => ({ id: a.id, name: a.name, initials: a.initials }))}
+    />
   );
 }

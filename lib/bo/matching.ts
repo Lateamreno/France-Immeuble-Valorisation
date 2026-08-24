@@ -129,6 +129,25 @@ function libelleCriteres(r: Record<string, unknown>) {
   ].filter(Boolean).join(" · ");
 }
 
+/**
+ * Les critères d'une recherche sont-ils satisfaits par un bien ?
+ *
+ * Extrait de `matcher` pour servir dans les deux sens : d'un bien vers ses
+ * acquéreurs (campagne), et d'une recherche vers les biens qu'on pourrait lui
+ * proposer (écran Recherches). Les filtres de campagne restent chez
+ * `matcher` : ils décrivent un envoi, pas une correspondance.
+ */
+export function correspond(r: Record<string, unknown>, bien: CriteresBien): boolean {
+  if (!dansFourchette(bien.prix, r.prix_min, r.prix_max)) return false;
+  if (!dansFourchette(bien.surface, r.surface_min, r.surface_max)) return false;
+  if (!dansFourchette(bien.occupation, r.occup_min, r.occup_max)) return false;
+  if (nb(r.renta) !== undefined && bien.renta !== undefined && bien.renta < nb(r.renta)!) return false;
+  if (!geoOk(r, bien)) return false;
+  if (!listeOk(bien.destinations ?? [], arr(r.Destinations))) return false;
+  if (bien.cibles && bien.cibles.length > 0 && S(r.Cible) && !bien.cibles.includes(S(r.Cible))) return false;
+  return true;
+}
+
 /** Applique les critères et les filtres de campagne à un lot de recherches. */
 export function matcher(
   recherches: Record<string, unknown>[],
@@ -148,15 +167,7 @@ export function matcher(
     if (filtres.exclureAgents && r.agent === true) return false;
     if (filtres.mandatObligatoire && arr(r.MANDATs).length === 0) return false;
 
-    // Critères de la recherche
-    if (!dansFourchette(bien.prix, r.prix_min, r.prix_max)) return false;
-    if (!dansFourchette(bien.surface, r.surface_min, r.surface_max)) return false;
-    if (!dansFourchette(bien.occupation, r.occup_min, r.occup_max)) return false;
-    if (nb(r.renta) !== undefined && bien.renta !== undefined && bien.renta < nb(r.renta)!) return false;
-    if (!geoOk(r, bien)) return false;
-    if (!listeOk(bien.destinations ?? [], arr(r.Destinations))) return false;
-    if (bien.cibles && bien.cibles.length > 0 && S(r.Cible) && !bien.cibles.includes(S(r.Cible))) return false;
-    return true;
+    return correspond(r, bien);
   });
 
   return retenues.map((r) => carte(r, contacts, true));
