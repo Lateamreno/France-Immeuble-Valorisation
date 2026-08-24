@@ -10,7 +10,7 @@
 // vérifiable — et rien ne part. C'est ce qui permet de tout recetter avant
 // la première publication réelle.
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache } from "next/cache";
 import { getAgentFiche, getBien } from "@/lib/bubble/server";
 import {
   alertes, blocages, chargeUtile, empreinte, lireEtat, statutCible,
@@ -406,22 +406,32 @@ export type Retombees = {
  */
 export async function retombeesAnnonces(references: string[]): Promise<Retombees[]> {
   if (!PB_URL || !PB_TOKEN || references.length === 0) return [];
-  try {
-    const res = await fetch(PB_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "retombees", references }),
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const j = (await res.json()) as { retombees?: Retombees[]; inconnues?: string[] };
-    if (j.inconnues?.length) {
-      console.warn("[Plein Bail] références sans annonce :", j.inconnues.join(", "));
-    }
-    return Array.isArray(j.retombees) ? j.retombees : [];
-  } catch {
-    return [];
-  }
+  /* Un aller-retour vers Plein Bail à chaque affichage de l'écran Diffusion,
+     c'était deux secondes pour des compteurs de vues. Ils bougent à l'échelle
+     de la journée, pas de la seconde : cinq minutes de cache suffisent, et
+     l'écran redevient instantané. */
+  return unstable_cache(
+    async () => {
+      try {
+        const res = await fetch(PB_URL!, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${PB_TOKEN!}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "retombees", references }),
+          cache: "no-store",
+        });
+        if (!res.ok) return [];
+        const j = (await res.json()) as { retombees?: Retombees[]; inconnues?: string[] };
+        if (j.inconnues?.length) {
+          console.warn("[Plein Bail] références sans annonce :", j.inconnues.join(", "));
+        }
+        return Array.isArray(j.retombees) ? j.retombees : [];
+      } catch {
+        return [];
+      }
+    },
+    ["pb-retombees", [...references].sort().join(",")],
+    { tags: ["pb_retombees"], revalidate: 300 },
+  )();
 }
 
 /* ------------------------------------------------------------ Audience */

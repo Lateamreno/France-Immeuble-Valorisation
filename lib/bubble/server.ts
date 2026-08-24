@@ -13,6 +13,8 @@
 // - k€ HT des cartes VENTES = honos_ht de l'offre liée (18+17+10 = 45 ✓).
 
 import "server-only";
+import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 const TOKEN = process.env.BUBBLE_API_TOKEN;
 const ROOT = (process.env.BUBBLE_APP_URL || "https://vente.france-immeuble.fr")
@@ -43,13 +45,11 @@ export async function getAgents(): Promise<Agent[]> {
     .sort((x, y) => x.name.localeCompare(y.name));
 }
 
-let agentCache: { at: number; rows: Agent[] } | null = null;
-async function agents(): Promise<Agent[]> {
-  if (agentCache && Date.now() - agentCache.at < 300_000) return agentCache.rows;
-  const rows = await getAgents();
-  if (rows.length) agentCache = { at: Date.now(), rows };
-  return rows;
-}
+/* Le mémo par horodatage laissait passer les appels CONCURRENTS : deux parties
+   de la même page demandaient les agents en même temps, aucune n'avait encore
+   rempli le mémo, et la table partait deux fois. `cache()` de React réunit les
+   appels d'une même requête sur une seule promesse. */
+const agents = cache(async (): Promise<Agent[]> => getAgents());
 
 type Constraint = { key: string; constraint_type: string; value: unknown };
 
@@ -85,9 +85,57 @@ function sbParams(constraints?: Constraint[]) {
       p.append(`data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`, `eq.${c.value}`);
     else if (c.constraint_type === "contains")
       p.append("data", `cs.${JSON.stringify({ [c.key]: [c.value] })}`);
+    // « la clé est renseignée » : évite de ramener une table entière pour n'en
+    // garder que les quelques lignes qui portent un champ.
+    else if (c.constraint_type === "is not empty")
+      p.append(`data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`, "not.is.null");
   }
   return p;
 }
+
+/**
+ * Une page du miroir, mise en cache.
+ *
+ * Le back-office lit beaucoup et écrit peu : quatre mégaoctets pour afficher
+ * un dashboard, redemandés intégralement à chaque navigation. On garde donc
+ * chaque page en cache, étiquetée du nom de sa table — et toute écriture
+ * invalide l'étiquette de la table qu'elle touche (voir `rpc` dans
+ * lib/bo/actions.ts). Le délai de secours couvre le seul cas que nos
+ * étiquettes ignorent : une modification faite côté Bubble.
+ */
+const lirePage = (type: string, qs: string, avecTotal?: boolean) =>
+  unstable_cache(
+    async () => {
+      const t0 = performance.now();
+      /* Le total n'est demandé que sur la PREMIÈRE page : `fetchAll` en déduit
+         le nombre de pages, les suivantes n'en ont plus besoin. Un
+         `count=exact` fait recompter la table entière à chaque appel. Les
+         écrans paginés, eux, l'exigent sur toutes les pages — ils affichent le
+         nombre de résultats — d'où le drapeau. */
+      const compter = avecTotal ?? /(^|&)offset=0(&|$)/.test(qs);
+      const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${qs}`, {
+        headers: {
+          apikey: SB_KEY!,
+          Authorization: `Bearer ${SB_KEY!}`,
+          ...(compter ? { Prefer: "count=exact" } : {}),
+        },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`Supabase ${res.status} sur bo_${type}`);
+      const brut = await res.text();
+      if (process.env.MESURE_REQUETES) {
+        console.log(`[req] ${String(Math.round(performance.now() - t0)).padStart(5)} ms  ${String(Math.round(brut.length / 1024)).padStart(6)} Ko  bo_${type}  ${qs}`.slice(0, 190));
+      }
+      const rows = JSON.parse(brut) as { data: Record<string, unknown> }[];
+      const range = res.headers.get("content-range"); // ex. "0-99/1824"
+      return {
+        lignes: rows.map((r) => r.data),
+        total: range ? parseInt(range.split("/")[1], 10) || rows.length : rows.length,
+      };
+    },
+    ["bo", type, qs, String(avecTotal ?? "")],
+    { tags: [`bo_${type}`], revalidate: 60 },
+  )();
 
 async function sbq(
   type: string,
@@ -99,20 +147,9 @@ async function sbq(
   p.set("limit", String(opts.limit ?? 1000));
   p.set("offset", String(opts.cursor ?? 0));
   if (opts.sort) p.set("order", `${SORT_COL[opts.sort] ?? "bubble_modified"}.${opts.desc ? "desc" : "asc"}`);
-  const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
-    headers: {
-      apikey: SB_KEY!,
-      Authorization: `Bearer ${SB_KEY!}`,
-      Prefer: "count=exact",
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Supabase ${res.status} sur bo_${type}`);
-  const rows = (await res.json()) as { data: Record<string, unknown> }[];
-  const range = res.headers.get("content-range"); // ex. "0-99/1824"
-  const total = range ? parseInt(range.split("/")[1], 10) || 0 : rows.length;
+  const { lignes, total } = await lirePage(type, p.toString());
   const cursor = opts.cursor ?? 0;
-  return { results: rows.map((r) => r.data), remaining: Math.max(0, total - cursor - rows.length) };
+  return { results: lignes, remaining: Math.max(0, total - cursor - lignes.length) };
 }
 
 async function bq(
@@ -138,22 +175,71 @@ async function bq(
   return { results: j.response?.results ?? [], remaining: j.response?.remaining ?? 0 };
 }
 
+/**
+ * Toutes les lignes d'une table, paginées.
+ *
+ * La première page dit combien il en reste : les suivantes partent donc
+ * ENSEMBLE, au lieu de s'attendre l'une l'autre. Sur les suivis — quatre pages
+ * de mille — la boucle séquentielle coûtait à elle seule près de trois
+ * secondes sur le dashboard, alors que les quatre requêtes ne se dépendent
+ * pas.
+ */
 async function fetchAll(
   type: string,
   constraints?: Constraint[],
   max = 2000,
   sort?: { field: string; desc?: boolean },
 ) {
-  const rows: Record<string, unknown>[] = [];
-  let cursor = 0;
-  for (;;) {
-    const p = await bq(type, { constraints, cursor, sort: sort?.field, desc: sort?.desc });
-    rows.push(...p.results);
-    if (p.remaining <= 0 || rows.length >= max || p.results.length === 0) break;
-    cursor += p.results.length;
-  }
-  return rows;
+  /* La taille de page suit le plafond demandé : réclamer mille lignes pour en
+     garder trois cents, c'est payer sept fois le transfert de la table des
+     estimations pour rien.
+
+     Elle est aussi bornée à 250 lignes, et ce n'est pas une prudence gratuite :
+     une entrée de cache trop grosse n'est PAS mise en cache — silencieusement.
+     Les objectifs sortaient 2,9 Mo d'un coup et repayaient donc le plein tarif
+     à chaque affichage. Découpées, les pages repassent sous la limite, et
+     comme elles partent ensemble le surcoût est nul. */
+  const taille = Math.min(250, Math.max(1, max));
+  const un = (cursor: number) =>
+    bq(type, { constraints, cursor, limit: taille, sort: sort?.field, desc: sort?.desc });
+  const p1 = await un(0);
+  const rows = [...p1.results];
+  if (p1.remaining <= 0 || rows.length >= max || rows.length === 0) return rows.slice(0, max);
+
+  const pas = p1.results.length;
+  const reste = Math.min(p1.remaining, max - rows.length);
+  const pages = Math.ceil(reste / pas);
+  const suite = await Promise.all(
+    Array.from({ length: pages }, (_, i) => un(rows.length + i * pas)),
+  );
+  for (const p of suite) rows.push(...p.results);
+  return rows.slice(0, max);
 }
+
+/**
+ * Traite une liste d'identifiants par lots — tous les lots ENSEMBLE.
+ *
+ * PostgREST plafonne la longueur d'un `in.(…)`, d'où le découpage. Mais les
+ * lots ne se dépendent pas : les enchaîner ajoutait un aller-retour complet
+ * par centaine d'identifiants, sur des écrans qui en manipulent des milliers.
+ */
+async function parLots<T>(
+  ids: unknown[],
+  taille: number,
+  fn: (lot: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const uniq = [...new Set(ids.map((v) => String(v ?? "")))].filter(Boolean);
+  if (!uniq.length) return [];
+  const lots: string[][] = [];
+  for (let i = 0; i < uniq.length; i += taille) lots.push(uniq.slice(i, i + taille));
+  return (await Promise.all(lots.map(fn))).flat();
+}
+
+/** Les lignes d'une table dont l'identifiant est dans la liste. */
+const parIds = (type: string, ids: unknown[], taille = 100) =>
+  parLots(ids, taille, (lot) =>
+    fetchAll(type, [{ key: "_id", constraint_type: "in", value: lot }], taille).catch(() => []),
+  );
 
 async function count(type: string, constraints?: Constraint[]) {
   const p = await bq(type, { constraints, limit: 1 });
@@ -254,11 +340,7 @@ export async function getDashboardLive(
   // Contacts propriétaires des immeubles affichés.
   const ownerIds = [...new Set(ims.map((i) => i.PROPRIETAIRE).filter(Boolean))] as string[];
   const contacts = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < ownerIds.length; i += 50) {
-    const chunk = ownerIds.slice(i, i + 50);
-    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }]);
-    rows.forEach((c) => contacts.set(c._id as string, c));
-  }
+  (await parIds("contact", ownerIds, 50)).forEach((c) => contacts.set(String(c._id), c));
 
   // Compteurs propositions / visites / offres par immeuble commercialisé (statuts 5-7).
   const commIds = ims.filter((i) => [5, 6, 7].includes(statutOf(i))).map((i) => i._id as string);
@@ -806,11 +888,7 @@ const premier = (v: unknown) => (Array.isArray(v) ? String((v as unknown[])[0] ?
 async function contactMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
   const uniques = [...new Set(ids.filter(Boolean))];
   const m = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < uniques.length; i += 100) {
-    const chunk = uniques.slice(i, i + 100);
-    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []);
-    rows.forEach((c) => m.set(String(c._id), c));
-  }
+  (await parIds("contact", uniques)).forEach((c) => m.set(String(c._id), c));
   return m;
 }
 
@@ -828,11 +906,7 @@ async function loadInitials() {
 async function imLabelMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
   const map = new Map<string, Record<string, unknown>>();
   const uniq = [...new Set(ids)].filter(Boolean);
-  for (let i = 0; i < uniq.length; i += 100) {
-    const chunk = uniq.slice(i, i + 100);
-    const rows = await fetchAll("immeuble", [{ key: "_id", constraint_type: "in", value: chunk }]).catch(() => []);
-    for (const r of rows) map.set(String(r._id), r);
-  }
+  for (const r of await parIds("immeuble", uniq)) map.set(String(r._id), r);
   return map;
 }
 
@@ -850,10 +924,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
   }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
   const contactIds = [...ims, ...archived.results].map((i) => String(i.PROPRIETAIRE ?? "")).filter(Boolean);
   const contacts = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < contactIds.length; i += 100) {
-    const rows = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: [...new Set(contactIds)].slice(i, i + 100) }]).catch(() => []);
-    for (const r of rows) contacts.set(String(r._id), r);
-  }
+  for (const r of await parIds("contact", contactIds)) contacts.set(String(r._id), r);
   const card = (im: Record<string, unknown>, group: string): ListCard => ({
     id: String(im._id),
     href: `/bien/${im._id}`,
@@ -1068,12 +1139,7 @@ export async function listRecherches(): Promise<ListCard[]> {
   const rows = await fetchAll("recherche", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
   const acheteurIds = rows.map((r) => String(r.ACHETEUR ?? "")).filter(Boolean);
   const contacts = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < acheteurIds.length; i += 100) {
-    const chunk = [...new Set(acheteurIds)].slice(i, i + 100);
-    if (!chunk.length) break;
-    const cs = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }]).catch(() => []);
-    for (const c of cs) contacts.set(String(c._id), c);
-  }
+  for (const c of await parIds("contact", acheteurIds)) contacts.set(String(c._id), c);
   return rows.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
     const prix =
@@ -1385,14 +1451,10 @@ async function sbPage(
   p.set("order", `${opts.tri ?? "bubble_modified"}.desc`);
   p.set("limit", String(opts.taille));
   p.set("offset", String((opts.page - 1) * opts.taille));
-  const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, Prefer: "count=exact" },
-    cache: "no-store",
-  }).catch(() => null);
-  if (!res?.ok) return { rows: [], total: 0 };
-  const rows = (await res.json()) as { data: Record<string, unknown> }[];
-  const range = res.headers.get("content-range"); // « 0-9/42793 »
-  return { rows: rows.map((r) => r.data), total: range ? parseInt(range.split("/")[1], 10) || 0 : rows.length };
+  // Même cache et même étiquette que le reste des lectures : une page de
+  // contacts revue trois secondes plus tard ne repart pas au serveur.
+  const { lignes, total } = await lirePage(type, p.toString(), true).catch(() => ({ lignes: [], total: 0 }));
+  return { rows: lignes, total };
 }
 
 /** Contacts : la table fait 42 800 lignes, tout passe par la base. */
@@ -1533,15 +1595,9 @@ export async function getObjectifs(periode?: string): Promise<ObjectifsData> {
   // Libellés des éléments comptés : immeubles d'abord, contacts ensuite.
   const ids = [...new Set(objectifs.flatMap((o) => o.tous))].slice(0, 400);
   const libelles: Record<string, string> = {};
-  for (let i = 0; i < ids.length; i += 100) {
-    const chunk = ids.slice(i, i + 100);
-    const [ims, cts] = await Promise.all([
-      fetchAll("immeuble", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []),
-      fetchAll("contact", [{ key: "_id", constraint_type: "in", value: chunk }], 100).catch(() => []),
-    ]);
-    ims.forEach((im) => { libelles[String(im._id)] = imLabel(im); });
-    cts.forEach((c) => { libelles[String(c._id)] = contactLabel(c) || String(c.email ?? ""); });
-  }
+  const [imsO, ctsO] = await Promise.all([parIds("immeuble", ids), parIds("contact", ids)]);
+  imsO.forEach((im) => { libelles[String(im._id)] = imLabel(im); });
+  ctsO.forEach((c) => { libelles[String(c._id)] = contactLabel(c) || String(c.email ?? ""); });
 
   return { objectifs, libelles, periodes };
 }
@@ -1650,10 +1706,7 @@ export async function listMails(limite = 200): Promise<FilMail[]> {
   const ims = await imLabelMap(rows.map((m) => String(m.IMMEUBLE ?? "")));
   const contactIds = [...new Set(rows.flatMap((m) => [String(m.TO ?? ""), String(m.FROM ?? "")]).filter(Boolean))];
   const contacts = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < contactIds.length; i += 100) {
-    const lot = await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: contactIds.slice(i, i + 100) }]).catch(() => []);
-    for (const c of lot) contacts.set(String(c._id), c);
-  }
+  for (const c of await parIds("contact", contactIds)) contacts.set(String(c._id), c);
 
   return rows.map((m) => {
     // Sans direction enregistrée, un mail de `bo_mail` est un envoi du BO :
@@ -1822,10 +1875,15 @@ export async function listDiffusion(): Promise<{
   aResynchroniser: boolean;
   erreur?: string;
 }[]> {
-  // On ne peut pas filtrer sur un champ absent chez la plupart des fiches :
-  // on ramène les immeubles commercialisés et on garde ceux qui portent
-  // une annonce. Le parc diffusé se compte en dizaines, pas en milliers.
-  const rows = await fetchAll("immeuble", undefined, 3000).catch(() => []);
+  /* Le parc diffusé se compte en dizaines. On ne ramène donc QUE les fiches
+     qui portent une annonce : le tri se fait dans la base. Le filtre était
+     auparavant appliqué en mémoire, après avoir rapatrié les mille huit cents
+     immeubles — sept mégaoctets pour en afficher une poignée. */
+  const rows = await fetchAll(
+    "immeuble",
+    [{ key: "pb_listing_id", constraint_type: "is not empty", value: true }],
+    3000,
+  ).catch(() => []);
   return rows
     .filter((im) => typeof im.pb_listing_id === "string" && im.pb_listing_id)
     .map((im) => ({

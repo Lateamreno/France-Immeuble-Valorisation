@@ -2,7 +2,7 @@
 
 // Écritures du BO — uniquement vers Supabase (bo_*), jamais vers Bubble.
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { after } from "next/server";
 
 const SB_URL =
@@ -37,6 +37,27 @@ async function rpc(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
+
+  /* La lecture met chaque page du miroir en cache sous l'étiquette de sa table
+     (voir `lirePage` dans lib/bubble/server.ts). Toute écriture doit donc
+     décrocher l'étiquette correspondante, sinon l'agent enregistre et ne voit
+     rien changer. Ce point de passage est unique : toutes les écritures du BO
+     y arrivent, c'est ce qui rend l'invalidation fiable. */
+  const table = typeof args.p_table === "string" ? args.p_table : "";
+  if (!table) return;
+  // Les deux, et volontairement. `revalidateTag` est celui qui purge à coup sûr
+  // les entrées posées par `unstable_cache` ; `updateTag`, taillé pour la
+  // nouvelle API de cache, ajoute le « je relis ce que je viens d'écrire »
+  // quand on est dans une action serveur. Se fier au seul `updateTag` serait
+  // parier sur une équivalence que rien ne garantit — et une invalidation qui
+  // rate ne se voit pas : l'agent enregistre, l'écran ne bouge pas, et il
+  // recommence.
+  revalidateTag(table, { expire: 0 });
+  try {
+    updateTag(table);
+  } catch {
+    /* Hors action serveur (réconciliation différée) : la purge ci-dessus suffit. */
+  }
 }
 
 /** Relit une ligne du miroir par son id (les écritures ont besoin de se
