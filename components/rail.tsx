@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { NAV, NAV_DECOUPE } from "@/lib/nav";
 import { changerMode } from "@/lib/bo/mode";
 import type { Mode } from "@/lib/decoupe";
@@ -35,18 +35,32 @@ const IC: Record<string, React.ReactNode> = {
 
 export function Rail({ mode = "bloc" }: { mode?: Mode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [pending, start] = useTransition();
   const decoupe = mode === "decoupe";
 
+  const basculer = (vers: Mode) =>
+    start(async () => {
+      await changerMode(vers);
+      // La fiche d'un bien vaut dans les deux métiers : on y reste.
+      if (pathname.startsWith("/bien/")) return;
+      router.push(vers === "decoupe" ? "/decoupe" : "/");
+    });
+
   return (
     <aside className={`side${decoupe ? " mode-decoupe" : ""}`}>
-      {/* La bascule change le menu et le tableau de bord — jamais la fiche
-          immeuble, qui reste unique et partagée entre les deux métiers. */}
+      {/* Changer de mode emmène au tableau de bord du mode choisi (retour
+          #106). Le menu changeait sous les yeux de l'agent, mais la page
+          restait celle de l'autre métier : on se retrouvait avec la sidebar
+          Découpe devant le dashboard Bloc. Une bascule de métier est un
+          changement de contexte, pas un simple filtre sur le menu.
+          Exception : une fiche immeuble est partagée par les deux métiers,
+          on n'en sort donc pas. */}
       <div className="modesw" role="group" aria-label="Mode de travail">
         <button type="button" className={decoupe ? undefined : "on"} disabled={pending}
-          onClick={() => start(() => changerMode("bloc"))}>Bloc</button>
+          onClick={() => basculer("bloc")}>Bloc</button>
         <button type="button" className={decoupe ? "on" : undefined} disabled={pending}
-          onClick={() => start(() => changerMode("decoupe"))}>Découpe</button>
+          onClick={() => basculer("decoupe")}>Découpe</button>
       </div>
       <div className="modelab">{decoupe ? "Opérations de découpe" : "Vente en bloc"}</div>
 

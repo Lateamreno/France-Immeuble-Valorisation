@@ -863,6 +863,8 @@ export type ListCard = {
   id: string;
   href?: string;
   avatar: string;
+  /** Couleur de l'agent — reprise du BO, où chacun a la sienne. */
+  avatarCouleur?: string;
   title: string;
   sub?: string;
   note?: string;
@@ -897,10 +899,16 @@ export const gradeOf = (c?: Record<string, unknown>) =>
   typeof c?.Note === "string" && /^[A-D]$/.test(c.Note as string) ? (c.Note as string) : undefined;
 
 let initialsMap: Record<string, string> = {};
+let couleursMap: Record<string, string> = {};
 const initialsOf = (agentId: unknown) => initialsMap[String(agentId ?? "")] ?? "FI";
+/* Chaque commercial a sa couleur dans la base (`color_main`) : c'est elle qui
+   permet de repérer d'un coup d'œil à qui appartient une fiche, exactement
+   comme dans le BO. Elle était lue mais n'allait nulle part. */
+const couleurOf = (agentId: unknown) => couleursMap[String(agentId ?? "")];
 async function loadInitials() {
   const rows = await agents();
   initialsMap = Object.fromEntries(rows.map((a) => [a.id, a.initials]));
+  couleursMap = Object.fromEntries(rows.filter((a) => a.color).map((a) => [a.id, a.color!]));
 }
 
 async function imLabelMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
@@ -928,7 +936,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
   const card = (im: Record<string, unknown>, group: string): ListCard => ({
     id: String(im._id),
     href: `/bien/${im._id}`,
-    avatar: initialsOf(im.AGENT),
+    avatar: initialsOf(im.AGENT), avatarCouleur: couleurOf(im.AGENT),
     title: imLabel(im),
     sub: contactLabel(contacts.get(String(im.PROPRIETAIRE ?? ""))) || undefined,
     badge: (() => {
@@ -978,7 +986,7 @@ export async function listEstimations(): Promise<ListCard[]> {
     return {
       id: String(e._id),
       href: e.IMMEUBLE ? `/bien/${e.IMMEUBLE}` : undefined,
-      avatar: initialsOf(e.ESTIMATOR),
+      avatar: initialsOf(e.ESTIMATOR), avatarCouleur: couleurOf(e.ESTIMATOR),
       title: `${dmy(e["Created Date"]) ?? ""} ${e.adresse_ville ?? ""} - ${[e["adresse_numéro_rue"], e.adresse_rue].filter(Boolean).join(" ")}`,
       badge: st
         ? { label: st, tone: st === "Envoyée" ? "green" : st === "PDF manquant" ? "red" : "orange" }
@@ -1009,7 +1017,7 @@ export async function listMandats(): Promise<ListCard[]> {
     return {
       id: String(m._id),
       href: `/mandat/${m._id}`,
-      avatar: initialsOf(m.AGENT),
+      avatar: initialsOf(m.AGENT), avatarCouleur: couleurOf(m.AGENT),
       title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${dmy(m.date_effet) ?? ""}${m.date_fin ? `-${dmy(m.date_fin)}` : ""}`.trim(),
       sub: imLabel(im) || undefined,
       note: m.numero ? `#${m.numero}` : "Pas de numéro",
@@ -1044,7 +1052,7 @@ export async function listVisites(): Promise<ListCard[]> {
     return {
       id: String(v._id),
       href: v.IMMEUBLE ? `/bien/${v.IMMEUBLE}` : undefined,
-      avatar: initialsOf(v.AGENT),
+      avatar: initialsOf(v.AGENT), avatarCouleur: couleurOf(v.AGENT),
       title: `Visite du ${dmy(v.date) ?? "?"}${heure ? ` - ${heure}` : ""}`,
       sub: imLabel(ims.get(String(v.IMMEUBLE ?? ""))) || undefined,
       note: typeof v.visiteur_nom === "string" ? (v.visiteur_nom as string) : undefined,
@@ -1103,7 +1111,7 @@ export async function listSuivis(): Promise<ListCard[]> {
     return {
       id: String(s._id),
       href: imId ? `/bien/${imId}` : undefined,
-      avatar: initialsOf(s.AGENT),
+      avatar: initialsOf(s.AGENT), avatarCouleur: couleurOf(s.AGENT),
       title: `${dmy(s.date_start ?? s["Created Date"]) ?? ""}${s.date_relance ? ` → ${dmy(s.date_relance)}` : ""} · ${s.Motif_standby ?? s.Type ?? ""}`,
       sub: imLabel(ims.get(imId)) || undefined,
       note: typeof s.notes === "string" ? (s.notes as string).slice(0, 220) : undefined,
@@ -1123,7 +1131,7 @@ export async function listContacts(): Promise<ListCard[]> {
     return {
       id: String(c._id),
       href: `/contact/${c._id}`,
-      avatar: initialsOf(c.agent),
+      avatar: initialsOf(c.SUIVI), avatarCouleur: couleurOf(c.SUIVI),
       title: nom || String(c.entreprise_nom ?? "Contact"),
       sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
       note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
@@ -1148,7 +1156,7 @@ export async function listRecherches(): Promise<ListCard[]> {
         : "";
     return {
       id: String(r._id),
-      avatar: initialsOf(r.agent),
+      avatar: initialsOf(r.SUIVI), avatarCouleur: couleurOf(r.SUIVI),
       title: [Array.isArray(r.dpts) ? (r.dpts as string[]).join(", ") : String(r.dpts ?? ""), String(r.Cible ?? "")].filter(Boolean).join(" · ") || "Recherche",
       sub: c ? contactLabel(c) : undefined,
       grade: gradeOf(c),
@@ -1177,7 +1185,7 @@ export async function listQuestions(): Promise<ListCard[]> {
   return rows.map((q) => ({
     id: String(q._id),
     href: q.IMMEUBLE ? `/bien/${q.IMMEUBLE}` : undefined,
-    avatar: initialsOf(q["suivi par"]),
+    avatar: initialsOf(q["suivi par"]), avatarCouleur: couleurOf(q["suivi par"]),
     title: `${dmy(q["Created Date"]) ?? ""} · ${q.email ?? q["téléphone"] ?? "Question"}`,
     sub: imLabel(ims.get(String(q.IMMEUBLE ?? ""))) || undefined,
     note: typeof q.message === "string" ? (q.message as string).slice(0, 200) : undefined,
@@ -1399,18 +1407,18 @@ export async function globalSearch(q: string): Promise<{
   const [ims, cts, mds] = await Promise.all([search("immeuble"), search("contact"), search("mandat")]);
   return {
     immeubles: ims.map((im) => ({
-      id: String(im._id), href: `/bien/${im._id}`, avatar: initialsOf(im.AGENT),
+      id: String(im._id), href: `/bien/${im._id}`, avatar: initialsOf(im.AGENT), avatarCouleur: couleurOf(im.AGENT),
       title: imLabel(im), sub: String(im.Statut ?? "").replace(/^\d+ - /, "") || undefined,
       right: [euros(im.prix_hai) ?? ""].filter(Boolean), group: "r",
     })),
     contacts: cts.map((c) => ({
-      id: String(c._id), href: `/contact/${c._id}`, avatar: initialsOf(c.agent),
+      id: String(c._id), href: `/contact/${c._id}`, avatar: initialsOf(c.SUIVI), avatarCouleur: couleurOf(c.SUIVI),
       title: [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ") || String(c.entreprise_nom ?? "Contact"),
       sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
       group: "r",
     })),
     mandats: mds.map((m) => ({
-      id: String(m._id), href: `/mandat/${m._id}`, avatar: initialsOf(m.AGENT),
+      id: String(m._id), href: `/mandat/${m._id}`, avatar: initialsOf(m.AGENT), avatarCouleur: couleurOf(m.AGENT),
       title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${m.numero ? `#${m.numero}` : "· Pas de numéro"}`,
       sub: String(m.Statut ?? "") || undefined, group: "r",
     })),
@@ -1472,7 +1480,7 @@ export async function listContactsPage(q: string, page: number, taille: number):
       return {
         id: String(c._id),
         href: `/contact/${c._id}`,
-        avatar: initialsOf(c.agent),
+        avatar: initialsOf(c.SUIVI), avatarCouleur: couleurOf(c.SUIVI),
         title: nom || String(c.entreprise_nom ?? "Contact"),
         sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
         note: [types, c.acheteur === true ? "Acheteur" : "", c.vendeur === true ? "Vendeur" : ""].filter(Boolean).join(" · ") || undefined,
@@ -1500,7 +1508,7 @@ export async function listPropositionsPage(q: string, page: number, taille: numb
       return {
         id: String(p._id),
         href: p.IMMEUBLE ? `/bien/${p.IMMEUBLE}` : undefined,
-        avatar: initialsOf(p.AGENT),
+        avatar: initialsOf(p.AGENT), avatarCouleur: couleurOf(p.AGENT),
         title: `Proposition du ${dmy(p.date_envoi ?? p["Created Date"]) ?? "?"}`,
         sub: imLabel(ims.get(String(p.IMMEUBLE ?? ""))) || undefined,
         acquereur: contactLabel(c) || undefined,

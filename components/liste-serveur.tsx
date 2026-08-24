@@ -58,7 +58,9 @@ export function ListeServeur({
       {rows.map((r) => {
         const inner = (
           <>
-            <span className="lav">{r.avatar}</span>
+            <span className="lav" style={r.avatarCouleur ? { background: r.avatarCouleur } : undefined}>
+              {r.avatar}
+            </span>
             <div className="lmid">
               <div className="lt">{r.title}{r.note && <span className="lnote"> · {r.note}</span>}</div>
               {r.sub && <div className="ls">{r.sub}</div>}

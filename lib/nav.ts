@@ -14,14 +14,19 @@ export type NavItem = {
 export const NAV: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/mails", label: "Mails" },
-  { href: "/estimation", label: "Estimations" },
+  /* Estimations retiré du menu le 24/08 (retour #109) : MAV ne s'en sert
+     jamais, les estimations se travaillent depuis la fiche du bien. L'écran
+     et sa route restent en place — c'est le raccourci qui disparaît, pas la
+     fonction, si l'usage revenait. */
   { href: "/immeubles", label: "Immeubles" },
-  { href: "/mandats", label: "Mandats" },
   // La diffusion est un métier à part : ce qui est en ligne, et ce que ça
   // rapporte. Elle se pilote depuis les fiches, elle se surveille d'ici.
   { href: "/diffusion", label: "Diffusion" },
   { href: "/recherches", label: "Recherches" },
+  /* Contacts remonte au-dessus de Mandats (retour #114) : l'ordre du menu
+     suit la fréquence d'usage, pas la logique du métier. */
   { href: "/contacts", label: "Contacts" },
+  { href: "/mandats", label: "Mandats" },
   { href: "/propositions", label: "Propositions" },
   { href: "/questions", label: "Questions" },
   { href: "/visites", label: "Visites" },
