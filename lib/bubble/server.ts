@@ -262,6 +262,7 @@ async function count(type: string, constraints?: Constraint[]) {
 
 import { dmy, euros, keur } from "@/lib/format";
 import { rangNote } from "@/lib/referentiels";
+import { assemblerVivier, type Vivier } from "@/lib/mails/serveur";
 
 function contactLabel(c?: Record<string, unknown>) {
   if (!c) return "";
@@ -2099,6 +2100,19 @@ export async function listMails(limite = 200): Promise<FilMail[]> {
       pile: imId || m.ESTIMATION ? "affaires" : "a_classer",
     } satisfies FilMail;
   });
+}
+
+/** Le vivier des salves (retour #108) : contacts, immeubles et recherches
+ *  assemblés en candidats triables. Les trois lectures sont déjà en cache et
+ *  partagées avec les écrans Contacts et Recherches — cet appel ne coûte donc
+ *  rien de plus une fois l'app chaude. */
+export async function vivierMails(): Promise<Vivier> {
+  const [contacts, immeubles, recherches] = await Promise.all([
+    fetchAll("contact", undefined, 5000).catch(() => []),
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000).catch(() => []),
+    fetchAll("recherche", undefined, 3000).catch(() => []),
+  ]);
+  return assemblerVivier(contacts, immeubles, recherches);
 }
 
 /** Les échanges d'un contact, pour l'onglet « Échanges » de sa fiche. */
