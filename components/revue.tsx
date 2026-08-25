@@ -371,7 +371,7 @@ function RevuePanel({
           {ok && <div className="warnbox" style={{ color: "#3d7327", borderColor: "#b7e2ae" }}>Retour enregistré ✓</div>}
         </div>
         <div className="rv-foot">
-          <span style={{ flex: 1, fontSize: 11.5, color: "var(--gray-lt)" }}>{pathname}</span>
+          <span className="rv-ou">{pathname}</span>
           <button
             className="kgo"
             type="button"
