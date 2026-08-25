@@ -15,6 +15,7 @@ import {
 } from "@/lib/bo/mails-actions";
 import { repondre } from "@/lib/bo/boite-actions";
 import { ChampDestinataires } from "@/components/mails/destinataires";
+import type { ContactTrouve } from "@/lib/bo/actions";
 
 /** Aperçu : on ne connaît pas encore le destinataire réel dans une fenêtre
  *  d'envoi unitaire, on montre donc l'exemple de chaque champ. */
@@ -58,6 +59,9 @@ export function FenetreRedaction({
   const [libelleType, setLibelleType] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [fait, setFait] = useState<string | null>(null);
+  /* Le destinataire réel, quand il est dans le fichier : l'aperçu doit montrer
+     CE qu'il recevra, pas un exemple (retour #131). */
+  const [qui, setQui] = useState<ContactTrouve | null>(null);
   const [pending, start] = useTransition();
 
   const appliquer = (id: string) => {
@@ -67,13 +71,29 @@ export function FenetreRedaction({
     setCorps(m.corps);
   };
 
-  const valeurs = {
-    ...APERCU_UNITAIRE,
-    email: a.split(",")[0]?.trim(),
-    agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
-    agent_email: agent.email, agent_tel: agent.telephone,
-    agence: "France Immeuble", site: "france-immeuble.fr",
-  };
+  const civilite = qui?.civilite === "Madame" || qui?.civilite === "Monsieur" ? qui.civilite : undefined;
+  const nomFamille = (qui?.nomFamille ?? "").toUpperCase();
+  const valeurs = qui
+    ? {
+      civilite: civilite ?? "",
+      prenom: qui.prenom ?? "",
+      nom: nomFamille,
+      nom_complet: [civilite === "Madame" ? "Mme" : civilite === "Monsieur" ? "M." : "", qui.prenom, nomFamille]
+        .filter(Boolean).join(" "),
+      politesse: civilite ? `Bonjour ${civilite} ${nomFamille}` : "Bonjour",
+      societe: qui.societe ?? "",
+      email: qui.email ?? a.split(",")[0]?.trim(),
+      agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
+      agent_email: agent.email, agent_tel: agent.telephone,
+      agence: "France Immeuble", site: "france-immeuble.fr",
+    }
+    : {
+      ...APERCU_UNITAIRE,
+      email: a.split(",")[0]?.trim(),
+      agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
+      agent_email: agent.email, agent_tel: agent.telephone,
+      agence: "France Immeuble", site: "france-immeuble.fr",
+    };
 
   const envoyer = () =>
     start(async () => {
@@ -134,7 +154,8 @@ export function FenetreRedaction({
 
         <div className="modal-b">
           <div className="mred-entete">
-            <ChampDestinataires valeur={a} onChange={setA} agentId={agent.id} />
+            <ChampDestinataires valeur={a} onChange={setA} agentId={agent.id}
+              onDestinataire={setQui} />
             {modeles.length > 0 && (
               <label className="mred-l court">
                 <span>Message type</span>
@@ -148,7 +169,8 @@ export function FenetreRedaction({
 
           <ZoneRedaction
             objet={objet} corps={corps} setObjet={setObjet} setCorps={setCorps}
-            valeursApercu={valeurs} nomApercu="un destinataire type"
+            valeursApercu={valeurs}
+            nomApercu={qui ? [qui.prenom, nomFamille].filter(Boolean).join(" ") || qui.email || "" : "un destinataire type"}
           />
 
           {/* Le moment où on sait que le texte est bon, c'est maintenant. */}

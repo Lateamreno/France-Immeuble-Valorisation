@@ -2401,6 +2401,9 @@ export async function ajouterTypologie(
 
 export type ContactTrouve = {
   id: string; nom: string; type?: string; tel?: string; email?: string;
+  /* Les champs de fusion, pour que l'aperçu d'un message montre le VRAI
+     destinataire et non un exemple inventé (retour #131). */
+  prenom?: string; nomFamille?: string; civilite?: string; societe?: string;
 };
 
 /**
@@ -2432,6 +2435,10 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
     tel: typeof c.portable_formatted === "string" ? c.portable_formatted
       : typeof c.portable === "string" ? c.portable : undefined,
     email: typeof c.email === "string" ? c.email : undefined,
+    prenom: typeof c["prénom"] === "string" ? c["prénom"] : undefined,
+    nomFamille: typeof c.nom === "string" ? c.nom : undefined,
+    civilite: typeof c["Civilité"] === "string" ? c["Civilité"] : undefined,
+    societe: typeof c.entreprise_nom === "string" ? c.entreprise_nom : undefined,
   }));
 }
 

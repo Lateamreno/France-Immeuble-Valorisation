@@ -28,10 +28,13 @@ const nomProbable = (email: string) =>
     .map((m) => m[0]?.toUpperCase() + m.slice(1))
     .join(" ") || email;
 
-export function ChampDestinataires({ valeur, onChange, agentId }: {
+export function ChampDestinataires({ valeur, onChange, agentId, onDestinataire }: {
   valeur: string;
   onChange: (v: string) => void;
   agentId: string;
+  /** La fiche du premier destinataire, pour que l'aperçu montre le vrai
+   *  destinataire plutôt qu'un exemple inventé (retour #131). */
+  onDestinataire?: (c: ContactTrouve | null) => void;
 }) {
   /* Ce qui est en train d'être tapé, à droite de la dernière virgule. */
   const [trouves, setTrouves] = useState<ContactTrouve[]>([]);
@@ -75,6 +78,8 @@ export function ChampDestinataires({ valeur, onChange, agentId }: {
     onChange(`${debut}${debut ? " " : ""}${c.email}, `);
     setOuvert(false);
     setTrouves([]);
+    /* Premier destinataire : c'est lui que l'aperçu doit montrer. */
+    if (!debut.trim()) onDestinataire?.(c);
   };
 
   /** Sur sortie du champ : quelles adresses ne sont dans aucune fiche ? */
@@ -83,13 +88,18 @@ export function ChampDestinataires({ valeur, onChange, agentId }: {
       const liste = adressesDe(valeur).filter((x) => EMAIL.test(x));
       if (!liste.length) { setInconnues([]); return; }
       const manquantes: string[] = [];
-      for (const email of liste.slice(0, 10)) {
+      let premier: ContactTrouve | null = null;
+      for (const [i, email] of liste.slice(0, 10).entries()) {
         if (creees.includes(email)) continue;
         const r = await chercherContacts(email).catch(() => []);
-        const connue = r.some((c) => (c.email ?? "").toLowerCase() === email.toLowerCase());
-        if (!connue) manquantes.push(email);
+        const fiche = r.find((c) => (c.email ?? "").toLowerCase() === email.toLowerCase());
+        if (i === 0) premier = fiche ?? null;
+        if (!fiche) manquantes.push(email);
       }
       setInconnues(manquantes);
+      /* L'aperçu se cale sur la fiche du premier destinataire — ou repart sur
+         l'exemple si l'adresse n'est dans aucune fiche. */
+      onDestinataire?.(premier);
     });
 
   const creer = (email: string) =>

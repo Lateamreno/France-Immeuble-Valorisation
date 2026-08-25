@@ -11,7 +11,6 @@
  */
 
 import { ImapFlow, type ListResponse } from "imapflow";
-import { simpleParser, type AddressObject } from "mailparser";
 import nodemailer from "nodemailer";
 import type { Boite } from "@/lib/mails/boites";
 
@@ -182,11 +181,6 @@ export type Entete = {
   repondu: boolean;
   drapeau: boolean;
   pj: number;
-};
-
-const adr = (a?: AddressObject | AddressObject[]) => {
-  const l = Array.isArray(a) ? a : a ? [a] : [];
-  return l.flatMap((x) => x.value.map((v) => (v.address ?? "").toLowerCase())).filter(Boolean);
 };
 
 export type Verdict = { ok: true; dossiers: Dossier[]; adresse: string } | { ok: false; erreur: string };
@@ -403,37 +397,113 @@ export async function lireMessage(
   return avec(b, async (c) => {
     const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
     await c.mailboxOpen(ch, { readOnly: !marquerLu });
-    const m = await c.fetchOne(String(uid), { uid: true, source: true, flags: true }, { uid: true });
-    if (!m || !m.source) return null;
 
-    const p = await simpleParser(m.source as Buffer);
-    const flags = m.flags ?? new Set<string>();
+    /* On demande d'abord la STRUCTURE, pas le message.
+     *
+     * Tirer la source complète — ce que faisait la version d'avant — c'était
+     * télécharger les pièces jointes avant d'avoir affiché la première ligne.
+     * Sur un message avec un PDF de cinq mégaoctets, l'écran attendait le PDF
+     * pour montrer du texte. On ne descend donc que les parties qu'on affiche,
+     * et les pièces jointes restent où elles sont tant qu'on ne les demande
+     * pas. */
+    const tete = await c.fetchOne(
+      String(uid),
+      { uid: true, flags: true, envelope: true, bodyStructure: true, size: true },
+      { uid: true },
+    );
+    if (!tete) return null;
+
+    const textes = partiesTexte(tete.bodyStructure);
+    /* Le texte brut d'abord, le HTML ensuite : on veut les deux quand ils
+       existent — le premier pour citer dans une réponse, le second pour
+       l'affichage. */
+    const brute = textes.find((n) => n.type === "text/plain");
+    const html = textes.find((n) => n.type === "text/html");
+    const demandes = [...new Set([brute?.part || "1", html?.part].filter(Boolean))] as string[];
+
+    const brutOuFaux = await c.fetchOne(
+      String(uid),
+      { uid: true, bodyParts: demandes, headers: ["in-reply-to", "references", "message-id"] },
+      { uid: true },
+    ).catch(() => false as const);
+    /* `fetchOne` rend `false` quand le message a disparu entre-temps. */
+    const corpsBruts = brutOuFaux || null;
+
+    const parties = corpsBruts?.bodyParts;
+    const lire1 = (n?: Noeud) => {
+      const p = n ? parties?.get(n.part || "1") : undefined;
+      /* Un corps démesuré ne sert à rien à l'écran et fige le navigateur. */
+      return p ? decoder(p.subarray(0, 400_000), n?.encoding) : undefined;
+    };
+    const texte = lire1(brute);
+    const enHtml = lire1(html);
+
+    const enTetes = lireEnTetes(corpsBruts?.headers);
+    const flags = tete.flags ?? new Set<string>();
     if (marquerLu && !flags.has("\\Seen")) {
       await c.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => undefined);
     }
+
+    const env = tete.envelope;
+    const corps = (texte ?? (enHtml ? sansBalises(enHtml) : "")).trim();
     return {
       uid,
-      messageId: p.messageId ?? undefined,
-      de: adr(p.from)[0] ?? "",
-      deNom: p.from?.value?.[0]?.name || undefined,
-      pour: [...adr(p.to), ...adr(p.cc)],
-      objet: p.subject || "(sans objet)",
-      date: (p.date ?? new Date()).toISOString(),
-      extrait: (p.text ?? "").replace(/\s+/g, " ").slice(0, 160),
+      messageId: env?.messageId ?? enTetes["message-id"],
+      de: env?.from?.[0]?.address?.toLowerCase() ?? "",
+      deNom: env?.from?.[0]?.name || undefined,
+      pour: [...(env?.to ?? []), ...(env?.cc ?? [])]
+        .map((x) => x.address?.toLowerCase() ?? "").filter(Boolean),
+      objet: env?.subject || "(sans objet)",
+      date: env?.date ? new Date(env.date).toISOString() : new Date().toISOString(),
+      extrait: corps.replace(/\s+/g, " ").slice(0, 160),
       lu: true,
       repondu: flags.has("\\Answered"),
       drapeau: flags.has("\\Flagged"),
-      pj: p.attachments?.length ?? 0,
-      corps: (p.text ?? "").trim(),
-      corpsHtml: typeof p.html === "string" ? p.html : undefined,
-      pieces: (p.attachments ?? []).map((a) => ({
-        nom: a.filename ?? "pièce jointe", type: a.contentType, taille: a.size,
-      })),
-      enTetes: Object.fromEntries([...p.headers.entries()].map(([k, v]) => [k.toLowerCase(), String(v)])),
-      inReplyTo: p.inReplyTo ?? undefined,
-      references: Array.isArray(p.references) ? p.references : p.references ? [p.references] : [],
+      pj: piecesDe(tete.bodyStructure).length,
+      corps,
+      corpsHtml: enHtml,
+      pieces: piecesDe(tete.bodyStructure),
+      enTetes,
+      inReplyTo: enTetes["in-reply-to"]?.trim() || undefined,
+      references: (enTetes.references ?? "").split(/\s+/).filter(Boolean),
     };
   });
+}
+
+/** Les en-têtes demandés, rendus en minuscules. */
+function lireEnTetes(brut?: Buffer): Record<string, string> {
+  if (!brut) return {};
+  const out: Record<string, string> = {};
+  let cle = "";
+  for (const ligne of brut.toString("utf8").split(/\r?\n/)) {
+    if (/^\s/.test(ligne) && cle) { out[cle] += ` ${ligne.trim()}`; continue; }
+    const i = ligne.indexOf(":");
+    if (i < 0) { cle = ""; continue; }
+    cle = ligne.slice(0, i).toLowerCase();
+    out[cle] = ligne.slice(i + 1).trim();
+  }
+  return out;
+}
+
+/** Les pièces jointes déclarées, lues dans la structure — sans les tirer. */
+function piecesDe(s: unknown): { nom: string; type: string; taille: number }[] {
+  if (!s || typeof s !== "object") return [];
+  const n = s as Noeud & {
+    disposition?: string;
+    dispositionParameters?: { filename?: string };
+    parameters?: { name?: string };
+    size?: number;
+  };
+  const enfants = (n.childNodes ?? []).flatMap(piecesDe);
+  if (n.disposition !== "attachment") return enfants;
+  return [
+    {
+      nom: n.dispositionParameters?.filename || n.parameters?.name || "pièce jointe",
+      type: n.type ?? "application/octet-stream",
+      taille: n.size ?? 0,
+    },
+    ...enfants,
+  ];
 }
 
 /** Marque lu / non lu sur le serveur — donc aussi sur le téléphone. */

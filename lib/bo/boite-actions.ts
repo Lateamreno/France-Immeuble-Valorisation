@@ -162,24 +162,27 @@ export async function chargerDossier(agentId: string, role: RoleDossier, depuis 
   }
 }
 
-export async function ouvrirMessage(agentId: string, role: RoleDossier, uid: number) {
+export async function ouvrirMessage(
+  agentId: string, role: RoleDossier, uid: number, marquerLu = true,
+) {
   try {
-    return { ok: true as const, message: await lireMessage(await boite(agentId), role, uid) };
+    return { ok: true as const, message: await lireMessage(await boite(agentId), role, uid, marquerLu) };
   } catch (e) {
     return { ok: false as const, erreur: messageClair(e) };
   }
 }
 
+/* Pas de `revalidatePath` ici ni au déplacement : l'écran met sa liste à jour
+   lui-même, et refaire toute la page à chaque clic était une seconde perdue
+   pour rien. */
 export async function basculerLu(agentId: string, role: RoleDossier, uids: number[], lu: boolean) {
   await marquerLus(await boite(agentId), role, uids, lu);
-  revalidatePath("/mails");
 }
 
 export async function deplacerMessages(
   agentId: string, role: RoleDossier, uids: number[], vers: RoleDossier,
 ) {
   await deplacer(await boite(agentId), role, uids, vers);
-  revalidatePath("/mails");
 }
 
 export async function repondre(agentId: string, m: {

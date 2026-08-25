@@ -21,6 +21,7 @@ import {
 import type { Entete, MessageComplet, RoleDossier } from "@/lib/mails/client";
 import type { Reponse } from "@/components/mails/redaction";
 import { estDuSite } from "@/lib/mails/tri-fi";
+import { CorpsMessage } from "@/components/mails/corps";
 
 const jour = (d?: string) => {
   if (!d) return "";
@@ -132,6 +133,8 @@ export function BoiteVivante({
   /* Garde le rôle de la lecture en cours : une réponse arrivée en retard, pour
      un dossier qu'on a quitté, ne doit pas écraser la liste affichée. */
   const attendu = useRef<RoleDossier>(role);
+  /** Les préchargements en vol, pour ne pas les lancer deux fois. */
+  const enCours = useRef<Set<string>>(new Set());
 
   /** La lecture elle-même. Ne touche à l'état que dans la réponse. */
   const lire = useCallback(() => {
@@ -198,6 +201,21 @@ export function BoiteVivante({
      affiché — c'est ce qu'on attend d'un client mail. */
   const cibles = choisis.size > 0 ? [...choisis] : ouvert ? [ouvert.uid] : [];
 
+  /* Précharger au survol. Entre le moment où le curseur se pose sur une ligne
+     et celui où le doigt clique, il s'écoule le temps qu'il faut pour aller
+     chercher le message : autant le prendre. */
+  const survoler = (e: Entete) => {
+    const k = `${agentId}|${role}|${e.uid}`;
+    if (LUS.has(k) || enCours.current.has(k)) return;
+    enCours.current.add(k);
+    /* `false` : le survol ne marque PAS le message lu. Passer la souris n'est
+       pas lire — ce serait un bug d'affichage sur le téléphone de l'agent. */
+    ouvrirMessage(agentId, role, e.uid, false)
+      .then((r) => { if (r.ok && r.message) LUS.set(k, r.message); })
+      .catch(() => undefined)
+      .finally(() => enCours.current.delete(k));
+  };
+
   const cocher = (uid: number) =>
     setChoisis((s) => { const n = new Set(s); if (n.has(uid)) n.delete(uid); else n.add(uid); return n; });
 
@@ -207,7 +225,22 @@ export function BoiteVivante({
        seconde à venir. */
     const k = `${agentId}|${role}|${e.uid}`;
     const connu = LUS.get(k);
-    if (connu) { setOuvert(connu); setEnAttente(null); return; }
+    if (connu) {
+      setOuvert(connu);
+      setEnAttente(null);
+      /* Préchargé sans le marquer lu : c'est l'ouverture qui pose le drapeau,
+         sur le serveur donc aussi sur le téléphone. */
+      if (!e.lu) {
+        void basculerLu(agentId, role, [e.uid], true).catch(() => undefined);
+        setEntetes((l) => {
+          const maj = l.map((x) => (x.uid === e.uid ? { ...x, lu: true } : x));
+          const garde = CACHE.get(cle(agentId, role, tri));
+          if (garde) CACHE.set(cle(agentId, role, tri), { ...garde, entetes: maj });
+          return maj;
+        });
+      }
+      return;
+    }
     setOuvert(null);
     setEnAttente(e);
     start(async () => {
@@ -333,7 +366,8 @@ export function BoiteVivante({
           {liste.map((m) => (
             <div key={m.uid}
               className={`gm-row${ouvert?.uid === m.uid || enAttente?.uid === m.uid ? " on" : ""}${m.lu ? "" : " neuf"}`}
-              onClick={() => ouvrir(m)}>
+              onClick={() => ouvrir(m)}
+              onMouseEnter={() => survoler(m)}>
               <label className="gm-ck" onClick={(e) => e.stopPropagation()}>
                 <input type="checkbox" checked={choisis.has(m.uid)} onChange={() => cocher(m.uid)} />
               </label>
@@ -413,7 +447,7 @@ export function BoiteVivante({
                 </button>
               </div>
             </div>
-            <pre className="gm-corps">{ouvert.corps}</pre>
+            <CorpsMessage texte={ouvert.corps} html={ouvert.corpsHtml} />
           </>
         ) : (
           <div className="fempty">
