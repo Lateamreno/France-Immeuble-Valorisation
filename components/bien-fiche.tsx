@@ -168,6 +168,11 @@ export function BienFiche({
     if (cleEcran) {
       setSect("encours");
       if (ouvrir) setEst(ouvrir);
+    } else if (cleVue) {
+      /* On vient de quitter l'écran greffé (mandat envoyé, estimation marquée
+         envoyée…) : sans ça, la fiche restait sur un panneau vide. */
+      setEst(null);
+      setSect(cleVue.startsWith("mandat") ? "mandats" : "estimations");
     }
   }
 

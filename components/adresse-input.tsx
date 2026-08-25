@@ -23,12 +23,18 @@ type Feature = {
 };
 
 export function AdresseInput({
-  valeur = "", placeholder = "Commencez à taper l'adresse…", autoFocus, onChoisir,
+  valeur = "", placeholder = "Commencez à taper l'adresse…", autoFocus, classe = "min",
+  disabled, onChoisir, onSaisie,
 }: {
   valeur?: string;
   placeholder?: string;
   autoFocus?: boolean;
+  /** Classe de l'input : les écrans n'ont pas tous la même grille. */
+  classe?: string;
+  disabled?: boolean;
   onChoisir: (a: AdresseChoisie) => void;
+  /** Frappe libre : une adresse peut être hors base (lieu-dit, étranger). */
+  onSaisie?: (v: string) => void;
 }) {
   const [q, setQ] = useState(valeur);
   const [sugg, setSugg] = useState<Feature[]>([]);
@@ -36,12 +42,28 @@ export function AdresseInput({
   const [sel, setSel] = useState(-1);
   const boite = useRef<HTMLDivElement>(null);
   /** L'adresse retenue : tant que la saisie ne rebouge pas, on ne recherche plus. */
-  const figee = useRef<string | null>(valeur || null);
+  const [figee, setFigee] = useState<string | null>(valeur || null);
+
+  /* La valeur peut changer d'en haut — c'est le cas quand on rattache un
+     contact et que sa fiche remplit l'adresse (retour #133). Sans ça, le champ
+     resterait sur ce qu'il affichait avant. */
+  const [vue, setVue] = useState(valeur);
+  if (valeur !== vue) {
+    setVue(valeur);
+    /* …mais pas quand c'est notre propre frappe qui remonte : sinon on gèlerait
+       la recherche au caractère près. */
+    if (valeur !== q) {
+      setQ(valeur);
+      setFigee(valeur || null);
+      setOuvert(false);
+    }
+  }
 
   useEffect(() => {
     const t = q.trim();
-    if (t.length < 4 || t === figee.current) { setSugg([]); return; }
+    const court = t.length < 4 || t === figee;
     const timer = setTimeout(async () => {
+      if (court) { setSugg([]); return; }
       try {
         // Relais serveur : voir app/api/adresse/route.ts.
         const r = await fetch(`/api/adresse?q=${encodeURIComponent(t)}`);
@@ -51,9 +73,9 @@ export function AdresseInput({
         setOuvert(true);
         setSel(-1);
       } catch { /* réseau coupé : la saisie manuelle reste possible */ }
-    }, 300);
+    }, court ? 0 : 300);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, figee]);
 
   // Un clic hors du champ referme la liste.
   useEffect(() => {
@@ -66,7 +88,7 @@ export function AdresseInput({
 
   const choisir = (f: Feature) => {
     const p = f.properties;
-    figee.current = p.label;
+    setFigee(p.label);
     setQ(p.label);
     setOuvert(false);
     onChoisir({
@@ -83,9 +105,9 @@ export function AdresseInput({
   return (
     <div className="adr-box" ref={boite}>
       <input
-        className="min" style={{ width: "100%" }}
+        className={classe} style={{ width: "100%" }} disabled={disabled}
         placeholder={placeholder} value={q} autoFocus={autoFocus}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => { setQ(e.target.value); onSaisie?.(e.target.value); }}
         onFocus={() => sugg.length > 0 && setOuvert(true)}
         onKeyDown={(e) => {
           if (!ouvert || sugg.length === 0) return;

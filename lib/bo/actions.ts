@@ -2442,6 +2442,136 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
   }));
 }
 
+/* ---------- La fiche d'un contact, pour remplir un mandant (retour #133) ---------- */
+
+/** Ce qu'une fiche contact sait déjà dire d'un mandant. */
+export type MandantDepuisContact = {
+  civilite?: string;
+  prenom?: string;
+  nom?: string;
+  email?: string;
+  dateNaissance?: string;
+  lieuNaissance?: string;
+  adresse?: string;
+  fonction?: string;
+  societe?: {
+    nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string;
+  };
+};
+
+/** Une adresse Bubble est `{address, lat, lng}` — on n'en garde que le libellé. */
+function texteGeo(v: unknown): string | undefined {
+  if (typeof v === "string") return v.trim() || undefined;
+  if (v && typeof v === "object" && "address" in v) {
+    const a = (v as { address?: unknown }).address;
+    return typeof a === "string" && a.trim() ? a.trim() : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Recopie l'état civil du contact dans le mandant.
+ *
+ * MAV : « comme c'est un contact la personne physique doit déjà être
+ * pré-renseignée avec les infos du contact. » Tout est déjà dans la fiche —
+ * civilité, naissance, adresse, société — le ressaisir c'est se garantir un
+ * mandat qui diverge de la base au premier oubli.
+ */
+export async function mandantDepuisContact(id: string): Promise<MandantDepuisContact | null> {
+  if (!SB_KEY || !id) return null;
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("data->>_id", `eq.${id}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  const c = rows[0]?.data;
+  if (!c) return null;
+
+  const civ = typeof c["Civilité"] === "string" ? c["Civilité"] : "";
+  const capital = typeof c.entreprise_capital === "number" ? c.entreprise_capital
+    : typeof c.entreprise_capital === "string" ? parseFloat(c.entreprise_capital.replace(/[^\d.]/g, "")) : undefined;
+  const S3 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+  return {
+    // La fiche dit « Monsieur » ; le mandat écrit « M. ».
+    civilite: civ === "Monsieur" ? "M." : civ === "Madame" ? "Mme" : S3(civ),
+    prenom: S3(c["prénom"]),
+    nom: S3(c.nom),
+    email: S3(c.email),
+    dateNaissance: S3(c.date_naissance)?.slice(0, 10),
+    lieuNaissance: texteGeo(c.lieu_naissance_geo),
+    adresse: texteGeo(c.adresse_geo),
+    fonction: S3(c.poste),
+    societe: {
+      nom: S3(c.entreprise_nom),
+      siren: S3(c.entreprise_siren),
+      rcs: S3(c.entreprise_rcs),
+      capital: Number.isFinite(capital) ? capital : undefined,
+      siege: texteGeo(c.entreprise_siege_geo),
+    },
+  };
+}
+
+/* ---------- Recherche d'entreprise en open data (retour #135) ---------- */
+
+export type EntrepriseTrouvee = {
+  nom: string;
+  siren: string;
+  siege?: string;
+  /** Forme juridique en clair (« SCI », « SAS »…), utile à l'œil. */
+  forme?: string;
+  ville?: string;
+};
+
+/**
+ * Cherche une société dans l'annuaire des entreprises (API publique de la
+ * DINUM, sans clé, alimentée par l'INSEE et l'INPI).
+ *
+ * Ce qu'elle donne : raison sociale, SIREN, forme juridique, siège. Ce qu'elle
+ * ne donne pas : le capital et le numéro RCS, qui restent à saisir — ils
+ * viennent du registre du commerce, pas de cette base.
+ */
+export async function chercherEntreprise(q: string): Promise<EntrepriseTrouvee[]> {
+  const t = (q ?? "").trim();
+  if (t.length < 3) return [];
+  const url = `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(t)}&per_page=8&page=1`;
+  const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return [];
+  const d = (await res.json().catch(() => null)) as {
+    results?: {
+      nom_complet?: string; nom_raison_sociale?: string; siren?: string;
+      nature_juridique?: string;
+      siege?: { adresse?: string; libelle_commune?: string; code_postal?: string };
+    }[];
+  } | null;
+  return (d?.results ?? [])
+    .filter((r) => r.siren)
+    .map((r) => ({
+      nom: (r.nom_raison_sociale || r.nom_complet || "").toUpperCase(),
+      siren: String(r.siren),
+      /* `adresse` porte déjà le code postal et la commune : les recoller les
+         écrirait deux fois. */
+      siege: r.siege?.adresse
+        || [r.siege?.code_postal, r.siege?.libelle_commune].filter(Boolean).join(" ")
+        || undefined,
+      ville: r.siege?.libelle_commune ?? undefined,
+      forme: FORMES[String(r.nature_juridique ?? "")] ?? undefined,
+    }))
+    .filter((r) => r.nom);
+}
+
+/** Les formes juridiques croisées sur des immeubles de rapport. */
+const FORMES: Record<string, string> = {
+  "5710": "SAS", "5720": "SASU", "5499": "SA", "5599": "SA",
+  "5426": "SARL", "5498": "SARL", "5485": "SARL",
+  "6540": "SCI", "6521": "SCPI", "6532": "SC de moyens", "6533": "GAEC",
+  "6534": "Groupement forestier", "6537": "Société civile",
+  "6540 ": "SCI", "1000": "Personne physique",
+};
+
 /* ===================== Matching, commercialisation, propositions ===================== */
 
 export type MatchInput = {

@@ -11,7 +11,7 @@
 // vend (Objet, servi par l'état locatif) → À COMBIEN (Prix) → À QUELLES
 // CONDITIONS (Conditions) → et enfin ON ENVOIE (Envoi), verrouillé tant que
 // les pièces obligatoires manquent.
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
@@ -20,12 +20,13 @@ import { ContactPicker } from "@/components/contact-picker";
 import {
   FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
   nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
-  type ChampPrix, type Mandant, type Mode, type Prix,
+  type ChampPrix, type Mandant, type Mode, type Prix, type Societe,
 } from "@/lib/mandat";
+import { AdresseInput } from "@/components/adresse-input";
 import {
-  cancelMandat, deposerPieceMandat, envoyerMandatSignature, genererMandat, majMandants,
-  mandatInfosRecues, marquerMandatSigne, reserveMandatNumero, updateMandat,
-  type MandatPatch,
+  cancelMandat, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
+  majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reserveMandatNumero,
+  updateMandat, type EntrepriseTrouvee, type MandatPatch,
 } from "@/lib/bo/actions";
 
 type Data = NonNullable<Awaited<ReturnType<typeof getMandat>>>;
@@ -209,6 +210,7 @@ function CarteMandant({
   onMaj: (p: Partial<Mandant>) => void; onSupprimer: () => void;
 }) {
   const [picker, setPicker] = useState(false);
+  const [, start] = useTransition();
   const morale = x.personne === "morale";
 
   return (
@@ -257,6 +259,34 @@ function CarteMandant({
             const [p, ...r] = (c.nom ?? "").split(" ");
             onMaj({ contactId: c.id, prenom: p, nom: r.join(" ") || undefined, email: c.email });
             setPicker(false);
+            /* Le contact sait déjà tout : civilité, naissance, adresse, société.
+               On recopie, sans écraser ce qui a été saisi à la main sur cette
+               ligne (retour #133). */
+            start(async () => {
+              const f = await mandantDepuisContact(c.id).catch(() => null);
+              if (!f) return;
+              const p2: Partial<Mandant> = {};
+              if (!x.qualite && f.civilite) p2.qualite = f.civilite;
+              if (f.prenom) p2.prenom = f.prenom;
+              if (f.nom) p2.nom = f.nom;
+              if (f.email) p2.email = f.email;
+              if (!x.dateNaissance && f.dateNaissance) p2.dateNaissance = f.dateNaissance;
+              if (!x.lieuNaissance && f.lieuNaissance) p2.lieuNaissance = f.lieuNaissance;
+              if (!x.adresse && f.adresse) p2.adresse = f.adresse;
+              if (!x.fonction && f.fonction) p2.fonction = f.fonction;
+              const s = f.societe ?? {};
+              const soc: Societe = { ...x.societe };
+              let aSociete = false;
+              for (const k of ["nom", "siren", "rcs", "siege"] as const) {
+                if (!soc[k] && s[k]) { soc[k] = s[k]; aSociete = true; }
+              }
+              if (soc.capital === undefined && s.capital !== undefined) { soc.capital = s.capital; aSociete = true; }
+              if (aSociete) p2.societe = soc;
+              /* La fiche porte une société et rien n'a encore été choisi : le
+                 mandant est vraisemblablement une personne morale. */
+              if (aSociete && soc.nom && x.personne === "physique" && !x.societe?.nom) p2.personne = "morale";
+              onMaj(p2);
+            });
           }}
         />
       )}
@@ -296,15 +326,30 @@ function CarteMandant({
             onChange={(e) => onMaj({ lieuNaissance: e.target.value || undefined })} />
         </Champ>
         <Champ label="Adresse" large>
-          <input className="mi" value={x.adresse ?? ""} disabled={locked}
+          {/* Adresse géolocalisée : on tape les premières lettres, la Base
+              Adresse Nationale complète (retour #134). */}
+          <AdresseInput classe="mi" valeur={x.adresse ?? ""} disabled={locked}
             placeholder="N°, rue, code postal, ville"
-            onChange={(e) => onMaj({ adresse: e.target.value || undefined })} />
+            onSaisie={(v) => onMaj({ adresse: v || undefined })}
+            onChoisir={(a) => onMaj({ adresse: a.label })} />
         </Champ>
       </div>
 
       {morale && (
         <>
           <div className="mdt-sub">La société</div>
+          {!locked && (
+            <ChercheSociete
+              onChoisir={(e) => onMaj({
+                societe: {
+                  ...x.societe,
+                  nom: e.nom,
+                  siren: e.siren,
+                  siege: e.siege ?? x.societe?.siege,
+                },
+              })}
+            />
+          )}
           <div className="mdt-grid">
             <Champ label="Raison sociale" large>
               <input className="mi maj" value={x.societe?.nom ?? ""} disabled={locked}
@@ -323,8 +368,11 @@ function CarteMandant({
                 onChange={(e) => onMaj({ societe: { ...x.societe, capital: parse(e.target.value) } })} />
             </Champ>
             <Champ label="Siège social" large>
-              <input className="mi" value={x.societe?.siege ?? ""} disabled={locked}
-                onChange={(e) => onMaj({ societe: { ...x.societe, siege: e.target.value || undefined } })} />
+              {/* Même champ que l'adresse du mandant (retour #136). */}
+              <AdresseInput classe="mi" valeur={x.societe?.siege ?? ""} disabled={locked}
+                placeholder="N°, rue, code postal, ville"
+                onSaisie={(v) => onMaj({ societe: { ...x.societe, siege: v || undefined } })}
+                onChoisir={(a) => onMaj({ societe: { ...x.societe, siege: a.label } })} />
             </Champ>
           </div>
         </>
@@ -345,6 +393,61 @@ function CarteMandant({
           Rattachez un contact avant de déposer les pièces : sans lui, elles restent sur ce mandat
           au lieu d&apos;enrichir la fiche du client.
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Recherche de la société dans l'annuaire des entreprises (retour #135).
+ *
+ * MAV demandait à retrouver le propriétaire d'un immeuble par son adresse :
+ * ça, l'open data ne le donne pas — le fichier des propriétaires est fiscal et
+ * fermé. Ce qui est ouvert, c'est l'entreprise : on tape le nom ou le SIREN et
+ * la raison sociale, le SIREN et le siège se remplissent seuls. Restent le
+ * capital et le RCS, qui viennent du registre du commerce.
+ */
+function ChercheSociete({ onChoisir }: { onChoisir: (e: EntrepriseTrouvee) => void }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<EntrepriseTrouvee[]>([]);
+  const [cherche, setCherche] = useState(false);
+  const [vide, setVide] = useState(false);
+
+  useEffect(() => {
+    const t = q.trim();
+    const timer = setTimeout(() => {
+      if (t.length < 3) { setRes([]); setVide(false); setCherche(false); return; }
+      setCherche(true);
+      chercherEntreprise(t)
+        .then((r) => { setRes(r); setVide(r.length === 0); })
+        .catch(() => setRes([]))
+        .finally(() => setCherche(false));
+    }, t.length < 3 ? 0 : 350);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  return (
+    <div className="mdt-soc">
+      <label className="mdt-soc-q">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher la société — raison sociale ou SIREN" />
+        {cherche && <i>…</i>}
+      </label>
+      {res.length > 0 && (
+        <div className="mdt-soc-l">
+          {res.map((e) => (
+            <button key={e.siren} type="button"
+              onClick={() => { onChoisir(e); setQ(""); setRes([]); }}>
+              <b>{e.nom}</b>
+              <span>{[e.forme, `SIREN ${e.siren}`, e.siege].filter(Boolean).join(" · ")}</span>
+            </button>
+          ))}
+          <span className="src">Annuaire des entreprises — données publiques INSEE / INPI</span>
+        </div>
+      )}
+      {vide && q.trim().length >= 3 && !cherche && (
+        <div className="mdt-soc-v">Aucune société trouvée — la saisie reste possible ci-dessous.</div>
       )}
     </div>
   );

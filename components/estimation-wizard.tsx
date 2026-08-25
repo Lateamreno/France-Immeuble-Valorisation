@@ -155,6 +155,16 @@ export function EstimationWizard({
   /** Copie, copie cachée et pièces jointes (demandes MAV du 14/08). */
   const [cc, setCc] = useMem<string[]>("cc", []);
   const [cci, setCci] = useMem<string[]>("cci", []);
+  /* Le destinataire n'est pas toujours le propriétaire de la fiche : gestionnaire,
+     conseil, indivisaire qui centralise… On part de lui, et on peut le changer
+     comme dans n'importe quelle messagerie (retour #132). */
+  const [destinataires, setDest] = useMem<string[]>(
+    "dest",
+    S(b.proprietaire?.email) ? [S(b.proprietaire?.email)] : [],
+  );
+  /** Trace du « Marquer envoyée » : sinon le clic ne dit rien (retour #132). */
+  const [marque, setMarque] = useState<string | null>(null);
+  const [marqueKo, setMarqueKo] = useState<string | null>(null);
   /** Le dossier est joint d'office ; on peut le retirer puis le remettre. */
   const [dossierJoint, setDossierJoint] = useMem("dossierJoint", true);
   const [pjDocs, setPjDocs] = useMem<string[]>("pjDocs", []);
@@ -324,7 +334,7 @@ export function EstimationWizard({
         for (const f of pjFichiers) fd.append("f", f);
         await envoyerEstimation({
           immeubleId, estimationId: estId!,
-          to: S(b.proprietaire?.email),
+          to: destinataires.join(", "),
           objet: mailObjet,
           message: `${mailCorps}\n\n${b.agentInitials} — France Immeuble`,
           cc: cc.join(", ") || undefined,
@@ -395,11 +405,27 @@ export function EstimationWizard({
       }
     });
 
+  /**
+   * Marque l'estimation envoyée (ou interne) — et le DIT.
+   *
+   * MAV : « quand je clique sur marquée comme envoyée rien ne se passe, ça
+   * n'écrit pas que c'est envoyé ». On revenait bien à la fiche, mais sans un
+   * mot, et si l'écriture échouait le clic restait muet. Maintenant l'écran
+   * confirme, puis rend la main.
+   */
   const marquer = (statut: "3 - Envoyée" | "4 - Interne") =>
     start(async () => {
       if (!estId) return;
-      await setEstimationStatut(immeubleId, estId, statut);
-      router.push(`/bien/${immeubleId}`);
+      setMarqueKo(null);
+      try {
+        await setEstimationStatut(immeubleId, estId, statut);
+        setMarque(statut === "3 - Envoyée"
+          ? "Estimation marquée comme envoyée."
+          : "Estimation classée en interne.");
+        setTimeout(() => router.push(`/bien/${immeubleId}`), 1100);
+      } catch (e) {
+        setMarqueKo(e instanceof Error ? e.message : "erreur inconnue");
+      }
     });
 
   const Nav = ({ suivantLabel }: { suivantLabel?: string }) => (
@@ -814,17 +840,29 @@ export function EstimationWizard({
             <div className="est-ml">
               <span className="lbl">À</span>
               <div className="est-ch plat">
-                {b.proprietaire ? (
-                  <>
-                    <b className="est-badge rond">
-                      {`${S(b.proprietaire["prénom"]).slice(0, 1)}${S(b.proprietaire.nom).slice(0, 1)}`.toUpperCase()}
-                    </b>
-                    {S(b.proprietaire["prénom"])} <b>{S(b.proprietaire.nom).toUpperCase()}</b>
-                    <i>{S(b.proprietaire.email)}</i>
-                  </>
-                ) : "Propriétaire non renseigné"}
+                {/* Modifiable : le propriétaire est le point de départ, pas une
+                    fatalité — gestionnaire, conseil, indivisaire qui centralise
+                    (retour #132). */}
+                <AdressesInput valeurs={destinataires} onChange={setDest}
+                  placeholder={b.proprietaire ? "Ajouter ou remplacer le destinataire" : "Adresse du destinataire"} />
               </div>
             </div>
+            {b.proprietaire && (
+              <div className="est-ml">
+                <span className="lbl" />
+                <div className="est-ch plat est-dest-nb">
+                  Propriétaire de la fiche : {S(b.proprietaire["prénom"])}{" "}
+                  <b>{S(b.proprietaire.nom).toUpperCase()}</b>
+                  {S(b.proprietaire.email) && <i>{S(b.proprietaire.email)}</i>}
+                  {S(b.proprietaire.email) && !destinataires.includes(S(b.proprietaire.email)) && (
+                    <button type="button" className="fadd"
+                      onClick={() => setDest([...destinataires, S(b.proprietaire!.email)])}>
+                      Le remettre en destinataire
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="est-ml">
               <span className="lbl">Cc</span>
               <div className="est-ch plat">
@@ -930,27 +968,40 @@ export function EstimationWizard({
                 : "L'envoi reste manuel : l'app prépare, l'agent envoie depuis sa boîte."}
             </div>
             {envoiKo && <div className="warnbox">Envoi impossible : {envoiKo}</div>}
+            {marqueKo && <div className="warnbox">Impossible d&apos;enregistrer le statut : {marqueKo}</div>}
+            {marque && <div className="est-fait">✓ {marque}</div>}
+            {envoye && (
+              <div className="est-fait">
+                ✓ Envoyée le {dmyfr(envoye)} à {destinataires.join(", ") || "—"}.
+                Le bouton reste actif : on peut la renvoyer, en changeant le destinataire ou en
+                ajoutant quelqu&apos;un en copie.
+              </div>
+            )}
             <div className="est-nav">
-              {b.proprietaire && S(b.proprietaire.email) && (
+              {destinataires.length > 0 && (
                 envoiActif ? (
+                  /* Renvoyer reste possible : une estimation se renvoie souvent
+                     — au conseil, au deuxième indivisaire (retour #132). */
                   <button className="est-suiv" type="button"
-                    disabled={pending || !pdf || !!envoye}
+                    disabled={pending || !pdf}
                     title={pdf ? undefined : "Le dossier PDF doit être fabriqué avant l'envoi"}
                     onClick={envoyer}>
-                    {envoye ? "✓ Envoyé" : "✈ Envoyer au propriétaire"}
+                    {envoye ? "✈ Renvoyer" : "✈ Envoyer au propriétaire"}
                   </button>
                 ) : (
                   <a className="est-suiv" style={{ textDecoration: "none" }}
-                    href={`mailto:${S(b.proprietaire.email)}?subject=${encodeURIComponent(mailObjet)}&body=${encodeURIComponent(mailCorps)}`}>
+                    href={`mailto:${destinataires.join(",")}?subject=${encodeURIComponent(mailObjet)}&body=${encodeURIComponent(mailCorps)}`}>
                     ✈ Préparer l&apos;e-mail
                   </a>
                 )
               )}
               <span className="sp" style={{ flex: 1 }} />
-              <button className="est-suiv" type="button" disabled={pending} onClick={() => marquer("3 - Envoyée")}>
-                Marquer envoyée
+              <button className="est-suiv" type="button" disabled={pending || !!marque}
+                onClick={() => marquer("3 - Envoyée")}>
+                {marque ? "✓ Enregistré" : "Marquer envoyée"}
               </button>
-              <button className="est-prec" type="button" disabled={pending} onClick={() => marquer("4 - Interne")}>
+              <button className="est-prec" type="button" disabled={pending || !!marque}
+                onClick={() => marquer("4 - Interne")}>
                 Estimation interne
               </button>
             </div>

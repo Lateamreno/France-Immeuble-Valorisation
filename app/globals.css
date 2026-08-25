@@ -2260,6 +2260,13 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   padding: 4px 10px; font-size: 12px; color: var(--gray-txt);
 }
 .est-envoi-h .date b { font-family: var(--font-title); color: var(--slate); font-weight: 700; }
+/* Confirmation d'un geste d'envoi : le clic doit se voir (retour #132). */
+.est-fait {
+  border: 1px solid var(--green); border-left-width: 3px; border-radius: 4px;
+  background: #f3f9f4; padding: 8px 12px; margin: 10px 0;
+  font-size: 12.5px; color: var(--slate); line-height: 1.5;
+}
+.est-dest-nb { font-size: 12px; color: var(--gray-txt); flex-wrap: wrap; }
 .est-ml { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .est-ml .lbl { width: 26px; flex: none; font-size: 13px; color: var(--slate-2); }
 .est-ch.plat { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--slate); }
@@ -3543,6 +3550,39 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   color: var(--gray-txt); cursor: pointer;
 }
 .mdt-hint { display: block; font-size: 11.5px; color: var(--gray-lt); line-height: 1.5; margin-top: 8px; }
+
+/* --- Recherche de société en open data (retour #135) --- */
+.mdt-soc { position: relative; margin-bottom: 10px; }
+.mdt-soc-q {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff; padding: 0 10px;
+}
+.mdt-soc-q:focus-within { border-color: var(--gold-bo); }
+.mdt-soc-q svg { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--gray-lt); stroke-width: 1.7; }
+.mdt-soc-q input {
+  flex: 1; border: 0; outline: none; background: none; min-height: 36px;
+  font-family: var(--font-body); font-size: 14px; color: var(--slate);
+}
+.mdt-soc-q i { font-style: normal; color: var(--gray-lt); }
+.mdt-soc-l {
+  position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 60;
+  background: #fff; border: 1px solid var(--line); border-radius: 5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .12);
+  max-height: 300px; overflow-y: auto;
+}
+.mdt-soc-l button {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--line-lt);
+}
+.mdt-soc-l button:last-of-type { border-bottom: 0; }
+.mdt-soc-l button:hover { background: #f6f4ef; }
+.mdt-soc-l b { display: block; font-size: 13px; color: var(--slate); }
+.mdt-soc-l span { display: block; font-size: 11.5px; color: var(--gray-txt); }
+.mdt-soc-l .src {
+  padding: 4px 12px; font-size: 10.5px; color: var(--gray-lt);
+  border-top: 1px solid var(--line-lt);
+}
+.mdt-soc-v { font-size: 11.5px; color: var(--gray-lt); margin-top: 5px; }
 
 /* --- La grille de saisie : toutes les cases alignées (retour #101) --- */
 .mdt-grid {
