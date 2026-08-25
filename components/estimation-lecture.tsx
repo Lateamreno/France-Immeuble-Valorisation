@@ -11,6 +11,7 @@
 import Link from "next/link";
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { ETATS } from "@/lib/bo/dossier";
+import { Avion } from "@/components/pictos";
 
 const eur = (v?: number) => (v === undefined ? "—" : `${Math.round(v).toLocaleString("fr-FR")} €`);
 const pct = (v?: number) => (v === undefined ? "—" : `${v.toFixed(1).replace(".", ",")} %`);
@@ -31,10 +32,12 @@ function Note({ valeur, libelles }: { valeur?: number; libelles: string[] }) {
   );
 }
 
-export function EstimationEnLecture({ e, immeubleId, pdfUrl }: {
+export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer }: {
   e: EstimationLecture;
   immeubleId: string;
   pdfUrl?: string;
+  /** Passer à l'envoi sans quitter la page (retour #125). */
+  onEnvoyer?: () => void;
 }) {
   const avecRef = e.lignes.some((l) => l.refLoyer || l.refPrix || l.refRenta);
 
@@ -68,10 +71,17 @@ export function EstimationEnLecture({ e, immeubleId, pdfUrl }: {
           <Link className="fadd" href={`/bien/${immeubleId}/estimation/${e.id}/imprimer`}>
             Aperçu du dossier ↗
           </Link>
-          {/* Reprendre, c'est renvoyer — pas rouvrir le calcul (retour #98). */}
-          <Link className="savebar-go" href={`/bien/${immeubleId}/estimation/${e.id}`}>
-            <span className="ch">›</span> Reprendre pour envoyer
-          </Link>
+          {/* Reprendre, c'est renvoyer — pas rouvrir le calcul (retour #98).
+              Et ça se fait dans la page : pas de changement d'URL (#125). */}
+          {onEnvoyer ? (
+            <button type="button" className="savebar-go" onClick={onEnvoyer}>
+              <Avion /> Reprendre pour envoyer
+            </button>
+          ) : (
+            <Link className="savebar-go" href={`/bien/${immeubleId}/estimation/${e.id}`}>
+              <Avion /> Reprendre pour envoyer
+            </Link>
+          )}
         </div>
       </header>
 

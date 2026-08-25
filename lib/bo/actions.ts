@@ -4,6 +4,8 @@
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { after } from "next/server";
+import { filtreMots, getAgentFiche, getEstimation, motsRecherche } from "@/lib/bubble/server";
+import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -932,6 +934,86 @@ export async function setEstimationStatut(
     p_id: estimationId,
     p_patch: statut === "3 - Envoyée" ? { Statut: statut, date_envoi: new Date().toISOString() } : { Statut: statut },
   });
+  refresh(immeubleId);
+}
+
+/**
+ * Ouvre une estimation existante SANS quitter la fiche (retour #125).
+ *
+ * MAV, pour la deuxième fois : « l'estimation en cours doit faire partie de la
+ * page ». Cliquer sur une estimation dans le rail ne doit donc plus être une
+ * navigation : l'écran va chercher ce qu'il lui manque ici, et le monte à côté
+ * du reste. Ce qui est déjà saisi ailleurs n'est jamais démonté.
+ */
+export async function ouvrirEstimation(estimationId: string): Promise<{
+  reprise: {
+    id: string; titre?: string; pdfUrl?: string; pdfKo?: number;
+    hai?: number; nv?: number; creeLe?: string; statut?: string;
+  };
+  lecture: EstimationLecture;
+} | null> {
+  const e = await getEstimation(estimationId).catch(() => null);
+  if (!e) return null;
+  const agent = await getAgentFiche(String(e.ESTIMATOR ?? "")).catch(() => null);
+
+  /* Le dossier PDF déjà fabriqué, s'il est au coffre : c'est la pièce jointe
+     du mail, et on ne le refabrique pas pour rien. */
+  let pdfUrl: string | undefined;
+  let pdfKo: number | undefined;
+  if (SB_KEY) {
+    const r = await fetch(
+      `${SB_URL}/rest/v1/bo_app_document?data->>ESTIMATION=eq.${encodeURIComponent(estimationId)}&select=data&limit=1`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+    ).catch(() => null);
+    if (r?.ok) {
+      const rows = (await r.json()) as { data: Record<string, unknown> }[];
+      const d = rows[0]?.data;
+      const chemin = typeof d?.path === "string" ? d.path : undefined;
+      if (chemin) pdfUrl = `/api/photo?s=${encodeURIComponent(chemin)}`;
+      if (typeof d?.size_kB === "number") pdfKo = d.size_kB;
+    }
+  }
+
+  const t = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  return {
+    reprise: {
+      id: estimationId,
+      titre: t(e.titre),
+      pdfUrl, pdfKo,
+      hai: n(e.prix_hai),
+      nv: n(e.prix_nv) ?? n(e["[SUPPR] prix_nv"]),
+      creeLe: t(e["Created Date"]),
+      statut: t(e.Statut),
+    },
+    lecture: lireEstimation(e, agent),
+  };
+}
+
+/**
+ * Supprime une estimation, et le dossier PDF qui l'accompagnait (retour #126).
+ *
+ * MAV : « il faut qu'on puisse supprimer des estimations, surtout celles qui
+ * n'ont jamais été envoyées. » Une estimation déjà partie chez le propriétaire
+ * est une pièce de dossier : on la supprime aussi si on le demande, mais
+ * l'écran prévient — c'est lui qui porte l'avertissement, pas cette fonction.
+ */
+export async function supprimerEstimation(immeubleId: string, estimationId: string) {
+  /* Le dossier généré n'a plus d'objet sans son estimation : le laisser au
+     coffre, c'est laisser un PDF orphelin que personne ne saura relire. */
+  if (SB_KEY) {
+    const r = await fetch(
+      `${SB_URL}/rest/v1/bo_app_document?data->>ESTIMATION=eq.${encodeURIComponent(estimationId)}&select=id`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+    ).catch(() => null);
+    if (r?.ok) {
+      const docs = (await r.json()) as { id: string }[];
+      for (const d of docs) {
+        await rpc("bo_delete_doc", { p_table: "bo_app_document", p_id: d.id }).catch(() => {});
+      }
+    }
+  }
+  await rpc("bo_delete_doc", { p_table: "bo_estimation", p_id: estimationId });
   refresh(immeubleId);
 }
 
@@ -2266,13 +2348,22 @@ export type ContactTrouve = {
   id: string; nom: string; type?: string; tel?: string; email?: string;
 };
 
-/** Recherche un contact par nom, e-mail ou téléphone (searchfield du BO). */
+/**
+ * Recherche un contact par nom, e-mail ou téléphone.
+ *
+ * Mot à mot et dans les deux sens : le BO écrit « voci romain » dans son
+ * searchfield, et le nom et le prénom sont deux colonnes — chercher la phrase
+ * entière ne trouvait donc rien dès qu'on tapait deux mots (retour #123).
+ */
 export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
-  const terme = q.trim().toLowerCase();
-  if (terme.length < 2 || !SB_KEY) return [];
-  const motif = `*${terme.replace(/[%*]/g, "")}*`;
+  const mots = motsRecherche(q);
+  if (!mots.length || q.trim().length < 2 || !SB_KEY) return [];
   const p = new URLSearchParams({ select: "data", limit: "12" });
-  p.append("or", `(data->>searchfield.ilike.${motif},data->>nom.ilike.${motif},data->>email.ilike.${motif},data->>portable.ilike.${motif})`);
+  const f = filtreMots(
+    ["searchfield", "nom", '"prénom"', "email", "portable", "entreprise_nom"],
+    mots,
+  );
+  if (f) p.append(f[0], f[1]);
   const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
     cache: "no-store",

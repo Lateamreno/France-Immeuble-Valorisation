@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { getBien, getPrixSecteur } from "@/lib/bubble/server";
+import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
 import { BienFiche } from "@/components/bien-fiche";
-import { EstimationWizard } from "@/components/estimation-wizard";
 import { mailConfigure } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +17,19 @@ export default async function EstimationPage({ params }: { params: Promise<{ id:
       </div>
     );
   }
-  // L'estimation est une page de la fiche, pas une modale : le rail de droite
-  // reste là pour consulter l'état locatif, le secteur ou les photos pendant
-  // qu'on estime (retour #66).
+  const operation = await getOperation(id).catch(() => null);
+
+  // L'estimation n'est PAS une page à part : c'est un écran de la fiche
+  // (retour #125). Cette route n'est plus qu'un point d'entrée direct — elle
+  // monte la fiche avec l'estimation déjà ouverte, et à partir de là tout se
+  // passe sans changer d'URL.
   return (
     <BienFiche
       b={b}
-      contenu={<EstimationWizard b={b} secteur={secteur} envoiActif={mailConfigure()} />}
+      operation={operation}
+      secteur={secteur}
+      envoiActif={mailConfigure()}
+      ouvrir={{ mode: "neuve" }}
     />
   );
 }

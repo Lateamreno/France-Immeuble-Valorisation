@@ -1,15 +1,19 @@
 // Consulter une estimation passée, en lecture seule (tâche #55).
 //
 // Servie par les valeurs figées de l'enregistrement, pas par la fiche : c'est
-// tout l'intérêt. La fiche montre l'immeuble aujourd'hui, cette page montre ce
+// tout l'intérêt. La fiche montre l'immeuble aujourd'hui, cet écran montre ce
 // qu'on a envoyé au propriétaire à l'époque.
+//
+// Comme le reste de l'estimation, il se monte DANS la fiche (retour #125) :
+// cette route n'est qu'un point d'entrée direct.
 import Link from "next/link";
-import { getAgentFiche, getBien, getEstimation, getOperation } from "@/lib/bubble/server";
-import { lireEstimation } from "@/lib/bo/estimation-lecture";
+import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
+import { ouvrirEstimation } from "@/lib/bo/actions";
 import { BienFiche } from "@/components/bien-fiche";
-import { EstimationEnLecture } from "@/components/estimation-lecture";
+import { mailConfigure } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function ConsulterEstimation({
   params,
@@ -17,39 +21,27 @@ export default async function ConsulterEstimation({
   params: Promise<{ id: string; eid: string }>;
 }) {
   const { id, eid } = await params;
-  const [b, e] = await Promise.all([
+  const [b, ecran, secteur] = await Promise.all([
     getBien(id).catch(() => null),
-    getEstimation(eid).catch(() => null),
+    ouvrirEstimation(eid).catch(() => null),
+    getPrixSecteur(id),
   ]);
-  if (!b || !e) {
+  if (!b || !ecran) {
     return (
       <div style={{ padding: 40 }}>
         Estimation introuvable. <Link href={`/bien/${id}`}>← Retour à la fiche</Link>
       </div>
     );
   }
-
-  const [agent, operation] = await Promise.all([
-    getAgentFiche(String(e.ESTIMATOR ?? "")).catch(() => null),
-    getOperation(id).catch(() => null),
-  ]);
-
-  // Le PDF envoyé, s'il est au coffre.
-  const doc = b.documents.find((d) => String(d.ESTIMATION ?? "") === eid);
-  const chemin = typeof doc?.path === "string" ? doc.path : undefined;
+  const operation = await getOperation(id).catch(() => null);
 
   return (
     <BienFiche
       b={b}
       operation={operation}
-      contenu={
-        <EstimationEnLecture
-          e={lireEstimation(e, agent)}
-          immeubleId={id}
-          pdfUrl={chemin ? `/api/photo?s=${encodeURIComponent(chemin)}` : undefined}
-        />
-      }
-      contenuLabel="Estimation consultée"
+      secteur={secteur}
+      envoiActif={mailConfigure()}
+      ouvrir={{ mode: "lecture", reprise: ecran.reprise, lecture: ecran.lecture }}
     />
   );
 }

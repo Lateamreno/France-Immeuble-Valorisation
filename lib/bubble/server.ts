@@ -92,6 +92,11 @@ function sbParams(constraints?: Constraint[]) {
       p.append("id", `in.(${(c.value as string[]).map((v) => `"${v}"`).join(",")})`);
     else if (c.constraint_type === "greater than" && SORT_COL[c.key])
       p.append(SORT_COL[c.key], `gt.${c.value}`);
+    else if (c.constraint_type === "in" && Array.isArray(c.value))
+      p.append(
+        `data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`,
+        `in.(${(c.value as string[]).map((v) => `"${v}"`).join(",")})`,
+      );
     else if (c.constraint_type === "equals")
       // Les clés Bubble exotiques (espaces, « 0 - IMMEUBLE ») doivent être citées côté PostgREST.
       p.append(`data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`, `eq.${c.value}`);
@@ -251,6 +256,12 @@ async function parLots<T>(
 const parIds = (type: string, ids: unknown[], taille = 100) =>
   parLots(ids, taille, (lot) =>
     fetchAll(type, [{ key: "_id", constraint_type: "in", value: lot }], taille).catch(() => []),
+  );
+
+/** Les lignes d'une table dont un champ pointe vers l'un des identifiants. */
+const parChamp = (type: string, champ: string, ids: unknown[], taille = 100) =>
+  parLots(ids, taille, (lot) =>
+    fetchAll(type, [{ key: champ, constraint_type: "in", value: lot }], taille).catch(() => []),
   );
 
 async function count(type: string, constraints?: Constraint[]) {
@@ -912,6 +923,11 @@ export type ListCard = {
   estAgent?: boolean;
   /** Nombres de recherches et d'immeubles rattachés, affichés en pictos. */
   compteurs?: { recherches?: number; immeubles?: number };
+  /* --- Vignette d'immeuble (retour #122) --- */
+  /** Photo principale : « sinon on comprend rien » dans la liste. */
+  photoUrl?: string;
+  /** Street View du bien, ouvert dans une autre fenêtre — sans sortir de la liste. */
+  streetUrl?: string;
   /** Clé d'onglet (en_cours / termines / archives…). */
   group: string;
   date?: string;
@@ -963,15 +979,41 @@ export async function listImmeubles(): Promise<ListCard[]> {
     constraints: [{ key: "archived", constraint_type: "equals", value: "true" }],
     limit: 100, sort: "Modified Date", desc: true,
   }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
-  const contactIds = [...ims, ...archived.results].map((i) => String(i.PROPRIETAIRE ?? "")).filter(Boolean);
+  const tous = [...ims, ...archived.results];
+  const contactIds = tous.map((i) => String(i.PROPRIETAIRE ?? "")).filter(Boolean);
+  /* Les coordonnées vivent sur l'adresse géocodée, pas sur l'immeuble : c'est
+     elles qui permettent d'ouvrir la façade en Street View (retour #122). */
+  const [contactsR, adressesR] = await Promise.all([
+    parIds("contact", contactIds),
+    parChamp("adresse", "IMMEUBLE", tous.map((i) => String(i._id))).catch(() => []),
+  ]);
   const contacts = new Map<string, Record<string, unknown>>();
-  for (const r of await parIds("contact", contactIds)) contacts.set(String(r._id), r);
+  for (const r of contactsR) contacts.set(String(r._id), r);
+  const geos = new Map<string, { lat?: number; lng?: number }>();
+  for (const a of adressesR) {
+    const g = a.geo as { lat?: number; lng?: number } | undefined;
+    if (g && typeof g.lat === "number" && typeof g.lng === "number") {
+      geos.set(String(a.IMMEUBLE ?? ""), g);
+    }
+  }
+  /** Street View quand on a le point ; à défaut, la recherche sur l'adresse. */
+  const street = (im: Record<string, unknown>) => {
+    const g = geos.get(String(im._id));
+    if (g) return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${g.lat},${g.lng}`;
+    const adresse = [im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville]
+      .filter(Boolean).join(" ");
+    return adresse
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`
+      : undefined;
+  };
   const card = (im: Record<string, unknown>, group: string): ListCard => ({
     id: String(im._id),
     href: `/bien/${im._id}`,
     avatar: initialsOf(im.AGENT), avatarCouleur: couleurOf(im.AGENT),
     title: imLabel(im),
     sub: contactLabel(contacts.get(String(im.PROPRIETAIRE ?? ""))) || undefined,
+    photoUrl: photoProxy(im.photo_main_compressed),
+    streetUrl: street(im),
     badge: (() => {
       const st = String(im.Statut ?? "").replace(/^\d+ - /, "");
       if (!st) return undefined;
@@ -1714,17 +1756,58 @@ export async function getContact(id: string): Promise<ContactData | null> {
   };
 }
 
-/** Recherche globale (searchfield ilike) : immeubles, contacts, mandats. */
+/* ============================ Recherche texte ============================
+   Le champ de recherche du BO est écrit dans un ordre imposé — « voci romain
+   0647… » — et le nom et le prénom sont deux colonnes distinctes. Chercher la
+   phrase entière ne pouvait donc pas marcher : « romain » sortait la fiche,
+   « romain voc » ne sortait plus rien (retour #123).
+
+   On cherche donc MOT À MOT : chaque mot doit se trouver quelque part, peu
+   importe où et dans quel ordre. « romain voci », « voci romain » et
+   « cohen j » ramènent la même fiche. */
+
+/** Les mots de la recherche, nettoyés des caractères qui cassent PostgREST. */
+export function motsRecherche(q: string): string[] {
+  return (q ?? "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    // Réservés du langage de filtre : virgule, parenthèses, guillemets, jokers.
+    .map((m) => m.replace(/[%*(),"\\]/g, ""))
+    .filter(Boolean)
+    // Au-delà de cinq mots, la requête n'apporte plus rien et s'allonge pour rien.
+    .slice(0, 5);
+}
+
+/**
+ * Le filtre PostgREST correspondant : un ET de OU — un OU par mot, sur toutes
+ * les colonnes interrogées. Rend `null` quand il n'y a rien à chercher.
+ */
+export function filtreMots(champs: string[], mots: string[]): [string, string] | null {
+  if (!mots.length || !champs.length) return null;
+  const liste = (m: string) => champs.map((c) => `data->>${c}.ilike.*${m}*`).join(",");
+  if (mots.length === 1) return ["or", `(${liste(mots[0])})`];
+  return ["and", `(${mots.map((m) => `or(${liste(m)})`).join(",")})`];
+}
+
+/** Recherche globale (mot à mot) : immeubles, contacts, mandats. */
 export async function globalSearch(q: string): Promise<{
   immeubles: ListCard[]; contacts: ListCard[]; mandats: ListCard[];
 }> {
   await loadInitials();
-  const term = q.trim().toLowerCase();
-  if (!term || !USE_SB) return { immeubles: [], contacts: [], mandats: [] };
-  const like = `*${term.replace(/[%*]/g, "")}*`;
+  const mots = motsRecherche(q);
+  if (!mots.length || !USE_SB) return { immeubles: [], contacts: [], mandats: [] };
+  /* Nom et prénom sont deux colonnes, et searchfield les écrit dans un seul
+     ordre : on interroge les trois, mot à mot (retour #123). */
+  const CHAMPS: Record<string, string[]> = {
+    immeuble: ["searchfield"],
+    contact: ["searchfield", "nom", '"prénom"', "entreprise_nom", "email"],
+    mandat: ["searchfield"],
+  };
   const search = async (type: string) => {
     const p = new URLSearchParams({ select: "data", limit: "20" });
-    p.append("data->>searchfield", `ilike.${like}`);
+    const f = filtreMots(CHAMPS[type] ?? ["searchfield"], mots);
+    if (f) p.append(f[0], f[1]);
     const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
       headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` },
       cache: "no-store",
@@ -1776,11 +1859,10 @@ async function sbPage(
 ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
   if (!SB_KEY) return { rows: [], total: 0 };
   const p = new URLSearchParams({ select: "data" });
-  const terme = (opts.q ?? "").trim().toLowerCase();
-  if (terme) {
-    const motif = `*${terme.replace(/[%*(),]/g, "")}*`;
-    p.append("or", `(${opts.champs.map((c) => `data->>${c}.ilike.${motif}`).join(",")})`);
-  }
+  /* Mot à mot, dans n'importe quel ordre : « romain voc » et « voci romain »
+     doivent tomber sur la même fiche (retour #123). */
+  const f = filtreMots(opts.champs, motsRecherche(opts.q ?? ""));
+  if (f) p.append(f[0], f[1]);
   for (const [k, v] of Object.entries(opts.egal ?? {})) {
     p.append(`data->>${/^\w+$/.test(k) ? k : `"${k}"`}`, `eq.${v}`);
   }

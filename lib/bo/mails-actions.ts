@@ -187,7 +187,8 @@ export async function chargerVivier() {
  *  des destinataires avant que quoi que ce soit ne sorte. */
 export async function preparerSalve(s: {
   libelle: string;
-  cible: Cible;
+  /** Une salve peut viser plusieurs types de clients à la fois (retour #121). */
+  cibles: Cible[];
   filtres: Filtres;
   objet: string;
   corps: string;
@@ -198,7 +199,9 @@ export async function preparerSalve(s: {
   const [cree] = await ecrire("fi_salve", "POST", {
     agent_id: s.agentId ?? null,
     libelle: s.libelle || s.objet || "Salve",
-    cible: s.cible,
+    /* La colonne reste du texte : plusieurs cibles s'y écrivent séparées par
+       une virgule, et le détail complet vit dans `filtres`. */
+    cible: s.cibles.join(","),
     filtres: s.filtres,
     message_type_id: s.messageTypeId ?? null,
     objet: s.objet,

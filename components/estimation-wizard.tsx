@@ -82,6 +82,17 @@ function Champ({
   );
 }
 
+/* Flèches de navigation du wizard (retour #124).
+   Les chevrons circulaires « ↺ / ↻ » se lisaient comme un rechargement : on
+   dessine une vraie flèche, qui ne dit qu'une chose — on avance, on recule. */
+const Fleche = ({ arriere }: { arriere?: boolean }) => (
+  <svg className="est-fl" viewBox="0 0 24 24" aria-hidden>
+    {arriere
+      ? <><path d="M20 12H5" /><path d="m11 6-6 6 6 6" /></>
+      : <><path d="M4 12h15" /><path d="m13 6 6 6-6 6" /></>}
+  </svg>
+);
+
 const Ok = () => <span className="est-ok" title="Complet">✓</span>;
 const Ko = () => <span className="est-ko" title="Information manquante — allez la compléter sur la fiche">!</span>;
 const Etat = ({ ok }: { ok: boolean }) => (ok ? <Ok /> : <Ko />);
@@ -394,12 +405,14 @@ export function EstimationWizard({
   const Nav = ({ suivantLabel }: { suivantLabel?: string }) => (
     <div className="est-nav">
       {step > 0 && step < 4 && (
-        <button className="est-prec" type="button" onClick={() => setStep(step - 1)}>↺ Précédent</button>
+        <button className="est-prec" type="button" onClick={() => setStep(step - 1)}>
+          <Fleche arriere /> Précédent
+        </button>
       )}
       <span className="sp" style={{ flex: 1 }} />
       {step < 3 && (
         <button className="est-suiv" type="button" onClick={() => setStep(step + 1)}>
-          ↻ {suivantLabel ?? "Suivant"}
+          {suivantLabel ?? "Suivant"} <Fleche />
         </button>
       )}
     </div>
@@ -750,9 +763,13 @@ export function EstimationWizard({
             <div className="est-cpt">{analyse.length} / 900 caractères</div>
 
             <div className="est-nav">
-              <button className="est-prec" type="button" onClick={() => setStep(1)}>↺ Précédent</button>
+              <button className="est-prec" type="button" onClick={() => setStep(1)}>
+                <Fleche arriere /> Précédent
+              </button>
               <span className="sp" style={{ flex: 1 }} />
-              <button className="est-suiv" type="button" onClick={() => setStep(3)}>↻ Suivant</button>
+              <button className="est-suiv" type="button" onClick={() => setStep(3)}>
+                Suivant <Fleche />
+              </button>
             </div>
           </>
         )}

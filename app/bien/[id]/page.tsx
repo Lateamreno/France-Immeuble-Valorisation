@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { BienFiche } from "@/components/bien-fiche";
-import { getBien, getOperation } from "@/lib/bubble/server";
+import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
+import { mailConfigure } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
+// L'estimation se fait maintenant depuis la fiche : la fabrication du dossier
+// PDF passe donc par cette route, et le navigateur met quelques secondes à
+// démarrer à froid (retour #125).
+export const maxDuration = 60;
 
 export default async function BienPage({
   params,
@@ -19,7 +24,11 @@ export default async function BienPage({
     err = e instanceof Error ? e.message : "erreur";
   }
   // L'opération de découpe, s'il y en a une : elle ajoute une section au rail.
-  const operation = data ? await getOperation(id).catch(() => null) : null;
+  // Le prix du secteur voyage avec la fiche : l'estimation s'ouvre DANS la
+  // page, il faut donc qu'il soit déjà là quand on clique (retour #125).
+  const [operation, secteur] = data
+    ? await Promise.all([getOperation(id).catch(() => null), getPrixSecteur(id).catch(() => null)])
+    : [null, null];
 
   if (!data) {
     return (
@@ -36,5 +45,7 @@ export default async function BienPage({
     );
   }
 
-  return <BienFiche b={data} operation={operation} />;
+  return (
+    <BienFiche b={data} operation={operation} secteur={secteur} envoiActif={mailConfigure()} />
+  );
 }

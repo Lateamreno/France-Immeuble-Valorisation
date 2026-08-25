@@ -15,12 +15,15 @@ export function ListeShell({
   searchPlaceholder,
   /** Affiche la colonne de filtres du BO (Immeubles, Recherches). */
   filtres = false,
+  vignettes = false,
   titre,
 }: {
   rows: ListCard[];
   tabs: { key: string; label: string }[];
   searchPlaceholder: string;
   filtres?: boolean;
+  /** Ajoute la vignette de façade et le lien Street View (Immeubles, #122). */
+  vignettes?: boolean;
   /** Repris dans la barre collée quand les filtres sont affichés. */
   titre?: string;
 }) {
@@ -86,6 +89,16 @@ export function ListeShell({
       {slice.map((r) => {
         const inner = (
           <>
+            {/* La façade, quand on l'a : une liste d'immeubles sans photo, « on
+                comprend rien » (retour #122). */}
+            {vignettes && (
+              <span className="lphoto">
+                {r.photoUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={r.photoUrl} alt="" loading="lazy" />
+                  : <i>Pas de photo</i>}
+              </span>
+            )}
             {/* La couleur du commercial vient de la base : c'est elle qui fait
                 qu'on repère à qui appartient une fiche sans lire les initiales. */}
             <span className="lav" style={r.avatarCouleur ? { background: r.avatarCouleur } : undefined}>
@@ -111,6 +124,29 @@ export function ListeShell({
             {r.badge && (
               <span className={r.badge.tone === "green" ? "badge-g" : r.badge.tone === "red" ? "badge-r" : "badge-o"}>
                 {r.badge.label}
+              </span>
+            )}
+            {/* La façade en Street View, dans une autre fenêtre : on regarde la
+                rue sans perdre sa place dans la liste (retour #122). La ligne
+                étant déjà un lien, c'est un bouton — pas un <a> dans un <a>. */}
+            {vignettes && r.streetUrl && (
+              <span
+                className="lstreet" role="button" tabIndex={0}
+                title="Voir la façade sur Google Street View (nouvelle fenêtre)"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(r.streetUrl, "_blank", "noopener"); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault(); e.stopPropagation();
+                    window.open(r.streetUrl, "_blank", "noopener");
+                  }
+                }}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <circle cx="12" cy="7" r="3" />
+                  <path d="M6.5 21c.3-4.2 2.6-6.4 5.5-6.4s5.2 2.2 5.5 6.4" />
+                  <path d="M3 12.5A9 9 0 0 1 12 3.5a9 9 0 0 1 9 9" />
+                </svg>
+                Street View
               </span>
             )}
           </>

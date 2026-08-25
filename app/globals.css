@@ -489,6 +489,21 @@ button { font-family: inherit; cursor: pointer; }
   padding: 7px 13px;
 }
 .fbtn:hover { background: #e4e4e4; }
+/* Une action se reconnaît à son picto ; un statut, lui, n'est qu'un mot dans
+   une pastille. C'est ce qui les sépare quand ils disent la même chose
+   — « à envoyer » et « Envoyer » (retour #126). */
+.fbtn.avec-picto { cursor: pointer; }
+.fbtn.icone { padding: 7px 9px; }
+.fbtn.danger { color: var(--red); border-color: #e6c9c9; background: #fdf6f6; }
+.fbtn.danger:hover { background: #f9e9e9; }
+.fbtn:disabled { opacity: .55; cursor: default; }
+/* Titre cliquable qui n'est pas un lien : il ouvre l'écran dans la page. */
+.lienclair {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.lienclair:hover { text-decoration: underline; }
+.lienclair.sous { color: var(--gold-bo); font-size: inherit; }
 
 /* historique des échanges */
 .hitem {
@@ -901,6 +916,22 @@ a.lrow:hover { border-color: var(--gray-lt); }
 .lmid .lnote { font-family: var(--font-body); font-weight: 400; color: var(--gray-txt); font-size: 12.5px; }
 .lmid .ls { font-size: 12.5px; color: var(--gray-lt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lright { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12.5px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+/* Vignette de façade et Street View de la liste des immeubles (retour #122). */
+.lphoto {
+  flex: none; width: 62px; height: 46px; border-radius: 4px; overflow: hidden;
+  background: var(--cols); display: grid; place-items: center;
+}
+.lphoto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lphoto i { font-size: 9.5px; font-style: normal; color: var(--gray-lt); text-align: center; padding: 0 4px; }
+.lstreet {
+  flex: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 3px 8px; font-size: 11px; font-weight: 600; color: var(--gray-txt);
+  font-family: var(--font-title); text-decoration: none;
+}
+.lstreet:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+.lstreet svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 /* Barre de pagination collée en bas, comme dans le BO. */
 .lst-pager {
   display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-txt);
@@ -2193,11 +2224,25 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   background: #fafafa; border-radius: 0 0 5px 5px;
 }
 .est-prec {
+  display: inline-flex; align-items: center; gap: 7px;
   border: 1px solid #cfcfcf; background: #fff; border-radius: 4px; padding: 7px 14px; cursor: pointer;
   font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate-2);
 }
+/* Picto des boutons d'action (envoyer, supprimer) : ce qui distingue une
+   action d'un statut, quand les deux portent le même mot (retour #126). */
+.picto-av {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* Flèche dessinée : « ↻ » se lisait comme un rechargement (retour #124). */
+.est-fl {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
 .est-prec:hover { background: #f2f2f2; }
 .est-suiv {
+  display: inline-flex; align-items: center; gap: 7px;
   border: 0; background: var(--green); color: #fff; border-radius: 4px; padding: 8px 16px; cursor: pointer;
   font-family: var(--font-title); font-size: 12.5px; font-weight: 700;
 }
@@ -2916,6 +2961,20 @@ select.pr-in { cursor: pointer; }
 
 .srow2.encours { color: var(--gold-bo); font-weight: 700; }
 .srow2.encours .sic2 svg { stroke: var(--gold-bo); }
+/* L'estimation ouverte porte sa croix : on la ferme quand on en a fini, sans
+   quitter la fiche (retour #125). La ligne devient donc un conteneur. */
+.brail .srow2.ouvert { padding: 0; gap: 0; }
+.brail .srow2.ouvert .srow2-in {
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  padding: 12px 2px 12px 14px;
+  border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.brail .srow2.ouvert .srow2-x {
+  border: 0; background: none; cursor: pointer; color: var(--slate-2);
+  font-size: 13px; line-height: 1; padding: 12px 13px 12px 8px;
+}
+.brail .srow2.ouvert .srow2-x:hover { color: var(--red); }
 .pastille {
   width: 8px; height: 8px; border-radius: 50%; background: var(--gold-bo);
   display: inline-block; animation: pastille 1.8s ease-in-out infinite;
@@ -3762,6 +3821,9 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .estm-it {
   display: block; padding: 10px 14px; text-decoration: none;
   border-bottom: 1px solid var(--line-lt);
+  /* Ce sont des boutons depuis #125 : ils ouvrent l'estimation dans la page. */
+  width: 100%; text-align: left; border-left: 0; border-right: 0; border-top: 0;
+  background: none; cursor: pointer; font: inherit;
 }
 .estm-it:last-child { border-bottom: 0; }
 .estm-it:hover { background: var(--cols); }
@@ -4797,7 +4859,20 @@ a.cfc-t:hover { text-decoration: underline; }
 .sv-cible:hover, .sv-cible.on { border-color: var(--gold-bo); background: #fffdf6; }
 .sv-cible b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }
 .sv-cible i { font-size: 12px; font-style: normal; color: var(--gray-txt); line-height: 1.45; }
-.sv-cible span { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: var(--gold-bo); }
+.sv-cible .sv-n { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: var(--gold-bo); }
+/* Plusieurs cibles à la fois : la carte devient une case à cocher (#121). */
+.sv-cible { position: relative; }
+.sv-coche {
+  position: absolute; top: 12px; right: 12px;
+  width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 4px;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff;
+}
+.sv-cible.on .sv-coche { background: var(--gold-bo); border-color: var(--gold-bo); }
+.sv-aide {
+  grid-column: 1 / -1; margin: 0 0 4px;
+  font-size: 12px; color: var(--gray-txt); line-height: 1.5;
+}
+.sv-aide b { color: var(--slate); }
 
 .sv-filtres { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .sv-bloc h3 {
@@ -4805,11 +4880,54 @@ a.cfc-t:hover { text-decoration: underline; }
   color: var(--gold-bo); letter-spacing: .2px;
 }
 .sv-bloc > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.sv-bloc.large { grid-column: 1 / -1; }
 .sv-puce {
   border: 1px solid var(--line); background: #fff; border-radius: 13px; cursor: pointer;
   padding: 4px 11px; font: inherit; font-size: 12px; color: var(--slate-2);
 }
 .sv-puce.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+/* Exclusion (retour #121) : le rouge barré dit ce que l'inclusion sombre ne
+   dit pas — cette valeur SORT de la salve, quoi qu'il arrive par ailleurs. */
+.sv-puce.exclue {
+  background: #fdf2f2; border-color: #e6c9c9; color: var(--red);
+  text-decoration: line-through; cursor: pointer;
+}
+.sv-puce:disabled { cursor: default; }
+.sv-puce-duo { display: inline-flex; align-items: stretch; }
+.sv-puce-duo .sv-puce { border-radius: 13px 0 0 13px; border-right: 0; }
+.sv-ex {
+  border: 1px solid var(--line); border-left: 0; border-radius: 0 13px 13px 0;
+  background: #fff; cursor: pointer; padding: 0 8px;
+  font-size: 12px; line-height: 1; color: var(--gray-lt);
+}
+.sv-ex:hover { color: var(--red); border-color: #e6c9c9; }
+.sv-ex.on { background: #fdf2f2; border-color: #e6c9c9; color: var(--red); }
+.sv-ex-ex { color: var(--red); font-weight: 700; }
+.sv-vide { margin: 0; font-size: 12px; color: var(--gray-lt); }
+.sv-exs { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.sv-exs-l { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.sv-exs-l > span {
+  flex: 0 0 108px; font-family: var(--font-title); font-size: 11.5px; color: var(--gray-txt);
+}
+/* Dans le récapitulatif, le barré n'apporte rien : la ligne dit déjà qu'on
+   exclut, et une phrase barrée se lit mal. */
+.sv-exs-l .sv-puce.exclue { text-decoration: none; }
+/* La liste nominative : c'est là qu'on retire un contact à la main. */
+.sv-dest { width: 100%; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; }
+.sv-dest-l {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-bottom: 1px solid var(--line-lt); font-size: 12.5px;
+}
+.sv-dest-l:last-child { border-bottom: 0; }
+.sv-dest-l b { font-family: var(--font-title); font-weight: 600; color: var(--slate); }
+.sv-dest-l i { font-style: normal; color: var(--gray-lt); font-size: 11.5px; }
+.sv-dest-l em { font-style: normal; }
+.sv-dest-l button { border: 0; background: none; cursor: pointer; color: var(--gray-lt); font-size: 12px; }
+.sv-dest-l button:hover { color: var(--red); }
+.sv-plus {
+  width: 100%; border: 0; border-top: 1px solid var(--line-lt); background: #fafafa;
+  cursor: pointer; padding: 7px; font: inherit; font-size: 12px; color: var(--gold-bo);
+}
 .sv-case { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12.5px; color: var(--slate); }
 .sv-lieux { width: 100%; }
 .sv-lieux input { width: 100%; border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; font: inherit; font-size: 12.5px; }

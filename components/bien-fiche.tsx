@@ -6,7 +6,13 @@ import Image from "next/image";
 import Link from "next/link";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
-import { chargerAcheteurs, reactiver, setApporteur, setPropositionStatut, updateBien, updateContact } from "@/lib/bo/actions";
+import {
+  chargerAcheteurs, ouvrirEstimation, reactiver, setApporteur, setPropositionStatut,
+  supprimerEstimation, updateBien, updateContact,
+} from "@/lib/bo/actions";
+import { EstimationWizard, type RepriseEstimation } from "@/components/estimation-wizard";
+import { EstimationEnLecture } from "@/components/estimation-lecture";
+import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -17,7 +23,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
-import { Picto } from "@/components/pictos";
+import { Avion, Corbeille, Picto } from "@/components/pictos";
 import { MOTIFS_VENTE } from "@/lib/referentiels";
 import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran } from "@/components/photos";
@@ -34,9 +40,33 @@ type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
   | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs" | "diffusion"
   | "acheteurs" | "notes" | "decoupe"
-  /* Écran greffé sur la fiche (l'estimation) : il reste monté pendant qu'on
-     visite les autres sections, pour ne rien perdre de la saisie (#96). */
+  /* Écran greffé sur la fiche (l'estimation, le mandat) : il reste monté
+     pendant qu'on visite les autres sections, pour ne rien perdre de la
+     saisie (#96, #125). */
   | "encours";
+
+/**
+ * L'estimation ouverte dans la fiche (retour #125).
+ *
+ * MAV, deux fois : « l'estimation en cours doit faire partie de la page […]
+ * ça ne doit pas être une page à part, ça ne doit pas être une modale ni
+ * rien. » Elle vit donc dans l'état de la fiche : passer d'un onglet du rail à
+ * l'autre ne la démonte pas, et ouvrir une autre estimation ne fait pas
+ * changer d'URL.
+ */
+export type EcranEstimation =
+  /** Une estimation qu'on est en train de faire. */
+  | { mode: "neuve" }
+  /** Une estimation existante, rouverte pour l'envoyer (#98)… */
+  | { mode: "reprise"; reprise: RepriseEstimation; lecture: EstimationLecture }
+  /** …ou simplement relue, figée à sa date (#55). */
+  | { mode: "lecture"; reprise: RepriseEstimation; lecture: EstimationLecture };
+
+const LIBELLE_EST: Record<EcranEstimation["mode"], string> = {
+  neuve: "Estimation en cours",
+  reprise: "Estimation à envoyer",
+  lecture: "Estimation consultée",
+};
 
 const I = {
   suivi: <><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></>,
@@ -92,19 +122,51 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
 }
 
-export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }: {
+export function BienFiche({
+  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir,
+}: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
   operation?: OperationDecoupe | null;
-  /** Contenu qui remplace les sections de la fiche (estimation en cours,
-   *  mandat en cours de rédaction) : le rail de droite reste affiché pour
-   *  garder l'accès aux informations de l'immeuble pendant la saisie. */
+  /** Contenu qui remplace les sections de la fiche (mandat en cours de
+   *  rédaction) : le rail de droite reste affiché pour garder l'accès aux
+   *  informations de l'immeuble pendant la saisie. */
   contenu?: React.ReactNode;
   /** Ce que le rail annonce pour cet écran. Défaut : l'estimation. */
   contenuLabel?: string;
   contenuIcone?: "estimation" | "mandat";
+  /** Prix du secteur : le wizard d'estimation s'en sert, la fiche les porte
+   *  donc en permanence pour pouvoir le monter sans changer de page (#125). */
+  secteur?: Record<string, unknown> | null;
+  /** Vrai quand la boîte d'envoi est configurée. */
+  envoiActif?: boolean;
+  /** Estimation à ouvrir d'emblée (accès direct par l'URL). */
+  ouvrir?: EcranEstimation;
 }) {
-  const [sect, setSect] = useState<SectionKey>(contenu ? "encours" : "suivi");
+  /* L'estimation ouverte, s'il y en a une : elle vit ici, pas dans une route. */
+  const [est, setEst] = useState<EcranEstimation | null>(ouvrir ?? null);
+  const [chargement, setChargement] = useState<string | null>(null);
+  const [erreurEst, setErreurEst] = useState<string | null>(null);
+  const [sect, setSect] = useState<SectionKey>(contenu || ouvrir ? "encours" : "suivi");
+
+  /**
+   * Ouvre une estimation dans la page. Rien n'est démonté : ce qui est en
+   * cours de saisie ailleurs reste en place, et l'URL ne bouge pas.
+   */
+  const ouvrirEst = (mode: "reprise" | "lecture", eid: string) => {
+    setChargement(eid);
+    setErreurEst(null);
+    /* On ne bascule qu'une fois les données là : basculer d'abord laisserait
+       l'écran vide en cas d'échec, sans rien pour revenir en arrière. */
+    ouvrirEstimation(eid)
+      .then((r) => {
+        if (!r) { setErreurEst("Estimation introuvable."); return; }
+        setEst({ mode, reprise: r.reprise, lecture: r.lecture });
+        setSect("encours");
+      })
+      .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
+      .finally(() => setChargement(null));
+  };
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
   /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
   const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
@@ -153,6 +215,34 @@ export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }:
               qui permet d'aller voir l'état locatif ou les photos et de
               revenir à l'estimation sans avoir rien perdu (#96). */}
           {contenu && <div hidden={sect !== "encours"}>{contenu}</div>}
+          {est && (
+            <div hidden={sect !== "encours"}>
+              {est.mode === "lecture" ? (
+                <EstimationEnLecture
+                  key={est.reprise.id}
+                  e={est.lecture}
+                  immeubleId={String(b.im._id)}
+                  pdfUrl={est.reprise.pdfUrl}
+                  onEnvoyer={() => setEst({ ...est, mode: "reprise" })}
+                />
+              ) : (
+                /* La clé change avec l'estimation : rouvrir une autre fiche ne
+                   doit pas réutiliser la saisie de la précédente. */
+                <EstimationWizard
+                  key={est.mode === "neuve" ? "neuve" : est.reprise.id}
+                  b={b}
+                  secteur={secteur ?? null}
+                  envoiActif={envoiActif}
+                  reprise={est.mode === "neuve" ? undefined : est.reprise}
+                />
+              )}
+            </div>
+          )}
+          {sect === "encours" && !contenu && !est && (
+            <div className="fempty">
+              {chargement ? "Ouverture de l'estimation…" : "Aucune estimation ouverte."}
+            </div>
+          )}
           {sect === "suivi" && <SuiviSection b={b} />}
           {sect === "proprietaire" && <ProprioSection b={b} />}
           {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
@@ -160,7 +250,15 @@ export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }:
           {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
           {sect === "prix" && <PrixSection b={b} />}
           {sect === "photos" && <PhotosSection b={b} />}
-          {sect === "estimations" && <EstimationsSection b={b} />}
+          {sect === "estimations" && (
+            <EstimationsSection
+              b={b}
+              onNeuve={() => { setEst({ mode: "neuve" }); setSect("encours"); }}
+              onOuvrir={ouvrirEst}
+              enCours={chargement}
+              erreur={erreurEst}
+            />
+          )}
           {sect === "mandats" && <MandatsSection b={b} />}
           {sect === "diffusion" && (
             <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
@@ -206,6 +304,21 @@ export function BienFiche({ b, contenu, contenuLabel, contenuIcone, operation }:
               {contenuLabel ?? "Estimation en cours"}
               <span className="right"><span className="pastille" /></span>
             </button>
+          )}
+          {/* L'estimation ouverte : une entrée du rail comme les autres. On
+              passe à l'état locatif et on revient, rien n'a bougé (#125). */}
+          {est && !contenu && (
+            <div className={`srow2 encours ouvert${sect === "encours" ? " on" : ""}`}>
+              <button type="button" className="srow2-in" onClick={() => setSect("encours")}>
+                <span className="sic2"><svg viewBox="0 0 24 24">{I.calc}</svg></span>
+                {LIBELLE_EST[est.mode]}
+                <span className="right"><span className="pastille" /></span>
+              </button>
+              <button
+                type="button" className="srow2-x" title="Fermer l'estimation"
+                onClick={() => { setEst(null); setSect("estimations"); }}
+              >✕</button>
+            </div>
           )}
           {sections.map((s) => (
             <div key={s.key}>
@@ -790,44 +903,136 @@ function PhotosSection({ b }: { b: BienData }) {
   );
 }
 
-function EstimationsSection({ b }: { b: BienData }) {
+function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur }: {
+  b: BienData;
+  onNeuve: () => void;
+  onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
+  /** Identifiant de l'estimation en train de s'ouvrir, le cas échéant. */
+  enCours: string | null;
+  /** Ce qui a empêché la dernière ouverture, s'il y a lieu. */
+  erreur: string | null;
+}) {
   const immeubleId = String(b.im._id);
+  const [aSupprimer, setASupprimer] = useState<Record<string, unknown> | null>(null);
   return (
     <>
       <SectTitle icon={I.calc} title="Estimations" chips={<span className="fchip gold">{euros(b.im.prix_hai_estim) ?? euros(b.im.prix_hai)} HAI</span>} />
-      <MenuEstimer b={b} />
+      <MenuEstimer b={b} onNeuve={onNeuve} onOuvrir={onOuvrir} />
+      {erreur && <div className="dif-avis"><b>Ouverture impossible.</b>{erreur}</div>}
       {b.estimations.map((e) => {
         const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
         const isApp = String(e._id).startsWith("app_");
+        const eid = String(e._id);
         return (
-          <Row key={e._id as string}>
+          <Row key={eid}>
             <div className="grow">
               {/* Cliquer sur le titre ouvre l'estimation telle qu'elle était,
                   en lecture seule : c'est ce que fait le BO. Le bouton de
                   droite, lui, sert à la renvoyer (retour #98). */}
               <div className="t">
-                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/consulter`} style={{ color: "inherit" }}>
+                <button type="button" className="lienclair" onClick={() => onOuvrir("lecture", eid)}>
                   {String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}
-                </Link>
+                </button>
               </div>
               <div className="s">
                 {dmy(e["Created Date"])}
                 {" · "}
-                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/consulter`}>consulter</Link>
+                <button type="button" className="lienclair sous" onClick={() => onOuvrir("lecture", eid)}>
+                  consulter
+                </button>
                 {isApp && (
-                  <> · <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/imprimer`} target="_blank">version imprimable</Link></>
+                  <> · <Link href={`/bien/${immeubleId}/estimation/${eid}/imprimer`} target="_blank">version imprimable</Link></>
                 )}
+                {enCours === eid && " · ouverture…"}
               </div>
             </div>
+            {/* Le statut est une information — il n'a ni bordure ni picto.
+                L'action, elle, porte l'avion : les deux ne se confondent plus
+                même quand elles disent le même mot (retour #126). */}
             <span className={st === "Envoyée" ? "badge-g" : st === "PDF manquant" ? "badge-r" : "badge-o"}>{st}</span>
-            <Link className="fbtn" href={`/bien/${immeubleId}/estimation/${String(e._id)}`}>
-              {st === "Envoyée" ? "Renvoyer" : "Envoyer"}
-            </Link>
+            <button type="button" className="fbtn avec-picto" onClick={() => onOuvrir("reprise", eid)}>
+              <Avion /> {st === "Envoyée" ? "Renvoyer" : "Envoyer"}
+            </button>
+            <button
+              type="button" className="fbtn danger icone" title="Supprimer l'estimation"
+              onClick={() => setASupprimer(e)}
+            ><Corbeille /></button>
           </Row>
         );
       })}
       {b.estimations.length === 0 && <div className="fempty">Aucune estimation.</div>}
+      {aSupprimer && (
+        <SupprimerEstimation
+          immeubleId={immeubleId}
+          e={aSupprimer}
+          onFermer={() => setASupprimer(null)}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Confirmation de suppression d'une estimation (retour #126).
+ *
+ * Une estimation jamais envoyée ne coûte rien à jeter — c'est le cas que MAV
+ * visait. Une estimation déjà partie chez le propriétaire est autre chose :
+ * c'est une pièce du dossier, et l'écran le dit avant de laisser faire.
+ */
+function SupprimerEstimation({ immeubleId, e, onFermer }: {
+  immeubleId: string;
+  e: Record<string, unknown>;
+  onFermer: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
+  const envoyee = String(e.Statut ?? "").includes("Envoyée");
+  return createPortal(
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
+        <div className="modal-h">
+          Supprimer cette estimation ?
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <p style={{ margin: "0 0 10px" }}>
+            <b>{String(e.titre ?? "Estimation")}</b>
+            {euros(e.prix_hai) ? ` · ${euros(e.prix_hai)}` : ""} — créée le {dmy(e["Created Date"])}.
+          </p>
+          {envoyee ? (
+            <div className="dif-avis">
+              <b>Cette estimation a été envoyée au propriétaire.</b>
+              La supprimer efface du dossier le chiffre qu&apos;il a reçu, et le PDF
+              qui l&apos;accompagnait.
+            </div>
+          ) : (
+            <p style={{ margin: 0, color: "var(--gray-txt)", fontSize: 13 }}>
+              Elle n&apos;a jamais été envoyée : rien ne part du dossier. Le dossier PDF
+              généré, s&apos;il y en a un, est retiré du coffre avec elle.
+            </p>
+          )}
+          {erreur && <div className="dif-avis" style={{ marginTop: 10 }}>{erreur}</div>}
+        </div>
+        <div className="modal-f">
+          <button type="button" className="fadd" onClick={onFermer}>Annuler</button>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button" className="fbtn danger avec-picto" disabled={pending}
+            onClick={() => start(async () => {
+              try {
+                await supprimerEstimation(immeubleId, String(e._id));
+                onFermer();
+              } catch (err) {
+                setErreur(err instanceof Error ? err.message : String(err));
+              }
+            })}
+          >
+            <Corbeille /> {pending ? "Suppression…" : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -836,9 +1041,12 @@ function EstimationsSection({ b }: { b: BienData }) {
  * (retour #99) : neuf fois sur dix ce qu'on veut, c'est renvoyer celle qui
  * existe déjà, pas en refaire une.
  */
-function MenuEstimer({ b }: { b: BienData }) {
+function MenuEstimer({ b, onNeuve, onOuvrir }: {
+  b: BienData;
+  onNeuve: () => void;
+  onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
+}) {
   const [ouvert, setOuvert] = useState(false);
-  const immeubleId = String(b.im._id);
   const recentes = b.estimations.slice(0, 5);
 
   return (
@@ -850,19 +1058,23 @@ function MenuEstimer({ b }: { b: BienData }) {
         <>
           <button type="button" className="estm-fond" aria-label="Fermer" onClick={() => setOuvert(false)} />
           <div className="estm-menu">
-            <Link className="estm-it neuf" href={`/bien/${immeubleId}/estimation`}>
+            {/* Boutons et non liens : l'estimation s'ouvre DANS la page, on ne
+                quitte pas la fiche (retour #125). */}
+            <button type="button" className="estm-it neuf"
+              onClick={() => { setOuvert(false); onNeuve(); }}>
               <b>Nouvelle estimation</b>
               <span>Repartir des données de la fiche et refaire le calcul.</span>
-            </Link>
+            </button>
             {recentes.length > 0 && <div className="estm-sep">Renvoyer une estimation existante</div>}
             {recentes.map((e) => (
-              <Link key={String(e._id)} className="estm-it" href={`/bien/${immeubleId}/estimation/${String(e._id)}`}>
+              <button key={String(e._id)} type="button" className="estm-it"
+                onClick={() => { setOuvert(false); onOuvrir("reprise", String(e._id)); }}>
                 <b>{String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? "—"}</b>
                 <span>
                   {dmy(e["Created Date"])} · {String(e.Statut ?? "").replace(/^\d+ - /, "")}{" "}
                   — rien n&apos;est recalculé.
                 </span>
-              </Link>
+              </button>
             ))}
           </div>
         </>

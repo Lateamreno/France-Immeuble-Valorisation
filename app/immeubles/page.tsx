@@ -11,6 +11,9 @@ export default async function ImmeublesPage() {
        du BO (retour #110) — la marge centrée d'avant écrasait les deux. */
     <ListeShell
       filtres
+      /* Façade et Street View : sans la photo, une liste d'immeubles ne dit
+         rien de ce qu'elle liste (retour #122). */
+      vignettes
       titre="Immeubles"
       rows={rows}
       searchPlaceholder="Recherchez un immeuble..."

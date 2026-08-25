@@ -27,6 +27,27 @@ export const PROFILS_PARTENAIRE = new Set([
   "Avocat", "Architecte", "Gestionnaire", "Lotisseur", "Technicien",
 ]);
 
+/**
+ * Ce qui écarte un contact, quoi qu'il ait par ailleurs (retour #121).
+ *
+ * L'inclusion et l'exclusion ne sont pas symétriques : inclure « 93 » veut
+ * dire « au moins un bien dans le 93 », exclure « D » veut dire « pas de D du
+ * tout ». L'exclusion l'emporte toujours — c'est ce qu'on attend d'elle.
+ */
+export type Exclusions = {
+  profils: string[];
+  notes: string[];
+  lieux: string[];
+  destinations: string[];
+  statuts: string[];
+  /** Contacts retirés un par un depuis la liste des destinataires. */
+  contacts: string[];
+};
+
+export const EXCLUSIONS_VIDES: Exclusions = {
+  profils: [], notes: [], lieux: [], destinations: [], statuts: [], contacts: [],
+};
+
 export type Filtres = {
   /** Profils du contact (`Types`) — au moins un doit correspondre. */
   profils: string[];
@@ -48,11 +69,14 @@ export type Filtres = {
   respecterDesabo: boolean;
   /** Écarter ceux dont on ignore la civilité (évite « Bonjour » sec). */
   exclureSansCivilite: boolean;
+  /** Ce qu'on retire de la sélection, quels que soient les filtres ci-dessus. */
+  exclure: Exclusions;
 };
 
 export const FILTRES_VIDES: Filtres = {
   profils: [], notes: [], lieux: [], destinations: [], statuts: [],
   respecterDesabo: true, exclureSansCivilite: false,
+  exclure: EXCLUSIONS_VIDES,
 };
 
 /** Ce qu'on sait d'un destinataire au moment de trier l'audience. */
@@ -89,6 +113,8 @@ const dansFourchette = (valeurs: number[], min?: number, max?: number) => {
 };
 
 const croise = (a: string[], b: string[]) => b.length === 0 || a.some((x) => b.includes(x));
+/** Version stricte, pour les exclusions : une liste vide n'exclut personne. */
+const touche = (a: string[], b: string[]) => b.length > 0 && a.some((x) => b.includes(x));
 
 export function estDeLaCible(c: Candidat, cible: Cible) {
   const partenaire = c.profils.some((p) => PROFILS_PARTENAIRE.has(p));
@@ -100,10 +126,27 @@ export function estDeLaCible(c: Candidat, cible: Cible) {
   return cible === "proprietaires" ? c.proprietaire : c.acquereur;
 }
 
-export function retenu(c: Candidat, cible: Cible, f: Filtres): boolean {
+/**
+ * Un contact est-il dans la salve ?
+ *
+ * `cibles` est une liste depuis le retour #121 : on écrit souvent aux
+ * propriétaires ET aux acquéreurs d'un coup. Il suffit d'appartenir à l'une
+ * d'elles ; il suffit d'être dans une exclusion pour en sortir.
+ */
+export function retenu(c: Candidat, cibles: Cible[], f: Filtres): boolean {
   if (!c.email) return false;
   if (f.respecterDesabo && c.desabonne) return false;
-  if (!estDeLaCible(c, cible)) return false;
+  if (!cibles.length || !cibles.some((k) => estDeLaCible(c, k))) return false;
+
+  /* Les exclusions passent en premier : elles priment sur tout le reste, y
+     compris sur un filtre d'inclusion qui aurait ramené le contact. */
+  const x = f.exclure ?? EXCLUSIONS_VIDES;
+  if (x.contacts.includes(c.contactId)) return false;
+  if (touche(c.profils, x.profils)) return false;
+  if (c.note && x.notes.includes(c.note)) return false;
+  if (touche(c.destinations, x.destinations)) return false;
+  if (touche(c.statuts, x.statuts)) return false;
+  if (touche([...c.villes, ...c.departements], x.lieux)) return false;
 
   if (f.profils.length && !croise(c.profils, f.profils)) return false;
   if (f.notes.length && !(c.note && f.notes.includes(c.note))) return false;
@@ -119,8 +162,10 @@ export function retenu(c: Candidat, cible: Cible, f: Filtres): boolean {
 }
 
 /** Résumé lisible d'un ciblage, pour le journal de la salve et l'écran. */
-export function resumerCiblage(cible: Cible, f: Filtres): string {
-  const bouts: string[] = [CIBLES.find((c) => c.cle === cible)?.label ?? cible];
+export function resumerCiblage(cibles: Cible[], f: Filtres): string {
+  const bouts: string[] = [
+    cibles.map((k) => CIBLES.find((c) => c.cle === k)?.label ?? k).join(" + ") || "personne",
+  ];
   if (f.profils.length) bouts.push(f.profils.join(", "));
   if (f.notes.length) bouts.push(`note ${f.notes.join("/")}`);
   if (f.lieux.length) bouts.push(f.lieux.slice(0, 4).join(", ") + (f.lieux.length > 4 ? `+${f.lieux.length - 4}` : ""));
@@ -138,5 +183,15 @@ export function resumerCiblage(cible: Cible, f: Filtres): string {
   borne("rendement", f.rentaMin, f.rentaMax, " %");
   borne("surface", f.surfaceMin, f.surfaceMax, " m²");
   if (f.exclureSansCivilite) bouts.push("civilité connue");
+
+  /* Les exclusions se disent à part, et en toutes lettres : une salve dont on
+     ne relit pas ce qu'elle écarte est une salve qu'on n'a pas relue. */
+  const x = f.exclure ?? EXCLUSIONS_VIDES;
+  const sorties = [
+    ...x.profils, ...x.notes.map((n) => `note ${n}`), ...x.lieux,
+    ...x.destinations, ...x.statuts,
+  ];
+  if (x.contacts.length) sorties.push(`${x.contacts.length} contact${x.contacts.length > 1 ? "s" : ""} retiré${x.contacts.length > 1 ? "s" : ""}`);
+  if (sorties.length) bouts.push(`sauf ${sorties.join(", ")}`);
   return bouts.join(" · ");
 }
