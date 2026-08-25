@@ -133,6 +133,52 @@ export const salves = unstable_cache(
   { tags: ["fi_salve"], revalidate: 30 },
 );
 
+/* ---------------- Messages reçus (relève IMAP) ----------------
+   Ils vivent dans `fi_mail_entrant`, notre table : `bo_mail` est un miroir de
+   Bubble réécrit chaque nuit. L'écran les affiche à côté des envois, dans la
+   même boîte de réception. */
+
+export type MailEntrant = {
+  id: string;
+  message_id: string;
+  de: string;
+  de_nom: string | null;
+  objet: string | null;
+  recu_le: string;
+  corps: string;
+  pieces: { nom: string; type?: string; taille?: number }[];
+  niveau: "fil" | "contact" | "a_choisir" | "inconnu" | "masse";
+  raison: string | null;
+  certain: boolean;
+  contact_id: string | null;
+  immeuble_id: string | null;
+  estimation_id: string | null;
+  proposition_id: string | null;
+};
+
+export const mailsEntrants = unstable_cache(
+  async () =>
+    lire<MailEntrant>(
+      "fi_mail_entrant",
+      "select=id,message_id,de,de_nom,objet,recu_le,corps,pieces,niveau,raison,certain,contact_id,immeuble_id,estimation_id,proposition_id&order=recu_le.desc&limit=400",
+    ),
+  ["fi_mail_entrant"],
+  { tags: ["fi_mail_entrant"], revalidate: 30 },
+);
+
+export type EtatReleve = {
+  boite: string;
+  dernier_uid: number;
+  derniere_le: string | null;
+  dernier_message: string | null;
+};
+
+export const etatReleve = unstable_cache(
+  async () => (await lire<EtatReleve>("fi_releve_etat", "select=*&limit=1"))[0] ?? null,
+  ["fi_releve_etat"],
+  { tags: ["fi_releve_etat"], revalidate: 30 },
+);
+
 /* ================= Le vivier de la salve =================
    On assemble une fois pour toutes ce qu'il faut savoir de chaque contact
    pour le trier : ses profils, ses immeubles, ses recherches. La lecture

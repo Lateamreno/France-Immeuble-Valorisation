@@ -48,14 +48,21 @@ const initiales = (nom: string) =>
   nom.split(/[\s.@]+/).filter(Boolean).slice(0, 2).map((m) => m[0]?.toUpperCase() ?? "").join("") || "?";
 
 export function EcranMails({
-  mails, brouillons, messagesTypes, salves, agent,
+  mails, brouillons, messagesTypes, salves, agent, releve,
 }: {
-  /** Les messages du miroir, déjà rangés dans leur boîte. */
-  mails: (FilMail & { dossier: Exclude<Dossier, "brouillons">; lu: boolean })[];
+  /** Les envois du miroir et les messages relevés, déjà rangés dans leur boîte. */
+  mails: (FilMail & {
+    dossier: Exclude<Dossier, "brouillons">;
+    lu: boolean;
+    /** Pourquoi le moteur a rangé ce message ici (messages reçus seulement). */
+    reconnaissance?: string;
+  })[];
   brouillons: Brouillon[];
   messagesTypes: MessageType[];
   salves: Salve[];
   agent: { id: string; nom: string; email?: string; telephone?: string };
+  /** État de la relève IMAP, pour que la boîte vide s'explique. */
+  releve?: { active: boolean; boite?: string; derniereLe?: string; dernierMessage?: string };
 }) {
   const [vue, setVue] = useState<Vue>("reception");
   const [q, setQ] = useState("");
@@ -182,6 +189,23 @@ export function EcranMails({
               )}
             </div>
 
+            {vue === "reception" && releve && (
+              <div className={`gm-releve${releve.active ? "" : " off"}`}>
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 5.4a6.6 6.6 0 1 1-6.3 8.6" /><path d="M5.4 9.4v4h4" />
+                </svg>
+                {releve.active ? (
+                  <span>
+                    Relève de <b>{releve.boite}</b>
+                    {releve.derniereLe ? ` · ${jour(releve.derniereLe)}` : ""}
+                    {releve.dernierMessage ? ` · ${releve.dernierMessage}` : ""}
+                  </span>
+                ) : (
+                  <span>Relève non branchée — les messages reçus n&apos;arrivent pas encore.</span>
+                )}
+              </div>
+            )}
+
             <div className="gm-rows">
               {liste.map((m) => (
                 <div key={m.id}
@@ -203,17 +227,19 @@ export function EcranMails({
                       <span> — {m.extrait}</span>
                     </div>
                     {m.immeubleLabel && <span className="gm-tag">{m.immeubleLabel}</span>}
+                    {m.reconnaissance && <span className="gm-pourquoi">{m.reconnaissance}</span>}
                   </div>
                 </div>
               ))}
               {liste.length === 0 && (
                 <div className="fempty">
-                  {vue === "reception"
-                    /* Dire pourquoi c'est vide vaut mieux que de laisser croire
-                       à une panne : les 600 messages du miroir sont des envois,
-                       les reçus arriveront quand IMAP sera branché. */
-                    ? "Aucun message reçu. La relève IMAP n'est pas encore branchée : les réponses de vos correspondants arriveront ici."
-                    : "Aucun message dans cette boîte."}
+                  {/* Dire pourquoi c'est vide vaut mieux que de laisser croire
+                      à une panne. */}
+                  {vue !== "reception"
+                    ? "Aucun message dans cette boîte."
+                    : releve?.active
+                      ? `Aucun message reçu pour le moment. La boîte ${releve.boite ?? ""} est relevée${releve.derniereLe ? ` — dernière relève ${jour(releve.derniereLe)}` : ""}.`
+                      : "Aucun message reçu. La relève n'est pas branchée : posez IMAP_HOST, IMAP_USER et IMAP_PASS pour que les réponses arrivent ici."}
                 </div>
               )}
             </div>

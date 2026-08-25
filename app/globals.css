@@ -4890,3 +4890,16 @@ a.cfc-t:hover { text-decoration: underline; }
   margin: 0; border-left: 3px solid var(--gold-bo); padding: 4px 0 4px 14px;
   font-size: 13px; line-height: 1.7; color: var(--slate); white-space: pre-wrap;
 }
+
+/* Bandeau d'état de la relève IMAP (tâche #57). */
+.gm-releve {
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--line-lt); background: #f7fbf5;
+  padding: 6px 12px; font-size: 12px; color: var(--slate-2);
+}
+.gm-releve.off { background: #fffaeb; color: #8a5a00; }
+.gm-releve svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.gm-pourquoi {
+  display: inline-block; margin-top: 4px; margin-left: 6px;
+  font-size: 11px; color: var(--gold-bo);
+}
