@@ -9,6 +9,7 @@
  */
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { enregistrerBoite, supprimerBoite, verifierBoite } from "@/lib/bo/boite-actions";
 
 export type BoiteAffichee = {
@@ -64,6 +65,14 @@ export function EcranReglages({ boites, chiffrementOk }: {
   return (
     <div className="rgl">
       <header className="rgl-h">
+        {/* On entre dans les réglages, il faut pouvoir en ressortir
+            (retour #129). */}
+        <Link className="rgl-retour" href="/mails">
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d="M20 12H5" /><path d="m11 6-6 6 6 6" />
+          </svg>
+          Retour aux mails
+        </Link>
         <h1>Boîtes e-mail</h1>
         <p>
           Chaque commercial branche sa propre boîte. L&apos;application lit et écrit

@@ -199,11 +199,10 @@ export async function listerMessages(
       uid: true, flags: true, envelope: true, bodyStructure: true,
       /* 2 Ko du début du texte : de quoi faire un extrait sans tirer les
          pièces jointes. */
-      bodyParts: ["1"], size: true,
+      bodyParts: ["1", "1.1", "1.2"], size: true,
     })) {
       const flags = m.flags ?? new Set<string>();
       const env = m.envelope;
-      const brut = m.bodyParts?.get("1");
       messages.push({
         uid: m.uid,
         messageId: env?.messageId,
@@ -212,7 +211,7 @@ export async function listerMessages(
         pour: (env?.to ?? []).map((x) => x.address?.toLowerCase() ?? "").filter(Boolean),
         objet: env?.subject || "(sans objet)",
         date: env?.date ? new Date(env.date).toISOString() : undefined,
-        extrait: brut ? brut.toString("utf8").replace(/\s+/g, " ").slice(0, 160) : "",
+        extrait: extraitDe(m.bodyStructure, m.bodyParts),
         lu: flags.has("\\Seen"),
         repondu: flags.has("\\Answered"),
         drapeau: flags.has("\\Flagged"),
@@ -223,6 +222,72 @@ export async function listerMessages(
     const nonLus = boite.unseen ?? messages.filter((m) => !m.lu).length;
     return { messages, total, nonLus, chemin: ch };
   });
+}
+
+/* --------------------------------------------- extrait d'un message ---
+ *
+ * Un extrait, c'est une phrase du message, pas ses octets bruts. Prendre la
+ * première partie telle quelle donnait « PCFET0NUWVBFIGh0bWwg… » dans la
+ * liste : du base64 affiché tel quel, illisible et inquiétant.
+ *
+ * Il faut donc trois choses : choisir la BONNE partie (le texte, pas le HTML
+ * ni la pièce jointe), la DÉCODER selon son encodage de transfert, et si on
+ * n'a que du HTML, en retirer les balises.
+ */
+
+type Noeud = {
+  part?: string;
+  type?: string;
+  encoding?: string;
+  disposition?: string;
+  childNodes?: Noeud[];
+};
+
+/** Parcourt la structure et rend les parties texte, la plus simple d'abord. */
+function partiesTexte(s: unknown): Noeud[] {
+  if (!s || typeof s !== "object") return [];
+  const n = s as Noeud;
+  const enfants = (n.childNodes ?? []).flatMap(partiesTexte);
+  const moi = n.type === "text/plain" || n.type === "text/html" ? [n] : [];
+  /* Le texte brut passe avant le HTML : c'est déjà l'extrait qu'on veut. */
+  return [...moi, ...enfants].sort((a, b) => (a.type === "text/plain" ? -1 : 0) - (b.type === "text/plain" ? -1 : 0));
+}
+
+function decoder(brut: Buffer, encodage?: string): string {
+  const e = (encodage ?? "").toLowerCase();
+  if (e === "base64") return Buffer.from(brut.toString("ascii"), "base64").toString("utf8");
+  if (e === "quoted-printable") {
+    return brut.toString("utf8")
+      /* Un « = » en fin de ligne est une coupure, pas un caractère. */
+      .replace(/=\r?\n/g, "")
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+  return brut.toString("utf8");
+}
+
+const sansBalises = (h: string) =>
+  h.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)));
+
+function extraitDe(structure: unknown, parties?: Map<string, Buffer>): string {
+  if (!parties?.size) return "";
+  for (const n of partiesTexte(structure)) {
+    /* Un message simple n'a pas de numéro de partie : son corps est « 1 ». */
+    const brut = parties.get(n.part || "1");
+    if (!brut) continue;
+    const texte = decoder(brut, n.encoding);
+    const lisible = n.type === "text/html" ? sansBalises(texte) : texte;
+    const propre = lisible.replace(/\s+/g, " ").trim();
+    if (propre) return propre.slice(0, 160);
+  }
+  /* Structure inattendue : plutôt rien qu'un extrait illisible. */
+  const seule = parties.get("1");
+  if (!seule) return "";
+  const propre = sansBalises(seule.toString("utf8")).replace(/\s+/g, " ").trim();
+  return /^[A-Za-z0-9+/=\s]{80,}$/.test(propre) ? "" : propre.slice(0, 160);
 }
 
 /** Nombre de pièces jointes déclarées dans la structure du message. */

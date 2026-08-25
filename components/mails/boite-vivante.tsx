@@ -20,6 +20,7 @@ import {
 } from "@/lib/bo/boite-actions";
 import type { Entete, MessageComplet, RoleDossier } from "@/lib/mails/client";
 import type { Reponse } from "@/components/mails/redaction";
+import { estDuSite } from "@/lib/mails/tri-fi";
 
 const jour = (d?: string) => {
   if (!d) return "";
@@ -36,11 +37,15 @@ const initiales = (nom: string) =>
 /** Au-delà de cette ancienneté, revenir sur l'onglet relit la boîte. */
 const FRAICHEUR_MS = 60_000;
 
-export function BoiteVivante({ agentId, role, adresse, onRepondre, onRafraichi }: {
+export function BoiteVivante({ agentId, role, adresse, tri, onRepondre, onRafraichi }: {
   agentId: string;
   role: RoleDossier;
   /** L'adresse de la boîte, affichée en clair : on doit savoir laquelle on lit. */
   adresse: string;
+  /** Partage de la réception en deux vues (retour #130) : le courrier humain
+   *  d'un côté, ce que le site envoie de l'autre. Rien n'est déplacé sur le
+   *  serveur — sinon ça disparaîtrait aussi du téléphone. */
+  tri?: "humain" | "site";
   onRepondre: (m: MessageComplet, reponse: Reponse) => void;
   /** Prévient le parent des compteurs, pour la colonne de gauche. */
   onRafraichi?: (role: RoleDossier, total: number, nonLus: number) => void;
@@ -65,17 +70,24 @@ export function BoiteVivante({ agentId, role, adresse, onRepondre, onRafraichi }
       .then((r) => {
         if (attendu.current !== role) return;
         if (!r.ok) { setErreur(r.erreur); setEntetes([]); return; }
-        /* Les plus récents en tête : le serveur les rend dans l'ordre des
-           numéros, c'est-à-dire du plus ancien au plus récent. */
+        /* Les plus récents en tête, et on trie sur la date plutôt que de se
+           fier à l'ordre du serveur : selon le fournisseur, l'ordre des
+           numéros de message n'est pas celui de la réception. */
         setErreur(null);
-        setEntetes([...r.page.messages].reverse());
-        setTotal(r.page.total);
+        const gardes = tri
+          ? r.page.messages.filter((m) => estDuSite(m) === (tri === "site"))
+          : r.page.messages;
+        setEntetes([...gardes].sort(
+          (a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")),
+        ));
+        setTotal(tri ? gardes.length : r.page.total);
         setLuLe(Date.now());
-        onRafraichi?.(role, r.page.total, r.page.nonLus);
+        onRafraichi?.(role, tri ? gardes.length : r.page.total,
+          tri ? gardes.filter((m) => !m.lu).length : r.page.nonLus);
       })
       .catch((e) => setErreur(e instanceof Error ? e.message : String(e)))
       .finally(() => { if (attendu.current === role) setChargement(false); });
-  }, [agentId, role, onRafraichi]);
+  }, [agentId, role, tri, onRafraichi]);
 
   /** Le bouton : il annonce la lecture avant de la lancer. */
   const relire = useCallback(() => {
@@ -197,7 +209,13 @@ export function BoiteVivante({ agentId, role, adresse, onRepondre, onRafraichi }
         </div>
 
         <div className="gm-boitedit">
-          <span>{adresse}</span>
+          <span>
+            {tri === "site"
+              ? "Ce que le site envoie : formulaires, nouvelles recherches, questions."
+              : tri === "humain"
+                ? "Courrier reçu, hors messages du site."
+                : adresse}
+          </span>
           {luLe > 0 && <i>relue à {new Date(luLe).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</i>}
         </div>
 

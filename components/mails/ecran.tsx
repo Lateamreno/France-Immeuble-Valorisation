@@ -12,6 +12,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Brouillon, Dossier, MessageType, Salve } from "@/lib/mails/serveur";
 import type { MessageComplet, RoleDossier } from "@/lib/mails/client";
 import { BoiteVivante } from "@/components/mails/boite-vivante";
@@ -19,11 +20,16 @@ import { FenetreRedaction, type Reponse } from "@/components/mails/redaction";
 import { FenetreSalve } from "@/components/mails/salve";
 import { Bibliotheque } from "@/components/mails/messages-types";
 
-type Vue = Dossier | "messages_types" | "salves";
+/* La réception se lit en deux vues : le courrier humain, et ce que le site
+   envoie (formulaires, nouvelles recherches, questions). Rien n'est déplacé
+   sur le serveur — c'est un tri d'affichage (retour #130). */
+type Vue = Dossier | "site" | "messages_types" | "salves";
 
-const BOITES: { cle: Dossier; label: string; d: React.ReactNode }[] = [
+const BOITES: { cle: Vue; label: string; d: React.ReactNode }[] = [
   { cle: "reception", label: "Boîte de réception",
     d: <path d="M4 13h4l1.4 2.6h5.2L16 13h4M4 13 6.6 6.2A1.6 1.6 0 0 1 8.1 5.2h7.8a1.6 1.6 0 0 1 1.5 1L20 13v4.2a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 17.2z" /> },
+  { cle: "site", label: "France Immeuble",
+    d: <><path d="M4 20V9.5L12 4l8 5.5V20z" /><path d="M9.5 20v-6h5v6" /></> },
   { cle: "envoyes", label: "E-mails envoyés",
     d: <path d="M21.6 3.2 2.9 10.4l4.7 1.7 11-7.3-8.6 8.4v4.8l2.3-3 4.4 3.2z" /> },
   { cle: "brouillons", label: "Brouillons",
@@ -45,31 +51,41 @@ const jour = (d?: string) => {
 };
 
 export function EcranMails({
-  brouillons, messagesTypes, salves, agent, boite,
+  brouillons, messagesTypes, salves, agent, boite, agents,
 }: {
   brouillons: Brouillon[];
   messagesTypes: MessageType[];
   salves: Salve[];
-  agent: { id: string; nom: string; email?: string; telephone?: string };
+  agent: { id: string; nom: string; email?: string; telephone?: string; slug?: string };
   /** La boîte de l'agent, quand il en a branché une. */
   boite?: { adresse: string; nomAffiche?: string };
+  /** Les commerciaux, pour que l'admin puisse passer d'une boîte à l'autre
+   *  (retour #128) — comme la barre du dashboard. */
+  agents?: { slug: string; name: string }[];
 }) {
+  const router = useRouter();
   const [vue, setVue] = useState<Vue>("reception");
   const [redaction, setRedaction] = useState<
     null | { brouillon?: Brouillon; modele?: MessageType; reponse?: Reponse }
   >(null);
   const [salve, setSalve] = useState(false);
   /** Compteurs des dossiers, remontés par la boîte au fil des lectures. */
-  const [compteurs, setCompteurs] = useState<Partial<Record<RoleDossier, number>>>({});
+  const [compteurs, setCompteurs] = useState<Partial<Record<RoleDossier | "site", number>>>({});
   /** Change à chaque envoi : c'est ce qui force la boîte à se relire. */
   const [tour, setTour] = useState(0);
 
-  const compte = (d: Dossier) =>
-    d === "brouillons" ? brouillons.length : compteurs[d as RoleDossier] ?? 0;
+  const compte = (d: Vue) =>
+    d === "brouillons" ? brouillons.length
+      : d === "site" ? compteurs.site ?? 0
+        : compteurs[d as RoleDossier] ?? 0;
 
-  const noterCompteurs = useCallback((role: RoleDossier, total: number, nonLus: number) => {
-    setCompteurs((c) => ({ ...c, [role]: role === "reception" ? nonLus || total : total }));
+  const noterCompteurs = useCallback((cle: RoleDossier | "site", total: number, nonLus: number) => {
+    setCompteurs((c) => ({ ...c, [cle]: cle === "reception" || cle === "site" ? nonLus || total : total }));
   }, []);
+  const noterReception = useCallback(
+    (_r: RoleDossier, t: number, n: number) => noterCompteurs("reception", t, n), [noterCompteurs]);
+  const noterSite = useCallback(
+    (_r: RoleDossier, t: number, n: number) => noterCompteurs("site", t, n), [noterCompteurs]);
 
   const repondreA = (m: MessageComplet, reponse: Reponse) =>
     setRedaction({
@@ -87,7 +103,25 @@ export function EcranMails({
   const changerVue = (v: Vue) => setVue(v);
 
   return (
-    <div className="gm">
+    <div className="gm-page">
+      {/* Qui on lit, et de qui. Le sélecteur est en haut à droite, comme la
+          barre du dashboard (retour #128). */}
+      <div className="gm-top">
+        <span className="gm-top-adr">
+          {boite ? boite.adresse : "Aucune boîte branchée"}
+        </span>
+        <span style={{ flex: 1 }} />
+        {agents && agents.length > 1 && (
+          <select className="gm-agent" value={agent.slug ?? ""} aria-label="Boîte de"
+            onChange={(e) => router.push(`/mails?agent=${e.target.value}`)}>
+            {agents.map((a) => (
+              <option key={a.slug} value={a.slug}>Boîte de {a.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <div className="gm">
       {/* ---------------- Colonne des boîtes ---------------- */}
       <aside className="gm-side">
         <button type="button" className="gm-new" onClick={() => setRedaction({})}>
@@ -157,10 +191,11 @@ export function EcranMails({
         <BoiteVivante
           key={`${vue}-${tour}`}
           agentId={agent.id}
-          role={vue as RoleDossier}
+          role={vue === "site" ? "reception" : (vue as RoleDossier)}
           adresse={boite.adresse}
+          tri={vue === "site" ? "site" : vue === "reception" ? "humain" : undefined}
           onRepondre={repondreA}
-          onRafraichi={noterCompteurs}
+          onRafraichi={vue === "site" ? noterSite : noterReception}
         />
       ) : (
         <section className="gm-plein">
@@ -187,6 +222,8 @@ export function EcranMails({
           onEnvoye={() => setTour((t) => t + 1)}
         />
       )}
+      </div>
+
       {salve && (
         <FenetreSalve agent={agent} modeles={messagesTypes} onClose={() => setSalve(false)} />
       )}

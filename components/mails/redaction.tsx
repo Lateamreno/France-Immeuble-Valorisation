@@ -14,6 +14,7 @@ import {
   creerBrouillon, creerMessageType, envoyerUnMessage, majBrouillon,
 } from "@/lib/bo/mails-actions";
 import { repondre } from "@/lib/bo/boite-actions";
+import { ChampDestinataires } from "@/components/mails/destinataires";
 
 /** Aperçu : on ne connaît pas encore le destinataire réel dans une fenêtre
  *  d'envoi unitaire, on montre donc l'exemple de chaque champ. */
@@ -133,11 +134,7 @@ export function FenetreRedaction({
 
         <div className="modal-b">
           <div className="mred-entete">
-            <label className="mred-l">
-              <span>À</span>
-              <input value={a} onChange={(e) => setA(e.target.value)}
-                placeholder="adresse@exemple.fr, autre@exemple.fr" />
-            </label>
+            <ChampDestinataires valeur={a} onChange={setA} agentId={agent.id} />
             {modeles.length > 0 && (
               <label className="mred-l court">
                 <span>Message type</span>

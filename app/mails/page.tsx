@@ -41,10 +41,12 @@ export default async function MailsPage({
       agent={{
         id: courant?.id ?? "",
         nom: courant?.name ?? "France Immeuble",
+        slug: courant?.slug,
         email: s2(fiche?.email),
         telephone: s2(fiche?.["portable (TXT)"]) ?? s2(fiche?.portable),
       }}
       boite={b ? { adresse: b.adresse, nomAffiche: b.nomAffiche } : undefined}
+      agents={actifs.map((a) => ({ slug: a.slug, name: a.name }))}
     />
   );
 }
