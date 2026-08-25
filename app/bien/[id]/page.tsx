@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BienFiche } from "@/components/bien-fiche";
 import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
-import { mailConfigure } from "@/lib/bo/mail";
+import { envoiPossible } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
 // L'estimation se fait maintenant depuis la fiche : la fabrication du dossier
@@ -46,6 +46,6 @@ export default async function BienPage({
   }
 
   return (
-    <BienFiche b={data} operation={operation} secteur={secteur} envoiActif={mailConfigure()} />
+    <BienFiche b={data} operation={operation} secteur={secteur} envoiActif={await envoiPossible()} />
   );
 }

@@ -10,7 +10,7 @@ import Link from "next/link";
 import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
 import { ouvrirEstimation } from "@/lib/bo/actions";
 import { BienFiche } from "@/components/bien-fiche";
-import { mailConfigure } from "@/lib/bo/mail";
+import { envoiPossible } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -40,7 +40,7 @@ export default async function ConsulterEstimation({
       b={b}
       operation={operation}
       secteur={secteur}
-      envoiActif={mailConfigure()}
+      envoiActif={await envoiPossible()}
       ouvrir={{ mode: "lecture", reprise: ecran.reprise, lecture: ecran.lecture }}
     />
   );

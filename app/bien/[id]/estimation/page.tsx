@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
 import { BienFiche } from "@/components/bien-fiche";
-import { mailConfigure } from "@/lib/bo/mail";
+import { envoiPossible } from "@/lib/bo/mail";
 
 export const dynamic = "force-dynamic";
 // Fabrication du PDF : le navigateur met quelques secondes à démarrer à froid.
@@ -28,7 +28,7 @@ export default async function EstimationPage({ params }: { params: Promise<{ id:
       b={b}
       operation={operation}
       secteur={secteur}
-      envoiActif={mailConfigure()}
+      envoiActif={await envoiPossible()}
       ouvrir={{ mode: "neuve" }}
     />
   );

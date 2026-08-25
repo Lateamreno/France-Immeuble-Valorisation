@@ -91,3 +91,99 @@ export async function envoyerMail(m: {
   });
   return String(info.messageId ?? "");
 }
+
+/* ================= Envoi depuis la boîte de l'agent =================
+ *
+ * Doctrine de MAV : chaque agent a sa propre boîte, branchée dans le BO. Un
+ * message envoyé par l'application doit donc partir de SA boîte — l'adresse
+ * que le destinataire connaît, et où il retrouvera sa copie dans « Envoyés ».
+ *
+ * La route SMTP commune ci-dessus reste en secours : elle sert tant qu'aucune
+ * boîte n'est branchée. Concrètement, il n'y a rien de plus à poser en
+ * variables d'environnement — l'agent renseigne sa boîte dans l'écran, et
+ * l'envoi suit. */
+
+/** La boîte d'un agent, ou `null` s'il n'en a pas branché. */
+async function boiteAgent(agentId?: string) {
+  if (!agentId) return null;
+  const [{ getAgents }, { boiteDe }] = await Promise.all([
+    import("@/lib/bubble/server"),
+    import("@/lib/mails/boites"),
+  ]);
+  const agents = await getAgents().catch(() => []);
+  return await boiteDe(agentId, agents).catch(() => null);
+}
+
+/** Y a-t-il une façon d'envoyer : une boîte d'agent, ou la route commune ? */
+export async function envoiPossible(agentId?: string): Promise<boolean> {
+  if (mailConfigure()) return true;
+  if (agentId) return !!(await boiteAgent(agentId));
+  const [{ getAgents }, { toutesLesBoites }] = await Promise.all([
+    import("@/lib/bubble/server"),
+    import("@/lib/mails/boites"),
+  ]);
+  const agents = await getAgents().catch(() => []);
+  return (await toutesLesBoites(agents).catch(() => [])).length > 0;
+}
+
+/**
+ * Envoie pour le compte d'un agent : sa boîte d'abord, la route commune sinon.
+ *
+ * `messageIdPour` reçoit le domaine réellement utilisé — c'est lui qui porte le
+ * jeton de rattachement, et il doit correspondre à l'expéditeur, sinon
+ * certaines messageries réécrivent l'identifiant et la réponse ne se rattache
+ * plus à rien.
+ */
+export async function envoyerPourAgent(
+  agentId: string | undefined,
+  m: {
+    to: string;
+    subject: string;
+    text: string;
+    cc?: string;
+    bcc?: string;
+    replyTo?: string;
+    attachments?: PieceJointe[];
+    messageIdPour?: (domaine: string) => string;
+    /** Expéditeur affiché — n'a de sens que sur la route commune. */
+    from?: string;
+    /** Copie cachée à n'ajouter QUE sur la route commune : quand le message
+     *  part de la boîte de l'agent, il l'a déjà dans ses « Envoyés ». */
+    bccSiCommun?: string;
+  },
+): Promise<{ messageId: string; expediteur: string; via: "boite" | "smtp" }> {
+  const b = await boiteAgent(agentId);
+  if (b) {
+    const { envoyerDepuis } = await import("@/lib/mails/client");
+    const domaine = b.adresse.split("@")[1] ?? domaineEnvoi();
+    const r = await envoyerDepuis(b, {
+      to: m.to,
+      cc: m.cc,
+      cci: m.bcc,
+      objet: m.subject,
+      texte: m.text,
+      messageId: m.messageIdPour?.(domaine),
+      pieces: m.attachments,
+    });
+    return { messageId: r.messageId, expediteur: b.adresse, via: "boite" };
+  }
+
+  if (!mailConfigure()) {
+    throw new Error(
+      "Aucune boîte e-mail branchée pour cet agent, et pas de route d'envoi commune. "
+      + "Branchez la boîte dans Mails → Ma boîte e-mail.",
+    );
+  }
+  const messageId = await envoyerMail({
+    to: m.to,
+    subject: m.subject,
+    text: m.text,
+    cc: m.cc,
+    bcc: [m.bcc, m.bccSiCommun].filter(Boolean).join(", ") || undefined,
+    from: m.from,
+    replyTo: m.replyTo,
+    attachments: m.attachments,
+    messageId: m.messageIdPour?.(domaineEnvoi()),
+  });
+  return { messageId, expediteur: CONF().from ?? "", via: "smtp" };
+}

@@ -124,7 +124,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
         });
         const r = await lancerSalve(id, destinataires, vivier.refPrenoms, {
           nom: agent.nom, email: agent.email, telephone: agent.telephone,
-        });
+        }, agent.id);
         setResultat(r);
       } catch (e) {
         setErreur(e instanceof Error ? e.message : String(e));

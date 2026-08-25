@@ -60,7 +60,7 @@ export function FenetreRedaction({
       setErreur(null);
       try {
         await envoyerUnMessage({
-          to: a, objet, corps, repondreA: agent.email,
+          to: a, objet, corps, repondreA: agent.email, agentId: agent.id,
           brouillonId: brouillon?.id || undefined,
         });
         if (enregistrerType && libelleType.trim()) {

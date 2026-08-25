@@ -12,7 +12,7 @@
  */
 
 import { revalidateTag, updateTag } from "next/cache";
-import { envoyerMail, mailConfigure } from "@/lib/bo/mail";
+import { envoiPossible, envoyerPourAgent } from "@/lib/bo/mail";
 import { fusionner, valeursDe, type Expediteur, type RefPrenoms } from "@/lib/mails/fusion";
 import type { Candidat, Cible, Filtres } from "@/lib/mails/audience";
 
@@ -162,11 +162,14 @@ export async function envoyerUnMessage(m: {
   corps: string;
   /** Adresse de l'agent : elle sert de Reply-To, jamais de From. */
   repondreA?: string;
+  /** L'agent expéditeur : on part de SA boîte quand elle est branchée. */
+  agentId?: string;
   brouillonId?: string;
 }) {
-  if (!mailConfigure()) throw new Error("Envoi non configuré : SMTP_HOST / SMTP_USER / SMTP_PASS / MAIL_FROM manquent.");
   if (!m.to.trim()) throw new Error("Aucun destinataire.");
-  await envoyerMail({ to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA });
+  await envoyerPourAgent(m.agentId, {
+    to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA,
+  });
   if (m.brouillonId) {
     await ecrire("fi_brouillon", "PATCH",
       { statut: "envoye", envoye_at: new Date().toISOString() }, `id=eq.${m.brouillonId}`);
@@ -225,8 +228,14 @@ export async function lancerSalve(
   candidats: Candidat[],
   ref: RefPrenoms,
   agent: Expediteur,
+  /** L'agent expéditeur : la salve part de SA boîte quand elle est branchée. */
+  agentId?: string,
 ): Promise<ResultatSalve> {
-  if (!mailConfigure()) throw new Error("Envoi non configuré : SMTP_HOST / SMTP_USER / SMTP_PASS / MAIL_FROM manquent.");
+  if (!(await envoiPossible(agentId))) {
+    throw new Error(
+      "Aucune boîte e-mail branchée : allez la brancher dans Mails → Ma boîte e-mail.",
+    );
+  }
 
   const [salve] = await ecrire("fi_salve", "PATCH", { statut: "a_valider" }, `id=eq.${salveId}`);
   const objet = String(salve?.objet ?? "");
@@ -242,7 +251,9 @@ export async function lancerSalve(
     const o = fusionner(objet, v);
     const b = fusionner(corps, v);
     try {
-      await envoyerMail({ to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email });
+      await envoyerPourAgent(agentId, {
+        to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email,
+      });
       envoyes += 1;
       if (b.manquants.length) journal.push(`${c.email} · envoyé, champs vides : ${b.manquants.join(", ")}`);
     } catch (e) {

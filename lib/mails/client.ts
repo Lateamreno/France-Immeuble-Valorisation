@@ -340,6 +340,8 @@ export async function envoyerDepuis(b: Boite, m: {
   inReplyTo?: string;
   references?: string[];
   messageId?: string;
+  /** Pièces jointes (le dossier d'estimation, des pièces du coffre…). */
+  pieces?: { filename: string; content: Buffer; contentType?: string }[];
 }) {
   const redirection = process.env.MAIL_REDIRECT?.trim();
   const t = nodemailer.createTransport({
@@ -362,6 +364,7 @@ export async function envoyerDepuis(b: Boite, m: {
     inReplyTo: m.inReplyTo,
     references: m.references?.length ? m.references.join(" ") : undefined,
     messageId: m.messageId,
+    attachments: m.pieces?.length ? m.pieces : undefined,
   });
 
   /* La copie dans « Envoyés » se fait au mieux : si elle échoue, le message

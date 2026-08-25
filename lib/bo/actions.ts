@@ -1515,8 +1515,7 @@ export async function envoyerEstimation(input: {
   /** Fichiers ajoutés à la volée depuis le poste de l'agent. */
   fichiers?: FormData;
 }) {
-  const { envoyerMail, mailConfigure, domaineEnvoi } = await import("./mail");
-  if (!mailConfigure()) throw new Error("Envoi non configuré");
+  const { envoyerPourAgent } = await import("./mail");
   if (!input.to.includes("@")) throw new Error("Adresse du destinataire manquante");
 
   // Le PDF part depuis le coffre : on envoie exactement le document archivé.
@@ -1544,13 +1543,17 @@ export async function envoyerEstimation(input: {
     throw new Error("PDF introuvable : générez le dossier avant d'envoyer");
   }
 
-  /* L'estimation est un courrier personnel : elle part de l'adresse de
-     l'agent qui l'a faite, et il en reçoit une copie cachée pour l'avoir
-     dans sa boîte. Garde-fou : on ne prend son adresse que si elle est bien
-     sur le domaine d'envoi — écrire depuis un domaine qu'on ne signe pas,
-     c'est le spam assuré. On retombe alors sur MAIL_FROM, avec l'agent en
+  /* L'estimation est un courrier personnel : elle part de la boîte de l'agent
+     qui l'a faite — c'est celle-là que le propriétaire connaît, et l'agent y
+     retrouve sa copie dans « Envoyés ».
+
+     Tant qu'aucune boîte n'est branchée, on retombe sur la route SMTP commune.
+     Là, le garde-fou reste nécessaire : on n'écrit depuis l'adresse de l'agent
+     que si elle est sur le domaine signé — écrire depuis un domaine qu'on ne
+     signe pas, c'est le spam assuré. Sinon, MAIL_FROM et l'agent en
      « Répondre à ». */
-  const ag = await bqOne("bo_agentfi", String(e?.ESTIMATOR ?? ""));
+  const agentId = String(e?.ESTIMATOR ?? "");
+  const ag = await bqOne("bo_agentfi", agentId);
   const mailAgent = String(ag?.email ?? "").trim();
   const nomAgent = `${String(ag?.["prénom"] ?? "")} ${String(ag?.nom ?? "")}`.trim();
   const domaine = (process.env.MAIL_FROM ?? "").split("@")[1]?.replace(/>.*$/, "").trim();
@@ -1609,18 +1612,21 @@ export async function envoyerEstimation(input: {
   const { nouveauJeton, messageIdDuJeton } = await import("./rattachement");
   const jeton = nouveauJeton();
 
-  const messageId = await envoyerMail({
-    messageId: messageIdDuJeton(jeton, domaineEnvoi()),
+  const envoi = await envoyerPourAgent(agentId, {
+    messageIdPour: (domaine) => messageIdDuJeton(jeton, domaine),
     to: input.to,
     cc: input.cc?.trim() || undefined,
-    bccSup: input.cci?.trim() || undefined,
+    bcc: input.cci?.trim() || undefined,
+    /* L'agent en copie cachée seulement si le message ne part pas de sa
+       propre boîte — sinon il l'a déjà dans ses « Envoyés ». */
+    bccSiCommun: mailAgent || undefined,
     subject: input.objet,
     text: input.message,
     from,
     replyTo,
-    bcc: mailAgent || undefined,
     attachments: pieces,
   });
+  const messageId = envoi.messageId;
 
   const now = new Date().toISOString();
   await rpc("bo_patch_doc", {
