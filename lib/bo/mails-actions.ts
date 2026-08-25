@@ -167,13 +167,16 @@ export async function envoyerUnMessage(m: {
   brouillonId?: string;
 }) {
   if (!m.to.trim()) throw new Error("Aucun destinataire.");
-  await envoyerPourAgent(m.agentId, {
+  const r = await envoyerPourAgent(m.agentId, {
     to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA,
   });
   if (m.brouillonId) {
     await ecrire("fi_brouillon", "PATCH",
       { statut: "envoye", envoye_at: new Date().toISOString() }, `id=eq.${m.brouillonId}`);
   }
+  /* Le message est parti ; reste à dire s'il figure bien dans « Envoyés ». Un
+     message introuvable après coup, c'est un message qu'on croit non envoyé. */
+  return { copieDansEnvoyes: r.via === "smtp" ? undefined : r.copieDansEnvoyes };
 }
 
 /** Charge le vivier à la demande : contacts + immeubles + recherches, c'est

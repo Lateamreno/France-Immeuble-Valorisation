@@ -151,7 +151,15 @@ export async function envoyerPourAgent(
      *  part de la boîte de l'agent, il l'a déjà dans ses « Envoyés ». */
     bccSiCommun?: string;
   },
-): Promise<{ messageId: string; expediteur: string; via: "boite" | "smtp" }> {
+): Promise<{
+  messageId: string;
+  expediteur: string;
+  via: "boite" | "smtp";
+  /** Faux quand le message est parti mais n'a pas pu être copié dans
+   *  « Envoyés » : c'est exactement le cas où l'agent ne le retrouve nulle
+   *  part et croit que l'envoi a échoué. */
+  copieDansEnvoyes?: boolean;
+}> {
   const b = await boiteAgent(agentId);
   if (b) {
     const { envoyerDepuis } = await import("@/lib/mails/client");
@@ -165,7 +173,10 @@ export async function envoyerPourAgent(
       messageId: m.messageIdPour?.(domaine),
       pieces: m.attachments,
     });
-    return { messageId: r.messageId, expediteur: b.adresse, via: "boite" };
+    return {
+      messageId: r.messageId, expediteur: b.adresse, via: "boite",
+      copieDansEnvoyes: r.copieDansEnvoyes,
+    };
   }
 
   if (!mailConfigure()) {

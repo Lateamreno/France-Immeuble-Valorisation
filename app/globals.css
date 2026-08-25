@@ -4688,6 +4688,30 @@ a.cfc-t:hover { text-decoration: underline; }
 .gm-boites svg { flex: none; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .gm-boites .n { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--gray-txt); }
 .gm-boites button.on .n { color: #8a5a00; }
+/* Bouton « relire la boîte ». Ici le picto circulaire est le bon : c'est
+   vraiment un rechargement, pas une navigation. */
+.gm-refresh {
+  border: 0; background: none; cursor: pointer; padding: 4px 6px;
+  color: var(--gray-txt); line-height: 0; flex: none;
+}
+.gm-refresh:hover { color: var(--slate); }
+.gm-refresh:disabled { opacity: .5; cursor: default; }
+.gm-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.gm-refresh svg.tourne { animation: gmtourne .9s linear infinite; transform-origin: 50% 50%; }
+@keyframes gmtourne { to { transform: rotate(360deg); } }
+/* Quelle boîte on lit, et à quelle heure : sans ça, une liste vide laisse
+   croire à une panne alors qu'elle est simplement à jour. */
+.gm-boitedit {
+  display: flex; align-items: baseline; gap: 8px; padding: 5px 12px;
+  border-bottom: 1px solid var(--line-lt); background: #fafafa;
+  font-size: 11.5px; color: var(--gray-txt);
+}
+.gm-boitedit span { font-weight: 600; color: var(--slate-2); }
+.gm-boitedit i { font-style: normal; color: var(--gray-lt); }
+.gm-rep { color: var(--gray-lt); font-size: 12px; }
+.gm-pjs { display: flex; flex-wrap: wrap; gap: 8px; }
+.gm-pjs i { font-style: normal; font-size: 11.5px; color: var(--gray-txt); }
+
 /* Le lien vers les réglages de boîte : même ligne que les dossiers. */
 .gm-lien {
   display: flex; align-items: center; gap: 10px; width: 100%;

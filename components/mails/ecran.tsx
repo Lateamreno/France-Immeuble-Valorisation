@@ -10,12 +10,12 @@
  * simple, « Salve » pour un envoi ciblé.
  */
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
-import type { FilMail } from "@/lib/bubble/server";
 import type { Brouillon, Dossier, MessageType, Salve } from "@/lib/mails/serveur";
-import { classerMails } from "@/lib/bo/mails-actions";
-import { FenetreRedaction } from "@/components/mails/redaction";
+import type { MessageComplet, RoleDossier } from "@/lib/mails/client";
+import { BoiteVivante } from "@/components/mails/boite-vivante";
+import { FenetreRedaction, type Reponse } from "@/components/mails/redaction";
 import { FenetreSalve } from "@/components/mails/salve";
 import { Bibliotheque } from "@/components/mails/messages-types";
 
@@ -44,59 +44,47 @@ const jour = (d?: string) => {
     : x.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" });
 };
 
-const initiales = (nom: string) =>
-  nom.split(/[\s.@]+/).filter(Boolean).slice(0, 2).map((m) => m[0]?.toUpperCase() ?? "").join("") || "?";
-
 export function EcranMails({
-  mails, brouillons, messagesTypes, salves, agent, releve,
+  brouillons, messagesTypes, salves, agent, boite,
 }: {
-  /** Les envois du miroir et les messages relevés, déjà rangés dans leur boîte. */
-  mails: (FilMail & {
-    dossier: Exclude<Dossier, "brouillons">;
-    lu: boolean;
-    /** Pourquoi le moteur a rangé ce message ici (messages reçus seulement). */
-    reconnaissance?: string;
-  })[];
   brouillons: Brouillon[];
   messagesTypes: MessageType[];
   salves: Salve[];
   agent: { id: string; nom: string; email?: string; telephone?: string };
-  /** État de la relève IMAP, pour que la boîte vide s'explique. */
-  releve?: { active: boolean; boite?: string; derniereLe?: string; dernierMessage?: string };
+  /** La boîte de l'agent, quand il en a branché une. */
+  boite?: { adresse: string; nomAffiche?: string };
 }) {
   const [vue, setVue] = useState<Vue>("reception");
-  const [q, setQ] = useState("");
-  const [choisis, setChoisis] = useState<Set<string>>(new Set());
-  const [ouvert, setOuvert] = useState<string | null>(null);
-  const [redaction, setRedaction] = useState<null | { brouillon?: Brouillon; modele?: MessageType }>(null);
+  const [redaction, setRedaction] = useState<
+    null | { brouillon?: Brouillon; modele?: MessageType; reponse?: Reponse }
+  >(null);
   const [salve, setSalve] = useState(false);
-  const [pending, start] = useTransition();
+  /** Compteurs des dossiers, remontés par la boîte au fil des lectures. */
+  const [compteurs, setCompteurs] = useState<Partial<Record<RoleDossier, number>>>({});
+  /** Change à chaque envoi : c'est ce qui force la boîte à se relire. */
+  const [tour, setTour] = useState(0);
 
   const compte = (d: Dossier) =>
-    d === "brouillons" ? brouillons.length : mails.filter((m) => m.dossier === d).length;
+    d === "brouillons" ? brouillons.length : compteurs[d as RoleDossier] ?? 0;
 
-  const liste = useMemo(() => {
-    if (vue === "brouillons" || vue === "messages_types" || vue === "salves") return [];
-    const qq = q.trim().toLowerCase();
-    return mails
-      .filter((m) => m.dossier === vue)
-      .filter((m) => !qq || `${m.objet} ${m.qui} ${m.adresse} ${m.extrait}`.toLowerCase().includes(qq))
-      .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
-  }, [mails, vue, q]);
+  const noterCompteurs = useCallback((role: RoleDossier, total: number, nonLus: number) => {
+    setCompteurs((c) => ({ ...c, [role]: role === "reception" ? nonLus || total : total }));
+  }, []);
 
-  const courant = liste.find((m) => m.id === ouvert) ?? liste[0];
-  const tousCoches = liste.length > 0 && liste.every((m) => choisis.has(m.id));
-
-  const cocher = (id: string) =>
-    setChoisis((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-
-  const deplacer = (dossier: "reception" | "indesirables" | "corbeille") =>
-    start(async () => {
-      await classerMails([...choisis], dossier, agent.id);
-      setChoisis(new Set());
+  const repondreA = (m: MessageComplet, reponse: Reponse) =>
+    setRedaction({
+      reponse,
+      brouillon: {
+        id: "", agent_id: agent.id,
+        objet: /^re\s*:/i.test(m.objet) ? m.objet : `Re : ${m.objet}`,
+        corps: `\n\n— Le ${jour(m.date)}, ${m.deNom || m.de} a écrit :\n${m.corps}`,
+        destinataires: [{ email: m.de, nom: m.deNom || m.de }],
+        origine: "manuel", statut: "brouillon",
+        created_at: "", updated_at: "",
+      },
     });
 
-  const changerVue = (v: Vue) => { setVue(v); setChoisis(new Set()); setOuvert(null); };
+  const changerVue = (v: Vue) => setVue(v);
 
   return (
     <div className="gm">
@@ -163,145 +151,28 @@ export function EcranMails({
         <JournalSalves salves={salves} />
       ) : vue === "brouillons" ? (
         <ListeBrouillons brouillons={brouillons} onOuvrir={(b) => setRedaction({ brouillon: b })} />
+      ) : boite ? (
+        /* La boîte de l'agent, lue en direct : plus rien ne transite par une
+           copie en base, donc plus de décalage avec le téléphone. */
+        <BoiteVivante
+          key={`${vue}-${tour}`}
+          agentId={agent.id}
+          role={vue as RoleDossier}
+          adresse={boite.adresse}
+          onRepondre={repondreA}
+          onRafraichi={noterCompteurs}
+        />
       ) : (
-        <>
-          <section className="gm-liste">
-            <div className="gm-bar">
-              <label className="gm-tous" title="Tout sélectionner">
-                <input type="checkbox" checked={tousCoches}
-                  onChange={() => setChoisis(tousCoches ? new Set() : new Set(liste.map((m) => m.id)))} />
-              </label>
-              {choisis.size > 0 ? (
-                <>
-                  <b className="gm-nsel">{choisis.size} sélectionné{choisis.size > 1 ? "s" : ""}</b>
-                  <span style={{ flex: 1 }} />
-                  {vue !== "corbeille" && (
-                    <button type="button" className="gm-act" disabled={pending} onClick={() => deplacer("corbeille")}>
-                      🗑 Supprimer
-                    </button>
-                  )}
-                  {vue !== "indesirables" && (
-                    <button type="button" className="gm-act" disabled={pending} onClick={() => deplacer("indesirables")}>
-                      ⚠ Indésirable
-                    </button>
-                  )}
-                  {(vue === "corbeille" || vue === "indesirables") && (
-                    <button type="button" className="gm-act" disabled={pending} onClick={() => deplacer("reception")}>
-                      ↩ Restaurer
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="gm-rech">
-                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
-                    <input placeholder="Rechercher dans les messages…" value={q} onChange={(e) => setQ(e.target.value)} />
-                  </div>
-                  <span className="gm-cpt">{liste.length}</span>
-                </>
-              )}
-            </div>
-
-            {vue === "reception" && releve && (
-              <div className={`gm-releve${releve.active ? "" : " off"}`}>
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 5.4a6.6 6.6 0 1 1-6.3 8.6" /><path d="M5.4 9.4v4h4" />
-                </svg>
-                {releve.active ? (
-                  <span>
-                    Relève de <b>{releve.boite}</b>
-                    {releve.derniereLe ? ` · ${jour(releve.derniereLe)}` : ""}
-                    {releve.dernierMessage ? ` · ${releve.dernierMessage}` : ""}
-                  </span>
-                ) : (
-                  <span>Relève non branchée — les messages reçus n&apos;arrivent pas encore.</span>
-                )}
-              </div>
-            )}
-
-            <div className="gm-rows">
-              {liste.map((m) => (
-                <div key={m.id}
-                  className={`gm-row${courant?.id === m.id ? " on" : ""}${m.lu ? "" : " neuf"}`}
-                  onClick={() => setOuvert(m.id)}>
-                  <label className="gm-ck" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={choisis.has(m.id)} onChange={() => cocher(m.id)} />
-                  </label>
-                  <span className="gm-av">{initiales(m.qui || m.adresse)}</span>
-                  <div className="gm-mid">
-                    <div className="gm-l1">
-                      <span className="gm-qui">{m.qui || m.adresse || "—"}</span>
-                      <span style={{ flex: 1 }} />
-                      {m.pj > 0 && <span className="gm-pj" title={`${m.pj} pièce(s) jointe(s)`}>📎</span>}
-                      <span className="gm-date">{jour(m.date)}</span>
-                    </div>
-                    <div className="gm-l2">
-                      <b>{m.objet}</b>
-                      <span> — {m.extrait}</span>
-                    </div>
-                    {m.immeubleLabel && <span className="gm-tag">{m.immeubleLabel}</span>}
-                    {m.reconnaissance && <span className="gm-pourquoi">{m.reconnaissance}</span>}
-                  </div>
-                </div>
-              ))}
-              {liste.length === 0 && (
-                <div className="fempty">
-                  {/* Dire pourquoi c'est vide vaut mieux que de laisser croire
-                      à une panne. */}
-                  {vue !== "reception"
-                    ? "Aucun message dans cette boîte."
-                    : releve?.active
-                      ? `Aucun message reçu pour le moment. La boîte ${releve.boite ?? ""} est relevée${releve.derniereLe ? ` — dernière relève ${jour(releve.derniereLe)}` : ""}.`
-                      : "Aucun message reçu. La relève n'est pas branchée : posez IMAP_HOST, IMAP_USER et IMAP_PASS pour que les réponses arrivent ici."}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="gm-lecture">
-            {courant ? (
-              <>
-                <div className="gm-lh">
-                  <h2>{courant.objet}</h2>
-                  <div className="gm-lmeta">
-                    <span className="gm-av">{initiales(courant.qui || courant.adresse)}</span>
-                    <div>
-                      <b>{courant.qui || courant.adresse}</b>
-                      <span>{courant.adresse}</span>
-                    </div>
-                    <span style={{ flex: 1 }} />
-                    <span className="gm-date">{jour(courant.date)}</span>
-                  </div>
-                  <div className="gm-lliens">
-                    {courant.contactId && (
-                      <Link className="fadd" href={`/contact/${courant.contactId}`}>Fiche contact ↗</Link>
-                    )}
-                    {courant.immeubleId && (
-                      <Link className="fadd" href={`/bien/${courant.immeubleId}`}>Immeuble ↗</Link>
-                    )}
-                    <span style={{ flex: 1 }} />
-                    <button type="button" className="fadd"
-                      onClick={() => setRedaction({
-                        brouillon: {
-                          id: "", agent_id: agent.id,
-                          objet: courant.objet.startsWith("Re :") ? courant.objet : `Re : ${courant.objet}`,
-                          corps: `\n\n— Le ${jour(courant.date)}, ${courant.qui} a écrit :\n${courant.corps}`,
-                          destinataires: [{ contactId: courant.contactId, email: courant.adresse, nom: courant.qui }],
-                          origine: "manuel", statut: "brouillon",
-                          created_at: "", updated_at: "",
-                        },
-                      })}>
-                      ↩ Répondre
-                    </button>
-                  </div>
-                </div>
-                <pre className="gm-corps">{courant.corps}</pre>
-              </>
-            ) : (
-              <div className="fempty">Sélectionnez un message.</div>
-            )}
-          </section>
-        </>
+        <section className="gm-plein">
+          <div className="gm-avis">
+            <b>Aucune boîte e-mail branchée.</b>
+            <span>
+              Les messages affichés ici sont ceux de VOTRE boîte, lue en direct sur son
+              serveur. Tant qu&apos;elle n&apos;est pas renseignée, il n&apos;y a rien à afficher.
+            </span>
+            <Link className="fadd" href="/mails/reglages">Brancher ma boîte</Link>
+          </div>
+        </section>
       )}
 
       {redaction && (
@@ -310,7 +181,10 @@ export function EcranMails({
           modeles={messagesTypes}
           brouillon={redaction.brouillon}
           modele={redaction.modele}
+          reponse={redaction.reponse}
           onClose={() => setRedaction(null)}
+          /* Un message parti change la boîte : on la relit. */
+          onEnvoye={() => setTour((t) => t + 1)}
         />
       )}
       {salve && (

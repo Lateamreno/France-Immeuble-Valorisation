@@ -13,6 +13,7 @@ import { ZoneRedaction } from "@/components/mails/editeur";
 import {
   creerBrouillon, creerMessageType, envoyerUnMessage, majBrouillon,
 } from "@/lib/bo/mails-actions";
+import { repondre } from "@/lib/bo/boite-actions";
 
 /** Aperçu : on ne connaît pas encore le destinataire réel dans une fenêtre
  *  d'envoi unitaire, on montre donc l'exemple de chaque champ. */
@@ -22,14 +23,32 @@ const APERCU_UNITAIRE = {
   societe: "SCI LLA",
 };
 
+/**
+ * Le message auquel on répond.
+ *
+ * Sans lui, une réponse repart comme un message neuf : le fil se casse chez le
+ * destinataire, le chevron « répondu » ne s'allume pas dans la boîte, et le
+ * jeton de rattachement ne revient pas. On le transporte donc jusqu'à l'envoi.
+ */
+export type Reponse = {
+  role: "reception" | "envoyes" | "brouillons" | "indesirables" | "corbeille";
+  uid: number;
+  messageId?: string;
+  references: string[];
+};
+
 export function FenetreRedaction({
-  agent, modeles, brouillon, modele, onClose,
+  agent, modeles, brouillon, modele, reponse, onClose, onEnvoye,
 }: {
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
   brouillon?: Brouillon;
   modele?: MessageType;
+  /** Renseigné quand la fenêtre est ouverte depuis « Répondre ». */
+  reponse?: Reponse;
   onClose: () => void;
+  /** Prévient l'écran qu'un message est parti, pour qu'il se rafraîchisse. */
+  onEnvoye?: () => void;
 }) {
   const [a, setA] = useState(brouillon?.destinataires.map((d) => d.email).join(", ") ?? "");
   const [objet, setObjet] = useState(brouillon?.objet ?? modele?.objet ?? "");
@@ -59,14 +78,31 @@ export function FenetreRedaction({
     start(async () => {
       setErreur(null);
       try {
-        await envoyerUnMessage({
-          to: a, objet, corps, repondreA: agent.email, agentId: agent.id,
-          brouillonId: brouillon?.id || undefined,
-        });
+        /* Une réponse passe par la boîte de l'agent avec le fil : c'est ce qui
+           allume le chevron « répondu » et garde la conversation groupée. */
+        let copie: boolean | undefined;
+        if (reponse) {
+          const r = await repondre(agent.id, {
+            to: a, objet, texte: corps,
+            inReplyTo: reponse.messageId,
+            references: [...reponse.references, reponse.messageId].filter(Boolean) as string[],
+            role: reponse.role, uid: reponse.uid,
+          });
+          copie = r.copieDansEnvoyes;
+        } else {
+          const r = await envoyerUnMessage({
+            to: a, objet, corps, repondreA: agent.email, agentId: agent.id,
+            brouillonId: brouillon?.id || undefined,
+          });
+          copie = r?.copieDansEnvoyes;
+        }
         if (enregistrerType && libelleType.trim()) {
           await creerMessageType({ libelle: libelleType, objet, corps, agentId: agent.id });
         }
-        setFait("Message envoyé.");
+        setFait(copie === false
+          ? "Message envoyé — mais impossible de le copier dans « Envoyés » : il est parti, il n'apparaîtra pas dans cette boîte."
+          : "Message envoyé.");
+        onEnvoye?.();
         setTimeout(onClose, 900);
       } catch (e) {
         setErreur(e instanceof Error ? e.message : String(e));
