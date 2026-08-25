@@ -29,6 +29,7 @@ export default async function EstimationPage({ params }: { params: Promise<{ id:
       operation={operation}
       secteur={secteur}
       envoiActif={await envoiPossible()}
+      cleEcran={`estimation:neuve`}
       ouvrir={{ mode: "neuve" }}
     />
   );

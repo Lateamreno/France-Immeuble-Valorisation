@@ -43,6 +43,7 @@ export default async function ReprendreEstimation({
       operation={operation}
       secteur={secteur}
       envoiActif={await envoiPossible()}
+      cleEcran={`estimation:${eid}`}
       ouvrir={{ mode: "reprise", reprise: ecran.reprise, lecture: ecran.lecture }}
     />
   );

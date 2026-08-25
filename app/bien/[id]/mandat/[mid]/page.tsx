@@ -40,6 +40,9 @@ export default async function MandatDansFiche({
       contenu={<MandatFiche d={d} />}
       contenuLabel={`Mandat ${d.m.numero ? `n° ${d.m.numero}` : "en cours"}`}
       contenuIcone="mandat"
+      /* L'identifiant demandé : sans lui, cliquer sur un autre mandat changeait
+         l'adresse sans rouvrir l'écran (retour #137). */
+      cleEcran={`mandat:${mid}`}
     />
   );
 }

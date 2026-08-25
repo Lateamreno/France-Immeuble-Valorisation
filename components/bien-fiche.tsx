@@ -123,7 +123,7 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 export function BienFiche({
-  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir,
+  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir, cleEcran,
 }: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
@@ -142,12 +142,34 @@ export function BienFiche({
   envoiActif?: boolean;
   /** Estimation à ouvrir d'emblée (accès direct par l'URL). */
   ouvrir?: EcranEstimation;
+  /**
+   * Ce que l'URL demande d'ouvrir — l'identifiant du mandat, de l'estimation.
+   *
+   * Il faut ça parce que Next réutilise le composant d'une adresse à l'autre
+   * quand elles ont la même forme. Sans lui : on ouvre un mandat, on va voir
+   * la liste des mandats, on clique sur un mandat — l'adresse change, mais
+   * l'écran restait sur la liste. C'est exactement le « je n'arrive plus à
+   * revenir dessus » de MAV (retour #137).
+   */
+  cleEcran?: string;
 }) {
   /* L'estimation ouverte, s'il y en a une : elle vit ici, pas dans une route. */
   const [est, setEst] = useState<EcranEstimation | null>(ouvrir ?? null);
   const [chargement, setChargement] = useState<string | null>(null);
   const [erreurEst, setErreurEst] = useState<string | null>(null);
   const [sect, setSect] = useState<SectionKey>(contenu || ouvrir ? "encours" : "suivi");
+
+  /* Nouvelle demande d'ouverture : on montre l'écran demandé. Ajuster l'état
+     pendant le rendu est la façon prévue de réagir à un changement de props ;
+     un effet ferait clignoter la liste avant de basculer. */
+  const [cleVue, setCleVue] = useState(cleEcran);
+  if (cleEcran !== cleVue) {
+    setCleVue(cleEcran);
+    if (cleEcran) {
+      setSect("encours");
+      if (ouvrir) setEst(ouvrir);
+    }
+  }
 
   /**
    * Ouvre une estimation dans la page. Rien n'est démonté : ce qui est en
