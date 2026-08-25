@@ -802,15 +802,18 @@ function EstimationsSection({ b }: { b: BienData }) {
         return (
           <Row key={e._id as string}>
             <div className="grow">
-              {/* Cliquer sur l'estimation l'ouvre à l'étape Envoi : plus besoin
-                  d'en refaire une pour pouvoir la renvoyer (retour #98). */}
+              {/* Cliquer sur le titre ouvre l'estimation telle qu'elle était,
+                  en lecture seule : c'est ce que fait le BO. Le bouton de
+                  droite, lui, sert à la renvoyer (retour #98). */}
               <div className="t">
-                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}`} style={{ color: "inherit" }}>
+                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/consulter`} style={{ color: "inherit" }}>
                   {String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}
                 </Link>
               </div>
               <div className="s">
                 {dmy(e["Created Date"])}
+                {" · "}
+                <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/consulter`}>consulter</Link>
                 {isApp && (
                   <> · <Link href={`/bien/${immeubleId}/estimation/${String(e._id)}/imprimer`} target="_blank">version imprimable</Link></>
                 )}

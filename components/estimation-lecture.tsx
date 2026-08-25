@@ -1,0 +1,171 @@
+/* Consultation d'une estimation passée (tâche #55).
+ *
+ * Le BO ouvre l'estimation avec tous ses champs tels qu'ils étaient, non
+ * modifiables. On reprend ce principe : mêmes rubriques que l'écran
+ * d'estimation, mêmes valeurs, mais rien de saisissable — pas un champ grisé
+ * qui donnerait envie de cliquer, des valeurs posées.
+ *
+ * Composant serveur : il n'y a rien à manipuler ici.
+ */
+
+import Link from "next/link";
+import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
+import { ETATS } from "@/lib/bo/dossier";
+
+const eur = (v?: number) => (v === undefined ? "—" : `${Math.round(v).toLocaleString("fr-FR")} €`);
+const pct = (v?: number) => (v === undefined ? "—" : `${v.toFixed(1).replace(".", ",")} %`);
+const nb = (v?: number) => (v === undefined ? "—" : Math.round(v).toLocaleString("fr-FR"));
+
+/** Une note sur 5, affichée en pastilles pleines et vides. */
+function Note({ valeur, libelles }: { valeur?: number; libelles: string[] }) {
+  if (!valeur) return <span className="elc-v">—</span>;
+  return (
+    <span className="elc-note">
+      <span className="elc-pastilles">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <i key={n} className={n <= valeur ? "on" : undefined} />
+        ))}
+      </span>
+      {libelles[valeur - 1]}
+    </span>
+  );
+}
+
+export function EstimationEnLecture({ e, immeubleId, pdfUrl }: {
+  e: EstimationLecture;
+  immeubleId: string;
+  pdfUrl?: string;
+}) {
+  const avecRef = e.lignes.some((l) => l.refLoyer || l.refPrix || l.refRenta);
+
+  return (
+    <div className="elc">
+      {/* Dire d'emblée pourquoi rien ne se modifie évite qu'on cherche le
+          bouton Enregistrer pendant deux minutes. */}
+      <div className="elc-bandeau">
+        <b>Estimation du {e.date} — consultation</b>
+        <span>
+          Les valeurs sont celles du jour où l&apos;estimation a été faite. La fiche a pu
+          bouger depuis : c&apos;est voulu, c&apos;est ce chiffre-là qui est parti au propriétaire.
+        </span>
+      </div>
+
+      <header className="elc-tete">
+        <div>
+          <h1>{e.titre}</h1>
+          <p>{e.adresse}</p>
+          <p className="elc-meta">
+            {e.auteur ? `Par ${e.auteur} · ` : ""}créée le {e.date}
+            {e.envoyeeLe ? ` · envoyée le ${e.envoyeeLe}` : ""}
+            {e.statut ? ` · ${e.statut}` : ""}
+          </p>
+        </div>
+        <span style={{ flex: 1 }} />
+        <div className="elc-actions">
+          {pdfUrl && (
+            <a className="fadd" href={pdfUrl} target="_blank" rel="noreferrer">Ouvrir le PDF envoyé ↗</a>
+          )}
+          <Link className="fadd" href={`/bien/${immeubleId}/estimation/${e.id}/imprimer`}>
+            Aperçu du dossier ↗
+          </Link>
+          {/* Reprendre, c'est renvoyer — pas rouvrir le calcul (retour #98). */}
+          <Link className="savebar-go" href={`/bien/${immeubleId}/estimation/${e.id}`}>
+            <span className="ch">›</span> Reprendre pour envoyer
+          </Link>
+        </div>
+      </header>
+
+      {/* ---- Le prix, en premier : c'est ce qu'on vient revoir ---- */}
+      <section className="elc-prix">
+        <div className="elc-prix-grand">
+          <span>Prix estimé, honoraires inclus</span>
+          <b>{eur(e.prix.hai)}</b>
+        </div>
+        <div className="elc-prix-trio">
+          <div><span>Net vendeur</span><b>{eur(e.prix.nv)}</b></div>
+          <div><span>Honoraires</span><b>{e.prix.honosPct ? pct(e.prix.honosPct) : "—"}</b></div>
+          <div><span>Prix au m²</span><b>{e.prix.m2 ? `${nb(e.prix.m2)} €` : "—"}</b></div>
+          <div><span>Rendement brut</span><b>{pct(e.prix.renta)}</b></div>
+        </div>
+      </section>
+
+      {/* ---- L'état locatif figé ---- */}
+      {e.lignes.length > 0 && (
+        <section className="elc-sec">
+          <h2>État locatif au {e.date}</h2>
+          <div className="elc-tabx">
+            <table className="elc-tab">
+              <thead>
+                <tr>
+                  <th>Destination</th><th>Lots</th><th>Carrez</th><th>Occupé</th>
+                  <th>Loyer HC/an</th><th>Potentiel</th>
+                  {avecRef && <><th>Loyer secteur</th><th>Prix secteur</th><th>Rendement</th></>}
+                </tr>
+              </thead>
+              <tbody>
+                {e.lignes.map((l) => (
+                  <tr key={l.dest}>
+                    <th>{l.dest}</th>
+                    <td>{nb(l.lots)}</td>
+                    <td>{l.surface ? `${nb(l.surface)} m²` : "—"}</td>
+                    <td>{l.surfaceOcc ? `${nb(l.surfaceOcc)} m²` : "—"}</td>
+                    <td>{eur(l.loyer)}</td>
+                    <td>{eur(l.loyerMax)}</td>
+                    {avecRef && (
+                      <>
+                        <td>{l.refLoyer ? `${l.refLoyer.toFixed(1).replace(".", ",")} €/m²` : "—"}</td>
+                        <td>{l.refPrix ? `${nb(l.refPrix)} €/m²` : "—"}</td>
+                        <td>{pct(l.refRenta)}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ---- Les appréciations ---- */}
+      <section className="elc-sec">
+        <h2>Appréciations retenues</h2>
+        <div className="elc-champs">
+          <div className="elc-c"><span>Emplacement</span><Note valeur={e.scores.emp} libelles={ETATS.emp} /></div>
+          <div className="elc-c"><span>Bâti</span><Note valeur={e.scores.bati} libelles={ETATS.bati} /></div>
+          <div className="elc-c"><span>Lots</span><Note valeur={e.scores.lot} libelles={ETATS.lot} /></div>
+          <div className="elc-c">
+            <span>Cibles visées</span>
+            <span className="elc-v">
+              {e.cibles.length ? e.cibles.map((c) => <i key={c} className="elc-chip">{c}</i>) : "—"}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ---- Les blocs de saisie, en lecture ---- */}
+      {e.blocs.map((b) => (
+        <section className="elc-sec" key={b.titre}>
+          <h2>{b.titre}</h2>
+          <div className="elc-champs">
+            {b.champs.map((c) => (
+              <div className="elc-c" key={c.label}>
+                <span>{c.label}</span>
+                <span className="elc-v">
+                  {c.valeur ?? "—"}
+                  {c.note && <i className="elc-note-txt">{c.note}</i>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {e.analyse && (
+        <section className="elc-sec">
+          <h2>Analyse écrite ce jour-là</h2>
+          <p className="elc-analyse">{e.analyse}</p>
+        </section>
+      )}
+    </div>
+  );
+}

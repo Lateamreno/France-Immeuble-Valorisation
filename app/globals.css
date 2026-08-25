@@ -4825,3 +4825,68 @@ a.cfc-t:hover { text-decoration: underline; }
   .gm-side { border-right: 0; border-bottom: 1px solid var(--line); }
   .gm-plein, .gm-lecture { grid-column: 1 / -1; }
 }
+
+/* ============ Consultation d'une estimation passée (tâche #55) ============
+   Aucune saisie : des valeurs posées, pas des champs grisés. Un champ
+   désactivé donne envie de cliquer dessus, une valeur non. */
+
+.elc { padding: 16px 22px 40px; max-width: 1000px; }
+.elc-bandeau {
+  display: flex; flex-direction: column; gap: 3px; margin-bottom: 18px;
+  border: 1px dashed var(--gold-bo); border-radius: 5px; background: #fffaeb;
+  padding: 10px 14px;
+}
+.elc-bandeau b { font-family: var(--font-title); font-size: 13px; color: #8a5a00; }
+.elc-bandeau span { font-size: 12.5px; line-height: 1.55; color: var(--gray-txt); }
+
+.elc-tete { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+.elc-tete h1 { margin: 0 0 3px; font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--slate); }
+.elc-tete p { margin: 0; font-size: 13px; color: var(--slate-2); }
+.elc-meta { font-size: 12px !important; color: var(--gray-lt) !important; margin-top: 3px !important; }
+.elc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.elc-prix {
+  display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  padding: 16px 20px; margin-bottom: 18px;
+}
+.elc-prix-grand > span { display: block; font-size: 11.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--gray-txt); }
+.elc-prix-grand b { font-family: var(--font-title); font-size: 30px; font-weight: 700; color: var(--slate); }
+.elc-prix-trio { display: flex; gap: 26px; flex-wrap: wrap; }
+.elc-prix-trio > div { display: flex; flex-direction: column; }
+.elc-prix-trio span { font-size: 11.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--gray-txt); }
+.elc-prix-trio b { font-family: var(--font-title); font-size: 16px; font-weight: 600; color: var(--slate); }
+
+.elc-sec { margin-bottom: 20px; }
+.elc-sec h2 {
+  margin: 0 0 9px; font-family: var(--font-title); font-size: 13px; font-weight: 700;
+  color: var(--gold-bo); letter-spacing: .2px;
+}
+.elc-champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 20px; }
+.elc-c { display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--line-lt); padding: 6px 0; }
+.elc-c > span:first-child { flex: 0 0 46%; font-size: 12.5px; color: var(--gray-txt); }
+.elc-v { flex: 1; font-size: 13px; font-weight: 600; color: var(--slate); }
+.elc-note-txt { margin-left: 7px; font-style: normal; font-weight: 400; color: var(--gray-lt); }
+.elc-chip {
+  display: inline-block; margin-right: 5px; background: var(--chip); border-radius: 3px;
+  padding: 1px 8px; font-size: 11.5px; font-style: normal; font-weight: 600; color: var(--slate-2);
+}
+.elc-note { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--slate); }
+.elc-pastilles { display: inline-flex; gap: 3px; }
+.elc-pastilles i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--gold-bo); }
+.elc-pastilles i.on { background: var(--gold-bo); }
+
+.elc-tabx { overflow-x: auto; }
+.elc-tab { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+.elc-tab thead th {
+  background: var(--slate-2); color: #fff; font-family: var(--font-title); font-size: 11.5px;
+  font-weight: 600; text-align: right; padding: 7px 10px;
+}
+.elc-tab thead th:first-child { text-align: left; }
+.elc-tab tbody th { text-align: left; font-weight: 600; color: var(--slate); padding: 7px 10px; border-bottom: 1px solid var(--line-lt); }
+.elc-tab tbody td { text-align: right; color: var(--slate-2); padding: 7px 10px; border-bottom: 1px solid var(--line-lt); font-variant-numeric: tabular-nums; }
+
+.elc-analyse {
+  margin: 0; border-left: 3px solid var(--gold-bo); padding: 4px 0 4px 14px;
+  font-size: 13px; line-height: 1.7; color: var(--slate); white-space: pre-wrap;
+}
