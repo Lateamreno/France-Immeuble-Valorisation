@@ -1,4 +1,4 @@
-import { getAgents, listMails } from "@/lib/bubble/server";
+import { getAgentFiche, getAgents, listMails } from "@/lib/bubble/server";
 import {
   brouillons, dossierDe, etatReleve, etatsMails, mailsEntrants, messagesTypes, salves,
 } from "@/lib/mails/serveur";
@@ -58,6 +58,10 @@ export default async function MailsPage({
 
   const actifs = agents.filter((a) => a.actif);
   const courant = actifs.find((a) => a.slug === agent) ?? actifs[0];
+  /* L'adresse de l'agent sert de Reply-To : le message part de la boîte
+     métier, mais la réponse revient à celui qui a écrit. */
+  const fiche = courant ? await getAgentFiche(courant.id).catch(() => null) : null;
+  const s2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
   return (
     <EcranMails
@@ -71,7 +75,12 @@ export default async function MailsPage({
       brouillons={br}
       messagesTypes={mt}
       salves={sv}
-      agent={{ id: courant?.id ?? "", nom: courant?.name ?? "France Immeuble" }}
+      agent={{
+        id: courant?.id ?? "",
+        nom: courant?.name ?? "France Immeuble",
+        email: s2(fiche?.email),
+        telephone: s2(fiche?.["portable (TXT)"]) ?? s2(fiche?.portable),
+      }}
     />
   );
 }

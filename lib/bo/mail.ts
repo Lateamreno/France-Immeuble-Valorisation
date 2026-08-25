@@ -68,6 +68,9 @@ export async function envoyerMail(m: {
     port: c.port,
     // 465 = TLS implicite, 587 = STARTTLS : les deux routes possibles.
     secure: c.port === 465,
+    /* En 587, exiger STARTTLS : sans ça, un serveur qui ne l'annonce pas
+       laisserait partir identifiants et message en clair. */
+    requireTLS: c.port !== 465,
     auth: { user: c.user!, pass: c.pass! },
   });
 

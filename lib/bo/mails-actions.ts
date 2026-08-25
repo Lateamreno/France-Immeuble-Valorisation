@@ -150,17 +150,23 @@ export async function supprimerBrouillon(id: string) {
 
 /* ---------------- Envoi ---------------- */
 
-/** Envoi unitaire, depuis la fenêtre « Nouveau message ». */
+/** Envoi unitaire, depuis la fenêtre « Nouveau message ».
+ *
+ *  L'expéditeur reste TOUJOURS la boîte authentifiée : un serveur refuse
+ *  d'envoyer au nom d'une adresse dont on n'a pas les clés — Exchange en
+ *  particulier. C'est l'adresse de l'agent qui part en `Reply-To`, pour que la
+ *  réponse lui revienne à lui. */
 export async function envoyerUnMessage(m: {
   to: string;
   objet: string;
   corps: string;
-  from?: string;
+  /** Adresse de l'agent : elle sert de Reply-To, jamais de From. */
+  repondreA?: string;
   brouillonId?: string;
 }) {
   if (!mailConfigure()) throw new Error("Envoi non configuré : SMTP_HOST / SMTP_USER / SMTP_PASS / MAIL_FROM manquent.");
   if (!m.to.trim()) throw new Error("Aucun destinataire.");
-  await envoyerMail({ to: m.to.trim(), subject: m.objet, text: m.corps, from: m.from });
+  await envoyerMail({ to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA });
   if (m.brouillonId) {
     await ecrire("fi_brouillon", "PATCH",
       { statut: "envoye", envoye_at: new Date().toISOString() }, `id=eq.${m.brouillonId}`);
@@ -233,7 +239,7 @@ export async function lancerSalve(
     const o = fusionner(objet, v);
     const b = fusionner(corps, v);
     try {
-      await envoyerMail({ to: c.email, subject: o.texte, text: b.texte, from: agent.email });
+      await envoyerMail({ to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email });
       envoyes += 1;
       if (b.manquants.length) journal.push(`${c.email} · envoyé, champs vides : ${b.manquants.join(", ")}`);
     } catch (e) {
