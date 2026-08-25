@@ -21,7 +21,7 @@ import {
 import { civiliteDe, valeursDe, type RefPrenoms } from "@/lib/mails/fusion";
 import type { MessageType } from "@/lib/mails/serveur";
 import { ZoneRedaction } from "@/components/mails/editeur";
-import { chargerVivier, lancerSalve, preparerSalve } from "@/lib/bo/mails-actions";
+import { chargerVivier, lancerSalve, preparerSalve, routeDeSalve } from "@/lib/bo/mails-actions";
 
 type Vivier = {
   candidats: Candidat[];
@@ -50,6 +50,10 @@ export function FenetreSalve({ agent, modeles, onClose }: {
   const [erreur, setErreur] = useState<string | null>(null);
   const [resultat, setResultat] = useState<{ envoyes: number; echecs: number } | null>(null);
   const [pending, start] = useTransition();
+  /* Par où la salve va partir. On le dit AVANT d'envoyer : la question « est-ce
+     que ça va saturer ma boîte ? » doit avoir sa réponse à l'écran. */
+  const [route, setRoute] = useState<{ relais: boolean; expediteur: string; plafondBoitePerso: number } | null>(null);
+  const [assume, setAssume] = useState(false);
 
   /* Le vivier est lourd (contacts + immeubles + recherches) : on ne le charge
      qu'à l'ouverture de cette fenêtre, pas à chaque affichage de l'écran. */
@@ -58,6 +62,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
     chargerVivier()
       .then((v) => { if (vivant) { setVivier(v as Vivier); setChargement(false); } })
       .catch((e) => { if (vivant) { setErreur(String(e)); setChargement(false); } });
+    routeDeSalve().then((r) => { if (vivant) setRoute(r); }).catch(() => undefined);
     return () => { vivant = false; };
   }, []);
 
@@ -124,7 +129,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
         });
         const r = await lancerSalve(id, destinataires, vivier.refPrenoms, {
           nom: agent.nom, email: agent.email, telephone: agent.telephone,
-        }, agent.id);
+        }, agent.id, assume);
         setResultat(r);
       } catch (e) {
         setErreur(e instanceof Error ? e.message : String(e));
@@ -281,6 +286,29 @@ export function FenetreSalve({ agent, modeles, onClose }: {
               )}
               <ZoneRedaction objet={objet} corps={corps} setObjet={setObjet} setCorps={setCorps}
                 valeursApercu={apercuValeurs} nomApercu={destinataires[0]?.nom} />
+
+              {/* Par où ça part : la réponse est due avant d'appuyer, pas après. */}
+              {route && (route.relais ? (
+                <div className="sv-route">
+                  <b>Départ par la route d&apos;envoi en masse</b>
+                  <span>
+                    Expéditeur : <b>{route.expediteur}</b> · les réponses reviennent à{" "}
+                    <b>{agent.email ?? "vous"}</b>. Rien n&apos;est ajouté à vos « Envoyés » — le
+                    détail reste dans « Salves envoyées ».
+                  </span>
+                </div>
+              ) : (
+                <div className="dif-avis" style={{ marginTop: 12 }}>
+                  <b>Route d&apos;envoi en masse non configurée.</b>
+                  Une salve ne devrait pas partir de votre boîte personnelle : elle sature vos
+                  « Envoyés », se fait couper par le plafond du fournisseur, et une plainte
+                  abîmerait la réputation de l&apos;adresse dont vous vous servez tous les jours.
+                  <label className="sv-case" style={{ marginTop: 8 }}>
+                    <input type="checkbox" checked={assume} onChange={() => setAssume(!assume)} />
+                    Envoyer quand même depuis ma boîte ({route.plafondBoitePerso} destinataires au maximum)
+                  </label>
+                </div>
+              ))}
             </>
           )}
 
@@ -317,7 +345,9 @@ export function FenetreSalve({ agent, modeles, onClose }: {
             </button>
           ) : (
             <button type="button" className="savebar-go"
-              disabled={pending || !!resultat || destinataires.length === 0 || !objet.trim() || !corps.trim()}
+              disabled={pending || !!resultat || destinataires.length === 0 || !objet.trim() || !corps.trim()
+                /* Sans relais, il faut avoir dit oui, et rester sous le plafond. */
+                || (route ? !route.relais && (!assume || destinataires.length > route.plafondBoitePerso) : false)}
               onClick={envoyer}>
               <span className="ch">›</span>
               {pending ? "Envoi en cours…" : `Envoyer à ${destinataires.length} contact${destinataires.length > 1 ? "s" : ""}`}

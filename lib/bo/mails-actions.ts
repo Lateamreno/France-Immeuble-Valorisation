@@ -12,7 +12,36 @@
  */
 
 import { revalidateTag, updateTag } from "next/cache";
-import { envoiPossible, envoyerPourAgent } from "@/lib/bo/mail";
+import {
+  envoiPossible, envoyerEnMasse, envoyerPourAgent, expediteurMasse, masseConfiguree,
+} from "@/lib/bo/mail";
+
+/**
+ * Au-delà, une salve ne peut plus partir d'une boîte personnelle.
+ *
+ * MAV : « pour les envois de masse faut que ça parte de SendGrid, sinon je
+ * vais avoir trop d'e-mails envoyés dans ma boîte. » C'est vrai, et il y a
+ * pire que l'encombrement : les fournisseurs plafonnent le sortant, et la
+ * réputation de l'adresse qui envoie est celle qui trinque. Une poignée de
+ * messages passe encore ; une campagne, non.
+ */
+const PLAFOND_BOITE_PERSO = 25;
+
+/** Au-delà, la fenêtre « Nouveau message » renvoie vers la salve. */
+const PLAFOND_UNITAIRE = 10;
+
+/** Ce que l'écran de salve doit savoir avant d'envoyer : par où ça part. */
+export async function routeDeSalve(): Promise<{
+  relais: boolean;
+  expediteur: string;
+  plafondBoitePerso: number;
+}> {
+  return {
+    relais: masseConfiguree(),
+    expediteur: expediteurMasse(),
+    plafondBoitePerso: PLAFOND_BOITE_PERSO,
+  };
+}
 import { fusionner, valeursDe, type Expediteur, type RefPrenoms } from "@/lib/mails/fusion";
 import type { Candidat, Cible, Filtres } from "@/lib/mails/audience";
 
@@ -167,6 +196,16 @@ export async function envoyerUnMessage(m: {
   brouillonId?: string;
 }) {
   if (!m.to.trim()) throw new Error("Aucun destinataire.");
+  /* Cette fenêtre sert la correspondance du quotidien — une réponse, quelques
+     destinataires. Au-delà, ce n'est plus un message, c'est une campagne : elle
+     a son écran, son ciblage et sa route d'envoi. */
+  const combien = m.to.split(",").map((x) => x.trim()).filter(Boolean).length;
+  if (combien > PLAFOND_UNITAIRE) {
+    throw new Error(
+      `${combien} destinataires : passez par « Envoyer une salve ». Cette fenêtre part de votre `
+      + `boîte personnelle, elle n'est pas faite pour l'envoi groupé.`,
+    );
+  }
   const r = await envoyerPourAgent(m.agentId, {
     to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA,
   });
@@ -231,13 +270,33 @@ export async function lancerSalve(
   candidats: Candidat[],
   ref: RefPrenoms,
   agent: Expediteur,
-  /** L'agent expéditeur : la salve part de SA boîte quand elle est branchée. */
+  /** L'agent expéditeur : sert de Reply-To, et de repli si besoin. */
   agentId?: string,
+  /** Accepté explicitement à l'écran : partir de la boîte personnelle faute de
+   *  relais dédié. Volontairement pénible, et plafonné. */
+  viaBoitePerso?: boolean,
 ): Promise<ResultatSalve> {
-  if (!(await envoiPossible(agentId))) {
-    throw new Error(
-      "Aucune boîte e-mail branchée : allez la brancher dans Mails → Ma boîte e-mail.",
-    );
+  /* L'aiguillage, et le seul endroit où il se décide. Une salve passe par le
+     relais dédié ; la boîte personnelle n'est acceptée qu'en dépannage, sur un
+     petit volume, et seulement si on l'a demandé à l'écran. */
+  const parRelais = masseConfiguree();
+  if (!parRelais) {
+    if (!viaBoitePerso) {
+      throw new Error(
+        "Route d'envoi en masse non configurée. Une salve ne doit pas partir d'une boîte personnelle : "
+        + "elle sature les « Envoyés », se fait couper par le plafond du fournisseur, et une plainte "
+        + "abîmerait la réputation de l'adresse de tous les jours.",
+      );
+    }
+    if (candidats.length > PLAFOND_BOITE_PERSO) {
+      throw new Error(
+        `${candidats.length} destinataires, c'est trop pour une boîte personnelle `
+        + `(${PLAFOND_BOITE_PERSO} au maximum). Configurez la route d'envoi en masse.`,
+      );
+    }
+    if (!(await envoiPossible(agentId))) {
+      throw new Error("Aucune boîte e-mail branchée : allez la brancher dans Mails → Ma boîte e-mail.");
+    }
   }
 
   const [salve] = await ecrire("fi_salve", "PATCH", { statut: "a_valider" }, `id=eq.${salveId}`);
@@ -254,9 +313,13 @@ export async function lancerSalve(
     const o = fusionner(objet, v);
     const b = fusionner(corps, v);
     try {
-      await envoyerPourAgent(agentId, {
-        to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email,
-      });
+      if (parRelais) {
+        await envoyerEnMasse({ to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email });
+      } else {
+        await envoyerPourAgent(agentId, {
+          to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email,
+        });
+      }
       envoyes += 1;
       if (b.manquants.length) journal.push(`${c.email} · envoyé, champs vides : ${b.manquants.join(", ")}`);
     } catch (e) {

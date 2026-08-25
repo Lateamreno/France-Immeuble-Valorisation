@@ -4968,6 +4968,15 @@ a.cfc-t:hover { text-decoration: underline; }
 .sv-fourchette input { width: 92px; border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: inherit; font-size: 12.5px; text-align: right; }
 .sv-fourchette em, .sv-fourchette i { font-style: normal; color: var(--gray-lt); font-size: 12px; }
 
+/* Par où la salve part : dit avant l'envoi, pas découvert après. */
+.sv-route {
+  margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+  background: #f3f8f2; border: 1px solid #cfe3cb;
+}
+.sv-route > b { display: block; margin-bottom: 3px; font-size: 12.5px; color: #2c7d1c; }
+.sv-route > span { font-size: 12px; line-height: 1.5; color: var(--gray-txt); }
+.sv-route span b { color: var(--slate-2); }
+
 .sv-pied { flex-wrap: wrap; gap: 10px; }
 .sv-compteur { display: flex; flex-direction: column; min-width: 0; }
 .sv-compteur b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }

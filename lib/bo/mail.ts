@@ -37,6 +37,96 @@ export function mailConfigure() {
   return !!(c.host && c.user && c.pass && c.from);
 }
 
+/* ============================ Envoi en masse ============================
+ *
+ * Une salve ne doit PAS sortir de la boîte personnelle d'un agent, et pas
+ * seulement pour lui éviter trois cents lignes dans ses « Envoyés ».
+ *
+ *  · Les boîtes OVH et Exchange plafonnent le nombre de messages sortants par
+ *    heure et par jour. Une salve de mille contacts est coupée en route, quand
+ *    elle ne fait pas suspendre le compte.
+ *  · Une plainte pour courrier non sollicité abîme la réputation de l'adresse
+ *    qui a envoyé. Si c'est l'adresse personnelle de l'agent, ce sont ses
+ *    échanges quotidiens qui partent ensuite en indésirables.
+ *
+ * D'où une seconde route, dédiée : un relais d'envoi (SendGrid, Brevo,
+ * Mailjet — le code ne présume de rien, c'est du SMTP), avec sa propre adresse
+ * d'expédition. Recommandation ferme : la poser sur un SOUS-DOMAINE dédié
+ * (envois.france-immeuble.fr par exemple), et pas sur le domaine courant. Une
+ * campagne qui tourne mal n'entame alors rien de la messagerie de tous les
+ * jours.
+ *
+ * Ce que l'agent garde malgré tout : la réponse lui revient à LUI, par le
+ * Reply-To. */
+
+const MASSE = () => ({
+  host: process.env.MASSE_SMTP_HOST,
+  port: Number(process.env.MASSE_SMTP_PORT ?? 587),
+  user: process.env.MASSE_SMTP_USER,
+  pass: process.env.MASSE_SMTP_PASS,
+  from: process.env.MASSE_FROM,
+});
+
+/** La route d'envoi en masse est-elle branchée ? */
+export function masseConfiguree() {
+  const c = MASSE();
+  return !!(c.host && c.user && c.pass && c.from);
+}
+
+/** L'adresse d'expédition des salves, pour l'afficher avant d'envoyer. */
+export function expediteurMasse() {
+  return MASSE().from ?? "";
+}
+
+/**
+ * Un message de salve, par le relais dédié.
+ *
+ * `List-Unsubscribe` n'est pas une politesse : sans lui, les grandes
+ * messageries considèrent un envoi groupé comme suspect, et le bouton
+ * « désabonnement » de leur interface devient « signaler comme spam » — ce qui
+ * coûte infiniment plus cher.
+ */
+export async function envoyerEnMasse(m: {
+  to: string;
+  subject: string;
+  text: string;
+  /** L'agent : c'est à lui que la réponse doit revenir. */
+  replyTo?: string;
+}) {
+  const c = MASSE();
+  if (!masseConfiguree()) {
+    throw new Error(
+      "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / MASSE_SMTP_PASS / MASSE_FROM).",
+    );
+  }
+  const t = nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.port === 465,
+    requireTLS: c.port !== 465,
+    auth: { user: c.user!, pass: c.pass! },
+  });
+
+  const vers = REDIRECT();
+  const desabo = m.replyTo ?? c.from;
+  const info = await t.sendMail({
+    from: c.from,
+    to: vers || m.to,
+    replyTo: m.replyTo || undefined,
+    subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
+    text: vers ? `— Envoi de recette. Destinataire réel : ${m.to} —\n\n${m.text}` : m.text,
+    headers: desabo
+      ? {
+        "List-Unsubscribe": `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`,
+        /* Dit aux messageries que le désabonnement est traité sans que le
+           destinataire ait à écrire quoi que ce soit d'autre. */
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
+      : undefined,
+  });
+  return String(info.messageId ?? "");
+}
+
 /** Domaine d'envoi, pour fabriquer les identifiants de message. */
 export function domaineEnvoi() {
   const from = CONF().from ?? "";
