@@ -4903,3 +4903,36 @@ a.cfc-t:hover { text-decoration: underline; }
   display: inline-block; margin-top: 4px; margin-left: 6px;
   font-size: 11px; color: var(--gold-bo);
 }
+
+/* ============ Réglage des boîtes e-mail, une par agent ============ */
+.rgl { padding: 18px 24px 60px; max-width: 900px; }
+.rgl-h h1 { margin: 0 0 4px; font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--slate); }
+.rgl-h p { margin: 0 0 18px; max-width: 640px; font-size: 13px; line-height: 1.6; color: var(--gray-txt); }
+.rgl-liste { display: flex; flex-direction: column; gap: 9px; }
+.rgl-c { border: 1px solid var(--line); border-radius: 6px; background: #fff; overflow: hidden; }
+.rgl-c.ok { border-left: 3px solid var(--green); }
+.rgl-c > header {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 12px 16px; font-size: 13.5px;
+}
+.rgl-c > header b { font-family: var(--font-title); color: var(--slate); }
+.rgl-adr { color: var(--slate-2); }
+.rgl-non { color: var(--gray-lt); font-style: italic; }
+.rgl-env { font-style: normal; font-size: 11px; background: var(--chip); border-radius: 3px; padding: 1px 7px; color: var(--slate-2); }
+.rgl-chev { color: var(--gray-lt); }
+.rgl-b { border-top: 1px solid var(--line-lt); padding: 14px 16px; }
+.rgl-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.rgl-quatre { display: grid; grid-template-columns: 2fr 1fr 2fr 1fr; gap: 12px; margin-bottom: 12px; }
+.rgl-b label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rgl-b label > span { font-size: 12px; color: var(--gray-txt); }
+.rgl-b input, .rgl-b select {
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 7px 9px; font: inherit; font-size: 13px; color: var(--slate); width: 100%;
+}
+.rgl-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--gray-lt); }
+.rgl-note b { color: var(--slate-2); font-weight: 600; }
+.rgl-ok { border: 1px solid var(--green); border-radius: 4px; background: #eefbe9; padding: 8px 12px; font-size: 12.5px; color: #2c7d1c; }
+.rgl-f { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .rgl-duo, .rgl-quatre { grid-template-columns: 1fr; }
+}
