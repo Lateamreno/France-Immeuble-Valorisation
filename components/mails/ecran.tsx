@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Brouillon, Dossier, MessageType, Salve } from "@/lib/mails/serveur";
 import type { MessageComplet, RoleDossier } from "@/lib/mails/client";
-import { BoiteVivante } from "@/components/mails/boite-vivante";
+import { BoiteVivante, oublierBoite } from "@/components/mails/boite-vivante";
 import { FenetreRedaction, type Reponse } from "@/components/mails/redaction";
 import { FenetreSalve } from "@/components/mails/salve";
 import { Bibliotheque } from "@/components/mails/messages-types";
@@ -194,6 +194,7 @@ export function EcranMails({
           role={vue === "site" ? "reception" : (vue as RoleDossier)}
           adresse={boite.adresse}
           tri={vue === "site" ? "site" : vue === "reception" ? "humain" : undefined}
+          onNouveau={() => setRedaction({})}
           onRepondre={repondreA}
           onRafraichi={vue === "site" ? noterSite : noterReception}
         />
@@ -218,8 +219,8 @@ export function EcranMails({
           modele={redaction.modele}
           reponse={redaction.reponse}
           onClose={() => setRedaction(null)}
-          /* Un message parti change la boîte : on la relit. */
-          onEnvoye={() => setTour((t) => t + 1)}
+          /* Un message parti change la boîte : ce qu'on gardait est périmé. */
+          onEnvoye={() => { oublierBoite(agent.id); setTour((t) => t + 1); }}
         />
       )}
       </div>

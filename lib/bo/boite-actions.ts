@@ -34,11 +34,22 @@ async function ecrire(chemin: string, init: RequestInit) {
   return t ? (JSON.parse(t) as Record<string, unknown>[]) : [];
 }
 
+/* Résoudre la boîte, c'est lire la table des agents, lire la table des boîtes
+   et déchiffrer un mot de passe. Trois fois rien, mais à CHAQUE geste — ouvrir
+   un message, marquer lu, changer de dossier — ça s'ajoutait à l'attente. Les
+   réglages ne changent pas toutes les secondes : on garde le résultat une
+   minute, et on l'oublie dès qu'une boîte est modifiée. */
+const BOITES = new Map<string, { b: Boite; le: number }>();
+const BOITE_MS = 60_000;
+
 /** La boîte de l'agent, résolue avec les agents connus. */
 async function boite(agentId: string): Promise<Boite> {
+  const garde = BOITES.get(agentId);
+  if (garde && Date.now() - garde.le < BOITE_MS) return garde.b;
   const agents = await getAgents().catch(() => []);
   const b = await boiteDe(agentId, agents);
   if (!b) throw new Error("Aucune boîte e-mail configurée pour cet agent.");
+  BOITES.set(agentId, { b, le: Date.now() });
   return b;
 }
 
@@ -121,6 +132,8 @@ export async function enregistrerBoite(r: Reglage) {
     maj_le: new Date().toISOString(),
   };
   if (r.motDePasse) ligne.secret_imap = chiffrer(r.motDePasse);
+  /* Les réglages changent : ce qu'on gardait en mémoire est périmé. */
+  BOITES.delete(r.agentId);
 
   await ecrire("fi_boite_agent?on_conflict=agent_id", {
     method: "POST",
@@ -133,6 +146,7 @@ export async function enregistrerBoite(r: Reglage) {
 }
 
 export async function supprimerBoite(agentId: string) {
+  BOITES.delete(agentId);
   await ecrire(`fi_boite_agent?agent_id=eq.${encodeURIComponent(agentId)}`, { method: "DELETE" });
   revalidatePath("/mails");
   revalidatePath("/mails/reglages");

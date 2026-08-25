@@ -77,14 +77,93 @@ async function connecter(b: Boite) {
   return client;
 }
 
-/** Ouvre la boîte, fait le travail, referme quoi qu'il arrive. */
-async function avec<T>(b: Boite, travail: (c: ImapFlow) => Promise<T>): Promise<T> {
+/** Une connexion neuve, utilisée puis refermée. Pour la vérification. */
+async function avecNeuf<T>(b: Boite, travail: (c: ImapFlow) => Promise<T>): Promise<T> {
   const client = await connecter(b);
   try {
     return await travail(client);
   } finally {
     await client.logout().catch(() => undefined);
   }
+}
+
+/* -------------------------------------------------- connexion tenue ---
+ *
+ * Ouvrir une connexion IMAP coûte cher : résolution, TLS, authentification,
+ * découverte des dossiers. Une à trois secondes, avant même d'avoir demandé
+ * quoi que ce soit. Le faire à chaque clic — ouvrir un message, changer de
+ * dossier, marquer lu — rendait la boîte inutilisable.
+ *
+ * On garde donc la connexion ouverte entre deux gestes, et on la referme après
+ * une minute d'inactivité. Deux précautions :
+ *
+ *  · IMAP n'est pas concurrent : une connexion ne traite qu'une commande à la
+ *    fois. Les appels sont donc mis à la file, pas envoyés en parallèle ;
+ *  · une connexion peut mourir sans prévenir (le serveur ferme, la fonction
+ *    est gelée puis reprise). On vérifie qu'elle est utilisable, et la moindre
+ *    erreur la met au rebut plutôt que de la réutiliser dans un état douteux.
+ */
+
+const REPOS_MS = 60_000;
+const CLIENTS = new Map<string, ImapFlow>();
+const FILES = new Map<string, Promise<unknown>>();
+const MINUTEURS = new Map<string, ReturnType<typeof setTimeout>>();
+
+const cleBoite = (b: Boite) => `${b.imap.host}:${b.imap.port}|${b.imap.user}`;
+
+function armerFermeture(k: string) {
+  clearTimeout(MINUTEURS.get(k));
+  const t = setTimeout(() => {
+    const c = CLIENTS.get(k);
+    CLIENTS.delete(k);
+    MINUTEURS.delete(k);
+    c?.logout().catch(() => undefined);
+  }, REPOS_MS);
+  /* Ne pas retenir le processus en vie juste pour fermer une connexion. */
+  (t as unknown as { unref?: () => void }).unref?.();
+  MINUTEURS.set(k, t);
+}
+
+/** Fait le travail sur la connexion de la boîte, en la tenant ouverte. */
+async function avec<T>(b: Boite, travail: (c: ImapFlow) => Promise<T>): Promise<T> {
+  const k = cleBoite(b);
+  const precedent = FILES.get(k) ?? Promise.resolve();
+  const suite = precedent.catch(() => undefined).then(async () => {
+    clearTimeout(MINUTEURS.get(k));
+    let c = CLIENTS.get(k);
+    /* Une connexion réutilisée peut être morte sans l'avoir annoncé : le
+       serveur a coupé, ou la fonction a été gelée puis reprise. Si le geste
+       échoue sur une connexion gardée, on en refait une et on réessaie UNE
+       fois — l'agent ne doit pas voir une erreur pour ça. */
+    const reutilisee = !!c?.usable;
+    if (!c || !c.usable) {
+      if (c) await c.logout().catch(() => undefined);
+      c = await connecter(b);
+      CLIENTS.set(k, c);
+    }
+    try {
+      return await travail(c);
+    } catch (e) {
+      /* Une commande qui échoue laisse l'état du client incertain : on repart
+         d'une connexion propre. */
+      CLIENTS.delete(k);
+      await c.logout().catch(() => undefined);
+      if (!reutilisee) throw e;
+      const neuf = await connecter(b);
+      CLIENTS.set(k, neuf);
+      try {
+        return await travail(neuf);
+      } catch (e2) {
+        CLIENTS.delete(k);
+        await neuf.logout().catch(() => undefined);
+        throw e2;
+      }
+    } finally {
+      if (CLIENTS.has(k)) armerFermeture(k);
+    }
+  });
+  FILES.set(k, suite.catch(() => undefined));
+  return suite;
 }
 
 /* -------------------------------------------------------- messages --- */
@@ -115,7 +194,10 @@ export type Verdict = { ok: true; dossiers: Dossier[]; adresse: string } | { ok:
 /** Teste la connexion et découvre les dossiers. C'est le bouton « Vérifier ». */
 export async function verifier(b: Boite): Promise<Verdict> {
   try {
-    return await avec(b, async (c) => {
+    /* Connexion neuve, jamais celle qui est tenue ouverte : vérifier un
+       nouveau mot de passe sur une connexion authentifiée avec l'ancien
+       répondrait « ça marche » quoi qu'on tape. */
+    return await avecNeuf(b, async (c) => {
       const liste = await c.list();
       const dossiers: Dossier[] = liste
         .filter((d) => !(d.flags as Set<string> | undefined)?.has("\\Noselect"))
