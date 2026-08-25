@@ -4688,6 +4688,13 @@ a.cfc-t:hover { text-decoration: underline; }
 .gm-boites svg { flex: none; width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .gm-boites .n { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--gray-txt); }
 .gm-boites button.on .n { color: #8a5a00; }
+/* Le lien vers les réglages de boîte : même ligne que les dossiers. */
+.gm-lien {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  border-radius: 0 16px 16px 0; padding: 8px 12px;
+  font-size: 13px; color: var(--slate); text-decoration: none;
+}
+.gm-lien:hover { background: #efefef; }
 .gm-sep {
   margin: 16px 12px 4px; font-family: var(--font-title); font-size: 11px;
   font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--gray-lt);
@@ -5037,7 +5044,9 @@ a.cfc-t:hover { text-decoration: underline; }
 /* ============ Réglage des boîtes e-mail, une par agent ============ */
 .rgl { padding: 18px 24px 60px; max-width: 900px; }
 .rgl-h h1 { margin: 0 0 4px; font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--slate); }
-.rgl-h p { margin: 0 0 18px; max-width: 640px; font-size: 13px; line-height: 1.6; color: var(--gray-txt); }
+.rgl-h p { margin: 0 0 10px; max-width: 640px; font-size: 13px; line-height: 1.6; color: var(--gray-txt); }
+.rgl-h p:last-child { margin-bottom: 18px; }
+.rgl-h p b { color: var(--slate-2); font-weight: 600; }
 .rgl-liste { display: flex; flex-direction: column; gap: 9px; }
 .rgl-c { border: 1px solid var(--line); border-radius: 6px; background: #fff; overflow: hidden; }
 .rgl-c.ok { border-left: 3px solid var(--green); }
@@ -5059,6 +5068,9 @@ a.cfc-t:hover { text-decoration: underline; }
   border: 1px solid var(--line); border-radius: 4px; background: #fff;
   padding: 7px 9px; font: inherit; font-size: 13px; color: var(--slate); width: 100%;
 }
+/* L'aide sous le choix du fournisseur : dire lequel prendre évite de faire
+   deviner « ex5 ou pro1 ? » à chaque nouvelle boîte. */
+.rgl-aide { font-style: normal; font-size: 11.5px; line-height: 1.45; color: var(--gray-lt); }
 .rgl-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--gray-lt); }
 .rgl-note b { color: var(--slate-2); font-weight: 600; }
 .rgl-ok { border: 1px solid var(--green); border-radius: 4px; background: #eefbe9; padding: 8px 12px; font-size: 12.5px; color: #2c7d1c; }

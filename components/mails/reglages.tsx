@@ -24,14 +24,38 @@ export type BoiteAffichee = {
 };
 
 /* Les réglages des fournisseurs courants : l'agent choisit le sien et ne tape
-   que son adresse et son mot de passe. Trois champs de moins à se tromper. */
-const FOURNISSEURS: { cle: string; nom: string; imap: string; imapPort: number; smtp: string; smtpPort: number }[] = [
-  { cle: "ovh-exchange", nom: "OVH Exchange", imap: "ex5.mail.ovh.net", imapPort: 993, smtp: "ex5.mail.ovh.net", smtpPort: 587 },
-  { cle: "ovh", nom: "OVH (mail classique)", imap: "ssl0.ovh.net", imapPort: 993, smtp: "ssl0.ovh.net", smtpPort: 465 },
+   que son adresse et son mot de passe. Trois champs de moins à se tromper.
+ *
+ * Chez France Immeuble il n'y a que deux cas, et l'ordre de cette liste le dit :
+ * les boîtes e-mail OVH (pro1.mail.ovh.net) pour tout le monde, et l'Exchange
+ * de MAV (ex5.mail.ovh.net). Les deux parlent IMAP 993 en SSL et SMTP 587 en
+ * STARTTLS — relevé sur la page « Paramètres POP et IMAP » d'OVH. */
+type Fournisseur = {
+  cle: string; nom: string; aide?: string;
+  imap: string; imapPort: number; smtp: string; smtpPort: number;
+};
+
+const FOURNISSEURS: Fournisseur[] = [
+  { cle: "ovh-pro", nom: "OVH — boîte e-mail (pro1)",
+    aide: "Le cas courant : toutes les boîtes de l'agence sauf l'Exchange de MAV.",
+    imap: "pro1.mail.ovh.net", imapPort: 993, smtp: "pro1.mail.ovh.net", smtpPort: 587 },
+  { cle: "ovh-exchange", nom: "OVH Exchange (ex5)",
+    aide: "La boîte Exchange de MAV.",
+    imap: "ex5.mail.ovh.net", imapPort: 993, smtp: "ex5.mail.ovh.net", smtpPort: 587 },
+  { cle: "ovh-mutualise", nom: "OVH mutualisé (MX Plan)",
+    aide: "Les boîtes livrées avec un hébergement web, pas les boîtes Pro.",
+    imap: "ssl0.ovh.net", imapPort: 993, smtp: "ssl0.ovh.net", smtpPort: 465 },
   { cle: "gmail", nom: "Gmail / Google Workspace", imap: "imap.gmail.com", imapPort: 993, smtp: "smtp.gmail.com", smtpPort: 587 },
   { cle: "microsoft", nom: "Microsoft 365 / Outlook", imap: "outlook.office365.com", imapPort: 993, smtp: "smtp.office365.com", smtpPort: 587 },
   { cle: "autre", nom: "Autre — je saisis les serveurs", imap: "", imapPort: 993, smtp: "", smtpPort: 587 },
 ];
+
+/** Le fournisseur d'une boîte déjà branchée, reconnu à son serveur IMAP. */
+const fournisseurDe = (imapHost?: string) =>
+  imapHost
+    ? FOURNISSEURS.find((f) => f.imap && f.imap === imapHost)?.cle ?? "autre"
+    /* Rien de branché : on propose le cas courant de l'agence. */
+    : "ovh-pro";
 
 export function EcranReglages({ boites, chiffrementOk }: {
   boites: BoiteAffichee[];
@@ -45,6 +69,12 @@ export function EcranReglages({ boites, chiffrementOk }: {
           Chaque commercial branche sa propre boîte. L&apos;application lit et écrit
           directement dessus : un message lu sur le téléphone apparaît lu ici, et un
           message supprimé ici disparaît du téléphone.
+        </p>
+        <p>
+          Chez nous il n&apos;y a que deux cas : les boîtes e-mail OVH, sur{" "}
+          <b>pro1.mail.ovh.net</b>, et l&apos;Exchange de MAV, sur{" "}
+          <b>ex5.mail.ovh.net</b>. Dans les deux cas, réception en IMAP 993 (SSL) et
+          envoi en 587 (TLS) — il n&apos;y a que l&apos;adresse et le mot de passe à saisir.
         </p>
       </header>
 
@@ -65,9 +95,7 @@ export function EcranReglages({ boites, chiffrementOk }: {
 
 function Carte({ b, actif }: { b: BoiteAffichee; actif: boolean }) {
   const [ouvert, setOuvert] = useState(!b.adresse);
-  const [fournisseur, setFournisseur] = useState(
-    b.imapHost === "ex5.mail.ovh.net" ? "ovh-exchange" : b.imapHost ? "autre" : "ovh-exchange",
-  );
+  const [fournisseur, setFournisseur] = useState(fournisseurDe(b.imapHost));
   const f = FOURNISSEURS.find((x) => x.cle === fournisseur) ?? FOURNISSEURS[0];
 
   const [adresse, setAdresse] = useState(b.adresse ?? "");
@@ -141,6 +169,7 @@ function Carte({ b, actif }: { b: BoiteAffichee; actif: boolean }) {
               <select value={fournisseur} onChange={(e) => choisirFournisseur(e.target.value)}>
                 {FOURNISSEURS.map((x) => <option key={x.cle} value={x.cle}>{x.nom}</option>)}
               </select>
+              {f.aide && <i className="rgl-aide">{f.aide}</i>}
             </label>
             <label><span>Nom affiché</span>
               <input value={nomAffiche} onChange={(e) => setNomAffiche(e.target.value)} />

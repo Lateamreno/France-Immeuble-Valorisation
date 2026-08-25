@@ -112,6 +112,7 @@ export function PhotosEcran({ b }: { b: BienData }) {
     setEnvoi({ fait: 0, total: liste.length });
     start(async () => {
       const rate: string[] = [];
+      const avertis: string[] = [];
       let rang = toutes.length;
       for (let i = 0; i < liste.length; i++) {
         try {
@@ -120,8 +121,12 @@ export function PhotosEcran({ b }: { b: BienData }) {
           // Une seule photo principale : les suivantes rejoignent la façade.
           // `true` = pas de revalidation par fichier : on rafraîchit une fois
           // la rafale terminée (sinon trente photos = trente rendus).
-          await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "Extérieur" : type, null, fd, rang++, true);
+          const r = await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "Extérieur" : type, null, fd, rang++, true);
+          if (!r.ok) rate.push(r.message);
+          else if (r.avertissement) avertis.push(`${liste[i].name} — ${r.avertissement}`);
         } catch (e) {
+          /* Il reste les pannes que l'action ne peut pas rattraper : coupure
+             réseau, requête trop grosse pour la plateforme. */
           rate.push(`${liste[i].name} — ${e instanceof Error ? e.message : String(e)}`);
         }
         setEnvoi({ fait: i + 1, total: liste.length });
@@ -129,7 +134,11 @@ export function PhotosEcran({ b }: { b: BienData }) {
       await rafraichirFiche(immeubleId);
       setEnvoi(null);
       setOrdre(null);
-      if (rate.length) setErr(`${rate.length} photo(s) refusée(s) :\n${rate.join("\n")}`);
+      const messages = [
+        ...(rate.length ? [`${rate.length} photo(s) refusée(s) :\n${rate.join("\n")}`] : []),
+        ...(avertis.length ? [avertis.join("\n")] : []),
+      ];
+      if (messages.length) setErr(messages.join("\n\n"));
       if (inputMulti.current) inputMulti.current.value = "";
       if (inputPrinc.current) inputPrinc.current.value = "";
     });

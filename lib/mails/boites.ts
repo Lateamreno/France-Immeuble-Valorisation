@@ -13,13 +13,16 @@
  *
  *      MAIL_1_AGENT   = marc-antoine          (le slug de l'agent)
  *      MAIL_1_ADRESSE = ma.voci@france-immeuble.fr
- *      MAIL_1_HOST    = ex5.mail.ovh.net
+ *      MAIL_1_HOST    = ex5.mail.ovh.net      (Exchange — la boîte de MAV)
  *      MAIL_1_PASS    = ...
  *      MAIL_2_AGENT   = romain
+ *      MAIL_2_HOST    = pro1.mail.ovh.net     (boîte e-mail OVH — tous les autres)
  *      ...
  *
  *   Les ports et le serveur d'envoi ont des valeurs par défaut ; on ne les
- *   pose que s'ils diffèrent (MAIL_1_IMAP_PORT, MAIL_1_SMTP_HOST, …).
+ *   pose que s'ils diffèrent (MAIL_1_IMAP_PORT, MAIL_1_SMTP_HOST, …). Les deux
+ *   serveurs de l'agence parlent le même protocole : IMAP 993 en SSL, SMTP 587
+ *   en STARTTLS — c'est exactement ce que valent les défauts ci-dessous.
  */
 
 import { dechiffrer } from "@/lib/mails/coffre";

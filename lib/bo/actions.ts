@@ -1213,6 +1213,18 @@ const patchPhoto = (id: string, doc: Record<string, unknown>) =>
  * JPEG n'entre dans le bucket, donc aucun format exotique ne peut casser la
  * fabrication d'un PDF (demande MAV du 15/08).
  */
+/**
+ * Ce que rend un dépôt de photo.
+ *
+ * Un `throw` ne sert à rien ici : Next masque les erreurs d'action serveur en
+ * production et l'écran n'affichait qu'un digest illisible — « An error
+ * occurred in the Server Components render ». L'agent voyait sa photo refusée
+ * sans jamais savoir pourquoi. On rend donc le motif, en clair.
+ */
+export type ResultatUpload =
+  | { ok: true; id: string; avertissement?: string }
+  | { ok: false; message: string };
+
 export async function uploadPhoto(
   immeubleId: string,
   type: string,
@@ -1224,49 +1236,86 @@ export async function uploadPhoto(
    *  photos feraient trente rendus complets. L'appelant termine par
    *  `rafraichirFiche`. */
   silencieux?: boolean,
-) {
+): Promise<ResultatUpload> {
   const file = fd.get("file");
-  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
-  if (file.size > 25 * 1024 * 1024) throw new Error(`« ${file.name} » : trop lourd (25 Mo max)`);
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Aucun fichier." };
+  if (file.size > 25 * 1024 * 1024) {
+    return { ok: false, message: `« ${file.name} » : trop lourd (25 Mo max).` };
+  }
 
-  const { versWeb } = await import("@/lib/bo/images");
-  const web = await versWeb(file);
+  /* Redimensionnement et conversion. Si sharp est indisponible (bibliothèque
+     native absente de la fonction déployée), on ne perd pas la photo pour
+     autant : le navigateur l'a déjà réduite et convertie en JPEG avant de
+     l'envoyer. Seul le HEIC exige vraiment le décodeur — là, on refuse et on
+     le dit, plutôt que de déposer un fichier qu'aucun PDF ne saura relire. */
+  let web: { pleine: Buffer; vignette: Buffer; largeur?: number; hauteur?: number } | null = null;
+  let avertissement: string | undefined;
+  try {
+    const { versWeb } = await import("@/lib/bo/images");
+    web = await versWeb(file);
+  } catch (e) {
+    const raison = e instanceof Error ? e.message : String(e);
+    if (/\.(heic|heif)$/i.test(file.name) || /^image\/(heic|heif)/i.test(file.type)) {
+      return { ok: false, message: `« ${file.name} » : conversion HEIC impossible — ${raison}` };
+    }
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+      return { ok: false, message: `« ${file.name} » : format non traité — ${raison}` };
+    }
+    const brut = Buffer.from(await file.arrayBuffer());
+    web = { pleine: brut, vignette: brut };
+    avertissement = "Photo déposée sans redimensionnement (traitement d'image indisponible).";
+    console.error("uploadPhoto : sharp indisponible, dépôt du fichier tel quel —", raison);
+  }
 
   const id = newId();
   const now = new Date().toISOString();
   const base = `photos/${immeubleId}/${id}-${safeName(file.name).replace(/\.[^.]+$/, "")}`;
-  await Promise.all([
-    deposer(`${base}.jpg`, web.pleine, "image/jpeg"),
-    deposer(`${base}-min.jpg`, web.vignette, "image/jpeg"),
-  ]);
+  try {
+    await Promise.all([
+      deposer(`${base}.jpg`, web.pleine, "image/jpeg"),
+      deposer(`${base}-min.jpg`, web.vignette, "image/jpeg"),
+    ]);
+  } catch (e) {
+    return {
+      ok: false,
+      message: `« ${file.name} » : dépôt refusé — ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
 
-  await rpc("bo_insert_doc", {
-    p_table: "bo_photo",
-    p_id: id,
-    p_doc: cleanPatch({
-      IMMEUBLE: immeubleId,
-      LOT: lotId ?? undefined,
-      image: `storage:${base}.jpg`,
-      compressed: `storage:${base}-min.jpg`,
-      Type: type,
-      format: "image/jpeg",
-      largeur: web.largeur,
-      hauteur: web.hauteur,
-      size_kB: Math.round(web.pleine.length / 1024),
-      order: typeof ordre === "number" ? ordre : 0,
-      // Par défaut la photo sert au dossier de vente ; l'annonce publique et
-      // l'estimation restent des choix explicites.
-      show_in_doss: true,
-      show_in_ann: false,
-      show_in_est: false,
-      date: now,
-      "Created Date": now,
-      "Modified Date": now,
-    }),
-  });
-  if (type === "Principale") await promouvoir(immeubleId, id, `storage:${base}-min.jpg`);
+  try {
+    await rpc("bo_insert_doc", {
+      p_table: "bo_photo",
+      p_id: id,
+      p_doc: cleanPatch({
+        IMMEUBLE: immeubleId,
+        LOT: lotId ?? undefined,
+        image: `storage:${base}.jpg`,
+        compressed: `storage:${base}-min.jpg`,
+        Type: type,
+        format: "image/jpeg",
+        largeur: web.largeur,
+        hauteur: web.hauteur,
+        size_kB: Math.round(web.pleine.length / 1024),
+        order: typeof ordre === "number" ? ordre : 0,
+        // Par défaut la photo sert au dossier de vente ; l'annonce publique et
+        // l'estimation restent des choix explicites.
+        show_in_doss: true,
+        show_in_ann: false,
+        show_in_est: false,
+        date: now,
+        "Created Date": now,
+        "Modified Date": now,
+      }),
+    });
+    if (type === "Principale") await promouvoir(immeubleId, id, `storage:${base}-min.jpg`);
+  } catch (e) {
+    return {
+      ok: false,
+      message: `« ${file.name} » : enregistrement refusé — ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
   if (!silencieux) refresh(immeubleId);
-  return id;
+  return { ok: true, id, avertissement };
 }
 
 /** Revalide la fiche une fois la rafale d'imports terminée. */

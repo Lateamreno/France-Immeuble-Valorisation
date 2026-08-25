@@ -137,6 +137,19 @@ export function EcranMails({
             {salves.length > 0 && <span className="n">{salves.length}</span>}
           </button>
         </nav>
+
+        {/* C'est ici qu'on branche sa boîte. Sans ce lien, l'écran de réglages
+            existait mais n'était accessible qu'en tapant l'adresse à la main. */}
+        <div className="gm-sep">Réglages</div>
+        <nav className="gm-boites">
+          <Link className="gm-lien" href="/mails/reglages">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8" />
+            </svg>
+            Ma boîte e-mail
+          </Link>
+        </nav>
       </aside>
 
       {/* ---------------- Contenu ---------------- */}

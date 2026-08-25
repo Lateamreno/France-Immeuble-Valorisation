@@ -104,7 +104,7 @@ function CarteLot({
         await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
         await rafraichirFiche(String(b.im._id));
       } catch {
-        /* l'écran de détail affiche l'erreur en clair */
+        /* l'écran de détail affiche le motif en clair */
       }
       setEnvoi(false);
       if (appareil.current) appareil.current.value = "";
@@ -221,8 +221,9 @@ export function LotPleinEcran({
       try {
         const fd = new FormData();
         fd.set("file", f);
-        await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
-        await rafraichirFiche(String(b.im._id));
+        const res = await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
+        if (!res.ok) setPhotoKo(res.message);
+        else await rafraichirFiche(String(b.im._id));
       } catch (e) {
         setPhotoKo(e instanceof Error ? e.message : String(e));
       }

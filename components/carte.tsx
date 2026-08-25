@@ -234,8 +234,9 @@ function CaptureCarte({
     start(async () => {
       const fd = new FormData();
       fd.set("file", f);
-      await uploadPhoto(immeubleId, "Carte", null, fd);
-      setOk(true);
+      const r = await uploadPhoto(immeubleId, "Carte", null, fd);
+      if (r.ok) setOk(true);
+      else setErreur(r.message);
     });
 
   return (
