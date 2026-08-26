@@ -20,6 +20,7 @@ import { ContactPicker } from "@/components/contact-picker";
 import {
   FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
   nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
+  venteDirecteLocataire, REMISE_LOCATAIRE,
   type ChampPrix, type Mandant, type Mode, type Prix, type Societe,
 } from "@/lib/mandat";
 import { AdresseInput } from "@/components/adresse-input";
@@ -790,6 +791,7 @@ function OngletPrix({
   const [mode, setMode] = useState<Mode>(modeVente(m));
   const s = useMemo(() => synthese(lots), [lots]);
   const regime = useMemo(() => regimeHonoraires(lots, mode, charge), [lots, mode, charge]);
+  const remise = useMemo(() => venteDirecteLocataire(p), [p]);
 
   const saisir = (cle: ChampPrix) => (v: string) => {
     const suite = [...pilotes.filter((c) => c !== cle), cle];
@@ -859,6 +861,19 @@ function OngletPrix({
           </>
         )}
       </div>
+
+      {/* Ce que la vente au locataire change — et ce qu'elle ne change pas.
+          Le prix est le même pour lui que pour n'importe qui ; c'est le
+          mandant qui encaisse la remise. */}
+      {regime.clauseLocataire && remise && (
+        <div className="mdt-rend">
+          Si le locataire achète en direct, la remise de{" "}
+          {Math.round(REMISE_LOCATAIRE * 100)} % ramène les honoraires à{" "}
+          <b>{String(remise.taux).replace(".", ",")} %</b>, soit {euros(remise.honos)}.
+          Le locataire paie le même prix, {euros(p.hai)} ; le net vendeur passe à{" "}
+          <b>{euros(remise.nv)}</b> — {euros(remise.gain)} de plus pour le mandant.
+        </div>
+      )}
 
       {rendement !== undefined && (
         <div className="mdt-rend">

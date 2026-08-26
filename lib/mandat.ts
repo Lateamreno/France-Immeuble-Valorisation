@@ -410,6 +410,72 @@ export function regimeHonoraires(
   };
 }
 
+/* ------------------------------------------- Vente directe au locataire
+
+   Règle maison, dictée par MAV : « une réduction sur les honoraires concédée
+   au vendeur, sans modification du prix de vente pour l'acquéreur. Si c'est
+   300 k€ HAI dans le mandat avec 5 % d'honos TTC calculés sur le net vendeur
+   à la charge vendeur, alors le locataire recevra une offre à 300 k€ et les
+   propriétaires n'auront à verser que 4 % d'honos si on arrive à faire la
+   vente avec eux directement. »
+
+   Deux conséquences, et il faut les tenir toutes les deux :
+
+     • le PRIX NE BOUGE PAS. C'est un point de droit autant que de commerce :
+       sur un lot préemptable, le prix notifié au locataire est le net vendeur
+       non majoré (§8.2 de la doctrine) ; le faire varier selon l'acheteur
+       ouvrirait une discussion qu'on n'a pas envie d'avoir ;
+     • la remise porte sur le TAUX, pas sur le montant. 5 % moins un cinquième
+       font 4 %, appliqués au net vendeur recalculé à prix HAI constant. D'où
+       un net vendeur qui MONTE : c'est bien le mandant qui empoche la remise.
+
+   Sur l'exemple de MAV : 300 000 € HAI, 5 % → net 285 714 € et 14 286 € de
+   commission ; à 4 % → net 288 462 € et 11 538 €. Le mandant gagne 2 748 €,
+   l'acquéreur paie le même prix. */
+
+/** La part d'honoraires abandonnée quand le locataire achète en direct. */
+export const REMISE_LOCATAIRE = 0.2;
+
+export type PrixRemise = {
+  /** Taux réduit, en %. */
+  taux: number;
+  /** Honoraires TTC correspondants. */
+  honos: number;
+  /** Net vendeur, mécaniquement plus élevé — le prix HAI ne bouge pas. */
+  nv: number;
+  /** Ce que la remise rapporte au mandant. */
+  gain: number;
+};
+
+/**
+ * Le prix, si le locataire en place achète en direct.
+ *
+ * Rend `null` tant qu'on n'a pas de quoi calculer : sans prix HAI ni taux, il
+ * n'y a rien à écrire dans le mandat — mieux vaut taire la clause que
+ * l'imprimer avec des trous.
+ */
+export function venteDirecteLocataire(p: Prix): PrixRemise | null {
+  const hai = p.hai && p.hai > 0 ? p.hai : undefined;
+  const taux =
+    p.taux && p.taux > 0
+      ? p.taux
+      : p.honos && p.nv && p.nv > 0
+        ? (p.honos / p.nv) * 100
+        : undefined;
+  if (!hai || !taux) return null;
+
+  const reduit = taux * (1 - REMISE_LOCATAIRE);
+  const nv = hai / (1 + reduit / 100);
+  const honos = hai - nv;
+  const nvPlein = hai / (1 + taux / 100);
+  return {
+    taux: arrondi(reduit),
+    honos: Math.round(honos),
+    nv: Math.round(nv),
+    gain: Math.round(nv - nvPlein),
+  };
+}
+
 /* -------------------------------------------------------- Pièces & blocages */
 
 export type Manque = { cle: string; label: string; onglet: string };

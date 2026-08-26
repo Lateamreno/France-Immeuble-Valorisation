@@ -29,6 +29,7 @@
 import { dmy, group } from "./format";
 import {
   adresseImmeuble, modeVente, nomMandant, publicationWeb, regimeHonoraires, synthese,
+  venteDirecteLocataire, REMISE_LOCATAIRE,
   type Mandant,
 } from "./mandat";
 import { MENTIONS, SOCIETE } from "./bo/textes-cible";
@@ -147,6 +148,9 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
   const regime = regimeHonoraires(lots, modeVente(m), S(m.Charge_hono));
   const preemptable = regime.clauseLocataire;
   const chargeVendeur = regime.charge === "Vendeur";
+  /* Ce que devient le prix si le locataire achète en direct : la remise de
+     20 % consentie au mandant, prix inchangé pour l'acquéreur. */
+  const remise = venteDirecteLocataire({ nv, hai, taux, honos });
 
   /* ---- Article 1 — Les parties ---- */
   const a1: Bloc[] = [
@@ -246,6 +250,19 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
         p(
           "Conformément à l'article 6 de la loi du 2 janvier 1970, aucun honoraire ni aucune somme d'aucune sorte n'est dû au mandataire avant que la vente ait été effectivement conclue et constatée par acte authentique. Si la vente ne se réalise pas, le mandant ne doit rien.",
         ),
+        /* Remise de 20 % en vente directe au locataire. Elle n'a de sens que
+           là où un locataire peut acheter son lot — à la découpe, ou sur un
+           immeuble mono-locataire : c'est exactement le périmètre de la
+           clause de préemption. Le prix, lui, ne bouge pas : le locataire
+           reçoit le même prix que n'importe quel acquéreur, la remise ne
+           profite qu'au mandant. */
+        ...(preemptable && remise
+          ? [
+              p(
+                `Dans le cas où la vente serait conclue directement avec le locataire en place, le mandataire consent au mandant une réduction de ${Math.round(REMISE_LOCATAIRE * 100)} % de sa rémunération : ses honoraires sont alors ramenés à ${String(remise.taux).replace(".", ",")} % du prix net revenant au mandant, soit ${group(remise.honos)} € TTC. Le prix de présentation reste inchangé — le locataire acquiert au prix de ${hai ? `${group(hai)} €` : A_COMPLETER} comme tout autre acquéreur — et le prix net revenant au mandant s'établit alors à ${group(remise.nv)} €.`,
+              ),
+            ]
+          : []),
       ],
     },
   ];
