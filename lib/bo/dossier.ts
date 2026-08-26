@@ -144,7 +144,9 @@ export function construireDossier(
     id: S(e._id),
     titre: S(e.titre) || "Estimation",
     date: S(e["Created Date"]).slice(0, 10).split("-").reverse().join("/"),
-    photo: photoUrl(S(e.photo)),
+    /* La couverture est rognée de son liseré clair : voir `/api/photo`, où
+       la mesure du fichier est expliquée (retour #168). */
+    photo: photoUrl(S(e.photo), true),
     adresse: [
       [S(e["adresse_numéro_rue"]), S(e.adresse_rue)].filter(Boolean).join(" "),
       `${S(e.adresse_zipcode)} ${S(e.adresse_ville)}`.trim(),
@@ -230,8 +232,10 @@ export function construireDossier(
 
 /** Les photos (immeuble comme agent) vivent chez Bubble ou sur S3, derrière
  *  un jeton que le navigateur n'a pas : elles passent par notre relais. */
-export function photoUrl(u: string) {
+export function photoUrl(u: string, rogner?: boolean) {
   if (!u) return undefined;
-  if (u.startsWith("/api/") || u.startsWith("data:")) return u;
-  return `/api/photo?u=${encodeURIComponent(u.startsWith("//") ? `https:${u}` : u)}`;
+  const t = rogner ? "&trim=1" : "";
+  if (u.startsWith("/api/")) return rogner && !u.includes("trim=") ? `${u}${t}` : u;
+  if (u.startsWith("data:")) return u;
+  return `/api/photo?u=${encodeURIComponent(u.startsWith("//") ? `https:${u}` : u)}${t}`;
 }

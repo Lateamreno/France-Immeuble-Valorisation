@@ -70,13 +70,16 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
   width: 11mm; height: 11mm; margin-top: 9mm;
   fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
 }
-/* Le pied de page porte la marque et le monogramme, sur toutes les pages. */
+/* Le pied de page porte la marque ; le monogramme, lui, est descendu sur la
+   tranche dorée (#169). Le titre de tranche ne doit pas venir dessus : il
+   s'arrête au-dessus grâce à la marge du bas. */
 .dos-pied {
   position: absolute; right: 22mm; bottom: 7mm;
-  display: flex; align-items: center; gap: 2.5mm;
-  font-size: 8.5pt; font-weight: 600; letter-spacing: .06em; color: var(--dos-or);
+  display: flex; align-items: center;
+  font-size: 9.5pt; font-weight: 700; letter-spacing: .06em; color: var(--dos-or);
 }
-.dos-pied img { width: 7.5mm; height: auto; }
+.dos-band-f { position: absolute; bottom: 7mm; width: 8mm; height: auto; }
+.dos-band span { margin-bottom: 18mm; }
 
 .dos-ic { width: 5mm; height: 5mm; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -119,7 +122,6 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
 .dos-cv-photo img {
   position: absolute; inset: 0; display: block;
   width: 100%; height: 100%; object-fit: cover;
-  transform: scale(1.02);
 }
 .dos-cv-vide { color: #9a9aa2; font-size: 10pt; }
 
@@ -274,7 +276,9 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
 .dos-ach-g { display: grid; grid-template-columns: 1fr 68mm; gap: 8mm; align-items: center; }
 .dos-ach-l { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 6mm; }
 .dos-ach-l .l { display: flex; align-items: center; gap: 3mm; }
-.dos-ach-l .l:first-child { grid-column: 1 / span 2; }
+/* #165 — l'emplacement prenait les deux colonnes, ce qui laissait trois
+   informations à gauche et une seule à droite, et un cadre trop haut. Les
+   quatre se rangent maintenant deux par deux. */
 .dos-ach-l .dos-ic { width: 7mm; height: 7mm; flex: none; }
 .dos-ach-l span { display: block; font-size: 10.5pt; }
 .dos-ach-l b { display: block; font-size: 12pt; font-weight: 700; white-space: nowrap; }
@@ -283,7 +287,10 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
   text-align: center; font-size: 10.5pt; line-height: 1.45;
 }
 
-.dos-txt p { font-size: 10.5pt; line-height: 1.5; }
+/* #166 — un mot plus long que la ligne sortait du cadre blanc : une URL
+   collée, un nom de société sans espace. On coupe au besoin plutôt que de
+   déborder — le cadre commande, pas le texte. */
+.dos-txt p { font-size: 10.5pt; line-height: 1.5; overflow-wrap: anywhere; hyphens: auto; }
 .dos-txt p + p, .dos-txt p + ul { margin-top: 3mm; }
 .dos-ul { margin-top: 1mm; }
 .dos-ul li { font-size: 10.5pt; line-height: 1.45; padding-left: 4mm; position: relative; }
@@ -291,8 +298,14 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
   content: ""; position: absolute; left: 1.4mm; top: 1.9mm;
   width: 1.1mm; height: 1.1mm; border-radius: 50%; background: currentColor;
 }
-.dos-analyse { min-height: 42mm; }
+/* L'analyse occupe la place qui reste : au moins 42 mm pour ne pas faire de
+   trou, jamais plus de 62 mm sinon elle pousse le prix de vente hors de la
+   page (#167). Passé un certain volume, le texte se resserre de lui-même
+   plutôt que d'être coupé. */
+.dos-analyse { min-height: 42mm; max-height: 62mm; overflow: hidden; }
 .dos-analyse p { text-align: justify; }
+.dos-analyse.long p { font-size: 9.5pt; line-height: 1.42; }
+.dos-analyse.tres-long p { font-size: 8.5pt; line-height: 1.35; }
 
 .dos-px { margin: 0 8mm 2mm; background: #fff; border: .2mm solid #e2e2e2; border-radius: 1.5mm; padding: 3mm 4mm 4mm; }
 .dos-px-2 { display: flex; justify-content: center; gap: 22mm; margin-bottom: 4mm; }

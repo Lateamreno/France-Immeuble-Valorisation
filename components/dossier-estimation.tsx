@@ -25,6 +25,10 @@ const I = {
   gens: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
   reglages: <><path d="M4 8h10M18 8h2M4 16h4M12 16h8" /><circle cx="16" cy="8" r="2" /><circle cx="10" cy="16" r="2" /></>,
   courbe: <><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></>,
+  /* #164 — la ligne brisée du rendement était « moche » : trop maigre et trop
+     anguleuse à côté des autres pictos. Un vrai signe pour cent, dessiné aux
+     mêmes épaisseurs que le reste, dit la même chose plus proprement. */
+  pourcent: <><circle cx="7.2" cy="7.2" r="3.2" /><circle cx="16.8" cy="16.8" r="3.2" /><path d="M18.5 5.5 5.5 18.5" /></>,
   etiquette: <><path d="M3 12V4h8l9 9-8 8z" /><circle cx="7.5" cy="7.5" r="1.4" /></>,
   eclair: <><path d="M13 2 5 14h6l-1 8 8-12h-6z" /></>,
   ampoule: <><path d="M9.5 18h5M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" /></>,
@@ -97,13 +101,16 @@ function Page({
         <div className="dos-band">
           {picto && <Ic d={picto} cls="dos-band-ic" />}
           <span>{titre}</span>
+          {/* #169 — le monogramme quitte le pied de page pour le bas de la
+              tranche dorée, en blanc : « il faut qu'il soit sur la barre de
+              couleur, et juste le F, pas le logo ». */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="dos-band-f" src="/logos/fi-mono-blanc.svg" alt="" />
         </div>
       )}
       {!sansPied && (
         <div className="dos-pied">
           <span>FRANCE IMMEUBLE</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logos/fi-tout-bronze.svg" alt="" />
         </div>
       )}
     </section>
@@ -300,7 +307,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
       {/* ------------------------------------------ 4. Secteur */}
       <Page titre="Analyse du secteur">
         <div className="dos-hd">
-          <div><Ic d={I.courbe} cls="dos-ic gd" /><span>Rendement moyen</span><b className="dos-hd-v">{fr1(d.ref.renta)} %</b></div>
+          <div><Ic d={I.pourcent} cls="dos-ic gd" /><span>Rendement moyen</span><b className="dos-hd-v">{fr1(d.ref.renta)} %</b></div>
           <div><Ic d={I.etiquette} cls="dos-ic gd" /><span>Prix au m²</span><b className="dos-hd-v">{group(d.ref.prix)} €/m²</b></div>
           <div><Ic d={I.eclair} cls="dos-ic gd" /><span>Facteur limitant</span><b className="dos-hd-v">{lim === "renta" ? "Rendement" : "Prix au m²"}</b></div>
           <Ic d={I.reglages} cls="dos-hd-big" />
@@ -327,7 +334,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           moy={`${group(d.ref.prix)} €/m²`}
         />
 
-        <h2 className="dos-h"><Ic d={I.courbe} /> Rendement du secteur <i>(sources : Loyers du secteur et prix du secteur)</i></h2>
+        <h2 className="dos-h"><Ic d={I.pourcent} /> Rendement du secteur <i>(sources : Loyers du secteur et prix du secteur)</i></h2>
         <TableSecteur
           lignes={d.lignes}
           valeur={(l) => (l.refLoyer && l.refPrix ? `${fr1((l.refLoyer * 12 * 100) / l.refPrix)} %` : "—")}
@@ -393,7 +400,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
               {/* L'occupation manquait, et c'est le premier chiffre qu'un
                   acheteur regarde (retour #152). */}
               <div className="l"><Ic d={I.gens} /><div><span>Occupation</span><b>{Math.round(d.occupation)} %</b></div></div>
-              <div className="l"><Ic d={I.courbe} /><div><span>Rendement</span><b><Comp sup /> {fr1(d.ref.renta)} %</b></div></div>
+              <div className="l"><Ic d={I.pourcent} /><div><span>Rendement</span><b><Comp sup /> {fr1(d.ref.renta)} %</b></div></div>
               <div className="l"><Ic d={I.euro} /><div><span>Prix au m²</span><b><Comp /> {group(d.ref.prix)} €/m²</b></div></div>
             </div>
             <div className="dos-ach-b">
@@ -405,7 +412,8 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
         </div>
 
         <h2 className="dos-h"><Ic d={I.ampoule} /> Notre analyse</h2>
-        <div className="dos-card dos-txt dos-analyse">
+        <div className={`dos-card dos-txt dos-analyse${
+          d.analyse.length > 1200 ? " tres-long" : d.analyse.length > 600 ? " long" : ""}`}>
           {(d.analyse || "").split("\n").filter((p) => p.trim()).map((p, i) => <p key={i}>{p}</p>)}
         </div>
 
@@ -482,7 +490,9 @@ function ColonneBilan({ titre, c, secteur }: {
       <LigneBilan l="Loyer au m²" v={`${fr1(c.loyerM2)} €/m²/mois`} e={eLoyer} bon={(eLoyer ?? 0) >= 0} />
       <LigneBilan l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
       <LigneBilan l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
-      <LigneBilan l="Rendement net" v={`${fr1(c.net)} %`} />
+      {/* #167 — le cadre débordait de la page. Le rendement net et le net acte
+          en main disaient presque la même chose ; on garde celui qui compte
+          pour l'acheteur, frais inclus. */}
       <LigneBilan l="Net acte en main" v={`${fr1(c.aem)} %`} />
     </div>
   );

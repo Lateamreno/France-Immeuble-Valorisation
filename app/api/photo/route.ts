@@ -3,6 +3,34 @@
 // récupère l'image côté serveur (redirections suivies) et la sert avec du
 // cache. Utilisée via next/image pour le redimensionnement.
 import { NextRequest } from "next/server";
+import sharp from "sharp";
+
+/* #168 — « sur la photo j'ai encore un encadrement gris des deux côtés
+   latéraux ». Ce liseré n'est pas dans la mise en page : il est DANS le
+   fichier. Mesuré sur la photo de couverture de Bordeaux, il fait 14 px à
+   gauche, 15 à droite, 14 en haut et 18 en bas — soit 2,5 à 4 % de l'image.
+   Le recadrage CSS ne pouvait pas s'en sortir sans zoomer bêtement : on le
+   retire à la source, en rognant la bordure unie que sharp sait reconnaître.
+   `?trim=1` le demande explicitement — les photos de la fiche, elles, restent
+   servies telles quelles. */
+async function rogner(bytes: ArrayBuffer, type: string): Promise<Response> {
+  try {
+    const out = await sharp(Buffer.from(bytes), { failOn: "none" })
+      .rotate()
+      // Seuil large : le liseré est clair et uni, le sujet ne l'est jamais.
+      .trim({ threshold: 24 })
+      .toBuffer();
+    return new Response(new Uint8Array(out), {
+      headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400, immutable" },
+    });
+  } catch {
+    /* Un format que sharp ne sait pas ouvrir : mieux vaut la photo avec son
+       liseré que pas de photo du tout. */
+    return new Response(new Uint8Array(bytes), {
+      headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400, immutable" },
+    });
+  }
+}
 
 const ALLOWED_HOSTS = new Set([
   "vente.france-immeuble.fr",
@@ -37,6 +65,9 @@ export async function GET(req: NextRequest) {
     });
     if (!upstream.ok) return pixel();
     const type = upstream.headers.get("Content-Type") ?? "application/octet-stream";
+    if (req.nextUrl.searchParams.get("trim") === "1" && type.startsWith("image/")) {
+      return rogner(await upstream.arrayBuffer(), type);
+    }
     // Un PDF doit s'ouvrir dans le lecteur du navigateur quand on clique
     // dessus, pas se télécharger : « inline » plus un nom de fichier lisible.
     const nom = s.split("/").pop() || "document";
@@ -70,10 +101,11 @@ export async function GET(req: NextRequest) {
   });
   if (!upstream.ok) return pixel();
 
+  const type = upstream.headers.get("Content-Type") ?? "image/jpeg";
+  if (req.nextUrl.searchParams.get("trim") === "1") {
+    return rogner(await upstream.arrayBuffer(), type);
+  }
   return new Response(upstream.body, {
-    headers: {
-      "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
-      "Cache-Control": "public, max-age=86400, immutable",
-    },
+    headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400, immutable" },
   });
 }
