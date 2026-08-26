@@ -21,6 +21,7 @@ import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
+import { ManquesDossier } from "@/components/dossier-manques";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
@@ -300,11 +301,17 @@ export function BienFiche({
                   erreur={erreurEst}
                 />
               )}
-              {sect === "mandats" && <MandatsSection b={b} />}
+              {sect === "mandats" && (
+                <MandatsSection
+                  b={b}
+                  ouvert={cleEcran?.startsWith("mandat:") ? cleEcran.slice("mandat:".length) : undefined}
+                  onRevenir={() => setSect("encours")}
+                />
+              )}
               {sect === "diffusion" && (
                 <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
               )}
-              {sect === "dossiers" && <DossiersSection b={b} />}
+              {sect === "dossiers" && <DossiersSection b={b} onAller={(x) => setSect(x as SectionKey)} />}
               {sect === "tous-docs" && (
                 <>
                   <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
@@ -1126,20 +1133,39 @@ function MenuEstimer({ b, onNeuve, onOuvrir }: {
   );
 }
 
-function MandatsSection({ b }: { b: BienData }) {
+function MandatsSection({ b, ouvert, onRevenir }: {
+  b: BienData;
+  /** Le mandat déjà ouvert dans cet écran, s'il y en a un. */
+  ouvert?: string;
+  /** Le ramener à l'écran, sans passer par la navigation. */
+  onRevenir?: () => void;
+}) {
   return (
     <>
       <SectTitle icon={I.brief} title="Mandats" />
       <AddMandatButton b={b} />
       {b.mandats.map((m) => {
         const st = String(m.Statut ?? "");
+        /* #174 — « je suis ressorti du mandat pour faire des modifications
+           dans le bien et je ne peux donc plus y accéder depuis la page
+           mandat ». On y était déjà : le lien pointait sur l'adresse
+           courante, et un lien vers la page où l'on se trouve ne fait rien.
+           Quand c'est le mandat ouvert, on rouvre l'écran au lieu de
+           naviguer. */
+        const estOuvert = ouvert === String(m._id);
+        const titre = `${String(m.Type ?? "Vente")} ${String(m.Type_exclu ?? "")} ${m.numero ? `· #${m.numero}` : "· Pas de numéro"}`;
         return (
           <Row key={m._id as string}>
             <div className="grow">
               <div className="t">
-                <Link href={`/bien/${String(b.im._id)}/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
-                  {String(m.Type ?? "Vente")} {String(m.Type_exclu ?? "")} {m.numero ? `· #${m.numero}` : "· Pas de numéro"}
-                </Link>
+                {estOuvert ? (
+                  <button type="button" className="lnk-plat" onClick={onRevenir}
+                    title="Revenir au mandat en cours">{titre}</button>
+                ) : (
+                  <Link href={`/bien/${String(b.im._id)}/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
+                    {titre}
+                  </Link>
+                )}
               </div>
               <div className="s">{dmy(m.date_effet)} → {dmy(m.date_fin)} · honos {euros(m.honos_ttc) ?? "n.c."}</div>
             </div>
@@ -1155,17 +1181,19 @@ function MandatsSection({ b }: { b: BienData }) {
   );
 }
 
-function DossiersSection({ b }: { b: BienData }) {
+function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => void }) {
   return (
     <>
       <SectTitle icon={I.pdf} title="Dossiers" />
+      {/* #182 — ce qui manque, en tête, avec de quoi le remplir sur place. */}
+      <ManquesDossier b={b} onAller={onAller} />
       <AddDossierButton b={b} />
       {b.dossiers.map((d, i) => (
         <Row key={d._id as string}>
           <div className="grow">
             <div className="t">Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}</div>
             <div className="s">
-              {dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI · {d.public ? "Public" : "Privé"}
+              {dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI
               {typeof d.surface === "number" && <> · {Math.round(d.surface as number)} m² · {String(d.occupation ?? "?")} % · {String(d.renta_actuelle ?? "?")} %</>}
               {String(d._id).startsWith("app_") && (
                 <> · <Link href={`/bien/${String(b.im._id)}/dossier/${String(d._id)}/imprimer`} target="_blank">version imprimable</Link></>

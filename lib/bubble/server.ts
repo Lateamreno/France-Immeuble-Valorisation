@@ -428,9 +428,13 @@ export async function getDashboardLive(
       contact: contactLabel(contacts.get(im.PROPRIETAIRE as string)),
       adresse,
       photo,
-      photoUrl: photo
-        ? `/api/photo?u=${encodeURIComponent((im.photo_main_compressed as string).replace(/^\/\//, "https://"))}`
-        : undefined,
+      /* #154 — « la photo de Bordeaux ne s'affiche pas dans les miniatures du
+         dashboard alors qu'elle s'affiche dans les photos du bien ». L'URL
+         était fabriquée à la main ici, et ne connaissait que les photos
+         Bubble : une photo déposée depuis le nouveau BO est rangée dans notre
+         coffre et s'écrit « storage:… », que `?u=` ne sait pas lire. On passe
+         par le même aiguillage que partout ailleurs. */
+      photoUrl: photo ? photoProxy(im.photo_main_compressed) : undefined,
       // Faute de photo, la vignette ira chercher la façade en vue de rue :
       // sur les deux premières colonnes du dashboard, moins d'un immeuble sur
       // cinq a une photo — ils viennent d'arriver.

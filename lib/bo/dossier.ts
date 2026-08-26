@@ -237,5 +237,8 @@ export function photoUrl(u: string, rogner?: boolean) {
   const t = rogner ? "&trim=1" : "";
   if (u.startsWith("/api/")) return rogner && !u.includes("trim=") ? `${u}${t}` : u;
   if (u.startsWith("data:")) return u;
+  /* Une photo déposée depuis le nouveau BO vit dans notre coffre et s'écrit
+     « storage:… » : elle ne se lit pas avec `?u=` (même piège qu'au #154). */
+  if (u.startsWith("storage:")) return `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}${t}`;
   return `/api/photo?u=${encodeURIComponent(u.startsWith("//") ? `https:${u}` : u)}${t}`;
 }

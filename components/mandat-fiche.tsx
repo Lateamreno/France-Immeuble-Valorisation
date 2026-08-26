@@ -29,7 +29,8 @@ import {
 } from "@/lib/bo/proprio-actions";
 import {
   cancelMandat, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
-  majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reserveMandatNumero,
+  majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reporterCadastre,
+  reserveMandatNumero,
   updateMandat, type EntrepriseTrouvee, type MandatPatch,
 } from "@/lib/bo/actions";
 
@@ -654,8 +655,11 @@ function OngletObjet({
   const texte = libre ? desc : auto;
 
   const save = () =>
-    start(() =>
-      updateMandat(mandatId, immeubleId, {
+    start(async () => {
+      /* #175 — la parcelle saisie ici appartient à l'immeuble : on la reporte
+         sur sa fiche si elle n'y est pas encore. */
+      await reporterCadastre(immeubleId, cad, parse(terrain));
+      await updateMandat(mandatId, immeubleId, {
         ref_cadastre: cad || undefined,
         surface_terrain: parse(terrain),
         // La surface bâtie et l'occupation ne se saisissent plus : elles sont
@@ -664,8 +668,8 @@ function OngletObjet({
         surface_bati: s.surface || undefined,
         occuped_yn: s.occupation !== "libre",
         description: texte,
-      }),
-    );
+      });
+    });
 
   const badge =
     s.occupation === "libre" ? { t: "Vendu libre", c: "v" }

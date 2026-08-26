@@ -5638,3 +5638,50 @@ a.cfc-t:hover { text-decoration: underline; }
   width: 14px; height: 14px; min-width: 14px; min-height: 14px;
   flex: none; margin: 0; accent-color: var(--gold-bo); cursor: pointer;
 }
+
+/* Un bouton qui doit se lire comme le texte qu'il remplace (#174). */
+.lnk-plat {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.lnk-plat:hover { text-decoration: underline; }
+
+/* #182 — « ce qui semble incomplet » en tête de la page Dossiers. */
+.dmq { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.dmq-ok {
+  margin-bottom: 16px; padding: 9px 13px; border: 1px solid var(--green);
+  border-radius: 5px; background: #f3fbf5; color: #1f6b33; font-size: 12.5px; font-weight: 600;
+}
+.dmq-l { border: 1px solid var(--gold-bo); border-radius: 5px; background: #fffdf7; }
+.dmq-l.bloq { border-color: var(--red); background: #fdf3f3; }
+.dmq-l.ok { border-color: var(--green); background: #f3fbf5; }
+.dmq-h { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.dmq-ic {
+  flex: none; width: 18px; height: 18px; display: grid; place-items: center;
+  border-radius: 50%; font-size: 11px; font-weight: 700; color: #fff; background: var(--gold-bo);
+}
+.dmq-l.bloq .dmq-ic { background: var(--red); }
+.dmq-l.ok .dmq-ic { background: var(--green); }
+.dmq-t { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--slate); }
+.dmq-t i { display: block; font-style: normal; font-weight: 400; font-size: 11.5px; color: var(--gray-lt); }
+.dmq-f {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
+  padding: 0 12px 12px; border-top: 1px dashed var(--line); margin-top: 2px; padding-top: 11px;
+}
+.dmq-c { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--gray-lt); }
+.dmq-c input, .dmq-c select {
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 170px;
+  font-family: var(--font-body); font-size: 12.5px; color: var(--slate); background: #fff;
+}
+.dmq-c i { font-style: normal; font-size: 10.5px; }
+
+/* #182 — la modale « Nouveau dossier » sur une seule page. */
+.dos-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dos-histo { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; max-height: 30vh; overflow: auto; }
+.dos-histo-l {
+  display: flex; align-items: baseline; gap: 10px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 6px 10px;
+}
+.dos-histo-l:hover { border-color: var(--gold-bo); background: #fffaf0; }
+.dos-histo-l b { font-family: var(--font-title); font-size: 13px; color: var(--slate); white-space: nowrap; }
+.dos-histo-l span { font-size: 11.5px; color: var(--gray-lt); }

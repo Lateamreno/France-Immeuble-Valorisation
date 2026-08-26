@@ -580,6 +580,37 @@ export async function addParcelle(
   refresh(immeubleId);
 }
 
+/**
+ * Reporte sur l'immeuble la parcelle et la surface saisies au mandat (#175).
+ *
+ * MAV : « dans le mandat j'ai donné un numéro de parcelle et une surface,
+ * mais je n'ai pas l'impression que cela a rempli ici, ce qui est dommage. »
+ * En effet : c'était rangé dans le mandat, et nulle part ailleurs. Une
+ * référence cadastrale appartient pourtant à l'immeuble, pas au document.
+ *
+ * On n'écrase jamais : si la parcelle existe déjà sur la fiche, on la laisse
+ * telle quelle — la fiche est la référence, le mandat ne fait que la nourrir
+ * quand elle est vide.
+ */
+export async function reporterCadastre(
+  immeubleId: string,
+  ref: string,
+  surface?: number,
+) {
+  const propre = ref.trim();
+  if (!propre) return;
+  const im = await bqOne("bo_immeuble", immeubleId);
+  const ids = Array.isArray(im?.PARCELLEs) ? (im!.PARCELLEs as string[]) : [];
+  /* Même parcelle écrite de deux façons — « 000 0H 17 » et « H 17 » : on
+     compare sans espaces ni zéros de remplissage, comme l'écran Parcelles. */
+  const cle = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^0+/, "");
+  for (const id of ids) {
+    const p = await bqOne("bo_parcelle", id);
+    if (p && cle(String(p.ref_cadastre ?? "")) === cle(propre)) return;
+  }
+  await addParcelle(immeubleId, { ref_cadastre: propre, superficie: surface });
+}
+
 /** Retire une parcelle (corbeille + retrait du tableau PARCELLEs). */
 export async function deleteParcelle(immeubleId: string, parcelleId: string) {
   await rpc("bo_delete_doc", { p_table: "bo_parcelle", p_id: parcelleId });

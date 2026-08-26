@@ -16,6 +16,9 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
+  const [voirHisto, setVoirHisto] = useState(false);
+  /* L'historique des prix de l'immeuble, le plus récent en tête. */
+  const histo: Record<string, unknown>[] = b.prixHisto ?? [];
   const [pending, start] = useTransition();
   const [createdId, setCreatedId] = useState<string | null>(null);
 
@@ -45,7 +48,6 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const version = attribuee ?? prochaine;
   const [hai, setHai] = useState(S(num(b.im.prix_hai)));
   const [pct, setPct] = useState("5");
-  const [pub, setPub] = useState(false);
   const vHai = parse(hai) ?? 0;
   const vPct = parse(pct) ?? 5;
   const nv = vHai > 0 ? Math.round(vHai / (1 + vPct / 100)) : 0;
@@ -56,7 +58,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
         version: prochaine,
         prix_hai: vHai,
         honos_pct: vPct,
-        isPublic: pub,
+        isPublic: false,
         snapshot: {
           surface: agg.surface, occupation: agg.occupation,
           loyer_hc_an: agg.loyersAn, loyer_hc_an_max: agg.loyersMaxAn,
@@ -85,30 +87,32 @@ export function AddDossierButton({ b }: { b: BienData }) {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau dossier — V{version}<button type="button" onClick={close}>✕</button></div>
             <div className="modal-b">
-              <div className="wsteps" style={{ marginBottom: 12 }}>
-                {["Immeuble", "Prix", "PDF"].map((s, i) => (
-                  <span key={s} className={`wstep${i === step ? " on" : ""}${i < step ? " done" : ""}`} style={{ cursor: "default" }}>
-                    <span className="n">{i + 1}</span>{s}
-                  </span>
-                ))}
-              </div>
-
-              {step === 0 && (
+              {/* #182 — « tu peux reprendre la modale en une seule page ». Le
+                  stepper Immeuble → Prix → PDF faisait trois écrans pour deux
+                  chiffres : tout tient sur une page, les données de l'immeuble
+                  en chips, le prix en dessous. */}
+              {!createdId ? (
                 <>
-                  <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-                    <b>{b.lots.length}</b> lots · <b>{Math.round(agg.surface)} m²</b> · occupation <b>{agg.occupation} %</b><br />
-                    Loyers <b>{euros(agg.loyersAn)}/an</b> (potentiel {euros(agg.loyersMaxAn)}/an) · travaux <b>{euros(agg.travaux) ?? "0 €"}</b>
+                  <div className="dos-chips">
+                    <span className="fchip">{b.lots.length} lots</span>
+                    <span className="fchip">{Math.round(agg.surface)} m²</span>
+                    <span className="fchip">Occupation {agg.occupation} %</span>
+                    <span className="fchip">{euros(agg.loyersAn)}/an</span>
+                    <span className="fchip">Potentiel {euros(agg.loyersMaxAn)}/an</span>
+                    <span className="fchip">Travaux {euros(agg.travaux) ?? "0 €"}</span>
+                    {agg.dests.map((d) => <span key={d} className="fchip">{d}</span>)}
                   </div>
-                  <div className="warnbox">Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.</div>
-                </>
-              )}
 
-              {step === 1 && (
-                <>
-                  <span className="mlab">Prix HAI</span>
-                  <input className="min" style={{ width: 130 }} value={hai} onChange={(e) => setHai(e.target.value)} />
-                  <span className="mlab">Honoraires %</span>
-                  <input className="min" style={{ width: 70 }} value={pct} onChange={(e) => setPct(e.target.value)} />
+                  <div className="mrow" style={{ alignItems: "flex-end", gap: 14, marginTop: 12 }}>
+                    <label className="dmq-c">
+                      <span>Prix HAI</span>
+                      <input value={hai} onChange={(e) => setHai(e.target.value)} />
+                    </label>
+                    <label className="dmq-c">
+                      <span>Honoraires %</span>
+                      <input style={{ minWidth: 80 }} value={pct} onChange={(e) => setPct(e.target.value)} />
+                    </label>
+                  </div>
                   {vHai > 0 && (
                     <div style={{ fontSize: 13, marginTop: 8 }}>
                       Net vendeur <b>{euros(nv)}</b> + honoraires <b>{euros(vHai - nv)}</b> = <b>{euros(vHai)} HAI</b><br />
@@ -116,14 +120,47 @@ export function AddDossierButton({ b }: { b: BienData }) {
                       {" · "}potentiel <b>{agg.loyersMaxAn > 0 ? `${((agg.loyersMaxAn / (vHai + agg.travaux)) * 100).toFixed(1).replace(".", ",")} %` : "—"}</b>
                     </div>
                   )}
-                  <div className="mrow" style={{ marginTop: 10 }}>
-                    <button type="button" className={`mopt${!pub ? " on" : ""}`} onClick={() => setPub(false)}>Privé</button>
-                    <button type="button" className={`mopt${pub ? " on" : ""}`} onClick={() => setPub(true)}>Public</button>
+
+                  {/* L'historique des prix, déroulable : chaque ligne se
+                      reprend d'un clic — c'est le geste le plus fréquent,
+                      « on remet le prix du mandat ». */}
+                  {histo.length > 0 && (
+                    <>
+                      <button type="button" className="hest-plus" style={{ marginTop: 12 }}
+                        onClick={() => setVoirHisto(!voirHisto)}>
+                        {voirHisto ? "Masquer l'historique des prix" : `Historique des prix (${histo.length})`}
+                      </button>
+                      {voirHisto && (
+                        <div className="dos-histo">
+                          {histo.map((p) => (
+                            <button
+                              key={S(p._id)} type="button" className="dos-histo-l"
+                              title="Reprendre ce prix"
+                              onClick={() => {
+                                setHai(S(num(p.in_prix_hai)));
+                                const t = num(p["out_honos_taux_%"]);
+                                if (t) setPct(String(Math.round(t * 10) / 10));
+                              }}
+                            >
+                              <b>{euros(num(p.in_prix_hai)) ?? "—"}</b>
+                              <span>
+                                {S(p.in_Motif) || "Prix"}
+                                {p["Created Date"] ? ` · ${new Date(S(p["Created Date"])).toLocaleDateString("fr-FR")}` : ""}
+                                {num(p.out_prix_m2) ? ` · ${Math.round(num(p.out_prix_m2)!)} €/m²` : ""}
+                                {num(p.out_rba) ? ` · ${num(p.out_rba)!.toFixed(1).replace(".", ",")} %` : ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="warnbox" style={{ marginTop: 12 }}>
+                    Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.
                   </div>
                 </>
-              )}
-
-              {step === 2 && createdId && (
+              ) : (
                 <div style={{ fontSize: 13, lineHeight: 1.7 }}>
                   Dossier <b>V{version}</b> généré ✓<br />
                   <Link className="lnk" href={`/bien/${immeubleId}/dossier/${createdId}/imprimer`} target="_blank">
@@ -133,15 +170,15 @@ export function AddDossierButton({ b }: { b: BienData }) {
               )}
             </div>
             <div className="modal-f">
-              {step === 1 && <button className="kgo" type="button" onClick={() => setStep(0)}>‹ Précédent</button>}
               <span style={{ flex: 1 }} />
-              {step === 0 && <button className="kgo" type="button" onClick={() => setStep(1)}><span className="ch">›</span> Suivant</button>}
-              {step === 1 && (
-                <button className="kgo" type="button" disabled={pending || vHai <= 0} style={pending || vHai <= 0 ? { opacity: 0.5 } : undefined} onClick={generer}>
+              {!createdId ? (
+                <button className="kgo" type="button" disabled={pending || vHai <= 0}
+                  style={pending || vHai <= 0 ? { opacity: 0.5 } : undefined} onClick={generer}>
                   <span className="ch">+</span> Générer le dossier PDF
                 </button>
+              ) : (
+                <button className="kgo" type="button" onClick={close}>Fermer</button>
               )}
-              {step === 2 && <button className="kgo" type="button" onClick={close}>Fermer</button>}
             </div>
           </div>
         </div>
