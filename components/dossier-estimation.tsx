@@ -447,6 +447,17 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
   );
 }
 
+/** Une ligne du bilan : le poste, son écart au secteur s'il en a un, sa valeur. */
+function LigneBilan({ l, v, e, bon }: { l: string; v: string; e?: number; bon?: boolean }) {
+  return (
+    <div className="dos-bil-l">
+      <span>{l}</span>
+      {e !== undefined && <i className={bon ? "v" : "r"}>{e > 0 ? "+" : ""}{e} %</i>}
+      <b>{v}</b>
+    </div>
+  );
+}
+
 /**
  * Une colonne du bilan : ce que le prix retenu donne, ligne à ligne.
  *
@@ -462,26 +473,17 @@ function ColonneBilan({ titre, c, secteur }: {
   secteur: { loyer: number; prix: number; renta: number };
 }) {
   const ec = (v: number, r: number) => (r > 0 ? Math.round(((v - r) / r) * 100) : undefined);
-  const Ligne = ({ l, v, e, bon }: { l: string; v: string; e?: number; bon?: boolean }) => (
-    <div className="dos-bil-l">
-      <span>{l}</span>
-      {e !== undefined && (
-        <i className={bon ? "v" : "r"}>{e > 0 ? "+" : ""}{e} %</i>
-      )}
-      <b>{v}</b>
-    </div>
-  );
   const eLoyer = ec(c.loyerM2, secteur.loyer);
   const ePrix = ec(c.prixM2, secteur.prix);
   const eRenta = ec(c.brut, secteur.renta);
   return (
     <div className="dos-bil-c">
       <div className="dos-bil-t">{titre}</div>
-      <Ligne l="Loyer au m²" v={`${fr1(c.loyerM2)} €/m²/mois`} e={eLoyer} bon={(eLoyer ?? 0) >= 0} />
-      <Ligne l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
-      <Ligne l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
-      <Ligne l="Rendement net" v={`${fr1(c.net)} %`} />
-      <Ligne l="Net acte en main" v={`${fr1(c.aem)} %`} />
+      <LigneBilan l="Loyer au m²" v={`${fr1(c.loyerM2)} €/m²/mois`} e={eLoyer} bon={(eLoyer ?? 0) >= 0} />
+      <LigneBilan l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
+      <LigneBilan l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
+      <LigneBilan l="Rendement net" v={`${fr1(c.net)} %`} />
+      <LigneBilan l="Net acte en main" v={`${fr1(c.aem)} %`} />
     </div>
   );
 }
