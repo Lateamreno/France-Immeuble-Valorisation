@@ -5,7 +5,7 @@
 // arbitrer le prix et rédiger la justification devant les mêmes chiffres.
 // Tout est servi par l'état locatif et la fiche secteur ; ce qui manque porte
 // un point d'exclamation rouge. Le prix est figé à la génération.
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,9 +13,11 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import { Copier } from "@/components/copier";
 import { AdressesInput } from "@/components/adresses-input";
+import { EditSecteurBtn } from "@/components/emplacement";
+import { comparerEstimation, type Ecart } from "@/lib/bo/estimation-ecarts";
 import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
-  supprimerEstimation, type EstimationPayload,
+  supprimerEstimation, updateEmplacement, type EstimationPayload,
 } from "@/lib/bo/actions";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
@@ -63,7 +65,7 @@ const CIBLES_EST = [
 /** Champ de l'estimation : servi par la fiche, grisé tant qu'on ne
  *  personnalise pas — le libellé flotte au-dessus comme dans le BO. */
 function Champ({
-  label, valeur, suffixe, editable, onChange, largeur,
+  label, valeur, suffixe, editable, onChange, largeur, ecart,
 }: {
   label: string;
   valeur: string;
@@ -71,15 +73,21 @@ function Champ({
   editable?: boolean;
   onChange?: (v: string) => void;
   largeur?: number | string;
+  /** #163 — la valeur a bougé depuis la dernière estimation : en rouge, et
+   *  celle d'alors au survol. */
+  ecart?: Ecart;
 }) {
   return (
-    <label className={`est-ch${editable ? " edit" : ""}`} style={largeur ? { width: largeur } : undefined}>
+    <label className={`est-ch${editable ? " edit" : ""}${ecart ? " bouge" : ""}`}
+      style={largeur ? { width: largeur } : undefined}
+      title={ecart ? `Dernière estimation : ${ecart.alors}` : undefined}>
       <span>{label}</span>
       <input
         value={valeur} readOnly={!editable}
         onChange={(e) => onChange?.(e.target.value)}
       />
       {suffixe && <i>{suffixe}</i>}
+      {ecart && <em className="est-i" aria-hidden>i</em>}
     </label>
   );
 }
@@ -93,6 +101,24 @@ const Fleche = ({ arriere }: { arriere?: boolean }) => (
       ? <><path d="M20 12H5" /><path d="m11 6-6 6 6 6" /></>
       : <><path d="M4 12h15" /><path d="m13 6 6 6-6 6" /></>}
   </svg>
+);
+
+/* #160 — l'itinéraire à pied depuis l'immeuble : c'est lui qui donne à la fois
+   le nom du point d'intérêt et le temps de marche, les deux cases à remplir.
+   La ville est accolée au nom parce que « Gare » seul se perd à l'autre bout
+   de la France. */
+const Itineraire = ({ depuis, vers, ville, titre }: {
+  depuis: string; vers: string; ville: string; titre: string;
+}) => (
+  <a
+    className="est-itin" title={titre} target="_blank" rel="noreferrer"
+    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depuis)}&destination=${encodeURIComponent(`${vers} ${ville}`.trim())}&travelmode=walking`}
+  >
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
+      <circle cx="12" cy="10" r="2.6" fill="#fff" stroke="none" />
+    </svg>
+  </a>
 );
 
 const Ok = () => <span className="est-ok" title="Complet">✓</span>;
@@ -128,7 +154,7 @@ export type RepriseEstimation = {
 };
 
 export function EstimationWizard({
-  b, secteur, envoiActif, reprise,
+  b, secteur, envoiActif, reprise, onFermer,
 }: {
   b: BienData;
   secteur: Record<string, unknown> | null;
@@ -136,6 +162,9 @@ export function EstimationWizard({
   envoiActif?: boolean;
   /** Renseigné quand on rouvre une estimation existante pour l'envoyer. */
   reprise?: RepriseEstimation;
+  /** #159 — l'écran ne se referme plus tout seul : il faut le dire. La
+   *  saisie reste en mémoire, rouvrir la retrouve intacte. */
+  onFermer?: () => void;
 }) {
   const router = useRouter();
   const im = b.im;
@@ -190,6 +219,53 @@ export function EstimationWizard({
   const [gareTime, setGareTime] = useMem("gareTime", S(num(im.emp_gare_time)));
   const [comName, setComName] = useMem("comName", S(im.emp_com_name));
   const [comTime, setComTime] = useMem("comTime", S(num(im.emp_com_time)));
+  /* Point de départ des itinéraires, et ville à accoler au nom du point
+     d'intérêt : « Gare de Bordeaux » tout court trouve la mauvaise ville. */
+  const adressePoi = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
+  const villePoi = `${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
+  /* #160 — ce qui est saisi ici est saisi POUR l'immeuble, pas seulement pour
+     l'estimation : on le redescend sur la fiche en quittant l'étape. */
+  const poiModifie =
+    gareName !== S(im.emp_gare_name) || comName !== S(im.emp_com_name) ||
+    gareTime !== S(num(im.emp_gare_time)) || comTime !== S(num(im.emp_com_time));
+
+  /* #161 — la modale du secteur, ouverte depuis l'étape « secteur », a besoin
+     des mêmes deux choses que sur la fiche : le poids de chaque destination
+     (pour recalculer la moyenne d'ensemble) et la commune officielle (pour
+     ses liens et ses repères). */
+  const poidsSecteur = useMemo(
+    () => b.lots.reduce((acc: { dest: string; carrez: number }[], l) => {
+      const dest = S(l.Destination) || "Logement";
+      const e = acc.find((x) => x.dest === dest);
+      const c = num(l.surface_carrez) ?? 0;
+      if (e) e.carrez += c; else acc.push({ dest, carrez: c });
+      return acc;
+    }, []),
+    [b.lots],
+  );
+  /* #163 — « là j'ai fait des modifications dans l'immeuble mais sur le résumé
+     de l'état locatif ça n'affiche pas la différence avec l'ancienne
+     estimation ». On compare donc l'état locatif d'aujourd'hui aux agrégats
+     figés dans la dernière estimation parue, et on ne signale QUE ce qui a
+     bougé — un immeuble qui n'a pas changé n'affiche rien.
+     C'est le miroir du #143 : là-bas on lisait une vieille estimation en
+     regardant ce qui a bougé depuis ; ici on en prépare une neuve en voyant ce
+     qui a bougé depuis la précédente. */
+  const precedente = useMemo(() => {
+    const autres = b.estimations.filter((e) => S(e._id) !== (estId ?? ""));
+    return [...autres].sort((a, z) =>
+      String(z["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")))[0];
+  }, [b.estimations, estId]);
+
+  const [commune, setCommune] = useState<{ code?: string; nom?: string }>({});
+  useEffect(() => {
+    if (!S(im.adresse_ville) && !S(im.adresse_zipcode)) return;
+    const q = new URLSearchParams({ ville: S(im.adresse_ville), cp: S(im.adresse_zipcode) });
+    fetch(`/api/insee?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.code) setCommune({ code: String(d.code), nom: String(d.nom ?? "") }); })
+      .catch(() => {});
+  }, [im.adresse_ville, im.adresse_zipcode]);
   const chTf0 = b.charges.filter((c) => String(c.Type_charge ?? "").startsWith("Taxe"))
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
   const chAut0 = b.charges.filter((c) => !String(c.Type_charge ?? "").startsWith("Taxe"))
@@ -235,6 +311,16 @@ export function EstimationWizard({
       destinations: dests,
     };
   }, [b.lots]);
+
+  const ecartsLocatif = useMemo(() => {
+    if (!precedente) return {};
+    const lignes = agg.parDest.map((d) => ({
+      dest: d.dest, lots: d.lots, surface: d.surface, surfaceOcc: d.surfaceOcc,
+      loyer: d.loyer, loyerMax: d.max,
+    }));
+    return comparerEstimation(lignes, precedente);
+  }, [precedente, agg.parDest]);
+
 
   /* --- Secteur : une ligne de références par destination présente, comme le
      BO. Le bandeau « global » n'est pas saisi : c'est la moyenne pondérée par
@@ -465,16 +551,34 @@ export function EstimationWizard({
       }
     });
 
+  /* #160 — les points d'intérêt saisis dans l'estimation appartiennent à
+     l'immeuble : on les enregistre sur la fiche en quittant l'étape, pour ne
+     pas avoir à les ressaisir dans Emplacement. */
+  const redescendrePoi = () => {
+    if (!poiModifie) return;
+    void updateEmplacement(immeubleId, {
+      emp_gare_name: gareName || undefined,
+      emp_gare_time: parse(gareTime),
+      emp_com_name: comName || undefined,
+      emp_com_time: parse(comTime),
+    });
+  };
+
+  const allerA = (i: number) => {
+    if (step === 0) redescendrePoi();
+    setStep(i);
+  };
+
   const Nav = ({ suivantLabel }: { suivantLabel?: string }) => (
     <div className="est-nav">
       {step > 0 && step < 4 && (
-        <button className="est-prec" type="button" onClick={() => setStep(step - 1)}>
+        <button className="est-prec" type="button" onClick={() => allerA(step - 1)}>
           <Fleche arriere /> Précédent
         </button>
       )}
       <span className="sp" style={{ flex: 1 }} />
       {step < 3 && (
-        <button className="est-suiv" type="button" onClick={() => setStep(step + 1)}>
+        <button className="est-suiv" type="button" onClick={() => allerA(step + 1)}>
           {suivantLabel ?? "Suivant"} <Fleche />
         </button>
       )}
@@ -537,9 +641,20 @@ export function EstimationWizard({
             }}
           >Recommencer</button>
         )}
+        {onFermer && (
+          <button
+            type="button" className="est-fermer"
+            title="Refermer l'estimation — la saisie est gardée, rouvrir la retrouve"
+            onClick={() => { redescendrePoi(); onFermer(); }}
+          >Fermer</button>
+        )}
       </div>
 
-      <div className="est-prog"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>
+      {/* #160 — la barre était une fraction du total : à l'étape 1 sur 5 elle
+          faisait 20 % de la largeur, ce qui la faisait déborder sous « Secteur »
+          alors qu'on est sur « Immeuble ». Elle est maintenant découpée en un
+          segment par étape, chacun à la largeur de son propre onglet : elle ne
+          peut plus dire autre chose que ce que dit le menu. */}
       <div className="est-steps">
         {STEPS.map((s, i) => (
           <button
@@ -549,13 +664,17 @@ export function EstimationWizard({
                généré : corriger une donnée vaut mieux que refaire une
                estimation (retour #147). L'envoi, lui, se bloque tant que le
                PDF n'a pas suivi. */
-            onClick={() => { if (i < 3 || (i === 3 && !envoye) || estId) setStep(i); }}
+            onClick={() => { if (i < 3 || (i === 3 && !envoye) || estId) allerA(i); }}
           >
             <span className="ic">
               {etatEtape[i] === "ok" ? "✓" : etatEtape[i] === "warn" ? "⚠" : "🔒"}
             </span>
             {s}
           </button>
+        ))}
+        {STEPS.map((s, i) => (
+          <i key={`p-${s}`} className={`est-prog-seg${i <= step ? " on" : ""}`}
+            style={{ gridColumn: i + 1, gridRow: 2 }} />
         ))}
       </div>
 
@@ -574,14 +693,23 @@ export function EstimationWizard({
               <Etat ok={okAdresse} />
             </div>
 
+            {/* #160 — quand la ligne est vide, il faut aller chercher le nom
+                et la durée quelque part : l'itinéraire à pied depuis l'adresse
+                du bien les donne tous les deux d'un coup. Le lien reste après
+                coup, pour vérifier. Ce qu'on saisit ici redescend sur la fiche
+                (voir `poiModifie`). */}
             <div className="est-sect">Points d&apos;intérêt</div>
             <div className="est-l">
+              <Itineraire depuis={adressePoi} vers={gareName || "gare"} ville={villePoi}
+                titre="Itinéraire à pied vers les transports" />
               <Champ label="Nom des transports" valeur={gareName} editable={perso} onChange={setGareName} />
               <Champ label="Temps" valeur={gareTime ? `${gareTime} min` : ""} editable={perso}
                 onChange={(v) => setGareTime(v.replace(/[^\d]/g, ""))} largeur={110} />
               <Etat ok={!!(gareName && gareTime)} />
             </div>
             <div className="est-l">
+              <Itineraire depuis={adressePoi} vers={comName || "supermarché"} ville={villePoi}
+                titre="Itinéraire à pied vers les commerces" />
               <Champ label="Nom des commerces" valeur={comName} editable={perso} onChange={setComName} />
               <Champ label="Temps" valeur={comTime ? `${comTime} min` : ""} editable={perso}
                 onChange={(v) => setComTime(v.replace(/[^\d]/g, ""))} largeur={110} />
@@ -609,18 +737,32 @@ export function EstimationWizard({
             </div>
 
             <div className="est-sect">Etat locatif</div>
-            {agg.parDest.length === 0 && <div className="fempty">Aucun lot saisi : complétez l&apos;état locatif.</div>}
-            {agg.parDest.map((d) => (
-              <div className="est-l" key={d.dest}>
-                <span className="est-pic"><svg viewBox="0 0 24 24">{IC_DEST[d.dest] ?? IC_DEST.Annexe}</svg></span>
-                <Champ label="Lots" valeur={String(d.lots)} largeur={72} />
-                <Champ label="Occupés" valeur={`${d.occ} lot${d.occ > 1 ? "s" : ""}`} largeur={130} />
-                <Champ label="Surface" valeur={`${Math.round(d.surface)} m²`} largeur={130} />
-                <Champ label="Loyer" valeur={`${group(d.loyer)} €/an`} />
-                <Champ label="Potentiel" valeur={`${group(d.max)} €/an`} />
-                <Etat ok={d.surface > 0} />
+            {/* #163 — ce qui a bougé depuis la dernière estimation ressort en
+                rouge, avec la valeur d'alors au survol. Rien de rouge = rien
+                n'a changé. */}
+            {precedente && Object.keys(ecartsLocatif).length > 0 && (
+              <div className="est-bouge">
+                {Object.keys(ecartsLocatif).length} valeur
+                {Object.keys(ecartsLocatif).length > 1 ? "s ont changé" : " a changé"} depuis
+                l&apos;estimation du {dmyfr(precedente["Created Date"])} — en rouge ci-dessous,
+                la valeur d&apos;alors au survol.
               </div>
-            ))}
+            )}
+            {agg.parDest.length === 0 && <div className="fempty">Aucun lot saisi : complétez l&apos;état locatif.</div>}
+            {agg.parDest.map((d) => {
+              const bouge = (champ: string) => ecartsLocatif[`${d.dest}.${champ}`];
+              return (
+                <div className="est-l" key={d.dest}>
+                  <span className="est-pic"><svg viewBox="0 0 24 24">{IC_DEST[d.dest] ?? IC_DEST.Annexe}</svg></span>
+                  <Champ label="Lots" valeur={String(d.lots)} largeur={72} ecart={bouge("lots")} />
+                  <Champ label="Occupés" valeur={`${d.occ} lot${d.occ > 1 ? "s" : ""}`} largeur={130} />
+                  <Champ label="Surface" valeur={`${Math.round(d.surface)} m²`} largeur={130} ecart={bouge("surface")} />
+                  <Champ label="Loyer" valeur={`${group(d.loyer)} €/an`} ecart={bouge("loyer")} />
+                  <Champ label="Potentiel" valeur={`${group(d.max)} €/an`} ecart={bouge("loyerMax")} />
+                  <Etat ok={d.surface > 0} />
+                </div>
+              );
+            })}
             <Nav />
           </>
         )}
@@ -656,7 +798,18 @@ export function EstimationWizard({
               const r = refs[d.dest] ?? { l: "", p: "", r: "" };
               return (
                 <div className="est-l" key={d.dest}>
-                  <span className="est-pic"><svg viewBox="0 0 24 24">{IC_DEST[d.dest] ?? IC_DEST.Annexe}</svg></span>
+                  {/* #161 — le picto ouvre la modale du secteur, celle de la
+                      fiche : mêmes repères, mêmes liens, même enregistrement.
+                      Une valeur saisie ici est saisie pour l'immeuble. */}
+                  <EditSecteurBtn
+                    b={b} dest={d.dest} poids={poidsSecteur} commune={commune}
+                    declencheur={(ouvrir) => (
+                      <button type="button" className="est-pic est-pic-btn" onClick={ouvrir}
+                        title={`Renseigner les valeurs du secteur — ${d.dest.toLowerCase()}`}>
+                        <svg viewBox="0 0 24 24">{IC_DEST[d.dest] ?? IC_DEST.Annexe}</svg>
+                      </button>
+                    )}
+                  />
                   <Champ label="Loyer de référence" valeur={r.l ? `${r.l.replace(".", ",")} €/m²/mois` : ""} editable={perso}
                     onChange={(v) => majRef(d.dest, "l", v)} />
                   <Champ label="Prix de référence" valeur={r.p ? `${group(Number(r.p))} €/m²` : ""} editable={perso}
@@ -734,7 +887,11 @@ export function EstimationWizard({
                   onChange={(e) => setHaiStr(e.target.value)}
                   style={{ ["--p" as string]: `${((hai - bornes.min) / (bornes.max - bornes.min)) * 100}%` }} />
                 <div className="pxbar-reps">
-                  {([["Rendement", pRendement], ["Rendement max", pRendementMax], ["Prix m²", pM2], ["Prix m² max", pM2Max]] as const)
+                  {/* #162 — quatre repères sur la règle, c'était trois de
+                      trop : les « max » disent la même chose décalée, et on
+                      ne savait plus lequel viser. Restent les deux que MAV
+                      regarde vraiment. */}
+                  {([["Rendement secteur", pRendement], ["Prix m² secteur", pM2]] as const)
                     .filter(([, v]) => v > 0)
                     .map(([l, v], i) => (
                       <button key={l} type="button" className={`rep${i % 2 ? " bas" : ""}`}
@@ -1112,6 +1269,7 @@ export function EstimationWizard({
  *  lesquels elle s'est basée à l'époque. */
 function HistoriqueEstimations({ b, immeubleId }: { b: BienData; immeubleId: string }) {
   const [plus, setPlus] = useState(false);
+  const [detail, setDetail] = useState(false);
   const ests = [...b.estimations].sort((a, z) =>
     String(z["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
   );
@@ -1126,6 +1284,14 @@ function HistoriqueEstimations({ b, immeubleId }: { b: BienData; immeubleId: str
       <span className={String(e.Statut ?? "").startsWith("3") ? "badge-g" : "badge-o"}>
         {S(e.Statut).replace(/^\d+ - /, "") || "?"}
       </span>
+      {derniere && (
+        /* #159 — « qu'elle soit déroulable pour voir ce qu'il y avait dedans à
+           l'époque » : les chiffres tels qu'ils ont été figés, sans rouvrir
+           le PDF. Le panneau est plafonné à un tiers de l'écran. */
+        <button type="button" className="hest-plus" onClick={() => setDetail(!detail)}>
+          {detail ? "Masquer le détail" : "Détail"}
+        </button>
+      )}
       <Link className="fadd" href={`/bien/${immeubleId}/estimation/${S(e._id)}/imprimer`} target="_blank">PDF</Link>
     </div>
   );
@@ -1133,12 +1299,46 @@ function HistoriqueEstimations({ b, immeubleId }: { b: BienData; immeubleId: str
   return (
     <div className="hest">
       <Ligne e={ests[0]} derniere />
+      {detail && <DetailEstimation e={ests[0]} />}
       {ests.length > 1 && (
         <button type="button" className="hest-plus" onClick={() => setPlus(!plus)}>
           {plus ? "Réduire" : `Voir plus (${ests.length - 1})`}
         </button>
       )}
       {plus && ests.slice(1).map((e) => <Ligne key={S(e._id)} e={e} />)}
+    </div>
+  );
+}
+
+/** Ce que contenait une estimation, tel qu'il a été figé le jour de l'envoi. */
+function DetailEstimation({ e }: { e: Record<string, unknown> }) {
+  const carrez = num(e.imm_carrez_tot_tot) ?? 0;
+  const loyers = num(e.imm_loyer_hc_tot) ?? 0;
+  const hai = num(e.prix_hai) ?? 0;
+  /* Toutes les estimations n'ont pas enregistré le net vendeur ; le taux
+     d'honoraires, lui, y est toujours — il suffit à le retrouver. */
+  const nv = num(e.prix_nv) ?? (hai > 0 ? Math.round(hai / (1 + (num(e["honos_taux_%"]) ?? 5) / 100)) : 0);
+  const travaux = num(e.travaux_tot) ?? 0;
+  const cases: [string, string][] = [
+    ["Prix HAI", euros(hai) ?? "—"],
+    ["Net vendeur", euros(nv) ?? "—"],
+    ["Surface Carrez", carrez ? `${group(carrez)} m²` : "—"],
+    ["Prix au m²", carrez > 0 && hai > 0 ? `${group(hai / carrez)} €/m²` : "—"],
+    ["Loyers HC", loyers ? `${group(loyers)} €/an` : "—"],
+    ["Rendement", hai > 0 && loyers > 0 ? `${fr1((loyers / hai) * 100)} %` : "—"],
+    ["Travaux", travaux ? euros(travaux) ?? "—" : "—"],
+    ["Loyer secteur", num(e.ref_loyer_all) ? `${fr1(num(e.ref_loyer_all)!)} €/m²/mois` : "—"],
+    ["Prix secteur", num(e.ref_prix_all) ? `${group(num(e.ref_prix_all)!)} €/m²` : "—"],
+    ["Rendement secteur", num(e.ref_renta_all) ? `${fr1(num(e.ref_renta_all)!)} %` : "—"],
+  ];
+  return (
+    <div className="hest-det">
+      <div className="hest-cases">
+        {cases.map(([l, v]) => (
+          <span key={l} className="hest-case"><span>{l}</span><b>{v}</b></span>
+        ))}
+      </div>
+      {S(e.analyse) && <p className="hest-analyse">{S(e.analyse)}</p>}
     </div>
   );
 }

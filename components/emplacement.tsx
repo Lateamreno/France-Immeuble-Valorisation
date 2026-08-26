@@ -952,10 +952,22 @@ function ChampSecteur({
   );
 }
 
-function EditSecteurBtn({ b, dest, poids, commune }: {
+/**
+ * La modale « valeurs du secteur », et son bouton.
+ *
+ * Exportée parce que l'estimation s'en sert aussi (#161) : « si on n'a pas
+ * encore rempli on devrait pouvoir le faire depuis ici avec les mêmes options,
+ * donc on clique sur le picto de destination et on a la même modale que dans
+ * les prix sur emplacement, et ça modifie aussi là-bas. » Une seule modale,
+ * un seul enregistrement, deux endroits d'où l'ouvrir — d'où `declencheur`,
+ * qui remplace le bouton « Modifier » par ce que l'appelant veut.
+ */
+export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
   b: BienData; dest: string; poids: { dest: string; carrez: number }[];
   /** Commune officielle (code INSEE + nom) pour l'URL SeLoger. */
   commune?: { code?: string; nom?: string };
+  /** Bouton d'ouverture sur mesure. Par défaut, le « Modifier » du BO. */
+  declencheur?: (ouvrir: () => void) => React.ReactNode;
 }) {
   const immeubleId = String(b.im._id);
   const sect = b.secteur ?? {};
@@ -1074,7 +1086,9 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
 
   return (
     <>
-      <button className="fadd" type="button" onClick={() => setOpen(true)}>Modifier</button>
+      {declencheur
+        ? declencheur(() => setOpen(true))
+        : <button className="fadd" type="button" onClick={() => setOpen(true)}>Modifier</button>}
       {open && (
         <div className="modal-ov" onClick={() => setOpen(false)}>
           <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>

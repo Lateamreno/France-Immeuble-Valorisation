@@ -78,6 +78,46 @@ export function comparerLocatif(
   return out;
 }
 
+/** Suffixe des colonnes d'agrégat d'une estimation, par destination. */
+const SUFFIXE: Record<string, string> = {
+  Logement: "hab", Commerce: "com", Bureau: "bur",
+  Parking: "park", Cave: "cave", Logistique: "autre", Annexe: "autre",
+};
+
+/**
+ * Compare l'état locatif d'AUJOURD'HUI aux agrégats figés dans une estimation
+ * précédente (retour #163).
+ *
+ * C'est l'inverse de `comparerLocatif` : là-bas on ouvre une vieille
+ * estimation et on regarde ce que la fiche dit depuis ; ici on prépare une
+ * estimation neuve et on veut savoir ce qui a bougé depuis la dernière. Le
+ * sens de lecture change, la sortie garde la même forme — `alors` est ce que
+ * disait l'estimation précédente, `aujourdhui` ce qu'on s'apprête à envoyer.
+ */
+export function comparerEstimation(
+  lignes: { dest: string; lots?: number; surface?: number; surfaceOcc?: number; loyer?: number; loyerMax?: number }[],
+  estimation: Record<string, unknown>,
+): Ecarts {
+  const out: Ecarts = {};
+  for (const l of lignes) {
+    const s = SUFFIXE[l.dest] ?? "autre";
+    const mettre = (champ: string, avant?: number, apres?: number, fmt: (v?: number) => string = ent) => {
+      /* Une colonne que l'estimation ne portait pas n'est pas un écart : les
+         premières estimations n'enregistraient pas tout, et signaler « ça a
+         changé » sur une case qui n'a jamais existé ne dit rien à personne. */
+      if (avant === undefined) return;
+      if (!bouge(avant, apres)) return;
+      out[`${l.dest}.${champ}`] = { alors: fmt(avant), aujourdhui: fmt(apres) };
+    };
+    mettre("lots", num(estimation[`imm_nb_lots_${s}`]), l.lots, ent);
+    mettre("surface", num(estimation[`imm_carrez_tot_${s}`]), l.surface, m2);
+    mettre("surfaceOcc", num(estimation[`imm_carrez_occ_${s}`]), l.surfaceOcc, m2);
+    mettre("loyer", num(estimation[`imm_loyer_hc_${s}`]), l.loyer, eur);
+    mettre("loyerMax", num(estimation[`imm_loyer_hc_max_${s}`]), l.loyerMax, eur);
+  }
+  return out;
+}
+
 /**
  * Compare les références de secteur figées à celles d'aujourd'hui.
  *

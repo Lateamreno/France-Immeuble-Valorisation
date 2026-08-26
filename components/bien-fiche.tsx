@@ -241,13 +241,17 @@ export function BienFiche({
   return (
     <div className="fiche">
       <div className="fiche-main">
-        <div className={`fiche-inner${sect === "locatif" || sect === "encours" ? " wide" : ""}`}>
+        <div className={`fiche-inner${sect === "locatif" || sect === "encours" || est ? " wide" : ""}`}>
           {/* L'écran en cours n'est jamais démonté, seulement masqué : c'est ce
               qui permet d'aller voir l'état locatif ou les photos et de
-              revenir à l'estimation sans avoir rien perdu (#96). */}
+              revenir à l'estimation sans avoir rien perdu (#96).
+              #159 — et il ne se masque plus tout seul : « tant que je ne l'ai
+              pas fermée ou annulée, la page reste en place même quand je
+              change d'onglet dans la sidebar de droite ». Le clic sur le rail
+              choisit donc la section qu'on trouvera en refermant. */}
           {contenu && <div hidden={sect !== "encours"}>{contenu}</div>}
           {est && (
-            <div hidden={sect !== "encours"}>
+            <div>
               {est.mode === "lecture" ? (
                 <EstimationEnLecture
                   key={est.reprise.id}
@@ -266,6 +270,7 @@ export function BienFiche({
                   secteur={secteur ?? null}
                   envoiActif={envoiActif}
                   reprise={est.mode === "neuve" ? undefined : est.reprise}
+                  onFermer={() => { setEst(null); if (sect === "encours") setSect("estimations"); }}
                 />
               )}
             </div>
@@ -275,38 +280,44 @@ export function BienFiche({
               {chargement ? "Ouverture de l'estimation…" : "Aucune estimation ouverte."}
             </div>
           )}
-          {sect === "suivi" && <SuiviSection b={b} />}
-          {sect === "proprietaire" && <ProprioSection b={b} />}
-          {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
-          {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
-          {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-          {sect === "prix" && <PrixSection b={b} />}
-          {sect === "photos" && <PhotosSection b={b} />}
-          {sect === "estimations" && (
-            <EstimationsSection
-              b={b}
-              onNeuve={() => { setEst({ mode: "neuve" }); setSect("encours"); }}
-              onOuvrir={ouvrirEst}
-              enCours={chargement}
-              erreur={erreurEst}
-            />
-          )}
-          {sect === "mandats" && <MandatsSection b={b} />}
-          {sect === "diffusion" && (
-            <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
-          )}
-          {sect === "dossiers" && <DossiersSection b={b} />}
-          {sect === "tous-docs" && (
+          {/* Tant qu'une estimation est ouverte, elle occupe l'écran : les
+              sections de la fiche attendent qu'on la referme (#159). */}
+          {!est && (
             <>
-              <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
-              <DocumentsCoffre b={b} />
+              {sect === "suivi" && <SuiviSection b={b} />}
+              {sect === "proprietaire" && <ProprioSection b={b} />}
+              {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
+              {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+              {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
+              {sect === "prix" && <PrixSection b={b} />}
+              {sect === "photos" && <PhotosSection b={b} />}
+              {sect === "estimations" && (
+                <EstimationsSection
+                  b={b}
+                  onNeuve={() => { setEst({ mode: "neuve" }); setSect("encours"); }}
+                  onOuvrir={ouvrirEst}
+                  enCours={chargement}
+                  erreur={erreurEst}
+                />
+              )}
+              {sect === "mandats" && <MandatsSection b={b} />}
+              {sect === "diffusion" && (
+                <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
+              )}
+              {sect === "dossiers" && <DossiersSection b={b} />}
+              {sect === "tous-docs" && (
+                <>
+                  <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
+                  <DocumentsCoffre b={b} />
+                </>
+              )}
+              {sect === "decoupe" && operation && (
+                <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
+              )}
+              {sect === "acheteurs" && <AcheteursSection b={b} />}
+              {sect === "notes" && <NotesSection b={b} />}
             </>
           )}
-          {sect === "decoupe" && operation && (
-            <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
-          )}
-          {sect === "acheteurs" && <AcheteursSection b={b} />}
-          {sect === "notes" && <NotesSection b={b} />}
         </div>
       </div>
 

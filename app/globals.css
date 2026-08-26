@@ -2032,13 +2032,18 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 }
 .est-close:hover { color: #fff; }
 
-.est-prog { height: 4px; background: #ededed; }
-.est-prog i { display: block; height: 100%; background: var(--green); transition: width .2s; }
+/* #160 — un segment de barre par étape, à la largeur de l'onglet qu'il suit.
+   La grille fait le calage toute seule : plus rien à mesurer. */
+.est-prog-seg { height: 4px; background: #ededed; transition: background .2s; }
+.est-prog-seg.on { background: var(--green); }
 
 .est-steps {
-  display: flex; flex-wrap: wrap; gap: 2px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: max-content;
+  grid-template-rows: auto 4px; column-gap: 2px;
   border-bottom: 1px solid var(--line); background: #fff; padding: 0 10px;
+  overflow-x: auto;
 }
+.est-step { grid-row: 1; }
 .est-step {
   display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
   padding: 10px 12px 11px; cursor: pointer;
@@ -2089,6 +2094,10 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 
 /* Une ligne de champs, avec sa pastille de complétude au bout. */
 .est-l { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+/* Le lien d'itinéraire, posé au bout de la ligne qu'il sert à remplir. */
+.est-itin { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; }
+.est-itin svg { width: 19px; height: 19px; }
+.est-itin:hover { opacity: .75; }
 
 /* Champ servi par la fiche : libellé posé sur le bord haut, comme le BO. */
 .est-ch {
@@ -2108,6 +2117,20 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .est-ch i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
 .est-ch.edit { background: #fff; border-color: #d3d3d3; }
 .est-ch.edit input, .est-ch.edit textarea { color: var(--slate); }
+/* #163 — la valeur a bougé depuis la dernière estimation. Même code couleur
+   que le #143 : rouge, et la valeur d'alors dans l'infobulle. */
+.est-ch.bouge { border-color: var(--red); }
+.est-ch.bouge input { color: var(--red); font-weight: 600; }
+.est-i {
+  position: absolute; top: 4px; right: 5px; font-style: normal;
+  width: 13px; height: 13px; display: grid; place-items: center;
+  border: 1px solid var(--red); border-radius: 50%;
+  font-size: 9px; font-weight: 700; color: var(--red);
+}
+.est-bouge {
+  margin: 0 0 10px; padding: 7px 10px; border-left: 3px solid var(--red);
+  background: #fdf1f1; border-radius: 3px; font-size: 12px; color: var(--slate);
+}
 .est-ch.txt { padding-top: 13px; }
 .est-ch.txt textarea { resize: vertical; line-height: 1.55; font-size: 12.5px; }
 
@@ -2124,6 +2147,14 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   font-size: 15px; color: var(--gray-lt);
 }
 .est-reset:hover { color: var(--gold-bo); }
+/* #159 — la sortie de l'écran d'estimation, maintenant qu'un clic sur le rail
+   ne la referme plus. */
+.est-fermer {
+  border: 1px solid rgba(255,255,255,.35); background: none; border-radius: 4px;
+  padding: 4px 12px; margin-left: 10px; cursor: pointer; flex: none;
+  font-family: var(--font-title); font-size: 12px; font-weight: 600; color: inherit;
+}
+.est-fermer:hover { background: rgba(255,255,255,.12); }
 .est-op { font-size: 14px; color: var(--gray-lt); flex: none; }
 
 .est-ok, .est-ko {
@@ -2135,6 +2166,9 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 
 .est-pic { width: 22px; flex: none; display: grid; place-items: center; }
 .est-pic svg { width: 18px; height: 18px; fill: none; stroke: var(--slate-2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* #161 — le picto devient cliquable : il ouvre la modale du secteur. */
+.est-pic-btn { background: none; border: 0; padding: 0; cursor: pointer; }
+.est-pic-btn:hover svg { stroke: var(--green); }
 
 /* Bandeau sombre des références du secteur. */
 .est-glob { display: flex; background: #1e222b; border-radius: 4px; margin-bottom: 4px; }
@@ -2316,6 +2350,20 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   border: 0; background: none; padding: 3px 0 1px; cursor: pointer;
   font-size: 12px; color: var(--gold-bo); font-weight: 700;
 }
+/* #159 — le contenu de la dernière estimation, déroulé sous la ligne. Plafonné
+   à un tiers de la hauteur d'écran, il ne mange jamais la saisie en cours. */
+.hest-det {
+  max-height: 33vh; overflow: auto;
+  margin-top: 6px; padding: 9px 2px 4px; border-top: 1px solid var(--line-lt);
+}
+.hest-cases { display: flex; flex-wrap: wrap; gap: 7px; }
+.hest-case {
+  display: flex; flex-direction: column; gap: 1px;
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; background: #fafafa;
+}
+.hest-case span { font-size: 10.5px; color: var(--gray-lt); }
+.hest-case b { font-family: var(--font-title); font-size: 12.5px; color: var(--slate); }
+.hest-analyse { margin: 9px 0 0; font-size: 12px; line-height: 1.55; color: var(--slate-2); white-space: pre-wrap; }
 
 /* --- Curseur de prix de l'estimation : l'arbitrage se fait à la main entre
    les méthodes de calcul, repères cliquables pour se caler dessus. --- */
