@@ -34,10 +34,16 @@ export type ProprietairePM = {
   droit: string;
   /** Le numéro exact du fichier : « 40 » ou « 40 B ». */
   numero?: string;
+  /** Combien de locaux elle détient à cette adresse : 1 lot, ou l'immeuble. */
+  locaux: number;
 };
 
 export type ResultatProprietaires =
-  | { ok: true; adresse: string; millesime: string; liste: ProprietairePM[] }
+  | {
+    ok: true; adresse: string; millesime: string; liste: ProprietairePM[];
+    /** Ce que le décompte laisse penser de l'immeuble, sans le sur-affirmer. */
+    lecture?: string;
+  }
   | { ok: false; erreur: string };
 
 const DROITS: Record<string, string> = {
@@ -80,10 +86,22 @@ async function situer(adresse: string) {
   return null;
 }
 
-/** « 40=123456789P,987654321U;40B=… » → les détenteurs au numéro demandé. */
-function lire(biens: string, numero: string): { code: string; droit: string; numero: string }[] {
+/**
+ * « 40=123456789P3,987654321U1;40B=… » → les détenteurs au numéro demandé.
+ *
+ * Chaque entrée porte le SIREN, la lettre du droit, et le NOMBRE DE LOCAUX
+ * détenus à cette adresse. Ce compte est ce qui distingue « la SCI possède
+ * l'immeuble » de « la SCI possède un appartement dans l'immeuble » : le
+ * fichier recense tout local bâti, pas seulement les immeubles en bloc.
+ *
+ * On lit par la fin : le code interne du cadastre commence lui aussi par un U,
+ * donc chercher la lettre du droit par la gauche se tromperait.
+ */
+const ENTREE = /^(.+?)([PUN])(\d+)$/;
+
+function lire(biens: string, numero: string) {
   const cherche = numero.replace(/\D/g, "").replace(/^0+/, "");
-  const out: { code: string; droit: string; numero: string }[] = [];
+  const out: { code: string; droit: string; numero: string; locaux: number }[] = [];
   for (const bloc of biens.split(";")) {
     const eq = bloc.indexOf("=");
     if (eq < 0) continue;
@@ -92,8 +110,9 @@ function lire(biens: string, numero: string): { code: string; droit: string; num
        immeubles mitoyens du même propriétaire : on rend les deux, étiquetées. */
     if (pos.replace(/\D/g, "").replace(/^0+/, "") !== cherche) continue;
     for (const g of bloc.slice(eq + 1).split(",")) {
-      if (g.length < 2) continue;
-      out.push({ code: g.slice(0, -1), droit: g.slice(-1), numero: pos });
+      const m = ENTREE.exec(g);
+      if (!m) continue;
+      out.push({ code: m[1], droit: m[2], numero: pos, locaux: Number(m[3]) || 1 });
     }
   }
   return out;
@@ -134,6 +153,30 @@ async function memoriser(lignes: { code: string; nom: string }[]) {
     body: JSON.stringify(lignes),
     cache: "no-store",
   }).catch(() => null);
+}
+
+/**
+ * Ce que le décompte laisse penser — au conditionnel, et c'est volontaire.
+ *
+ * Les personnes physiques étant absentes du fichier, on ne connaît jamais le
+ * total des lots d'un immeuble : une seule société avec un seul local peut
+ * aussi bien être le seul lot vendu d'une monopropriété familiale. On dit donc
+ * ce qu'on voit, et ce qu'on ne peut pas voir.
+ */
+function lecture(liste: { locaux: number; droit: string }[]): string {
+  const proprios = liste.filter((x) => x.droit === "Propriétaire");
+  const total = proprios.reduce((s, x) => s + x.locaux, 0);
+  if (!proprios.length) return "Aucun propriétaire personne morale — seulement des droits démembrés.";
+  if (proprios.length === 1 && total >= 4) {
+    return `Une seule société, ${total} locaux : elle détient peut-être l'immeuble entier — à vérifier, les lots des particuliers ne figurent pas au fichier.`;
+  }
+  if (proprios.length === 1 && total <= 2) {
+    return `Une société, ${total === 1 ? "un seul local" : "deux locaux"} : c'est un lot dans l'immeuble, pas l'immeuble.`;
+  }
+  if (proprios.length > 1) {
+    return `${proprios.length} sociétés se partagent ${total} locaux : l'immeuble est découpé, en copropriété.`;
+  }
+  return `${total} locaux détenus à cette adresse.`;
 }
 
 /**
@@ -187,17 +230,23 @@ export async function proprietairesPm(adresse: string): Promise<ResultatPropriet
       forme: fiche?.forme,
       droit: DROITS[t.droit] ?? "Droit non précisé",
       numero: t.numero.replace(/^0+/, ""),
+      locaux: t.locaux,
       rang: RANG[t.droit] ?? 9,
     });
   }
-  /* Les propriétaires d'abord : c'est eux qu'on met au mandat. */
-  liste.sort((a, b) => a.rang - b.rang || a.denomination.localeCompare(b.denomination));
+  /* Les propriétaires d'abord : c'est eux qu'on met au mandat. À droit égal,
+     celui qui détient le plus de locaux — c'est le plus probable interlocuteur. */
+  liste.sort(
+    (a, b) => a.rang - b.rang || b.locaux - a.locaux || a.denomination.localeCompare(b.denomination),
+  );
   return {
     ok: true,
     adresse: p.label ?? adresse,
     millesime: MILLESIME,
+    lecture: lecture(liste),
     liste: liste.map((x) => ({
-      denomination: x.denomination, siren: x.siren, forme: x.forme, droit: x.droit, numero: x.numero,
+      denomination: x.denomination, siren: x.siren, forme: x.forme,
+      droit: x.droit, numero: x.numero, locaux: x.locaux,
     })),
   };
 }

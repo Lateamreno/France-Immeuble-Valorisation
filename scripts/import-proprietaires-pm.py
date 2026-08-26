@@ -11,8 +11,11 @@ Ce qu'on garde :
   · la clé d'adresse au format de la Base Adresse Nationale, « insee_rivoli » :
     le code RIVOLI de la voie est commun au cadastre et à la BAN, donc aucun
     libellé de rue à rapprocher, aucune approximation ;
-  · le SIREN et le code du droit, repliés par voie dans une seule chaîne
-    « 40=890018559P;91=520382656P,822797791U ».
+  · le SIREN, le code du droit et le NOMBRE DE LOCAUX détenus à l'adresse,
+    repliés par voie dans une seule chaîne « 40=890018559P10;91=520382656P3 ».
+    Ce compte est ce qui sépare « la société détient l'immeuble » de « elle
+    détient un appartement dedans » : le fichier recense tout local bâti, pas
+    seulement les immeubles en bloc.
 
 Résultat : 972 312 lignes et 132 Mo au lieu de ~1 Go. Les dénominations ne sont
 pas stockées — l'annuaire des entreprises les rend gratuitement à la volée, et
@@ -95,19 +98,28 @@ def main() -> None:
     con.execute(
         f"""
         CREATE TABLE plat AS
-        SELECT DISTINCT
+        SELECT
           code_insee AS insee,
           code_voie_rivoli AS rivoli,
-          CAST(TRY_CAST(numero_voirie AS INTEGER) AS VARCHAR) AS num,
-          COALESCE(upper(trim(indice_repetition)), '') AS rep,
+          CAST(TRY_CAST(numero_voirie AS INTEGER) AS VARCHAR)
+            || COALESCE(upper(trim(indice_repetition)), '') AS pos,
           numero_siren AS siren,
           code_droit AS droit,
-          denomination, forme_juridique_abregee AS forme
+          -- Un local, c'est une parcelle et une place dedans : bâtiment,
+          -- entrée, niveau, porte. `numero_majic` n'y sert pas — c'est
+          -- l'identifiant du PROPRIÉTAIRE, pas celui du local.
+          count(DISTINCT (COALESCE(prefixe,'') || section || '-' || numero_parcelle || '-'
+                || COALESCE(batiment,'') || '-' || COALESCE(entree,'') || '-'
+                || COALESCE(CAST(niveau AS VARCHAR),'') || '-'
+                || COALESCE(CAST(porte AS VARCHAR),''))) AS nb,
+          any_value(denomination) AS denomination,
+          any_value(forme_juridique_abregee) AS forme
         FROM read_parquet('{source}')
         WHERE code_droit IN ('P','U','N')
           AND code_voie_rivoli IS NOT NULL AND code_insee IS NOT NULL
           AND TRY_CAST(numero_voirie AS INTEGER) IS NOT NULL
-          AND numero_siren IS NOT NULL AND denomination IS NOT NULL;
+          AND numero_siren IS NOT NULL AND denomination IS NOT NULL
+        GROUP BY 1,2,3,4,5;
         """
     )
     print("  lignes retenues :", con.execute("SELECT count(*) FROM plat").fetchone()[0])
@@ -116,8 +128,8 @@ def main() -> None:
         """
         CREATE TABLE voie AS
         WITH parnum AS (
-          SELECT insee, rivoli, num || rep AS pos,
-                 string_agg(siren || droit, ',' ORDER BY siren) AS gens
+          SELECT insee, rivoli, pos,
+                 string_agg(siren || droit || nb, ',' ORDER BY siren) AS gens
           FROM plat GROUP BY 1,2,3
         )
         SELECT insee || '_' || rivoli AS cle,

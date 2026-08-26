@@ -481,6 +481,9 @@ function QuiPossede({ adresse, onRetenir }: {
           le propriétaire est donc très probablement un particulier ou une indivision.
         </div>
       )}
+      {res?.ok && res.liste.length > 0 && res.lecture && (
+        <div className="mdt-qp-lect">{res.lecture}</div>
+      )}
       {res?.ok && res.liste.length > 0 && (
         <div className="mdt-qp-l">
           {res.liste.map((p) => {
@@ -489,8 +492,13 @@ function QuiPossede({ adresse, onRetenir }: {
               <div key={cle} className="mdt-qp-it">
                 <b>{p.denomination}</b>
                 <span>
-                  {[p.forme, p.siren ? `SIREN ${p.siren}` : "sans SIREN au cadastre", p.droit,
-                    p.numero ? `n° ${p.numero}` : ""].filter(Boolean).join(" · ")}
+                  {[
+                    `${p.locaux} local${p.locaux > 1 ? "ux" : ""}`,
+                    p.droit,
+                    p.forme,
+                    p.siren ? `SIREN ${p.siren}` : "sans SIREN au cadastre",
+                    p.numero ? `n° ${p.numero}` : "",
+                  ].filter(Boolean).join(" · ")}
                 </span>
                 <button type="button" className="fadd" disabled={pris.includes(cle)}
                   onClick={() => { onRetenir(p); setPris((v) => [...v, cle]); }}>
