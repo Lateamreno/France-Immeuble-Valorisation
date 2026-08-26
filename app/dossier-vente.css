@@ -304,9 +304,41 @@
 
 /* ----------------------------------------------------- Impression */
 
+/* La barre d'aperçu (retour, titre, bouton d'impression). Elle est décrite
+   dans la feuille du dossier d'estimation, que cette page ne charge pas :
+   sans ces règles la barre sort en texte brut, sans espacement ni bouton. */
+.dos-bar {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+  background: #fff; border-bottom: 1px solid #e3e3e3; padding: 9px 16px;
+  font-family: var(--font-title), sans-serif; font-size: 13px; color: #44525f;
+}
+.dos-bar a { color: #44525f; }
+.dos-bar .sp { flex: 1; }
+.dos-bar button {
+  border: 0; background: #3db327; color: #fff; border-radius: 4px;
+  padding: 7px 14px; font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+
+/* Comme le dossier d'estimation : le dossier complet est un document, pas un
+   écran de l'outil. La coquille de l'application s'efface autour de lui. Sans
+   ça, ses 42 px de barre en tête et ses 70 px de pied décalaient la première
+   page — bande blanche en haut, couverture qui déborde sur une deuxième
+   feuille, et page vide en fin de document. */
+body:has(.dv) .main { margin: 0; padding: 0; min-height: 0; }
+body:has(.dv) .side, body:has(.dv) .bottbar { display: none; }
+/* Rendu « nu » (celui que capture la génération PDF) : aucun élément d'outil. */
+body:has(.dv.nu) .rv-fab, body:has(.dv.nu) .rv-chip, body:has(.dv.nu) .rv-pin,
+body:has(.dv.nu) .rv-zone, body:has(.dv.nu) .rv-panel,
+body:has(.dv.nu) .brg-bar, body:has(.dv.nu) .brg-voile,
+body:has(.dv.nu) .fadd, body:has(.dv.nu) .fchip { display: none; }
+
 @page { size: A4; margin: 0; }
 @media print {
-  .noprint { display: none !important; }
+  .noprint, .dos-bar { display: none !important; }
+  .brg-bar, .brg-voile, .side, .bottbar, .fadd, .fchip,
+  .rv-fab, .rv-chip, .rv-pin, .rv-zone, .rv-panel { display: none !important; }
+  html, body { margin: 0 !important; padding: 0 !important; }
+  .shell, .main { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
   .dv { background: none; padding: 0; }
   .dv-page {
     margin: 0; box-shadow: none; break-after: page; page-break-after: always;
