@@ -17,7 +17,16 @@ Ce qu'on garde :
     détient un appartement dedans » : le fichier recense tout local bâti, pas
     seulement les immeubles en bloc.
 
-Résultat : 972 312 lignes et 132 Mo au lieu de ~1 Go. Les dénominations ne sont
+Ce qu'on jette, et pourquoi ce seuil et pas un autre : une adresse où les
+sociétés ne détiennent, à elles toutes, qu'UN seul local n'est pas un immeuble
+— c'est un studio, une boutique, une maison. Cela représente 2,2 millions
+d'adresses sur 4, et c'est là qu'est tout le poids inutile. On coupe au niveau
+de l'ADRESSE, jamais du détenteur : dès qu'une adresse est retenue, tous ses
+détenteurs le sont. Écarter « les adresses à plusieurs sociétés » serait le
+contraire d'un bon filtre — ce sont souvent deux SCI qui se partagent un
+immeuble, ou un démembrement usufruit / nue-propriété, donc des cibles.
+
+Résultat : 553 713 lignes et 75 Mo au lieu de ~1 Go. Les dénominations ne sont
 pas stockées — l'annuaire des entreprises les rend gratuitement à la volée, et
 l'application les met en cache dans fi_pm_soc au fil de l'eau. Seules les
 sociétés sans SIREN (identifiant interne du cadastre, préfixé U) sont chargées
@@ -124,13 +133,26 @@ def main() -> None:
     )
     print("  lignes retenues :", con.execute("SELECT count(*) FROM plat").fetchone()[0])
 
+    # Le tri « c'est un immeuble ou pas » : au moins deux locaux à l'adresse,
+    # tous détenteurs confondus. En dessous, ce n'est pas un immeuble.
+    con.execute(
+        """
+        CREATE TABLE garde AS
+        SELECT p.* FROM plat p
+        JOIN (SELECT insee, rivoli, pos, sum(nb) AS nloc FROM plat GROUP BY 1,2,3) a
+          USING (insee, rivoli, pos)
+        WHERE a.nloc >= 2;
+        """
+    )
+    print("  entrées gardées :", con.execute("SELECT count(*) FROM garde").fetchone()[0])
+
     con.execute(
         """
         CREATE TABLE voie AS
         WITH parnum AS (
           SELECT insee, rivoli, pos,
                  string_agg(siren || droit || nb, ',' ORDER BY siren) AS gens
-          FROM plat GROUP BY 1,2,3
+          FROM garde GROUP BY 1,2,3
         )
         SELECT insee || '_' || rivoli AS cle,
                string_agg(pos || '=' || gens, ';' ORDER BY pos) AS biens
@@ -142,7 +164,7 @@ def main() -> None:
     print("Sociétés sans SIREN (identifiant interne du cadastre)…")
     verser(
         con,
-        """SELECT siren, any_value(denomination), any_value(forme) FROM plat
+        """SELECT siren, any_value(denomination), any_value(forme) FROM garde
            WHERE NOT regexp_matches(siren, '^[0-9]{9}$') GROUP BY siren""",
         "fi_pm_soc",
         ["code", "nom", "forme"],

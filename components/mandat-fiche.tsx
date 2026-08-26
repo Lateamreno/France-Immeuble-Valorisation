@@ -477,8 +477,10 @@ function QuiPossede({ adresse, onRetenir }: {
       {res && !res.ok && <div className="mdt-qp-v">{res.erreur}</div>}
       {res?.ok && res.liste.length === 0 && (
         <div className="mdt-qp-v">
-          Aucune personne morale à cette adresse. Le fichier public ne recense que les sociétés :
-          le propriétaire est donc très probablement un particulier ou une indivision.
+          Aucune société propriétaire d&apos;immeuble à cette adresse — donc un particulier ou une
+          indivision familiale, les seuls que le fichier public n&apos;a pas le droit de nommer.
+          Les adresses où les sociétés ne détiennent qu&apos;un local (un studio, une boutique, une
+          maison) sont écartées de la base : ce ne sont pas des immeubles.
         </div>
       )}
       {res?.ok && res.liste.length > 0 && res.lecture && (

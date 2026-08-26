@@ -9,13 +9,15 @@
  *
  * Ce fichier ne se consulte pas en ligne : il se télécharge. On l'a donc
  * dégraissé une fois pour toutes — millésime 2024, droits de propriété
- * seulement, replié par voie — et rangé dans `fi_pm_voie` (972 312 lignes,
- * 132 Mo). Voir le script d'import dans la migration du même nom.
+ * seulement, replié par voie — et rangé dans `fi_pm_voie` (553 713 lignes,
+ * 75 Mo). Voir scripts/import-proprietaires-pm.py.
  *
- * Ce qu'il ne donne pas, et il faut le savoir en le lisant : les personnes
- * physiques, exclues par construction (protection des données). Une adresse
- * sans résultat n'est pas une adresse sans propriétaire — c'est presque
- * toujours un particulier ou une indivision familiale.
+ * DEUX ABSENCES à connaître pour lire un résultat vide :
+ *   · les personnes physiques, exclues du fichier par construction (protection
+ *     des données) — un immeuble de famille ne rend donc rien ;
+ *   · les adresses où les sociétés ne détiennent qu'UN local — un studio, une
+ *     boutique, une maison. Elles pèsent 2,2 millions d'adresses sur 4, et ce
+ *     ne sont pas des immeubles : elles ne sont pas chargées.
  */
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
