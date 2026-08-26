@@ -135,6 +135,41 @@ export async function setFeedbackStatut(
   revalidatePath("/revue");
 }
 
+/**
+ * Corrige un retour déjà posé (retour #140).
+ *
+ * MAV : « dans les retours je veux une option avec un crayon pour modifier le
+ * texte ou ajouter une image ». Un retour se précise après coup — on se relit,
+ * on retrouve la capture qui manquait. Les captures s'AJOUTENT : celles déjà
+ * déposées ne sont jamais remplacées à l'aveugle.
+ */
+export async function modifierFeedback(fd: FormData) {
+  const id = Number(fd.get("id"));
+  if (!Number.isFinite(id)) throw new Error("Retour introuvable.");
+
+  const commentaire = String(fd.get("commentaire") ?? "").trim();
+  const gravite = String(fd.get("gravite") ?? "");
+  const fichiers = fd.getAll("capture").filter((c): c is File => c instanceof File && c.size > 0);
+  const neuves = await Promise.all(fichiers.map(deposerCapture));
+
+  const patch: Record<string, unknown> = {};
+  if (commentaire) patch.commentaire = commentaire;
+  if (["bloquant", "ecart", "detail", "idee"].includes(gravite)) patch.gravite = gravite;
+
+  if (neuves.length) {
+    const res = await sb(`bo_feedback?id=eq.${id}&select=captures,capture_path`).catch(() => null);
+    const rows = res ? ((await res.json()) as { captures: string[] | null; capture_path: string | null }[]) : [];
+    const avant = rows[0]?.captures ?? (rows[0]?.capture_path ? [rows[0].capture_path] : []);
+    const toutes = [...avant, ...neuves];
+    patch.captures = toutes;
+    patch.capture_path = toutes[0];
+  }
+
+  if (!Object.keys(patch).length) return;
+  await sb(`bo_feedback?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+  revalidatePath("/revue");
+}
+
 /** Supprime un retour (erreur de saisie). */
 export async function deleteFeedback(id: number) {
   await sb(`bo_feedback?id=eq.${id}`, { method: "DELETE" });

@@ -5468,3 +5468,20 @@ a.cfc-t:hover { text-decoration: underline; }
   line-height: 1.55; white-space: pre-wrap;
 }
 .att-mail span { font-size: 11.5px; color: var(--gray-lt); }
+
+/* --- Corriger un retour depuis la revue (retour #140) --- */
+.fbk-crayon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; margin-right: 5px; }
+.fbk-edit { margin-top: 10px; border: 1px solid var(--gold-bo); border-radius: 5px; padding: 10px; background: #fbfaf7; }
+.fbk-edit textarea {
+  width: 100%; box-sizing: border-box; border: 1px solid #cfcfcf; border-radius: 4px;
+  padding: 8px 10px; font-family: var(--font-body); font-size: 13px; color: var(--slate);
+  line-height: 1.55; resize: vertical;
+}
+.fbk-edit textarea:focus { border-color: var(--gold-bo); outline: none; }
+.fbk-edit-l { display: flex; align-items: center; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.fbk-edit-l button {
+  border: 1px solid #cfcfcf; border-radius: 99px; background: #fff; cursor: pointer;
+  padding: 4px 11px; font-family: var(--font-title); font-size: 11.5px; color: var(--gray-txt);
+}
+.fbk-edit-l button.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.fbk-edit-n { margin-top: 7px; font-size: 11.5px; color: var(--gray-txt); }

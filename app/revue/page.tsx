@@ -75,7 +75,7 @@ export default async function RevuePage({
                 {f.reponse && (
                   <div className="fb-zone" style={{ color: "#3d7327" }}>Réponse : {f.reponse}</div>
                 )}
-                <FeedbackActions id={f.id} statut={f.statut} />
+                <FeedbackActions id={f.id} statut={f.statut} commentaire={f.commentaire} gravite={f.gravite} />
               </div>
               {/* Les retours d'avant le multi-fichiers n'ont que `capture_path` :
                   on le prend en repli pour qu'ils s'affichent comme avant. */}
