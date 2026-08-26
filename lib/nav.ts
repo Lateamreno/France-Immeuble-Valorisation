@@ -31,6 +31,10 @@ export const NAV: NavItem[] = [
   { href: "/questions", label: "Questions" },
   { href: "/visites", label: "Visites" },
   { href: "/offres", label: "Offres" },
+  /* Prospection en dur : les immeubles détenus par une société et PAS en
+     copropriété — la cible de la découpe. Elle vit à côté des Recherches,
+     qui sont la demande, quand celle-ci est l'offre à aller chercher. */
+  { href: "/prospection", label: "Prospection" },
   { href: "/suivi", label: "Suivi / Rappels" },
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },

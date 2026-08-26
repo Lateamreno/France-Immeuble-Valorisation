@@ -5290,3 +5290,91 @@ a.cfc-t:hover { text-decoration: underline; }
 @media (max-width: 720px) {
   .rgl-duo, .rgl-quatre { grid-template-columns: 1fr; }
 }
+
+/* ===================== Prospection en dur =============================== */
+/* L'offre qu'on va chercher : immeubles de société, hors copropriété. */
+.lst-sous {
+  font-size: 12.5px; color: var(--gray-txt); line-height: 1.6;
+  max-width: 78ch; margin: -6px 0 18px;
+}
+.pro { display: flex; flex-direction: column; gap: 14px; }
+
+.pro-filtres {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px 14px; align-items: end;
+  border: 1px solid var(--line); border-radius: 6px; background: #fbfaf7; padding: 14px 16px;
+}
+.pro-ch { display: flex; flex-direction: column; gap: 4px; min-width: 0; position: relative; }
+.pro-ch.lg { grid-column: span 2; }
+.pro-ch > span { font-size: 11.5px; color: var(--gray-txt); }
+.pro-ch input, .pro-ch select {
+  width: 100%; box-sizing: border-box; min-height: 36px; padding: 7px 10px;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff;
+  font-family: var(--font-body); font-size: 14px; color: var(--slate);
+}
+.pro-ch input:focus, .pro-ch select:focus { border-color: var(--gold-bo); outline: none; }
+.pro-ch input:disabled { background: #f2f2f2; color: var(--gray-lt); }
+.pro-puce {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px;
+  border: 1px solid var(--gold-bo); border-radius: 4px; background: #fff;
+  font-size: 13.5px; color: var(--slate);
+}
+.pro-puce button { border: 0; background: none; cursor: pointer; color: var(--gray-lt); font-size: 13px; }
+.pro-sugg {
+  position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 60;
+  background: #fff; border: 1px solid var(--line); border-radius: 5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .12); max-height: 260px; overflow-y: auto;
+}
+.pro-sugg button {
+  display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+  border: 0; background: none; padding: 7px 11px; cursor: pointer; font-size: 13px;
+}
+.pro-sugg button:hover { background: #f6f4ef; }
+.pro-sugg i { font-style: normal; color: var(--gray-lt); font-size: 11.5px; }
+.pro-formes { display: flex; flex-wrap: wrap; gap: 6px; }
+.pro-formes button {
+  border: 1px solid #cfcfcf; border-radius: 99px; background: #fff; cursor: pointer;
+  padding: 5px 12px; font-family: var(--font-title); font-size: 12px; color: var(--gray-txt);
+}
+.pro-formes button.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.pro-go { display: flex; align-items: end; }
+.pro-go button { width: 100%; }
+
+.pro-barre {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 10px 14px;
+  font-size: 12.5px; color: var(--gray-txt);
+}
+.pro-barre b { font-family: var(--font-title); font-size: 16px; color: var(--slate); }
+.pro-sel { color: var(--gold-bo); }
+.pro-ok {
+  border: 1px solid var(--green); border-left-width: 3px; border-radius: 4px;
+  background: #f3f9f4; padding: 8px 12px; font-size: 12.5px; color: var(--slate);
+}
+.pro-vide {
+  border: 1px dashed var(--line); border-radius: 6px; padding: 22px;
+  font-size: 13px; color: var(--gray-txt); line-height: 1.6; text-align: center;
+}
+
+.pro-tab { border: 1px solid var(--line); border-radius: 6px; background: #fff; overflow-x: auto; }
+.pro-tab table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pro-tab th {
+  text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line);
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--gray-txt); white-space: nowrap;
+}
+.pro-tab td { padding: 8px 10px; border-bottom: 1px solid var(--line-lt); color: var(--slate); }
+.pro-tab tr:last-child td { border-bottom: 0; }
+.pro-tab tr.on td { background: #fbf7ec; }
+.pro-tab .n { text-align: right; }
+.pro-tab .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--gray-txt); }
+.pro-tab i { font-style: normal; color: var(--gray-lt); }
+.pro-pages {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--gray-txt);
+}
+.pro-pages button {
+  border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer;
+  padding: 5px 12px; font-size: 12.5px; color: var(--slate);
+}
+.pro-pages button:disabled { opacity: .45; cursor: not-allowed; }

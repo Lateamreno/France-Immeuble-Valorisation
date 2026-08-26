@@ -45,6 +45,8 @@ export type ResultatProprietaires =
     ok: true; adresse: string; millesime: string; liste: ProprietairePM[];
     /** Ce que le décompte laisse penser de l'immeuble, sans le sur-affirmer. */
     lecture?: string;
+    /** Nombre de lots si l'adresse est immatriculée au registre des copros. */
+    copro?: number | null;
   }
   | { ok: false; erreur: string };
 
@@ -118,6 +120,19 @@ function lire(biens: string, numero: string) {
     }
   }
   return out;
+}
+
+/** « 91=645;95=24 » → le nombre de lots de la copro à ce numéro, s'il y en a une. */
+function lotsDeCopro(copro: string, numero: string): number | null {
+  const cherche = numero.replace(/\D/g, "").replace(/^0+/, "");
+  for (const bloc of copro.split(";")) {
+    const [pos, lots] = bloc.split("=");
+    if (!pos) continue;
+    if (pos.replace(/\D/g, "").replace(/^0+/, "") !== cherche) continue;
+    const n = Number(lots);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  return null;
 }
 
 /** Les noms déjà connus localement (identifiants internes + cache). */
@@ -200,12 +215,16 @@ export async function proprietairesPm(adresse: string): Promise<ResultatPropriet
     };
   }
   const cle = `${parts[0]}_${parts[1]}`;
-  const rows = await sb(`fi_pm_voie?select=biens&cle=eq.${encodeURIComponent(cle)}&limit=1`);
+  const rows = await sb(`fi_pm_voie?select=biens,copro&cle=eq.${encodeURIComponent(cle)}&limit=1`);
   const biens = rows[0]?.biens ? String(rows[0].biens) : "";
   const trouves = biens ? lire(biens, String(p.housenumber)) : [];
 
+  /* Immatriculée au registre des copropriétés ? C'est ce qui sépare un
+     immeuble à découper d'un immeuble déjà découpé. */
+  const lotsCopro = rows[0]?.copro ? lotsDeCopro(String(rows[0].copro), String(p.housenumber)) : null;
+
   if (!trouves.length) {
-    return { ok: true, adresse: p.label ?? adresse, millesime: MILLESIME, liste: [] };
+    return { ok: true, adresse: p.label ?? adresse, millesime: MILLESIME, liste: [], copro: lotsCopro };
   }
 
   /* Les noms : d'abord ce qu'on a en base (identifiants internes du cadastre,
@@ -245,7 +264,10 @@ export async function proprietairesPm(adresse: string): Promise<ResultatPropriet
     ok: true,
     adresse: p.label ?? adresse,
     millesime: MILLESIME,
-    lecture: lecture(liste),
+    copro: lotsCopro,
+    lecture: lotsCopro === null
+      ? `${lecture(liste)} Cette adresse n'est pas immatriculée au registre des copropriétés : l'immeuble n'est pas divisé.`
+      : `Immeuble en copropriété${lotsCopro ? ` (${lotsCopro} lots au registre)` : ""} : il est déjà divisé.`,
     liste: liste.map((x) => ({
       denomination: x.denomination, siren: x.siren, forme: x.forme,
       droit: x.droit, numero: x.numero, locaux: x.locaux,
