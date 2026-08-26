@@ -2590,6 +2590,13 @@ select.pr-in { cursor: pointer; }
 }
 .mq.sl { background: #e2001a; }
 .mq.nt { background: #1b3c73; border-radius: 50%; }
+/* #156/#157 — chaque site sa pastille : on confondait LocalCommercial avec
+   SeLoger, qui n'a rien à voir. */
+.mq.lc { background: #0b7285; }
+.mq.ue { background: #c2410c; }
+/* Le picto du champ devient le bouton du site qui donne ce chiffre-là. */
+.sf-lien { display: inline-grid; place-items: center; text-decoration: none; }
+.sf-lien:hover { opacity: .78; }
 .mq-svg { width: 17px; height: 17px; }
 .mq-svg.trait { fill: none; stroke: var(--slate-2); stroke-width: 1.8; }
 

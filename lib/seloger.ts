@@ -200,3 +200,14 @@ export function urlSeloger(
   if (!ville || !code) return departementUrl;
   return `${racine}/${region}/${departement}/${ville}/${code}.htm`;
 }
+
+/**
+ * Le nom de département en slug (« hauts-de-seine » pour 92).
+ *
+ * Extrait d'ici parce que la table est déjà là et qu'elle est juste :
+ * unemplacement.com range ses pages sous le même libellé (voir
+ * `lib/unemplacement.ts`).
+ */
+export function slugDepartement(code: string): string | undefined {
+  return DEPARTEMENTS[code.toUpperCase()]?.[1];
+}

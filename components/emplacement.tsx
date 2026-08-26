@@ -17,6 +17,7 @@ import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
+import { slugVille, urlUnemplacement, type ValeurUE } from "@/lib/unemplacement";
 import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
 
@@ -561,10 +562,20 @@ function ParcellesTab({ b }: { b: BienData }) {
         </div>
       </div>
 
+      {/* #175 — chacun de ces trois sites demande l'adresse dans son propre
+          champ de recherche : on la met au presse-papiers en partant. */}
       <div className="mrow" style={{ marginBottom: 8 }}>
-        <a className="mopt" href={lienCadastre} target="_blank" rel="noreferrer">Cadastre ↗</a>
-        <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer">Géoportail ↗</a>
-        <a className="mopt" href={lienGoogle} target="_blank" rel="noreferrer">Google ↗</a>
+        <a className="mopt" href={lienCadastre} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Cadastre ↗</a>
+        {/* #176 — le cadastre officiel, celui dont MAV a l'habitude. Son
+            formulaire ne se pilote pas par l'URL (c'est une vieille appli en
+            POST) : le lien ouvre la recherche, l'adresse est déjà copiée. */}
+        <a className="mopt" href="https://www.cadastre.gouv.fr/scpc/rechercherPlan.do"
+          target="_blank" rel="noreferrer" onClick={() => copierTexte(adresse)}>cadastre.gouv ↗</a>
+        <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Géoportail ↗</a>
+        <a className="mopt" href={lienGoogle} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Google ↗</a>
         {lat !== undefined && lon !== undefined && (
           <button type="button" className="mopt" disabled={rechCadastre} onClick={chercherParcelles}>
             {rechCadastre ? "Recherche…" : "Retrouver les parcelles"}
@@ -864,6 +875,10 @@ const PLURIELS: Record<string, string> = {
 const MARQUES: Record<string, React.ReactNode> = {
   seloger: <span className="mq sl">SL</span>,
   notaires: <span className="mq nt">N</span>,
+  /* #156 — c'était la pastille SeLoger qui s'affichait sur le lien
+     LocalCommercial. Chaque site a désormais la sienne. */
+  localcommercial: <span className="mq lc">LC</span>,
+  unemplacement: <span className="mq ue">UE</span>,
   maps: (
     <svg className="mq-svg" viewBox="0 0 24 24">
       <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
@@ -897,7 +912,7 @@ const nbSaisi = (t: string, decimales: number) => {
 /** Champ encadré de la modale du BO : picto à gauche, libellé posé sur le
  *  cadre, unité à droite. Rouge tant qu'il est vide. */
 function ChampSecteur({
-  icone, libelle, unite, valeur, onChange, decimales = 0, calcule, repere, aRemplacer,
+  icone, libelle, unite, valeur, onChange, decimales = 0, calcule, repere, aRemplacer, lien,
 }: {
   icone: React.ReactNode; libelle: string; unite?: string;
   valeur: string; onChange?: (v: string) => void;
@@ -908,11 +923,18 @@ function ChampSecteur({
   repere?: React.ReactNode;
   /** La valeur affichée vient du repère : elle attend d'être vérifiée. */
   aRemplacer?: boolean;
+  /** La page qui donne CE chiffre-là, ouverte depuis le champ (#157). */
+  lien?: { href: string; titre: string; marque: React.ReactNode; onClick?: () => void };
 }) {
   const vide = valeur === "";
   return (
     <div className={`sf${calcule ? " calc" : vide ? " requis" : aRemplacer ? " repere" : ""}`}>
-      <span className="sf-ic"><svg viewBox="0 0 24 24">{icone}</svg></span>
+      {lien ? (
+        <a className="sf-ic sf-lien" href={lien.href} target="_blank" rel="noreferrer"
+          title={lien.titre} onClick={lien.onClick}>{lien.marque}</a>
+      ) : (
+        <span className="sf-ic"><svg viewBox="0 0 24 24">{icone}</svg></span>
+      )}
       <span className="sf-box">
         <span className="sf-lab">{libelle}{aRemplacer ? " — repère, à vérifier" : ""}</span>
         {calcule ? (
@@ -950,6 +972,13 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
      chiffre retenu, lui, reste celui que l'agent tape. */
   const [reperes, setReperes] = useState<Reperes | null>(null);
   const prerempli = useRef({ loyer: false, prix: false });
+
+  /* Bureaux, commerces, entrepôts : ni les loyers d'annonce du ministère ni
+     DVF ne les cotent. unemplacement.com les publie commune par commune, on
+     va les y chercher — la lecture elle-même est plus bas, une fois l'adresse
+     de la commune connue (#157). */
+  const [ue, setUe] = useState<{ loyer: ValeurUE | null; prix: ValeurUE | null } | null>(null);
+
   useEffect(() => {
     if (!open || !commune?.code || reperes) return;
     fetch(`/api/reperes?insee=${commune.code}&destination=${encodeURIComponent(dest)}`)
@@ -982,22 +1011,60 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
     cp,
   };
 
-  const cible = (site: string, quoi: string) =>
-    `https://www.google.com/search?q=${encodeURIComponent(`site:${site} ${quoi} ${ville} ${cp}`)}`;
-  /* Les liens du BO, dans l'ordre du BO. Pour le commerce, les deux sites
-     spécialisés remplacent SeLoger, qui ne cote pas les baux commerciaux. */
+  /* #155 — la page des notaires existait au département, alors que leur outil
+     descend à la commune : « l'url ne mène que pour la Gironde alors que
+     l'immeuble est à Bordeaux ». Leur application lit `typeLocalisation` et
+     `codeInsee` dans l'URL et accepte COMMUNE comme ARRONDISSEMENT ; c'est ce
+     dernier qu'il faut pour Paris, Lyon et Marseille, dont le code INSEE que
+     nous portons est déjà celui de l'arrondissement. Sans code INSEE, on
+     retombe proprement sur le département. */
+  const arrondissement = /^(?:751|6938|132)\d\d$/.test(commune?.code ?? "");
+  const lienNotaires = commune?.code
+    ? `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=${
+        arrondissement ? "ARRONDISSEMENT" : "COMMUNE"
+      }&codeInsee=${commune.code}&neuf=A`
+    : `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A`;
+
+  /* #156 — LocalCommercial range ses estimations de loyer par code postal et
+     nom de ville. On passait par une recherche Google, qui tombait sur Google.
+     MAV : « https://www.localcommercial.net/estimation-loyer-ville/33000/
+     bordeaux ». */
+  const lienLocalCommercial = cp && ville
+    ? `https://www.localcommercial.net/estimation-loyer-ville/${cp}/${slugVille(ville)}`
+    : "https://www.localcommercial.net/estimation-loyer-ville";
+
+  /* #157/#158 — bureaux, commerces et entrepôts : unemplacement.com. Un lien
+     par champ, posé en face du champ qu'il remplit (plus bas), et celui-ci en
+     tête reste LocalCommercial, « qui me sert moins souvent ». */
+  const ueLoyer = urlUnemplacement(dest, { cp, ville, insee: commune?.code }, "loyer");
+  const uePrix = urlUnemplacement(dest, { cp, ville, insee: commune?.code }, "prix");
+
+  useEffect(() => {
+    if (!open || !ueLoyer || ue) return;
+    const q = new URLSearchParams({ dest, cp, ville, insee: commune?.code ?? "" });
+    fetch(`/api/unemplacement?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { loyer: ValeurUE | null; prix: ValeurUE | null } | null) => {
+        if (!d) return;
+        setUe(d);
+        if (d.loyer) setLoyer((v) => { if (v) return v; prerempli.current.loyer = true; return String(d.loyer!.valeur); });
+        if (d.prix) setPrix((v) => { if (v) return v; prerempli.current.prix = true; return String(Math.round(d.prix!.valeur)); });
+      })
+      .catch(() => {});
+  }, [open, ueLoyer, ue, dest, cp, ville, commune?.code]);
+
   const liens: { cle: string; label: string; href: string }[] =
-    dest === "Commerce"
+    ueLoyer
       ? [
-          { cle: "seloger", label: "LocalCommercial", href: cible("localcommercial.net", "local commercial") },
-          { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
+          { cle: "localcommercial", label: "LocalCommercial", href: lienLocalCommercial },
+          { cle: "notaires", label: "Notaires", href: lienNotaires },
         ]
       : [
           // Une page par champ à remplir : les loyers pour le premier, les
           // prix pour le second, tous deux sur la commune du bien.
           { cle: "seloger", label: "Loyers", href: urlSeloger({ ...seloger, type: "location" }) },
           { cle: "seloger", label: "Prix", href: urlSeloger({ ...seloger, type: "vente" }) },
-          { cle: "notaires", label: "Notaires", href: `https://www.immobilier.notaires.fr/fr/prix-immobilier?typeLocalisation=DEPARTEMENT&codeInsee=${dept}&neuf=A` },
+          { cle: "notaires", label: "Notaires", href: lienNotaires },
           ...(idf ? [{ cle: "notaires", label: "Notaires Paris", href: "https://paris.notaires.fr/fr/carte-des-prix" }] : []),
         ];
 
@@ -1019,8 +1086,12 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
               <div className="sm-liens">
                 <b>{PLURIELS[dest] ?? `${dest}s`}</b>
                 <span className="sp" />
+                {/* #175 — ouvrir un site extérieur met l'adresse au presse-
+                    papiers : sur toutes ces pages, le premier geste est de la
+                    coller dans leur champ de recherche. */}
                 {liens.map((l, i) => (
-                  <a key={i} className="sm-lk" href={l.href} target="_blank" rel="noreferrer">
+                  <a key={i} className="sm-lk" href={l.href} target="_blank" rel="noreferrer"
+                    onClick={() => copierTexte(adresse)}>
                     {MARQUES[l.cle]}{l.label}
                   </a>
                 ))}
@@ -1041,7 +1112,17 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
                 valeur={loyer}
                 onChange={(v) => { prerempli.current.loyer = false; setLoyer(v); }}
                 decimales={2}
-                repere={reperes?.loyer && (
+                lien={ueLoyer ? {
+                  href: ueLoyer, titre: "Loyers du secteur sur unemplacement.com",
+                  marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
+                } : undefined}
+                repere={ue?.loyer ? (
+                  <>
+                    <b>{fr2(ue.loyer.valeur)} €/m²/mois</b> — unemplacement.com
+                    {ue.loyer.au ? `, au ${ue.loyer.au}` : ""}
+                    {ue.loyer.bas !== undefined && ` · fourchette ${fr2(ue.loyer.bas)} à ${fr2(ue.loyer.haut!)} €`}
+                  </>
+                ) : reperes?.loyer && (
                   <>
                     <b>{fr2(reperes.loyer.valeur)} €/m²/mois</b> — loyers d&apos;annonce {reperes.loyer.millesime}
                     {reperes.loyer.commune ? "" : ", estimé sur les communes voisines"}
@@ -1055,7 +1136,17 @@ function EditSecteurBtn({ b, dest, poids, commune }: {
                 libelle="Prix du secteur" unite="€/m²"
                 valeur={prix}
                 onChange={(v) => { prerempli.current.prix = false; setPrix(v); }}
-                repere={reperes?.prix && (
+                lien={uePrix ? {
+                  href: uePrix, titre: "Prix de vente du secteur sur unemplacement.com",
+                  marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
+                } : undefined}
+                repere={ue?.prix ? (
+                  <>
+                    <b>{Math.round(ue.prix.valeur).toLocaleString("fr-FR")} €/m²</b> — unemplacement.com
+                    {ue.prix.au ? `, au ${ue.prix.au}` : ""}
+                    {ue.prix.bas !== undefined && ` · fourchette ${Math.round(ue.prix.bas).toLocaleString("fr-FR")} à ${Math.round(ue.prix.haut!).toLocaleString("fr-FR")} €`}
+                  </>
+                ) : reperes?.prix && (
                   <>
                     <b>{reperes.prix.valeur.toLocaleString("fr-FR")} €/m²</b> — médiane des ventes DVF {reperes.prix.millesime},
                     {` sur ${reperes.prix.ventes.toLocaleString("fr-FR")} vente${reperes.prix.ventes > 1 ? "s" : ""} d'appartement`}
