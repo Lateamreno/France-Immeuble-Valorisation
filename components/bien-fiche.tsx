@@ -60,7 +60,11 @@ export type EcranEstimation =
   /** Une estimation existante, rouverte pour l'envoyer (#98)… */
   | { mode: "reprise"; reprise: RepriseEstimation; lecture: EstimationLecture }
   /** …ou simplement relue, figée à sa date (#55). */
-  | { mode: "lecture"; reprise: RepriseEstimation; lecture: EstimationLecture };
+  | {
+    mode: "lecture"; reprise: RepriseEstimation; lecture: EstimationLecture;
+    /** Ce que la fiche dit aujourd'hui, là où ça diverge (retour #143). */
+    ecarts?: Record<string, { alors: string; aujourdhui: string }>;
+  };
 
 const LIBELLE_EST: Record<EcranEstimation["mode"], string> = {
   neuve: "Estimation en cours",
@@ -188,7 +192,7 @@ export function BienFiche({
     ouvrirEstimation(eid)
       .then((r) => {
         if (!r) { setErreurEst("Estimation introuvable."); return; }
-        setEst({ mode, reprise: r.reprise, lecture: r.lecture });
+        setEst({ mode, reprise: r.reprise, lecture: r.lecture, ecarts: r.ecarts });
         setSect("encours");
       })
       .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
@@ -250,6 +254,7 @@ export function BienFiche({
                   e={est.lecture}
                   immeubleId={String(b.im._id)}
                   pdfUrl={est.reprise.pdfUrl}
+                  ecarts={est.ecarts}
                   onEnvoyer={() => setEst({ ...est, mode: "reprise" })}
                 />
               ) : (

@@ -4,7 +4,9 @@
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { after } from "next/server";
-import { filtreMots, getAgentFiche, getEstimation, motsRecherche } from "@/lib/bubble/server";
+import {
+  filtreMots, getAgentFiche, getBien, getEstimation, getPrixSecteur, motsRecherche,
+} from "@/lib/bubble/server";
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
 
 const SB_URL =
@@ -1026,6 +1028,8 @@ export async function ouvrirEstimation(estimationId: string): Promise<{
     envoyeeLe?: string; envoyeeA?: string; objet?: string; corps?: string;
   };
   lecture: EstimationLecture;
+  /** Ce que la fiche dit aujourd'hui, là où ça diverge (retour #143). */
+  ecarts: Record<string, { alors: string; aujourdhui: string }>;
 } | null> {
   const e = await getEstimation(estimationId).catch(() => null);
   if (!e) return null;
@@ -1051,6 +1055,27 @@ export async function ouvrirEstimation(estimationId: string): Promise<{
 
   const t = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+  /* Ce qui a bougé depuis. On lit la fiche d'aujourd'hui à côté, sans jamais
+     toucher aux valeurs figées : l'estimation reste ce qui est parti. */
+  const lecture = lireEstimation(e, agent);
+  const immeubleId = String(e.IMMEUBLE ?? "");
+  let ecarts: Record<string, { alors: string; aujourdhui: string }> = {};
+  if (immeubleId) {
+    const { comparerLocatif, comparerPrix, comparerSecteur } = await import("./estimation-ecarts");
+    const [bien, secteur] = await Promise.all([
+      getBien(immeubleId).catch(() => null),
+      getPrixSecteur(immeubleId).catch(() => null),
+    ]);
+    if (bien) {
+      ecarts = {
+        ...comparerLocatif(lecture.lignes, bien.lots),
+        ...comparerSecteur(lecture.lignes, secteur),
+        ...comparerPrix(lecture.prix, bien.im),
+      };
+    }
+  }
+
   return {
     reprise: {
       id: estimationId,
@@ -1065,7 +1090,8 @@ export async function ouvrirEstimation(estimationId: string): Promise<{
       objet: t(e.sent_objet),
       corps: t(e.sent_corps),
     },
-    lecture: lireEstimation(e, agent),
+    lecture: lecture,
+    ecarts,
   };
 }
 

@@ -42,7 +42,9 @@ export default async function ConsulterEstimation({
       secteur={secteur}
       envoiActif={await envoiPossible()}
       cleEcran={`consulter:${eid}`}
-      ouvrir={{ mode: "lecture", reprise: ecran.reprise, lecture: ecran.lecture }}
+      ouvrir={{
+        mode: "lecture", reprise: ecran.reprise, lecture: ecran.lecture, ecarts: ecran.ecarts,
+      }}
     />
   );
 }

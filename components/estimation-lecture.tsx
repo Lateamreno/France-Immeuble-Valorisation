@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
+import type { Ecarts } from "@/lib/bo/estimation-ecarts";
 import { ETATS } from "@/lib/bo/dossier";
 import { Avion } from "@/components/pictos";
 
@@ -32,14 +33,34 @@ function Note({ valeur, libelles }: { valeur?: number; libelles: string[] }) {
   );
 }
 
-export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer }: {
+/**
+ * Une valeur figée, signalée en rouge si la fiche dit autre chose aujourd'hui.
+ *
+ * On n'écrit jamais la valeur actuelle à la place : c'est le chiffre d'alors
+ * qui est parti au propriétaire. Elle se lit au survol (retour #143).
+ */
+function V({ v, cle, ecarts }: { v: React.ReactNode; cle: string; ecarts?: Ecarts }) {
+  const e = ecarts?.[cle];
+  if (!e) return <>{v}</>;
+  return (
+    <span className="elc-chg" title={`Aujourd'hui : ${e.aujourdhui}`}>
+      {v}
+      <i>{e.aujourdhui}</i>
+    </span>
+  );
+}
+
+export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer, ecarts }: {
   e: EstimationLecture;
   immeubleId: string;
   pdfUrl?: string;
   /** Passer à l'envoi sans quitter la page (retour #125). */
   onEnvoyer?: () => void;
+  /** Ce que la fiche dit aujourd'hui, quand ça diffère (retour #143). */
+  ecarts?: Ecarts;
 }) {
   const avecRef = e.lignes.some((l) => l.refLoyer || l.refPrix || l.refRenta);
+  const nChg = Object.keys(ecarts ?? {}).length;
 
   return (
     <div className="elc">
@@ -50,6 +71,16 @@ export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer }: {
         <span>
           Les valeurs sont celles du jour où l&apos;estimation a été faite. La fiche a pu
           bouger depuis : c&apos;est voulu, c&apos;est ce chiffre-là qui est parti au propriétaire.
+          {nChg > 0 && (
+            <>
+              {" "}
+              <b className="elc-chg-n">
+                {nChg} valeur{nChg > 1 ? "s ont" : " a"} changé depuis
+              </b>
+              {" "}— soulignée{nChg > 1 ? "s" : ""} de rouge, la valeur d&apos;aujourd&apos;hui
+              apparaît au survol.
+            </>
+          )}
         </span>
       </div>
 
@@ -89,10 +120,10 @@ export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer }: {
       <section className="elc-prix">
         <div className="elc-prix-grand">
           <span>Prix estimé, honoraires inclus</span>
-          <b>{eur(e.prix.hai)}</b>
+          <b><V v={eur(e.prix.hai)} cle="prix.hai" ecarts={ecarts} /></b>
         </div>
         <div className="elc-prix-trio">
-          <div><span>Net vendeur</span><b>{eur(e.prix.nv)}</b></div>
+          <div><span>Net vendeur</span><b><V v={eur(e.prix.nv)} cle="prix.nv" ecarts={ecarts} /></b></div>
           <div><span>Honoraires</span><b>{e.prix.honosPct ? pct(e.prix.honosPct) : "—"}</b></div>
           <div><span>Prix au m²</span><b>{e.prix.m2 ? `${nb(e.prix.m2)} €` : "—"}</b></div>
           <div><span>Rendement brut</span><b>{pct(e.prix.renta)}</b></div>
@@ -116,16 +147,16 @@ export function EstimationEnLecture({ e, immeubleId, pdfUrl, onEnvoyer }: {
                 {e.lignes.map((l) => (
                   <tr key={l.dest}>
                     <th>{l.dest}</th>
-                    <td>{nb(l.lots)}</td>
-                    <td>{l.surface ? `${nb(l.surface)} m²` : "—"}</td>
-                    <td>{l.surfaceOcc ? `${nb(l.surfaceOcc)} m²` : "—"}</td>
-                    <td>{eur(l.loyer)}</td>
-                    <td>{eur(l.loyerMax)}</td>
+                    <td><V v={nb(l.lots)} cle={`${l.dest}.lots`} ecarts={ecarts} /></td>
+                    <td><V v={l.surface ? `${nb(l.surface)} m²` : "—"} cle={`${l.dest}.surface`} ecarts={ecarts} /></td>
+                    <td><V v={l.surfaceOcc ? `${nb(l.surfaceOcc)} m²` : "—"} cle={`${l.dest}.surfaceOcc`} ecarts={ecarts} /></td>
+                    <td><V v={eur(l.loyer)} cle={`${l.dest}.loyer`} ecarts={ecarts} /></td>
+                    <td><V v={eur(l.loyerMax)} cle={`${l.dest}.loyerMax`} ecarts={ecarts} /></td>
                     {avecRef && (
                       <>
-                        <td>{l.refLoyer ? `${l.refLoyer.toFixed(1).replace(".", ",")} €/m²` : "—"}</td>
-                        <td>{l.refPrix ? `${nb(l.refPrix)} €/m²` : "—"}</td>
-                        <td>{pct(l.refRenta)}</td>
+                        <td><V v={l.refLoyer ? `${l.refLoyer.toFixed(1).replace(".", ",")} €/m²` : "—"} cle={`${l.dest}.refLoyer`} ecarts={ecarts} /></td>
+                        <td><V v={l.refPrix ? `${nb(l.refPrix)} €/m²` : "—"} cle={`${l.dest}.refPrix`} ecarts={ecarts} /></td>
+                        <td><V v={pct(l.refRenta)} cle={`${l.dest}.refRenta`} ecarts={ecarts} /></td>
                       </>
                     )}
                   </tr>
