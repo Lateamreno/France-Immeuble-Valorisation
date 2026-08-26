@@ -1632,6 +1632,73 @@ async function fabriquerPdf(immeubleId: string, estimationId: string) {
 }
 
 /**
+ * Fabrique le PDF du dossier complet de vente (retour #184).
+ *
+ * MAV : « il faut par ailleurs que ça génère directement le PDF. » Même
+ * mécanique que le dossier d'estimation : on imprime la page « nue » côté
+ * serveur, on range le fichier dans le coffre et on l'accroche au dossier —
+ * le lien devient donc partageable tel quel.
+ */
+export async function genererPdfDossier(immeubleId: string, dossierId: string) {
+  try {
+    return { ok: true as const, ...(await fabriquerPdfDossier(immeubleId, dossierId)) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[pdf dossier]", message);
+    return { ok: false as const, message };
+  }
+}
+
+async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
+  const { pdfDepuisUrl } = await import("./pdf");
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${hote}/bien/${immeubleId}/dossier/${dossierId}/imprimer?nu=1`;
+
+  const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+  const now = new Date().toISOString();
+  const docId = newId();
+  const path = `dossiers/${immeubleId}/${dossierId}.pdf`;
+
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+    },
+    body: new Uint8Array(pdf),
+  });
+  if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+  await rpc("bo_insert_doc", {
+    p_table: "bo_app_document",
+    p_id: docId,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      DOSSIER: dossierId,
+      name: "Dossier complet",
+      file_name: "Dossier.pdf",
+      path,
+      format: "application/pdf",
+      size_kB: Math.round(pdf.length / 1024),
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_patch_doc", {
+    p_table: "bo_dossier",
+    p_id: dossierId,
+    p_patch: { pdf: `storage:${path}`, FILE: docId },
+  });
+  refresh(immeubleId);
+  return { documentId: docId, url: `/api/photo?s=${encodeURIComponent(path)}`, ko: Math.round(pdf.length / 1024) };
+}
+
+/**
  * Envoie l'estimation au propriétaire, dossier PDF joint, et journalise
  * l'envoi sur l'estimation comme le fait le BO (`sent`, date, destinataire).
  * L'agent est en « Répondre à » : la réponse lui revient sans qu'on écrive

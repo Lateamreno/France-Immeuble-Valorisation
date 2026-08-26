@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
-import { createDossier } from "@/lib/bo/actions";
+import { createDossier, genererPdfDossier } from "@/lib/bo/actions";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -17,6 +17,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [voirHisto, setVoirHisto] = useState(false);
+  const [pdf, setPdf] = useState<{ url: string; ko: number } | null>(null);
+  const [errPdf, setErrPdf] = useState<string | null>(null);
   /* L'historique des prix de l'immeuble, le plus récent en tête. */
   const histo: Record<string, unknown>[] = b.prixHisto ?? [];
   const [pending, start] = useTransition();
@@ -72,9 +74,14 @@ export function AddDossierButton({ b }: { b: BienData }) {
       setAttribuee(prochaine);
       setCreatedId(id);
       setStep(2);
+      /* #184 — « il faut que ça génère directement le PDF ». On l'enchaîne :
+         l'agent n'a plus qu'à l'ouvrir ou à le joindre. */
+      const r = await genererPdfDossier(immeubleId, id);
+      setPdf(r.ok ? { url: r.url, ko: r.ko } : null);
+      if (!r.ok) setErrPdf(r.message);
     });
 
-  const close = () => { setOpen(false); setStep(0); setCreatedId(null); };
+  const close = () => { setOpen(false); setStep(0); setCreatedId(null); setPdf(null); setErrPdf(null); };
 
   return (
     <>
@@ -163,8 +170,18 @@ export function AddDossierButton({ b }: { b: BienData }) {
               ) : (
                 <div style={{ fontSize: 13, lineHeight: 1.7 }}>
                   Dossier <b>V{version}</b> généré ✓<br />
+                  {pdf ? (
+                    <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
+                      Ouvrir le PDF ({pdf.ko} ko)
+                    </a>
+                  ) : errPdf ? (
+                    <span style={{ color: "var(--red)" }}>PDF impossible : {errPdf}</span>
+                  ) : (
+                    <span style={{ color: "var(--gray-lt)" }}>Fabrication du PDF…</span>
+                  )}
+                  <br />
                   <Link className="lnk" href={`/bien/${immeubleId}/dossier/${createdId}/imprimer`} target="_blank">
-                    Ouvrir la version imprimable (PDF)
+                    Ouvrir la version imprimable
                   </Link>
                 </div>
               )}
