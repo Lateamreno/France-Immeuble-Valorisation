@@ -489,9 +489,8 @@ function QuiPossede({ adresse, onRetenir }: {
               <div key={cle} className="mdt-qp-it">
                 <b>{p.denomination}</b>
                 <span>
-                  {[p.forme, p.siren ? `SIREN ${p.siren}` : "SIREN non publié", p.droit,
-                    p.parcelle ? `parcelle ${p.parcelle}` : "", p.annee ? `fichier ${p.annee}` : ""]
-                    .filter(Boolean).join(" · ")}
+                  {[p.forme, p.siren ? `SIREN ${p.siren}` : "sans SIREN au cadastre", p.droit,
+                    p.numero ? `n° ${p.numero}` : ""].filter(Boolean).join(" · ")}
                 </span>
                 <button type="button" className="fadd" disabled={pris.includes(cle)}
                   onClick={() => { onRetenir(p); setPris((v) => [...v, cle]); }}>
@@ -501,8 +500,8 @@ function QuiPossede({ adresse, onRetenir }: {
             );
           })}
           <span className="src">
-            Fichier des locaux des personnes morales (DGFiP, open data) — les particuliers en sont
-            exclus, et un propriétaire a pu vendre depuis le millésime indiqué.
+            Fichier des locaux des personnes morales (DGFiP, millésime {res.millesime}) — les
+            particuliers en sont exclus par construction, et un propriétaire a pu vendre depuis.
           </span>
         </div>
       )}
