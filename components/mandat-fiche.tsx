@@ -24,6 +24,9 @@ import {
 } from "@/lib/mandat";
 import { AdresseInput } from "@/components/adresse-input";
 import {
+  proprietairesPm, type ProprietairePM, type ResultatProprietaires,
+} from "@/lib/bo/proprio-actions";
+import {
   cancelMandat, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
   majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reserveMandatNumero,
   updateMandat, type EntrepriseTrouvee, type MandatPatch,
@@ -129,7 +132,13 @@ export function MandatFiche({ d }: { d: Data }) {
 
       <div className="mdt-body">
         {tab === "Mandants" && (
-          <OngletMandants mandatId={mandatId} immeubleId={immeubleId} mandants={mandants} locked={locked} />
+          <OngletMandants
+            mandatId={mandatId} immeubleId={immeubleId} mandants={mandants} locked={locked}
+            adresseImmeuble={im
+              ? [S(im.adresse_numero_rue), S(im.adresse_rue), S(im.adresse_zipcode), S(im.adresse_ville)]
+                .filter(Boolean).join(" ")
+              : undefined}
+          />
         )}
         {tab === "Objet" && (
           <OngletObjet m={m} im={im} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked} />
@@ -162,8 +171,12 @@ function SaveBar({ onSave, disabled, note }: { onSave: () => void; disabled: boo
 /* ------------------------------------------------- Onglet 1 · Mandants */
 
 function OngletMandants({
-  mandatId, immeubleId, mandants: init, locked,
-}: { mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean }) {
+  mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
+}: {
+  mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
+  /** L'adresse de l'immeuble : c'est par elle qu'on retrouve le propriétaire. */
+  adresseImmeuble?: string;
+}) {
   const [rows, setRows] = useState<Mandant[]>(init.length ? init : [mandantVide(0)]);
   const [pending, start] = useTransition();
 
@@ -179,6 +192,27 @@ function OngletMandants({
         titre={rows.length > 1 ? "Les mandants" : "Le mandant"}
         aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil, et les pièces déposées ici enrichissent sa fiche pour les affaires suivantes."
       />
+
+      {!locked && adresseImmeuble && (
+        <QuiPossede
+          adresse={adresseImmeuble}
+          onRetenir={(p) => {
+            /* On remplit la PREMIÈRE ligne encore vide de société, sinon on en
+               ajoute une : deux propriétaires = deux mandants. */
+            setRows((r) => {
+              const i = r.findIndex((x) => !x.societe?.nom && !x.contactId);
+              const garni = (m: Mandant): Mandant => ({
+                ...m,
+                personne: "morale",
+                societe: { ...m.societe, nom: p.denomination, siren: p.siren ?? m.societe?.siren },
+                fonction: m.fonction ?? (p.droit.toLowerCase().startsWith("propriétaire") ? undefined : p.droit),
+              });
+              if (i >= 0) return r.map((m, j) => (j === i ? garni(m) : m));
+              return [...r, garni(mandantVide(r.length))];
+            });
+          }}
+        />
+      )}
 
       <div className="mdt-mandants">
         {rows.map((x, i) => (
@@ -392,6 +426,84 @@ function CarteMandant({
         <div className="mdt-hint">
           Rattachez un contact avant de déposer les pièces : sans lui, elles restent sur ce mandat
           au lieu d&apos;enrichir la fiche du client.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * « Qui possède cet immeuble ? » (retour #135)
+ *
+ * Quand le propriétaire est une personne morale, la DGFiP le publie : le
+ * fichier des locaux des personnes morales donne, adresse par adresse, la
+ * société détentrice, son SIREN et la nature de son droit. On part de
+ * l'adresse de l'immeuble — elle est déjà dans la fiche — et on propose ce
+ * qu'on trouve.
+ *
+ * Les personnes physiques n'y sont pas : un immeuble détenu par un particulier
+ * ou une indivision familiale ne rend rien, et c'est normal. On le dit plutôt
+ * que de laisser croire à une panne.
+ */
+function QuiPossede({ adresse, onRetenir }: {
+  adresse: string;
+  onRetenir: (p: ProprietairePM) => void;
+}) {
+  const [res, setRes] = useState<ResultatProprietaires | null>(null);
+  const [pending, start] = useTransition();
+  const [pris, setPris] = useState<string[]>([]);
+
+  const chercher = () =>
+    start(async () => {
+      setPris([]);
+      setRes(await proprietairesPm(adresse).catch(() => ({ ok: false as const, erreur: "Recherche impossible." })));
+    });
+
+  return (
+    <div className="mdt-qp">
+      <div className="mdt-qp-h">
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M3 10.5 12 4l9 6.5" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" />
+        </svg>
+        <span>
+          <b>Qui possède cet immeuble ?</b>
+          <i>{adresse}</i>
+        </span>
+        <button type="button" className="fadd" disabled={pending} onClick={chercher}>
+          {pending ? "Recherche…" : res ? "Relancer" : "Chercher le propriétaire"}
+        </button>
+      </div>
+
+      {res && !res.ok && <div className="mdt-qp-v">{res.erreur}</div>}
+      {res?.ok && res.liste.length === 0 && (
+        <div className="mdt-qp-v">
+          Aucune personne morale à cette adresse. Le fichier public ne recense que les sociétés :
+          le propriétaire est donc très probablement un particulier ou une indivision.
+        </div>
+      )}
+      {res?.ok && res.liste.length > 0 && (
+        <div className="mdt-qp-l">
+          {res.liste.map((p) => {
+            const cle = `${p.siren ?? p.denomination}|${p.droit}`;
+            return (
+              <div key={cle} className="mdt-qp-it">
+                <b>{p.denomination}</b>
+                <span>
+                  {[p.forme, p.siren ? `SIREN ${p.siren}` : "SIREN non publié", p.droit,
+                    p.parcelle ? `parcelle ${p.parcelle}` : "", p.annee ? `fichier ${p.annee}` : ""]
+                    .filter(Boolean).join(" · ")}
+                </span>
+                <button type="button" className="fadd" disabled={pris.includes(cle)}
+                  onClick={() => { onRetenir(p); setPris((v) => [...v, cle]); }}>
+                  {pris.includes(cle) ? "✓ Repris" : "Le mettre en mandant"}
+                </button>
+              </div>
+            );
+          })}
+          <span className="src">
+            Fichier des locaux des personnes morales (DGFiP, open data) — les particuliers en sont
+            exclus, et un propriétaire a pu vendre depuis le millésime indiqué.
+          </span>
         </div>
       )}
     </div>
