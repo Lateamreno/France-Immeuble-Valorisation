@@ -75,17 +75,37 @@ function Gras({ t }: { t: string }) {
   );
 }
 
-/** Une page A4 avec sa tranche dorée et son titre à la verticale. */
+/**
+ * Une page A4 avec sa tranche dorée et son titre à la verticale.
+ *
+ * Le pied porte la marque ET le monogramme, sur toutes les pages : un dossier
+ * qu'on feuillette doit se reconnaître à n'importe quelle page (retour #149).
+ * `sansBande` sert au dos, qui n'a pas de tranche (retour #153).
+ */
 function Page({
-  titre, sombre, children, sansPied,
+  titre, sombre, children, sansPied, sansBande, picto,
 }: {
-  titre: string; sombre?: boolean; children: React.ReactNode; sansPied?: boolean;
+  titre: string; sombre?: boolean; children: React.ReactNode;
+  sansPied?: boolean; sansBande?: boolean;
+  /** Picto posé en haut de la tranche, comme sur la couverture du BO. */
+  picto?: React.ReactNode;
 }) {
   return (
-    <section className={`dos-page${sombre ? " noir" : ""}`}>
+    <section className={`dos-page${sombre ? " noir" : ""}${sansBande ? " nue" : ""}`}>
       <div className="dos-in">{children}</div>
-      <div className="dos-band"><span>{titre}</span></div>
-      {!sansPied && <div className="dos-pied">FRANCE IMMEUBLE</div>}
+      {!sansBande && (
+        <div className="dos-band">
+          {picto && <Ic d={picto} cls="dos-band-ic" />}
+          <span>{titre}</span>
+        </div>
+      )}
+      {!sansPied && (
+        <div className="dos-pied">
+          <span>FRANCE IMMEUBLE</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/fi-tout-bronze.svg" alt="" />
+        </div>
+      )}
     </section>
   );
 }
@@ -110,7 +130,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
   return (
     <div className={`dos${nu ? " nu" : ""}`}>
       {/* ------------------------------------------------ 1. Couverture */}
-      <Page titre="Dossier estimation" sombre sansPied>
+      <Page titre="Dossier estimation" sombre sansPied picto={I.marteau}>
         <div className="dos-cv-h">
           <div className="dos-cv-card">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -213,7 +233,9 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
               </tr>
             ))}
             <tr className="tot">
-              <td />
+              {/* Une case vide en tête de ligne de total se lit comme un oubli
+                  (retour #149) : elle porte son mot, dans la même graisse. */}
+              <td className="g">Total</td>
               <td>{d.total.lots}</td>
               <td>{m2(d.total.surface)}</td>
               <td>{m2(d.total.surfaceOcc)}</td>
@@ -368,6 +390,9 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           <div className="dos-ach-g">
             <div className="dos-ach-l">
               <div className="l"><Ic d={I.pin} /><div><span>Emplacement</span><b>{d.etat.emp}</b></div></div>
+              {/* L'occupation manquait, et c'est le premier chiffre qu'un
+                  acheteur regarde (retour #152). */}
+              <div className="l"><Ic d={I.gens} /><div><span>Occupation</span><b>{Math.round(d.occupation)} %</b></div></div>
               <div className="l"><Ic d={I.courbe} /><div><span>Rendement</span><b><Comp sup /> {fr1(d.ref.renta)} %</b></div></div>
               <div className="l"><Ic d={I.euro} /><div><span>Prix au m²</span><b><Comp /> {group(d.ref.prix)} €/m²</b></div></div>
             </div>
@@ -386,11 +411,17 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
 
         <h2 className="dos-h"><Ic d={I.marteau} /> Prix de vente estimé</h2>
         <div className="dos-px">
-          <div className="dos-px-2">
-            <div><Ic d={I.courbe} /><span>Rendement</span><b>{fr1(d.prix.renta)} %</b></div>
-            <div><Ic d={I.euro} /><span>Prix au m²</span><b>{group(d.prix.m2)} €/m²</b></div>
-          </div>
           <div className="dos-px-b"><b>{group(d.prix.hai)}</b> <i>€ HAI*</i></div>
+          {/* La présentation du back-office, en tenue de dossier : fond blanc,
+              pas de barre de sélection, pas de lignes colorées — seul l'écart
+              au secteur porte une couleur (retour #152). */}
+          <div className={`dos-bil${d.bilan.identiques ? " seul" : ""}`}>
+            <ColonneBilan titre={d.bilan.identiques ? "Au prix retenu" : "Actuel"}
+              c={d.bilan.actuel} secteur={d.ref} />
+            {!d.bilan.identiques && (
+              <ColonneBilan titre="Potentiel" c={d.bilan.potentiel} secteur={d.ref} />
+            )}
+          </div>
         </div>
         <p className="dos-note gris">
           *Honoraires d&apos;Agences Inclus soit {group(d.prix.nv)} € net vendeur.
@@ -398,7 +429,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
       </Page>
 
       {/* ------------------------------------------ 6. Dos */}
-      <Page titre="" sombre sansPied>
+      <Page titre="" sombre sansPied sansBande>
         <div className="dos-fin">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="dos-logo gr" src="/logos/fi-creme-bronze-fond-sombre.svg" alt="France Immeuble" />
@@ -412,6 +443,45 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           </div>
         </div>
       </Page>
+    </div>
+  );
+}
+
+/**
+ * Une colonne du bilan : ce que le prix retenu donne, ligne à ligne.
+ *
+ * Seuls les trois premiers postes se comparent au secteur, et le sens de la
+ * couleur n'est pas le même pour tous : un loyer sous le marché est une
+ * faiblesse (rouge), un prix au m² sous le marché est un argument (vert), un
+ * rendement au-dessus du marché aussi.
+ */
+function ColonneBilan({ titre, c, secteur }: {
+  titre: string;
+  c: { loyerM2: number; prixM2: number; brut: number; net: number; aem: number };
+  /* Surtout pas `ref` : React le confisque comme référence de composant. */
+  secteur: { loyer: number; prix: number; renta: number };
+}) {
+  const ec = (v: number, r: number) => (r > 0 ? Math.round(((v - r) / r) * 100) : undefined);
+  const Ligne = ({ l, v, e, bon }: { l: string; v: string; e?: number; bon?: boolean }) => (
+    <div className="dos-bil-l">
+      <span>{l}</span>
+      {e !== undefined && (
+        <i className={bon ? "v" : "r"}>{e > 0 ? "+" : ""}{e} %</i>
+      )}
+      <b>{v}</b>
+    </div>
+  );
+  const eLoyer = ec(c.loyerM2, secteur.loyer);
+  const ePrix = ec(c.prixM2, secteur.prix);
+  const eRenta = ec(c.brut, secteur.renta);
+  return (
+    <div className="dos-bil-c">
+      <div className="dos-bil-t">{titre}</div>
+      <Ligne l="Loyer au m²" v={`${fr1(c.loyerM2)} €/m²/mois`} e={eLoyer} bon={(eLoyer ?? 0) >= 0} />
+      <Ligne l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
+      <Ligne l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
+      <Ligne l="Rendement net" v={`${fr1(c.net)} %`} />
+      <Ligne l="Net acte en main" v={`${fr1(c.aem)} %`} />
     </div>
   );
 }

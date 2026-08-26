@@ -204,8 +204,28 @@ export function construireDossier(
       m2: carrez > 0 ? hai / carrez : 0,
       renta: hai > 0 ? (loyers / hai) * 100 : 0,
     },
+    /* Le bilan du prix retenu, dans la présentation du BO : ce que le bien
+       rapporte aujourd'hui, et ce qu'il rapporterait travaux faits et lots
+       reloués (retour #152). Les deux colonnes se valent quand il n'y a ni
+       travaux ni potentiel de relocation — l'écran n'en montre alors qu'une. */
+    bilan: colonnes(),
     charges,
   };
+
+  function colonnes() {
+    const AEM = 1.075; // acte en main : ~7,5 % de frais
+    const col = (base: number, loyer: number) => ({
+      loyerM2: carrez > 0 ? loyer / 12 / carrez : 0,
+      prixM2: carrez > 0 ? base / carrez : 0,
+      brut: base > 0 ? (loyer / base) * 100 : 0,
+      net: base > 0 ? ((loyer - charges) / base) * 100 : 0,
+      aem: base > 0 ? ((loyer - charges) / (base * AEM)) * 100 : 0,
+    });
+    const actuel = col(hai, loyers);
+    const potentiel = col(hai + travaux, loyersMax);
+    const identiques = travaux === 0 && Math.abs(loyersMax - loyers) < 1;
+    return { actuel, potentiel, identiques };
+  }
 }
 
 /** Les photos (immeuble comme agent) vivent chez Bubble ou sur S3, derrière
