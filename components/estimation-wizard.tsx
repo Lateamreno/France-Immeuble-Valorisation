@@ -15,7 +15,7 @@ import { Copier } from "@/components/copier";
 import { AdressesInput } from "@/components/adresses-input";
 import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
-  type EstimationPayload,
+  supprimerEstimation, type EstimationPayload,
 } from "@/lib/bo/actions";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
@@ -25,6 +25,8 @@ const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", "
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const fr1 = (x: number) => x.toFixed(1).replace(".", ",");
 const dmyfr = (v: unknown) => (typeof v === "string" ? v.slice(0, 10).split("-").reverse().join("/") : "");
+const heure = (v: string) =>
+  new Date(v).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
 
 /* Pictos de destination du BO, repris dans l'état locatif et le secteur. */
 const IC_DEST: Record<string, React.ReactNode> = {
@@ -118,6 +120,11 @@ export type RepriseEstimation = {
   nv?: number;
   creeLe?: string;
   statut?: string;
+  /** Dernier envoi réel : date, destinataire, et le message tel qu'il est parti. */
+  envoyeeLe?: string;
+  envoyeeA?: string;
+  objet?: string;
+  corps?: string;
 };
 
 export function EstimationWizard({
@@ -150,7 +157,12 @@ export function EstimationWizard({
   );
   const [pdfKo, setPdfKo] = useState<string | null>(null);
   /** Envoi réel : null tant qu'on n'a pas envoyé, sinon l'horodatage. */
-  const [envoye, setEnvoye] = useMem<string | null>("envoye", null);
+  const [envoye, setEnvoye] = useMem<string | null>("envoye", reprise?.envoyeeLe ?? null);
+  /** Le message tel qu'il est parti, pour pouvoir le relire (retour #145). */
+  const [voirMessage, setVoirMessage] = useState(false);
+  /** Objet et corps du mail : `null` tant qu'on n'a rien retouché. */
+  const [objetSaisi, setObjetSaisi] = useMem<string | null>("objetMail", null);
+  const [corpsSaisi, setCorpsSaisi] = useMem<string | null>("corpsMail", null);
   const [envoiKo, setEnvoiKo] = useState<string | null>(null);
   /** Copie, copie cachée et pièces jointes (demandes MAV du 14/08). */
   const [cc, setCc] = useMem<string[]>("cc", []);
@@ -300,6 +312,26 @@ export function EstimationWizard({
   const [analyse, setAnalyse] = useMem("analyse", "");
   const [titre, setTitre] = useMem("titre", `Estimation ${S(im.adresse_ville)}`.trim());
 
+  /* Ce qui a servi à fabriquer le PDF, en une empreinte.
+   *
+   * On laisse corriger une donnée après la génération (retour #147) : c'est
+   * plus sain que de refaire une estimation pour une faute de frappe. Mais le
+   * PDF, lui, ne se corrige pas tout seul — et c'est LUI qui part chez le
+   * propriétaire. Comparer l'empreinte du moment à celle du dossier fabriqué
+   * dit en une ligne si les deux sont encore d'accord. */
+  const empreinte = JSON.stringify([
+    titre, gareName, gareTime, comName, comTime, chTf, chAutres, tvxBati, tvxLots,
+    rLoyer, rPrix, rRenta, refs, haiStr, honosPct, scores, cibles, analyse,
+  ]);
+  const [empreintePdf, setEmpreintePdf] = useMem<string | null>(
+    "empreintePdf",
+    /* Une reprise n'a pas été saisie ici : son dossier est d'origine, il ne
+       peut pas être périmé par rapport à un écran qu'on n'a pas rempli. */
+    reprise ? "reprise" : null,
+  );
+  const perime = !!estId && empreintePdf !== null && empreintePdf !== "reprise"
+    && empreintePdf !== empreinte;
+
   /* --- Complétude --- */
   const okAdresse = !!(S(im.adresse_rue) && S(im.adresse_ville));
   const okPoi = !!(gareName && gareTime && comName && comTime);
@@ -335,8 +367,8 @@ export function EstimationWizard({
         await envoyerEstimation({
           immeubleId, estimationId: estId!,
           to: destinataires.join(", "),
-          objet: mailObjet,
-          message: `${mailCorps}\n\n${b.agentInitials} — France Immeuble`,
+          objet,
+          message: corps,
           cc: cc.join(", ") || undefined,
           cci: cci.join(", ") || undefined,
           sansDossier: !dossierJoint,
@@ -391,8 +423,13 @@ export function EstimationWizard({
           analyse: analyse || undefined,
           photo: b.photos[0]?.url,
         };
+        /* Regénérer, c'est refaire CETTE estimation, pas en ajouter une
+           deuxième à l'historique. L'ancienne n'a jamais été envoyée — elle
+           part avec son PDF orphelin (retour #147). */
+        if (estId && !envoye) await supprimerEstimation(immeubleId, estId).catch(() => {});
         const id = await createEstimation(immeubleId, String(im.AGENT ?? ""), payload);
         setEstId(id);
+        setEmpreintePdf(empreinte);
         setStep(4);
         // Le dossier 6 pages part ensuite dans le coffre : c'est la pièce
         // jointe du mail. S'il échoue, l'estimation reste valable et la page
@@ -444,7 +481,7 @@ export function EstimationWizard({
     </div>
   );
 
-  const mailObjet = `Estimation de votre immeuble à ${S(im.adresse_ville)}`;
+  const mailObjetAuto = `Estimation de votre immeuble à ${S(im.adresse_ville)}`;
   /* Sur une reprise, le mail annonce les chiffres de l'estimation d'origine.
      Ceux de la fiche ont pu bouger depuis — un lot reloué, des travaux
      ressaisis — et le dossier joint, lui, n'a pas changé. */
@@ -464,6 +501,13 @@ export function EstimationWizard({
     "",
     "Cordialement,",
   ].join("\n");
+
+  /* L'objet et le message sont modifiables directement — pas de crayon à
+     chercher, le texte proposé est simplement là et se corrige (retour #145).
+     Sur une estimation déjà partie, c'est le message RÉELLEMENT envoyé qu'on
+     reprend, pas une régénération qui dirait autre chose. */
+  const objet = objetSaisi ?? reprise?.objet ?? mailObjetAuto;
+  const corps = corpsSaisi ?? reprise?.corps ?? `${mailCorps}\n\n${b.agentInitials} — France Immeuble`;
 
   return (
     <div className="est">
@@ -501,7 +545,11 @@ export function EstimationWizard({
           <button
             key={s} type="button"
             className={`est-step ${etatEtape[i]}${i === step ? " on" : ""}`}
-            onClick={() => { if (i < 3 && !estId) setStep(i); }}
+            /* On peut revenir sur les trois premières étapes même après avoir
+               généré : corriger une donnée vaut mieux que refaire une
+               estimation (retour #147). L'envoi, lui, se bloque tant que le
+               PDF n'a pas suivi. */
+            onClick={() => { if (i < 3 || (i === 3 && !envoye) || estId) setStep(i); }}
           >
             <span className="ic">
               {etatEtape[i] === "ok" ? "✓" : etatEtape[i] === "warn" ? "⚠" : "🔒"}
@@ -781,12 +829,18 @@ export function EstimationWizard({
             <div className="est-l" style={{ alignItems: "flex-start" }}>
               <label className="est-ch txt edit" style={{ flex: 1 }}>
                 <span>Analyse</span>
-                <textarea rows={8} maxLength={900} value={analyse} onChange={(e) => setAnalyse(e.target.value)}
+                {/* Pas de `maxLength` : couper la phrase de quelqu'un au
+                    900ᵉ caractère est la pire façon de le prévenir. On compte,
+                    on avertit, et c'est le PDF relu qui tranche (retour #146). */}
+                <textarea rows={8} value={analyse} onChange={(e) => setAnalyse(e.target.value)}
                   placeholder="Analyse du bien, références comparables, justification du prix…" />
               </label>
               <Etat ok={analyse.trim().length > 0} />
             </div>
-            <div className="est-cpt">{analyse.length} / 900 caractères</div>
+            <div className={`est-cpt${analyse.length > 900 ? " trop" : ""}`}>
+              {analyse.length} / 900 caractères
+              {analyse.length > 900 && " — au-delà, le texte risque de déborder de la page. Vérifiez le PDF avant d'envoyer."}
+            </div>
 
             <div className="est-nav">
               <button className="est-prec" type="button" onClick={() => setStep(1)}>
@@ -810,14 +864,16 @@ export function EstimationWizard({
               <Champ label="Agent à afficher" valeur={b.agentInitials} largeur={200} />
             </div>
             <div className="warnbox">
-              Vous ne pourrez plus modifier les informations après avoir généré l&apos;estimation.
+              {estId
+                ? "Le dossier PDF a déjà été fabriqué. Si vous avez corrigé quelque chose depuis, regénérez-le : c'est le PDF qui part au propriétaire, pas l'écran."
+                : "Une fois le dossier généré, vous pourrez encore corriger les informations — mais il faudra le regénérer avant d'envoyer."}
             </div>
             {error && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{error}</div>}
             <div className="est-nav">
               <button className="est-prec" type="button" onClick={() => setStep(2)}>↺ Précédent</button>
               <span className="sp" style={{ flex: 1 }} />
               <button className="est-suiv" type="button" disabled={pending} onClick={generer}>
-                + Générer l&apos;estimation PDF
+                {estId ? "↻ Regénérer le dossier PDF" : "+ Générer l'estimation PDF"}
               </button>
             </div>
           </>
@@ -825,12 +881,35 @@ export function EstimationWizard({
 
         {step === 4 && estId && (
           <>
-            <div className="est-envoi-h">
-              <span className={`tag${envoye ? "" : " att"}`}>
-                {envoye ? <>✈ Envoyé <b>automatiquement</b></> : <>✈ <b>Prêt à envoyer</b></>}
-              </span>
-              {envoye && <span className="date">{dmyfr(envoye)} <b>{new Date(envoye).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</b></span>}
-            </div>
+            {/* Une estimation déjà partie le dit d'entrée : la date, l'heure,
+                le destinataire, et le message tel qu'il est parti (retours
+                #144 et #145). */}
+            {envoye ? (
+              <div className="est-parti">
+                <div className="est-parti-h">
+                  <b>✈ E-mail envoyé le {dmyfr(envoye)} à {heure(envoye)}</b>
+                  {reprise?.envoyeeA && <span>à {reprise.envoyeeA}</span>}
+                  <span style={{ flex: 1 }} />
+                  <button type="button" className="fadd" onClick={() => setVoirMessage(!voirMessage)}>
+                    {voirMessage ? "Masquer le message" : "Voir le message envoyé"}
+                  </button>
+                </div>
+                {voirMessage && (
+                  <div className="est-parti-msg">
+                    <b>{reprise?.objet ?? objet}</b>
+                    <pre>{reprise?.corps ?? corps}</pre>
+                  </div>
+                )}
+                <span className="est-parti-n">
+                  Vous pouvez la renvoyer autant de fois qu&apos;il le faut — au propriétaire, à son
+                  conseil, à un indivisaire. Le texte ci-dessous se modifie avant chaque envoi.
+                </span>
+              </div>
+            ) : (
+              <div className="est-envoi-h">
+                <span className="tag att">✈ <b>Prêt à envoyer</b></span>
+              </div>
+            )}
             <div className="est-ml">
               <span className="lbl">De</span>
               <div className="est-ch plat">
@@ -951,22 +1030,31 @@ export function EstimationWizard({
               </div>
             )}
             <div className="est-l">
-              <Champ label="Objet" valeur={mailObjet} />
-              <Copier valeur={mailObjet} titre="Copier l'objet" petit>Copier</Copier>
+              <Champ label="Objet" valeur={objet} editable onChange={setObjetSaisi} />
+              <Copier valeur={objet} titre="Copier l'objet" petit>Copier</Copier>
             </div>
             <label className="est-ch txt">
               <span>Message</span>
-              <textarea rows={14} readOnly value={`${mailCorps}\n\n${b.agentInitials} — France Immeuble`} />
+              {/* Modifiable directement : le texte proposé n'est qu'un point
+                  de départ, et sur un renvoi c'est le message d'origine qui
+                  revient (retour #145). */}
+              <textarea rows={14} value={corps} onChange={(e) => setCorpsSaisi(e.target.value)} />
             </label>
             <div className="est-l">
-              <Copier valeur={`${mailCorps}\n\n${b.agentInitials} — France Immeuble`}
-                titre="Copier le message" petit>Copier le message</Copier>
+              <Copier valeur={corps} titre="Copier le message" petit>Copier le message</Copier>
             </div>
             <div className="est-note">
               {envoiActif
                 ? "L'app envoie depuis la boîte France Immeuble, avec l'agent en « Répondre à » : la réponse du propriétaire arrive directement dans sa boîte."
                 : "L'envoi reste manuel : l'app prépare, l'agent envoie depuis sa boîte."}
             </div>
+            {perime && (
+              <div className="warnbox" style={{ borderColor: "var(--red)", color: "var(--red)" }}>
+                Attention : vous avez modifié des informations depuis la fabrication du dossier.
+                Le PDF qui partirait est l&apos;ancien. Retournez à l&apos;étape <b>PDF</b> et
+                regénérez-le avant d&apos;envoyer.
+              </div>
+            )}
             {envoiKo && <div className="warnbox">Envoi impossible : {envoiKo}</div>}
             {marqueKo && <div className="warnbox">Impossible d&apos;enregistrer le statut : {marqueKo}</div>}
             {marque && <div className="est-fait">✓ {marque}</div>}
@@ -983,22 +1071,26 @@ export function EstimationWizard({
                   /* Renvoyer reste possible : une estimation se renvoie souvent
                      — au conseil, au deuxième indivisaire (retour #132). */
                   <button className="est-suiv" type="button"
-                    disabled={pending || !pdf}
-                    title={pdf ? undefined : "Le dossier PDF doit être fabriqué avant l'envoi"}
+                    disabled={pending || !pdf || perime}
+                    title={perime
+                      ? "Des informations ont changé : regénérez le dossier PDF avant d'envoyer"
+                      : pdf ? undefined : "Le dossier PDF doit être fabriqué avant l'envoi"}
                     onClick={envoyer}>
                     {envoye ? "✈ Renvoyer" : "✈ Envoyer au propriétaire"}
                   </button>
                 ) : (
                   <a className="est-suiv" style={{ textDecoration: "none" }}
-                    href={`mailto:${destinataires.join(",")}?subject=${encodeURIComponent(mailObjet)}&body=${encodeURIComponent(mailCorps)}`}>
+                    href={`mailto:${destinataires.join(",")}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`}>
                     ✈ Préparer l&apos;e-mail
                   </a>
                 )
               )}
               <span className="sp" style={{ flex: 1 }} />
-              <button className="est-suiv" type="button" disabled={pending || !!marque}
+              <button className="est-suiv" type="button"
+                disabled={pending || !!marque || (!!envoye && !marque)}
+                title={envoye ? `Déjà envoyée le ${dmyfr(envoye)} à ${heure(envoye)}` : undefined}
                 onClick={() => marquer("3 - Envoyée")}>
-                {marque ? "✓ Enregistré" : "Marquer envoyée"}
+                {marque ? "✓ Enregistré" : envoye ? `✓ Envoyée le ${dmyfr(envoye)}` : "Marquer envoyée"}
               </button>
               <button className="est-prec" type="button" disabled={pending || !!marque}
                 onClick={() => marquer("4 - Interne")}>

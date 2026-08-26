@@ -5409,3 +5409,23 @@ a.cfc-t:hover { text-decoration: underline; }
 .pro-dir-h span { font-size: 11px; color: var(--gray-lt); }
 .pro-dir-h a { font-size: 11.5px; color: var(--slate); }
 @media (max-width: 900px) { .pro-dir { grid-template-columns: 1fr; } }
+
+/* --- Une estimation déjà partie le dit d'entrée (retours #144/#145) --- */
+.est-parti {
+  border: 1px solid var(--green); border-left-width: 3px; border-radius: 5px;
+  background: #f4f9f5; padding: 10px 14px; margin-bottom: 14px;
+}
+.est-parti-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.est-parti-h b { font-family: var(--font-title); font-size: 13.5px; color: var(--slate); }
+.est-parti-h span { font-size: 12px; color: var(--gray-txt); }
+.est-parti-msg {
+  margin-top: 9px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px;
+  background: #fff;
+}
+.est-parti-msg b { display: block; font-size: 13px; color: var(--slate); margin-bottom: 6px; }
+.est-parti-msg pre {
+  margin: 0; font-family: var(--font-body); font-size: 12.5px; color: var(--slate-2);
+  line-height: 1.6; white-space: pre-wrap;
+}
+.est-parti-n { display: block; margin-top: 7px; font-size: 11.5px; color: var(--gray-txt); line-height: 1.5; }
+.est-cpt.trop { color: var(--red); }

@@ -923,6 +923,27 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
   return estId;
 }
 
+/**
+ * Une estimation partie fait avancer le bien (retour #142).
+ *
+ * MAV : « l'estimation du bien est envoyée mais le bien est toujours dans la
+ * colonne immeubles à estimer, il devrait passer dans à transformer. » Le
+ * dashboard lit le `Statut` de l'immeuble : 2 = à estimer, 3 = à transformer.
+ * On ne fait avancer que ceux qui sont encore en amont — un bien déjà sous
+ * mandat ou vendu ne redescend pas parce qu'on renvoie une estimation.
+ */
+async function avancerApresEnvoi(immeubleId: string) {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const n = parseInt(String(im?.Statut ?? "").split(" ")[0], 10) || 0;
+  if (n > 0 && n < 3) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_immeuble",
+      p_id: immeubleId,
+      p_patch: { Statut: STATUTS[3], "Modified Date": new Date().toISOString() },
+    }).catch(() => {});
+  }
+}
+
 /** Change le statut d'une estimation (3 - Envoyée / 4 - Interne…). */
 export async function setEstimationStatut(
   immeubleId: string,
@@ -934,6 +955,7 @@ export async function setEstimationStatut(
     p_id: estimationId,
     p_patch: statut === "3 - Envoyée" ? { Statut: statut, date_envoi: new Date().toISOString() } : { Statut: statut },
   });
+  if (statut === "3 - Envoyée") await avancerApresEnvoi(immeubleId);
   refresh(immeubleId);
 }
 
@@ -949,6 +971,9 @@ export async function ouvrirEstimation(estimationId: string): Promise<{
   reprise: {
     id: string; titre?: string; pdfUrl?: string; pdfKo?: number;
     hai?: number; nv?: number; creeLe?: string; statut?: string;
+    /** Trace du dernier envoi, pour que l'écran cesse de proposer « Marquer
+     *  envoyée » sur une estimation déjà partie (retours #144 et #145). */
+    envoyeeLe?: string; envoyeeA?: string; objet?: string; corps?: string;
   };
   lecture: EstimationLecture;
 } | null> {
@@ -985,6 +1010,10 @@ export async function ouvrirEstimation(estimationId: string): Promise<{
       nv: n(e.prix_nv) ?? n(e["[SUPPR] prix_nv"]),
       creeLe: t(e["Created Date"]),
       statut: t(e.Statut),
+      envoyeeLe: t(e.sent_at) ?? t(e.date_envoi),
+      envoyeeA: t(e.sent_to),
+      objet: t(e.sent_objet),
+      corps: t(e.sent_corps),
     },
     lecture: lireEstimation(e, agent),
   };
@@ -1629,6 +1658,13 @@ export async function envoyerEstimation(input: {
   const messageId = envoi.messageId;
 
   const now = new Date().toISOString();
+  /* Le champ du BO s'écrit « Statut », avec une majuscule. On n'écrivait que
+     `statut` : l'estimation partait vraiment, mais restait « à envoyer » aux
+     yeux de l'application, et le bien ne quittait jamais la colonne « à
+     estimer » (retour #142).
+
+     On garde aussi le texte du message : sans lui, impossible de montrer plus
+     tard ce qui a été envoyé (retour #145). */
   await rpc("bo_patch_doc", {
     p_table: "bo_estimation",
     p_id: input.estimationId,
@@ -1637,9 +1673,14 @@ export async function envoyerEstimation(input: {
       sent_cc: input.cc?.trim() || undefined,
       sent_pj: pieces.map((p) => p.filename).join(", "),
       sent_message_id: messageId, sent_jeton: jeton,
-      statut: "3 - Envoyée", "Modified Date": now,
+      sent_objet: input.objet,
+      sent_corps: input.message,
+      Statut: "3 - Envoyée", statut: "3 - Envoyée",
+      date_envoi: now,
+      "Modified Date": now,
     }),
   });
+  await avancerApresEnvoi(input.immeubleId);
   refresh(input.immeubleId);
   return { messageId, ko: Math.round(poids / 1024), pieces: pieces.length };
 }
