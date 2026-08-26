@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 export default async function MailsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string }>;
+  searchParams: Promise<{ agent?: string; to?: string; objet?: string; corps?: string }>;
 }) {
-  const { agent = "marc-antoine" } = await searchParams;
+  const { agent = "marc-antoine", to, objet, corps } = await searchParams;
   const [mt, br, sv, agents] = await Promise.all([
     messagesTypes().catch(() => []),
     brouillons().catch(() => []),
@@ -47,6 +47,9 @@ export default async function MailsPage({
       }}
       boite={b ? { adresse: b.adresse, nomAffiche: b.nomAffiche } : undefined}
       agents={actifs.map((a) => ({ slug: a.slug, name: a.name }))}
+      /* Un autre écran peut demander d'ouvrir la rédaction avec un message
+         déjà écrit — la mise en attente d'un dossier, par exemple (#141). */
+      amorce={to ? { to, objet: objet ?? "", corps: corps ?? "" } : undefined}
     />
   );
 }

@@ -51,7 +51,7 @@ const jour = (d?: string) => {
 };
 
 export function EcranMails({
-  brouillons, messagesTypes, salves, agent, boite, agents,
+  brouillons, messagesTypes, salves, agent, boite, agents, amorce,
 }: {
   brouillons: Brouillon[];
   messagesTypes: MessageType[];
@@ -62,12 +62,14 @@ export function EcranMails({
   /** Les commerciaux, pour que l'admin puisse passer d'une boîte à l'autre
    *  (retour #128) — comme la barre du dashboard. */
   agents?: { slug: string; name: string }[];
+  /** Message pré-rempli demandé par un autre écran (retour #141). */
+  amorce?: { to: string; objet: string; corps: string };
 }) {
   const router = useRouter();
   const [vue, setVue] = useState<Vue>("reception");
   const [redaction, setRedaction] = useState<
-    null | { brouillon?: Brouillon; modele?: MessageType; reponse?: Reponse }
-  >(null);
+    null | { brouillon?: Brouillon; modele?: MessageType; reponse?: Reponse; amorce?: typeof amorce }
+  >(amorce ? { amorce } : null);
   const [salve, setSalve] = useState(false);
   /** Compteurs des dossiers, remontés par la boîte au fil des lectures. */
   const [compteurs, setCompteurs] = useState<Partial<Record<RoleDossier | "site", number>>>({});
@@ -218,6 +220,7 @@ export function EcranMails({
           brouillon={redaction.brouillon}
           modele={redaction.modele}
           reponse={redaction.reponse}
+          amorce={redaction.amorce}
           onClose={() => setRedaction(null)}
           /* Un message parti change la boîte : ce qu'on gardait est périmé. */
           onEnvoye={() => { oublierBoite(agent.id); setTour((t) => t + 1); }}

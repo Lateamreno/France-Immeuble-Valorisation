@@ -187,11 +187,16 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   margin-bottom: 16px;
-  overflow: hidden;
+  /* Surtout pas `overflow: hidden` : le menu « … » d'une carte est un
+     positionnement absolu, et le bloc le coupait net — il passait sous la
+     bande du bloc suivant (retour #138). Les coins ronds sont portés par les
+     enfants qui touchent les bords. */
+  overflow: visible;
 }
 .bloc-band {
   display: flex; align-items: center; gap: 13px;
   background: var(--band);
+  border-radius: 5px 5px 0 0;
   padding: 13px 16px;
   cursor: pointer;
   user-select: none;
@@ -5429,3 +5434,37 @@ a.cfc-t:hover { text-decoration: underline; }
 }
 .est-parti-n { display: block; margin-top: 7px; font-size: 11.5px; color: var(--gray-txt); line-height: 1.5; }
 .est-cpt.trop { color: var(--red); }
+
+/* --- Mettre un dossier en attente (retours #139/#141) --- */
+.modal.att { width: min(560px, 94vw); }
+.att-bien { font-size: 14px; color: var(--slate); margin-bottom: 14px; }
+.att-bien span { color: var(--gray-txt); }
+.att-ch { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.att-ch > span { font-size: 11.5px; color: var(--gray-txt); }
+.att-ch input {
+  width: 100%; box-sizing: border-box; min-height: 38px; padding: 8px 10px;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff;
+  font-family: var(--font-body); font-size: 14px; color: var(--slate);
+}
+.att-ch input:focus { border-color: var(--gold-bo); outline: none; }
+.att-delais { display: flex; flex-wrap: wrap; gap: 6px; }
+.att-delais button {
+  border: 1px solid #cfcfcf; border-radius: 99px; background: #fff; cursor: pointer;
+  padding: 6px 14px; font-family: var(--font-title); font-size: 12.5px; color: var(--gray-txt);
+}
+.att-delais button.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.att-prev {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--slate); cursor: pointer;
+}
+.att-prev i { font-style: normal; color: var(--gray-lt); font-size: 11.5px; }
+.att-mail {
+  margin-top: 10px; border: 1px solid var(--line); border-radius: 5px;
+  background: #fbfaf7; padding: 10px 12px;
+}
+.att-mail b { display: block; font-size: 13px; color: var(--slate); margin-bottom: 6px; }
+.att-mail pre {
+  margin: 0 0 7px; font-family: var(--font-body); font-size: 12.5px; color: var(--slate-2);
+  line-height: 1.55; white-space: pre-wrap;
+}
+.att-mail span { font-size: 11.5px; color: var(--gray-lt); }

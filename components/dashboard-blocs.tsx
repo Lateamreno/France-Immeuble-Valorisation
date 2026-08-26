@@ -5,9 +5,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
-import { addSuivi, archiverImmeuble, reactiver, reculerStatut, setStatut, transfererImmeuble } from "@/lib/bo/actions";
+import {
+  addSuivi, archiverImmeuble, mettreEnAttente, reactiver, reculerStatut, setStatut,
+  transfererImmeuble,
+} from "@/lib/bo/actions";
 import { SuiviModal } from "@/components/suivi-modal";
-import { FicheContact, ModaleMoyenContact, ModaleTransfert } from "@/components/dashboard-modales";
+import {
+  FicheContact, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
+} from "@/components/dashboard-modales";
 import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
@@ -43,6 +48,7 @@ function Card({
   const [hist, setHist] = useState(false);
   const [moyen, setMoyen] = useState(false);
   const [transfert, setTransfert] = useState(false);
+  const [attente, setAttente] = useState(false);
   const [fiche, setFiche] = useState(false);
   const [note, setNote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -196,6 +202,12 @@ function Card({
                 <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
                 Transférer à un collègue
               </button>
+              {/* Repousser n'est pas archiver : le dossier sort du « en cours »
+                  mais garde une date de retour (retour #139). */}
+              <button type="button" onClick={() => { setMenu(false); setAttente(true); }}>
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                Mettre en attente
+              </button>
               <button type="button" onClick={() => {
                 setMenu(false);
                 if (c.statutNum) startTransition(() => reculerStatut(c.id, c.statutNum!));
@@ -281,6 +293,32 @@ function Card({
           onTransferer={(agentId, avecProprio) => {
             setTransfert(false);
             startTransition(() => transfererImmeuble(c.id, agentId, avecProprio ? c.contactId ?? null : null));
+          }}
+        />
+      )}
+
+      {attente && (
+        <ModaleAttente
+          bien={{
+            ville: c.ville, adresse: c.adresse,
+            proprietaire: c.contactInfo?.nom ?? c.contact,
+            email: c.contactInfo?.email,
+          }}
+          onAnnuler={() => setAttente(false)}
+          onValider={({ motif, dateRelance, email }) => {
+            setAttente(false);
+            startTransition(async () => {
+              await mettreEnAttente({ immeubleId: c.id, agentId: "", motif, dateRelance });
+              /* L'e-mail au propriétaire n'est jamais envoyé d'ici : on ouvre
+                 la fenêtre de rédaction de la boîte, pré-remplie. */
+              if (email) {
+                router.push(
+                  `/mails?to=${encodeURIComponent(email.to)}`
+                  + `&objet=${encodeURIComponent(email.objet)}`
+                  + `&corps=${encodeURIComponent(email.corps)}`,
+                );
+              }
+            });
           }}
         />
       )}

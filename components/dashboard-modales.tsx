@@ -238,3 +238,148 @@ export function ModaleTransfert({
     document.body,
   );
 }
+
+/**
+ * Mettre un dossier en attente (retours #139 et #141).
+ *
+ * MAV : « passer en "en attente car peu important" et du coup ils sont dans le
+ * "en attente" et ils sortent du "en cours" ». Ce n'est pas un archivage : le
+ * dossier n'est pas mort, il est repoussé. La date de déblocage est donc
+ * obligatoire dans l'esprit, même quand elle vaut « indéfiniment ».
+ *
+ * L'e-mail au propriétaire est proposé, jamais imposé : « ça permet de mettre
+ * le propriétaire dans la boucle ». Il n'est pas envoyé d'ici — l'écran le
+ * prépare, l'agent l'envoie depuis sa boîte, comme partout ailleurs.
+ */
+const DELAIS = [
+  { label: "1 mois", mois: 1 },
+  { label: "3 mois", mois: 3 },
+  { label: "6 mois", mois: 6 },
+  { label: "1 an", mois: 12 },
+  { label: "Indéfiniment", mois: 0 },
+] as const;
+
+const MOTIFS_ATTENTE = [
+  "Peu important",
+  "Prix trop élevé pour le marché",
+  "Propriétaire pas décidé",
+  "À revoir après travaux",
+  "Succession / indivision en cours",
+];
+
+/** yyyy-mm-dd, n mois plus tard. */
+function dansNMois(mois: number) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + mois);
+  return d.toISOString().slice(0, 10);
+}
+
+export function ModaleAttente({
+  bien, onAnnuler, onValider,
+}: {
+  bien: { ville: string; adresse: string; proprietaire?: string; email?: string };
+  onAnnuler: () => void;
+  onValider: (v: { motif: string; dateRelance?: string; email?: { to: string; objet: string; corps: string } }) => void;
+}) {
+  const [motif, setMotif] = useState(MOTIFS_ATTENTE[0]);
+  const [choix, setChoix] = useState(2); // 6 mois par défaut
+  const [date, setDate] = useState(dansNMois(6));
+  const [prevenir, setPrevenir] = useState(false);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onAnnuler]);
+
+  const indefini = DELAIS[choix].mois === 0;
+  const quand = date.split("-").reverse().join("/");
+  const objet = `Votre bien ${bien.ville} — nous restons à votre disposition`;
+  const corps = [
+    `Bonjour${bien.proprietaire ? ` ${bien.proprietaire}` : ""},`,
+    "",
+    `Comme convenu, nous mettons votre dossier${bien.adresse ? ` (${bien.adresse}, ${bien.ville})` : ""} en attente.`,
+    indefini
+      ? "Nous restons évidemment disponibles : dites-nous simplement quand vous souhaitez que nous reprenions le sujet."
+      : `Nous vous recontacterons autour du ${quand}. N'hésitez pas à nous proposer une date si vous préférez en reparler plus tôt.`,
+    "",
+    "Bien à vous,",
+  ].join("\n");
+
+  return createPortal(
+    <div className="modal-ov">
+      <div className="modal att" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+
+        <div className="tr-head">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+          Mettre en attente
+        </div>
+
+        <div className="tr-body">
+          <div className="att-bien">
+            <b>{bien.ville}</b> <span>— {bien.adresse}</span>
+          </div>
+
+          <label className="att-ch">
+            <span>Motif</span>
+            <input list="att-motifs" value={motif} onChange={(e) => setMotif(e.target.value)} />
+            <datalist id="att-motifs">
+              {MOTIFS_ATTENTE.map((m) => <option key={m} value={m} />)}
+            </datalist>
+          </label>
+
+          <div className="att-ch">
+            <span>On y revient dans</span>
+            <div className="att-delais">
+              {DELAIS.map((d, i) => (
+                <button key={d.label} type="button" className={choix === i ? "on" : ""}
+                  onClick={() => { setChoix(i); if (d.mois) setDate(dansNMois(d.mois)); }}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!indefini && (
+            <label className="att-ch">
+              {/* La date exacte en plus des raccourcis (retour #141). */}
+              <span>Date exacte</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+          )}
+
+          <label className="att-prev">
+            <input type="checkbox" checked={prevenir} disabled={!bien.email}
+              onChange={() => setPrevenir(!prevenir)} />
+            Prévenir le propriétaire par e-mail
+            {!bien.email && <i> — pas d&apos;adresse e-mail sur la fiche</i>}
+          </label>
+
+          {prevenir && bien.email && (
+            <div className="att-mail">
+              <b>{objet}</b>
+              <pre>{corps}</pre>
+              <span>Le message s&apos;ouvrira dans la fenêtre de rédaction : rien ne part sans vous.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="tr-foot">
+          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="vf-go" disabled={pending || !motif.trim()}
+            onClick={() => start(() => onValider({
+              motif: motif.trim(),
+              dateRelance: indefini ? undefined : date,
+              email: prevenir && bien.email ? { to: bien.email, objet, corps } : undefined,
+            }))}>
+            <span className="ch">›</span> Mettre en attente
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

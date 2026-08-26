@@ -205,6 +205,56 @@ export async function setApporteur(immeubleId: string, nom: string | null, conta
   refresh(immeubleId);
 }
 
+/**
+ * Met un dossier en attente « peu important » (retours #139 et #141).
+ *
+ * MAV : « une option dans les "…" c'est passer en attente car peu important,
+ * et du coup ils sont dans le "en attente" et ils sortent du "en cours" ». Ce
+ * n'est pas un archivage — le dossier n'est pas mort, il est repoussé. D'où la
+ * date de déblocage, qui est la seule chose qui distingue les deux.
+ *
+ * L'e-mail au propriétaire est facultatif et n'est jamais envoyé d'ici :
+ * l'écran prépare, l'agent envoie (doctrine d'envoi du BO).
+ */
+export async function mettreEnAttente(input: {
+  immeubleId: string;
+  agentId: string;
+  motif: string;
+  /** Date de déblocage, ou rien pour « indéfiniment ». */
+  dateRelance?: string;
+}) {
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: newId(),
+    p_doc: cleanPatch({
+      Type: "Manuel",
+      AGENT: input.agentId,
+      IMMEUBLEs: [input.immeubleId],
+      notes: input.dateRelance
+        ? `Mis en attente : ${input.motif} — à revoir le ${input.dateRelance.split("-").reverse().join("/")}`
+        : `Mis en attente : ${input.motif}`,
+      date_start: now,
+      "Created Date": now,
+      "Modified Date": now,
+      Statut: "En attente",
+      Motif_standby: input.motif,
+      date_relance: input.dateRelance ? new Date(input.dateRelance).toISOString() : undefined,
+    }),
+  });
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: input.immeubleId,
+    p_patch: cleanPatch({
+      standby_Statut: "En attente",
+      Motif_standby: input.motif,
+      date_relance: input.dateRelance ? new Date(input.dateRelance).toISOString() : undefined,
+      "Modified Date": now,
+    }),
+  });
+  refresh(input.immeubleId);
+}
+
 /** Réactive un dossier en attente / à relancer. */
 export async function reactiver(immeubleId: string) {
   await rpc("bo_patch_doc", {

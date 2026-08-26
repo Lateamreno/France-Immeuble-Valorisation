@@ -40,7 +40,7 @@ export type Reponse = {
 };
 
 export function FenetreRedaction({
-  agent, modeles, brouillon, modele, reponse, onClose, onEnvoye,
+  agent, modeles, brouillon, modele, reponse, amorce, onClose, onEnvoye,
 }: {
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
@@ -48,13 +48,17 @@ export function FenetreRedaction({
   modele?: MessageType;
   /** Renseigné quand la fenêtre est ouverte depuis « Répondre ». */
   reponse?: Reponse;
+  /** Message déjà rédigé par un autre écran, à relire puis envoyer. */
+  amorce?: { to: string; objet: string; corps: string };
   onClose: () => void;
   /** Prévient l'écran qu'un message est parti, pour qu'il se rafraîchisse. */
   onEnvoye?: () => void;
 }) {
-  const [a, setA] = useState(brouillon?.destinataires.map((d) => d.email).join(", ") ?? "");
-  const [objet, setObjet] = useState(brouillon?.objet ?? modele?.objet ?? "");
-  const [corps, setCorps] = useState(brouillon?.corps ?? modele?.corps ?? "");
+  const [a, setA] = useState(
+    amorce?.to ?? brouillon?.destinataires.map((d) => d.email).join(", ") ?? "",
+  );
+  const [objet, setObjet] = useState(amorce?.objet ?? brouillon?.objet ?? modele?.objet ?? "");
+  const [corps, setCorps] = useState(amorce?.corps ?? brouillon?.corps ?? modele?.corps ?? "");
   const [enregistrerType, setEnregistrerType] = useState(false);
   const [libelleType, setLibelleType] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
