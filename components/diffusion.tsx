@@ -9,6 +9,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { dmy, euros } from "@/lib/format";
 import { LIBELLE_STATUT, type Blocage, type ChargeUtile } from "@/lib/diffusion";
+import { BadgeDpe } from "@/components/pictos";
 import {
   apercuAnnonce, audienceAnnonce, deposerBrouillon, publierAnnonce, retirerAnnonce,
   type Apercu, type Audience,
@@ -448,7 +449,7 @@ function ApercuAnnonce({ charge }: { charge: ChargeUtile }) {
                           </td>
                           <td>{l.type_bail ?? "—"}</td>
                           <td className="n">{l.loyer_mensuel_hc ? `${Math.round(l.loyer_mensuel_hc).toLocaleString("fr-FR")} €` : "—"}</td>
-                          <td>{l.dpe_lot ? <span className={`anp-dpe d${l.dpe_lot}`}>{l.dpe_lot}</span> : "—"}</td>
+                          <td><BadgeDpe lettre={l.dpe_lot} /></td>
                         </tr>
                       ))}
                     </tbody>

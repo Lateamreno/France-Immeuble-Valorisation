@@ -27,9 +27,17 @@ export const TYPES_PHOTO = [
   { valeur: "Extérieur", label: "Façade / extérieur" },
   { valeur: "Parties communes", label: "Parties communes" },
   { valeur: "Lot", label: "Un lot" },
-  { valeur: "Cadastre", label: "Cadastre" },
-  { valeur: "Carte", label: "Carte / plan de situation" },
 ] as const;
+
+/**
+ * Les captures qui ne sont pas des photos du bien (retour #179).
+ *
+ * Une capture de cadastre ou de carte est une pièce de travail : elle est
+ * prise dans l'onglet Emplacement, elle s'affiche là-bas, et elle n'a rien à
+ * faire dans la galerie ni dans le dossier de vente. Elle reste enregistrée —
+ * on ne perd rien — mais elle sort de la grille.
+ */
+export const HORS_GALERIE = new Set(["Cadastre", "Carte"]);
 
 const LIBELLE: Record<string, string> = {
   Principale: "Principale",
@@ -95,7 +103,12 @@ export function PhotosEcran({ b }: { b: BienData }) {
   }, [b.photos, ordre]);
 
   const principale = toutes.find((p) => p.type === "Principale");
-  const secondaires = toutes.filter((p) => p.type !== "Principale");
+  /* #179 — « je ne veux pas que les photos de la carte ou du cadastre
+     apparaissent ici, je veux que ce soit simplement les photos de
+     l'immeuble ». Ces captures sont des pièces de travail : elles vivent dans
+     l'onglet Emplacement, où elles ont été prises, et n'ont rien à faire dans
+     la galerie du bien ni dans le dossier de vente. */
+  const secondaires = toutes.filter((p) => p.type !== "Principale" && !HORS_GALERIE.has(p.type ?? ""));
   const visibles = filtre ? secondaires.filter((p) => p.type === filtre) : secondaires;
   const compte = (t: string) => secondaires.filter((p) => p.type === t).length;
 
@@ -121,7 +134,7 @@ export function PhotosEcran({ b }: { b: BienData }) {
           // Une seule photo principale : les suivantes rejoignent la façade.
           // `true` = pas de revalidation par fichier : on rafraîchit une fois
           // la rafale terminée (sinon trente photos = trente rendus).
-          const r = await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "Extérieur" : type, null, fd, rang++, true);
+          const r = await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "" : type, null, fd, rang++, true);
           if (!r.ok) rate.push(r.message);
           else if (r.avertissement) avertis.push(`${liste[i].name} — ${r.avertissement}`);
         } catch (e) {
@@ -160,13 +173,20 @@ export function PhotosEcran({ b }: { b: BienData }) {
   return (
     <div
       className={`gph-wrap${survol ? " drop" : ""}`}
-      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setSurvol(true); } }}
+      /* #181 — le cadre de dépôt ne surgit QUE pour des fichiers venus du
+         bureau. Ranger les photos à la souris déclenchait aussi le survol,
+         et un grand cadre s'ouvrait au mauvais moment. */
+      onDragOver={(e) => {
+        if (glisse || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setSurvol(true);
+      }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setSurvol(false); }}
       onDrop={(e) => {
         if (!e.dataTransfer.files?.length) return;
         e.preventDefault();
         setSurvol(false);
-        importer(e.dataTransfer.files, principale ? "Extérieur" : "Principale");
+        importer(e.dataTransfer.files, principale ? "" : "Principale");
       }}
     >
       {/* ---- Photo principale ---- */}
@@ -199,9 +219,29 @@ export function PhotosEcran({ b }: { b: BienData }) {
         <button type="button" className="fadd" onClick={() => inputMulti.current?.click()}>+ Ajouter des photos</button>
         <input
           ref={inputMulti} type="file" accept="image/*,.heic,.heif" multiple hidden
-          onChange={(e) => importer(e.target.files, "Extérieur")}
+          /* #180 — plus de catégorie par défaut : « j'ai fait un ajout de
+             masse et il m'a indiqué que c'était de la façade, ce qui n'est
+             pas forcément le cas ». Sans réponse, on n'invente pas. */
+          onChange={(e) => importer(e.target.files, "")}
         />
-        <span className="gph-hint">…ou faites glisser vos fichiers ici. HEIC accepté, tout est converti en JPEG et redimensionné.</span>
+        {/* #181 — « limite il faudrait qu'il y ait H24 une petite section
+            dans laquelle je peux drag and drop des photos si je veux ». La
+            voici : toujours là, discrète, et elle accepte le dépôt. */}
+        <label
+          className={`gph-zone${survol ? " on" : ""}`}
+          onDragOver={(e) => { if (!glisse && e.dataTransfer.types.includes("Files")) { e.preventDefault(); setSurvol(true); } }}
+          onDragLeave={() => setSurvol(false)}
+          onDrop={(e) => {
+            if (glisse || !e.dataTransfer.files?.length) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setSurvol(false);
+            importer(e.dataTransfer.files, principale ? "" : "Principale");
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 16V4M8 8l4-4 4 4" /><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /></svg>
+          Déposez vos photos ici — HEIC accepté, tout est converti et redimensionné.
+        </label>
         <span style={{ flex: 1 }} />
         {envoi && <span className="gph-prog">Envoi {envoi.fait}/{envoi.total}…</span>}
       </div>

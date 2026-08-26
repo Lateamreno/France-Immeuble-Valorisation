@@ -1488,6 +1488,18 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 }
 .ville-c .v:focus { outline: 0; border-bottom: 1px solid var(--gold-bo); }
 .ville-c .v.bt { cursor: pointer; appearance: none; }
+/* #177 — tant que rien n'est choisi, la case ressemble à une liste à ouvrir :
+   cadre léger, chevron, et le libellé en gris pour dire qu'il manque. */
+.ville-c .v.sel {
+  appearance: none; border: 1px solid var(--line); border-radius: 4px;
+  padding: 4px 26px 4px 10px; width: auto; max-width: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--slate-2) 50%),
+                    linear-gradient(135deg, var(--slate-2) 50%, transparent 50%);
+  background-position: right 12px center, right 7px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.ville-c .v.sel.vide { color: var(--gray-lt); font-size: 15px; border-style: dashed; }
 .ville-c .v-wrap { display: inline-flex; align-items: baseline; }
 .ville-c .v-wrap .v { width: auto; text-align: right; }
 .ville-c .v-wrap i { font-style: normal; font-size: 13px; color: var(--gray-lt); margin-left: 3px; }
@@ -5559,3 +5571,70 @@ a.cfc-t:hover { text-decoration: underline; }
 }
 .elc-chg:hover i { display: block; }
 .elc-chg-n { color: var(--red); }
+
+/* #171 — le lot de rattachement, affiché sous le type de bail. */
+.lot-ratt {
+  display: block; width: 100%; margin-top: 2px; border: 0; background: none;
+  padding: 0 2px; cursor: pointer; text-align: left;
+  font-size: 10.5px; color: var(--gold-bo); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lot-ratt:hover { text-decoration: underline; }
+.ratt-liste { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow: auto; }
+.ratt-l {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 7px 10px; cursor: pointer;
+}
+.ratt-l:hover { border-color: var(--gold-bo); background: #fffaf0; }
+.ratt-l.on { border-color: var(--green); background: #f2fbf4; }
+.ratt-l b { font-family: var(--font-title); font-size: 12.5px; color: var(--slate); }
+.ratt-l span { font-size: 11px; color: var(--gray-lt); }
+
+/* #173 — l'étiquette DPE de Plein Bail : un carré à gauche, une pointe à
+   droite, à la couleur officielle de la lettre. Même dessin partout —
+   tableau des lots, annonce, dossier — pour qu'on la reconnaisse d'un coup
+   d'œil sans lire. */
+.dpe-b {
+  display: inline-grid; place-items: center;
+  min-width: 26px; height: 20px; padding: 0 7px 0 4px;
+  clip-path: polygon(0 0, 72% 0, 100% 50%, 72% 100%, 0 100%);
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 700; color: #fff;
+  background: var(--gray-lt);
+}
+.dpe-b.dA { background: #319b3f; } .dpe-b.dB { background: #52ac3a; }
+.dpe-b.dC { background: #8fbe2a; } .dpe-b.dD { background: #f0d000; color: #4a4a2a; }
+.dpe-b.dE { background: #f2a52c; } .dpe-b.dF { background: #e8722b; }
+.dpe-b.dG { background: #d62f2f; }
+.dpe-b.dvide { background: #e6e6e6; color: var(--gray-lt); }
+/* Dans le tableau des lots, l'étiquette est le visage de la liste déroulante :
+   le select passe dessus, transparent, et garde le clic. */
+.dpe-cell { position: relative; display: grid; place-items: center; }
+.dpe-cell select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* #181 — la zone de dépôt permanente de l'onglet Photos. */
+.gph-zone {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px dashed var(--line); border-radius: 5px; padding: 6px 12px;
+  font-size: 11.5px; color: var(--gray-lt); cursor: default;
+}
+.gph-zone svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.gph-zone.on { border-color: var(--green); color: var(--green); background: #f3fbf5; }
+
+/* #178 — « fais disparaître la photo satellite à gauche et la croix de
+   navigation à droite ». Elles encombraient la carte en permanence alors
+   qu'on ne s'en sert qu'au moment de cadrer : elles ne se montrent plus
+   qu'au survol de la carte, et restent donc hors de toute capture. */
+.emp-map .map-croix, .emp-map .map-sat { opacity: 0; transition: opacity .15s; }
+.emp-map:hover .map-croix, .emp-map:hover .map-sat,
+.emp-map .map-croix:focus-within, .emp-map .map-sat:focus { opacity: 1; }
+
+/* #172 — « les sélecteurs ne sont pas de la même taille selon le zoom ». Les
+   cases à cocher n'avaient aucune taille imposée : le navigateur les dessinait
+   à la taille de la police de la cellule, qui varie d'une colonne à l'autre et
+   d'un niveau de zoom à l'autre. On les fige, et on les empêche de s'étirer
+   dans une cellule en grille ou en flex. */
+.ltable input[type="checkbox"] {
+  width: 14px; height: 14px; min-width: 14px; min-height: 14px;
+  flex: none; margin: 0; accent-color: var(--gold-bo); cursor: pointer;
+}

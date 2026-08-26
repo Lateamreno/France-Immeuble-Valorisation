@@ -11,9 +11,10 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updateLots, type LotPatch } from "@/lib/bo/actions";
 import { PhotosDuLot } from "@/components/photos";
+import { BadgeDpe } from "@/components/pictos";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
-  DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES,
+  DESTINATIONS, ETATS_LOT as ETATS, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
 
@@ -94,6 +95,81 @@ function CelluleTypologie({
   );
 }
 
+/** Le libellé court d'un lot, tel qu'on le désigne à l'oral : « lot 3 — 2P ». */
+const libelleLot = (r: { numero: string; Type_lot: string; Destination: string }) =>
+  [r.numero ? `Lot ${r.numero}` : "Lot", r.Type_lot || r.Destination].filter(Boolean).join(" — ");
+
+/**
+ * La cellule « type de bail », avec le rattachement à un autre lot (#171).
+ *
+ * MAV : « parfois on a un appart ou un parking rattaché à un lot avec un loyer
+ * global pour les deux. Dans ce cas il y aurait une mention au dossier et dans
+ * le bail on indique rattaché à un lot — et quand on choisit ça, une modale
+ * pour dire à quel lot c'est rattaché. Dès qu'on change de type de bail ça
+ * détache le bien du lot. »
+ */
+function CelluleBail({ r, lots, onBail, onLot }: {
+  r: Row; lots: Row[];
+  onBail: (v: string) => void;
+  onLot: (v: string) => void;
+}) {
+  const [choix, setChoix] = useState(false);
+  const rattache = r.Type_bail === RATTACHE;
+  const cible = lots.find((x) => x.id === r.lot_rattache);
+
+  return (
+    <>
+      <select
+        className={`lcell${r.Type_bail === "Vide" ? " red" : ""}`}
+        value={r.Type_bail}
+        onChange={(e) => {
+          onBail(e.target.value);
+          /* Changer de bail détache ; choisir « rattaché » demande à quel lot. */
+          if (e.target.value === RATTACHE) setChoix(true);
+          else onLot("");
+        }}
+      >
+        <option value="" />
+        {[...new Set([r.Type_bail, ...TYPES_BAIL])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+      </select>
+      {rattache && (
+        <button type="button" className="lot-ratt" onClick={() => setChoix(true)}
+          title="Changer le lot de rattachement">
+          {cible ? libelleLot(cible) : "à quel lot ?"}
+        </button>
+      )}
+      {choix && (
+        <div className="modal-ov" onClick={() => setChoix(false)}>
+          <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              Rattaché à quel lot ?
+              <button type="button" onClick={() => setChoix(false)}>✕</button>
+            </div>
+            <div className="modal-b">
+              <p className="mhint">
+                Le loyer est encaissé sur l&apos;autre lot : celui-ci reste occupé mais ne
+                compte pas une deuxième fois dans les revenus.
+              </p>
+              <div className="ratt-liste">
+                {lots.filter((x) => x.id !== r.id).map((x) => (
+                  <button
+                    key={x.id} type="button"
+                    className={`ratt-l${x.id === r.lot_rattache ? " on" : ""}`}
+                    onClick={() => { onLot(x.id); setChoix(false); }}
+                  >
+                    <b>{libelleLot(x)}</b>
+                    <span>{x.surface_carrez ? `${x.surface_carrez} m²` : ""}{x.loyer ? ` · ${x.loyer} €/mois` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 type Row = {
   id: string; isNew: boolean;
   /** Rang d'affichage choisi à la souris (#82) — il ne touche pas au numéro. */
@@ -104,6 +180,8 @@ type Row = {
   Destination: string; Type_lot: string;
   surface_carrez: string; surface_sol: string;
   Type_bail: string; loyer: string; loyer_max: string;
+  /** #171 — l'autre lot avec lequel celui-ci est loué, sous un loyer unique. */
+  lot_rattache: string;
   Etat: string; Type_dpe: string; renov_year: string;
   commentaire: string;
 };
@@ -114,6 +192,29 @@ const N = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
+/* Les types de bail qui veulent dire « personne dedans ». */
+const BAIL_VIDE = new Set(["", "Vide", "n.c."]);
+
+/**
+ * Le type de bail se déduit du loyer (retour #171).
+ *
+ * MAV : « dès que je mets un loyer actuel il passe automatiquement au moins
+ * en n.c. — ce qui veut dire qu'on n'a pas encore mis l'info mais que c'est
+ * loué. À l'inverse si je mets qu'un loyer potentiel alors le bien est
+ * considéré comme vide, puisqu'il n'y a pas de loyer actuel. »
+ *
+ * On ne touche jamais à un type de bail CHOISI : passer de « Habitation » à
+ * « n.c. » parce qu'un loyer a bougé serait une perte d'information. On ne
+ * remplit que ce qui était vide, et on ne vide que ce qu'on avait rempli.
+ */
+function bailDeduit(r: Row, champ: keyof Row, valeur: string): Partial<Row> | null {
+  if (champ !== "loyer") return null;
+  const loue = (N(valeur) ?? 0) > 0;
+  if (loue && BAIL_VIDE.has(r.Type_bail)) return { Type_bail: "n.c." };
+  if (!loue && r.Type_bail === "n.c.") return { Type_bail: "Vide" };
+  return null;
+}
+
 function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
   return {
     id: String(l._id), isNew: false,
@@ -122,7 +223,13 @@ function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
     batiment: S(l.batiment), etage: S(l.etage), numero: S(l.numero),
     Destination: S(l.Destination), Type_lot: S(l.Type_lot),
     surface_carrez: S(l.surface_carrez), surface_sol: S(l.surface_sol),
-    Type_bail: S(l.Type_bail), loyer: S(l.loyer), loyer_max: S(l.loyer_max),
+    /* Même déduction que sur la saisie (#171) : un lot qui encaisse un loyer
+       n'est pas « Vide », même si personne n'a encore choisi le type de bail.
+       Les lignes déjà en base s'affichent donc juste, et la valeur déduite
+       part en base au prochain enregistrement de la ligne. */
+    Type_bail: (N(S(l.loyer)) ?? 0) > 0 && BAIL_VIDE.has(S(l.Type_bail)) ? "n.c." : S(l.Type_bail),
+    loyer: S(l.loyer), loyer_max: S(l.loyer_max),
+    lot_rattache: S(l.lot_rattache),
     Etat: S(l.Etat), Type_dpe: S(l.Type_dpe), renov_year: S(l.renov_year),
     commentaire: S(l.commentaire),
   };
@@ -141,6 +248,9 @@ function toPatch(r: Row, avecOrdre = false): LotPatch {
     surface_carrez: N(r.surface_carrez),
     surface_sol: N(r.surface_sol),
     Type_bail: r.Type_bail || undefined,
+    /* Le rattachement ne survit pas au type de bail : « dès qu'on change de
+       type de bail ça détache le bien du lot » (#171). */
+    lot_rattache: r.Type_bail === RATTACHE ? r.lot_rattache || undefined : null,
     loyer: N(r.loyer),
     loyer_max: N(r.loyer_max),
     Etat: r.Etat || undefined,
@@ -326,7 +436,7 @@ export function LotsEditor({ b }: { b: BienData }) {
         // Le report ne s'applique que si la case cible suivait la case source :
         // une valeur saisie à la main n'est jamais écrasée.
         const suit = suite && (r[suite] === "" || r[suite] === r[field]);
-        return { ...r, [field]: value, ...(suit ? { [suite!]: value } : null) };
+        return { ...r, [field]: value, ...(suit ? { [suite!]: value } : null), ...bailDeduit(r, field, value) };
       }),
     );
     setDirty((d) => new Set(d).add(id));
@@ -348,7 +458,7 @@ export function LotsEditor({ b }: { b: BienData }) {
       id, isNew: true, ordre: rs.length, travaux: "",
       batiment: "", etage: "", numero: nextNumero(),
       Destination: "Logement", Type_lot: "", surface_carrez: "", surface_sol: "",
-      Type_bail: "Vide", loyer: "", loyer_max: "", Etat: "n.c.", Type_dpe: "n.c.",
+      Type_bail: "Vide", loyer: "", loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
       renov_year: "", commentaire: "",
     }]);
     setDirty((d) => new Set(d).add(id));
@@ -474,6 +584,7 @@ export function LotsEditor({ b }: { b: BienData }) {
           Destination: o.Destination ?? "Logement", Type_lot: o.Type_lot ?? "",
           surface_carrez: o.surface_carrez ?? "", surface_sol: o.surface_sol ?? "",
           Type_bail: o.Type_bail ?? "Vide", loyer: o.loyer ?? "", loyer_max: o.loyer_max ?? "",
+          lot_rattache: "",
           Etat: o.Etat ?? "n.c.", Type_dpe: o.Type_dpe ?? "n.c.",
           renov_year: o.renov_year ?? "", commentaire: o.commentaire ?? "",
         });
@@ -668,9 +779,11 @@ export function LotsEditor({ b }: { b: BienData }) {
                   <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
                   {on("sol") && <td className="na"><input className="lcell num" value={r.surface_sol} onChange={(e) => edit(r.id, "surface_sol", e.target.value)} /><i>m²</i></td>}
                   <td className="brd">
-                    <select className={`lcell${r.Type_bail === "Vide" ? " red" : ""}`} value={r.Type_bail} onChange={(e) => edit(r.id, "Type_bail", e.target.value)}>
-                      <option value="" />{[...new Set([r.Type_bail, ...TYPES_BAIL])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-                    </select>
+                    <CelluleBail
+                      r={r} lots={rows}
+                      onBail={(v) => edit(r.id, "Type_bail", v)}
+                      onLot={(v) => edit(r.id, "lot_rattache", v)}
+                    />
                   </td>
                   {on("baux") && (
                     <>
@@ -708,9 +821,16 @@ export function LotsEditor({ b }: { b: BienData }) {
                     {/* La lettre du DPE occupe toute la case : pas de réserve
                         de chevron, sinon elle disparaît dans une colonne
                         étroite (retour #56). */}
-                    <select className={`lcell dpe${!r.Type_dpe || r.Type_dpe === "n.c." ? " vide" : ""}`} value={r.Type_dpe} onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
-                      <option value="" />{[...new Set([r.Type_dpe, ...DPES])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-                    </select>
+                    {/* #173 — l'étiquette de Plein Bail sert de visage à la
+                        liste : le select passe dessus, transparent, et garde
+                        le clic. */}
+                    <span className="dpe-cell">
+                      <BadgeDpe lettre={r.Type_dpe} />
+                      <select value={r.Type_dpe} aria-label="DPE"
+                        onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
+                        <option value="" />{[...new Set([r.Type_dpe, ...DPES])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </span>
                   </td>
                   <td className="na"><input className="lcell num" value={r.renov_year} onChange={(e) => edit(r.id, "renov_year", e.target.value)} /></td>
                   {on("commentaire") && <td className="brd"><input className="lcell" value={r.commentaire} onChange={(e) => edit(r.id, "commentaire", e.target.value)} /></td>}

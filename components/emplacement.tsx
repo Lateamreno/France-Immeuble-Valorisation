@@ -376,8 +376,12 @@ function AdresseTab({ b }: { b: BienData }) {
             <Picto k="tension" gros />
             <div className="t">Tension locative</div>
             <div className="s">LOCservice</div>
-            <select className="v bt" value={tension} onChange={(e) => setTension(e.target.value)}>
-              <option value="">—</option>
+            {/* #177 — un tiret se lit comme « rien à dire ». Une liste vide,
+                elle, se lit comme « à renseigner » : on garde donc l'aspect
+                d'un sélecteur, chevron compris, tant que rien n'est choisi. */}
+            <select className={`v bt sel${tension ? "" : " vide"}`} value={tension}
+              onChange={(e) => setTension(e.target.value)}>
+              <option value="">À renseigner</option>
               <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
             </select>
           </div>

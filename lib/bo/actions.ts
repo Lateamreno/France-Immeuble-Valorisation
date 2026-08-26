@@ -290,6 +290,9 @@ export type LotPatch = Partial<{
   surface_carrez: number;
   surface_sol: number;
   Type_bail: string;
+  /** #171 — le lot auquel celui-ci est loué, sous un loyer global unique.
+   *  `null` le détache : c'est ce qu'on envoie dès que le bail change. */
+  lot_rattache: string | null;
   loyer: number;
   loyer_max: number;
   Etat: string;

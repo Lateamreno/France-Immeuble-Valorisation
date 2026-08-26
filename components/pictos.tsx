@@ -54,3 +54,19 @@ export function Picto({ nom, className = "sic2" }: { nom: string; className?: st
     </span>
   );
 }
+
+/**
+ * L'étiquette DPE, dessinée comme celle de Plein Bail (retour #173) :
+ * un carré à gauche, une pointe à droite, à la couleur officielle de la
+ * lettre. Même dessin dans le tableau des lots, dans l'annonce et dans le
+ * dossier — c'est ce qui la rend lisible sans lire.
+ */
+export function BadgeDpe({ lettre, titre }: { lettre?: string | null; titre?: string }) {
+  const l = String(lettre ?? "").trim().toUpperCase();
+  const connue = /^[A-G]$/.test(l);
+  return (
+    <span className={`dpe-b ${connue ? `d${l}` : "dvide"}`} title={titre ?? (connue ? `DPE ${l}` : "DPE non communiqué")}>
+      {connue ? l : "—"}
+    </span>
+  );
+}

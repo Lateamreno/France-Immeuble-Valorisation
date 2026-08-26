@@ -24,8 +24,16 @@ export const TYPES_LOT = [
   "Cave", "Box", "Parking", "WC", "Autre",
 ];
 
+/** Le libellé exact du bail « rattaché », employé partout tel quel. */
+export const RATTACHE = "Rattaché à un lot";
+
 export const TYPES_BAIL = [
-  "Nu", "Meuble", "Airbnb", "3/6/9", "Précaire", "Loi 48", "Loi 89", "Civil", "Ferme", "n.c.", "Vide",
+  "Nu", "Meuble", "Airbnb", "3/6/9", "Précaire", "Loi 48", "Loi 89", "Civil", "Ferme",
+  /* #171 — un parking ou une cave loué AVEC un appartement, sous un loyer
+     global unique. Le lot existe, il est occupé, mais son loyer est déjà
+     compté ailleurs : le rattacher évite de le compter deux fois. */
+  RATTACHE,
+  "n.c.", "Vide",
 ];
 
 /** États des lots (pas de « PC purge » ni « Constructible » côté lot). */

@@ -11,6 +11,7 @@
 //      deux dernières cases touchées (retour #104).
 
 import { group } from "./format";
+import { RATTACHE } from "./referentiels";
 
 /* ---------------------------------------------------------------- Mandants */
 
@@ -190,6 +191,23 @@ export type SyntheseLocative = {
 
 const LIBRE = new Set(["Vide", "", "n.c."]);
 
+/**
+ * Un lot est-il occupé ? (retours #170 et #171)
+ *
+ * Le type de bail ne suffit pas : MAV avait saisi des loyers sur des lots
+ * restés « Vide » faute d'avoir choisi le type, et le mandat annonçait un
+ * immeuble « vendu libre de toute occupation » alors qu'il rapportait. Le
+ * loyer en cours est le fait le plus sûr — un lot qui encaisse un loyer est
+ * loué, quoi que dise la case d'à côté.
+ *
+ * L'inverse est vrai aussi : un loyer POTENTIEL seul ne rend pas le lot
+ * occupé, c'est justement ce qu'il rapporterait s'il l'était.
+ */
+export function lotOccupe(l: Record<string, unknown>): boolean {
+  if ((N(l.loyer) ?? 0) > 0) return true;
+  return !LIBRE.has(String(l.Type_bail ?? ""));
+}
+
 /** Ce que l'état locatif dit du bien — la seule source de l'onglet Objet. */
 export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
   let occupes = 0;
@@ -200,10 +218,12 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
 
   for (const l of lots) {
     const bail = String(l.Type_bail ?? "");
-    const occupe = !LIBRE.has(bail);
+    const occupe = lotOccupe(l);
     if (occupe) {
       occupes++;
-      baux.add(bail);
+      /* Un lot loué dont le type de bail n'a pas encore été choisi ne doit pas
+         faire écrire « (Vide) » dans le descriptif du mandat. */
+      if (bail && !LIBRE.has(bail)) baux.add(bail);
       loyerMensuel += N(l.loyer) ?? 0;
     }
     const s = N(l.surface_carrez) ?? N(l.surface_sol) ?? 0;
@@ -257,6 +277,21 @@ export function descriptifLegal(
       .join(", ");
     phrases.push(
       `L'immeuble comporte ${pluriel(s.lots, "lot")} pour une surface habitable et utile totale de ${group(s.surface)} m² : ${detail}.`,
+    );
+  }
+
+  /* #171 — les lots loués avec un autre sous un loyer unique. Sans cette
+     phrase, le lecteur du mandat compte un lot occupé sans loyer et croit à
+     une erreur. */
+  const rattaches = lots.filter((l) => String(l.Type_bail ?? "") === RATTACHE);
+  if (rattaches.length > 0) {
+    const num = (l: Record<string, unknown>) => (l.numero ? `n° ${String(l.numero)}` : "sans numéro");
+    const paires = rattaches.map((l) => {
+      const cible = lots.find((x) => String(x._id) === String(l.lot_rattache ?? ""));
+      return cible ? `le lot ${num(l)} avec le lot ${num(cible)}` : `le lot ${num(l)} avec un autre lot`;
+    });
+    phrases.push(
+      `${paires.length > 1 ? "Certains lots sont loués ensemble" : "Un lot est loué avec un autre"} sous un loyer global unique : ${paires.join(", ")}.`,
     );
   }
 
