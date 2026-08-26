@@ -286,8 +286,22 @@ function contactLabel(c?: Record<string, unknown>) {
 
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
 
-const statutOf = (im: Record<string, unknown>) =>
-  parseInt(String(im.Statut ?? "").split(" ")[0], 10) || 0;
+/**
+ * L'étape du bien dans le pipeline, de 1 (formulaire reçu) à 11 (vendu).
+ *
+ * Le statut enregistré fait foi, à une exception près : un bien qui porte une
+ * estimation est au moins « À transformer » (3), même si personne n'a pensé à
+ * faire avancer sa fiche. MAV : « quand un bien a été estimé il doit passer
+ * dans la troisième colonne prospect. » Les estimations faites avant que
+ * l'avancement soit automatique se rangent donc bien, sans réécrire la base.
+ */
+const statutOf = (im: Record<string, unknown>) => {
+  const n = parseInt(String(im.Statut ?? "").split(" ")[0], 10) || 0;
+  const estime = typeof im.prix_hai_estim === "number"
+    || !!im.date_last_est
+    || (Array.isArray(im.ESTIMATIONs) && (im.ESTIMATIONs as unknown[]).length > 0);
+  return estime && n > 0 && n < 3 ? 3 : n;
+};
 
 export type DashboardLive = {
   blocs: KBloc[];

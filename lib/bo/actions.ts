@@ -989,6 +989,9 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
     },
   });
 
+  /* Le bien rejoint « À transformer » : il est estimé. */
+  await avancerApresEnvoi(immeubleId);
+
   // Trace dans l'historique des échanges (comme « Estimation (640 000 €) »).
   await rpc("bo_insert_doc", {
     p_table: "bo_suivi",
@@ -1017,6 +1020,18 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
  * dashboard lit le `Statut` de l'immeuble : 2 = à estimer, 3 = à transformer.
  * On ne fait avancer que ceux qui sont encore en amont — un bien déjà sous
  * mandat ou vendu ne redescend pas parce qu'on renvoie une estimation.
+ */
+/**
+ * Un bien estimé passe en « À transformer » (3e colonne des prospects).
+ *
+ * MAV : « quand un bien a été estimé il doit passer dans la troisième colonne
+ * prospect de la dashboard, donc automatiquement dans À transformer. »
+ *
+ * L'avancement se déclenchait seulement à l'ENVOI de l'estimation. Il se
+ * déclenche maintenant dès qu'une estimation existe : une estimation faite est
+ * une estimation faite, qu'on l'ait envoyée ou gardée pour soi. On n'avance
+ * jamais un bien déjà plus loin — un immeuble en commercialisation ne
+ * redescend pas chez les prospects.
  */
 async function avancerApresEnvoi(immeubleId: string) {
   const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);

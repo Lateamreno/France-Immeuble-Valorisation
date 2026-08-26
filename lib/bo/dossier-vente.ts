@@ -243,8 +243,12 @@ export function construireDossierVente(
     charges, chargesTot,
 
     /* Page 7 — conditions de la vente */
+    /* Le profil se saisit sur la fiche du PROPRIÉTAIRE, à côté du motif de
+       vente qui, lui, appartient à l'immeuble : on va le chercher là où il est
+       réellement écrit. `profil_vendeur` reste lu en secours pour les fiches
+       de l'ancien BO. */
     vendeur: {
-      profil: S(im.profil_vendeur),
+      profil: S(b.proprietaire?.profil) || S(im.profil_vendeur),
       motif: S(im.Motif_vente),
     },
     conditions: {

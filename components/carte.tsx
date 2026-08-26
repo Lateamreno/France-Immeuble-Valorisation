@@ -154,16 +154,14 @@ function VueCarte({
   onEchec?: () => void;
 }) {
   const [statique, setStatique] = useState(true);
-  const [sat, setSat] = useState(false);
-  const [dLat, setDLat] = useState(0);
-  const [dLon, setDLon] = useState(0);
-
-  // Un cran de déplacement vaut environ un quart de la vue au zoom courant.
-  const pas = 360 / 2 ** zoom / 4;
-  const cLat = lat + dLat;
-  const cLon = lon + dLon;
+  /* #178 — la croix de déplacement et la bascule plan/satellite ont disparu :
+     « fais disparaître la photo satellite à gauche et la croix de navigation à
+     droite ». Elles encombraient la carte en permanence, et la carte intégrée
+     se déplace très bien à la souris. La carte reste donc centrée sur le
+     point géocodé, sans commande posée dessus. */
+  const cLat = lat;
+  const cLon = lon;
   const q = `${cLat},${cLon}`;
-  const recentrer = () => { setDLat(0); setDLon(0); };
 
   return (
     <div className="emp-map">
@@ -180,27 +178,13 @@ function VueCarte({
       {statique ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt={titre}
-          src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? 0 : 1}${sat ? "&sat=1" : ""}`}
+          src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? 0 : 1}`}
           onError={() => { setStatique(false); onEchec?.(); }} />
       ) : (
         <iframe title={titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-          src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&t=${sat ? "k" : "m"}&output=embed`} />
+          src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&output=embed`} />
       )}
 
-      {/* Croix directionnelle */}
-      <div className="map-croix" aria-label="Déplacer la carte">
-        <button type="button" className="h" onClick={() => setDLat(dLat + pas)} aria-label="Vers le nord">▲</button>
-        <button type="button" className="g" onClick={() => setDLon(dLon - pas)} aria-label="Vers l&apos;ouest">◀</button>
-        <button type="button" className="c" onClick={recentrer} aria-label="Recentrer sur le bien">●</button>
-        <button type="button" className="d" onClick={() => setDLon(dLon + pas)} aria-label="Vers l&apos;est">▶</button>
-        <button type="button" className="b" onClick={() => setDLat(dLat - pas)} aria-label="Vers le sud">▼</button>
-      </div>
-
-      {/* Carré de bascule plan / satellite */}
-      <button type="button" className={`map-sat${sat ? " on" : ""}`} onClick={() => setSat(!sat)}
-        title={sat ? "Revenir au plan" : "Vue satellite"}>
-        <span>{sat ? "Plan" : "Satellite"}</span>
-      </button>
     </div>
   );
 }
