@@ -5378,3 +5378,34 @@ a.cfc-t:hover { text-decoration: underline; }
   padding: 5px 12px; font-size: 12.5px; color: var(--slate);
 }
 .pro-pages button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* --- Qui décide, derrière la société --- */
+.pro-tab td.act { display: flex; gap: 6px; white-space: nowrap; }
+.pro-dir-att { padding: 12px 4px; font-size: 12.5px; color: var(--gray-txt); }
+.pro-tab tr.pro-det td { background: #fbfaf7; }
+.pro-dir { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 6px 0 10px; }
+.pro-dir-col h4 {
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--gold-bo); margin-bottom: 8px;
+}
+.pro-dir-col .v { font-size: 12px; color: var(--gray-txt); line-height: 1.6; }
+.pro-dir-col .v i { font-style: normal; color: var(--slate); }
+.pro-dir-p, .pro-dir-c {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 0;
+  border-bottom: 1px solid var(--line-lt);
+}
+.pro-dir-p:last-child, .pro-dir-c:last-child { border-bottom: 0; }
+.pro-dir-p b, .pro-dir-c b { font-size: 13px; color: var(--slate); }
+.pro-dir-p span, .pro-dir-c span { font-size: 11.5px; color: var(--gray-txt); }
+.pro-dir-c a { text-decoration: none; }
+.pro-dir-c a:hover b { color: var(--gold-bo); }
+.pro-dir-l { display: flex; gap: 10px; margin-top: 3px; }
+.pro-dir-l a { font-size: 11.5px; color: var(--gold-bo); text-decoration: none; }
+.pro-dir-l a:hover { text-decoration: underline; }
+.pro-dir-h {
+  margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line-lt);
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+}
+.pro-dir-h span { font-size: 11px; color: var(--gray-lt); }
+.pro-dir-h a { font-size: 11.5px; color: var(--slate); }
+@media (max-width: 900px) { .pro-dir { grid-template-columns: 1fr; } }

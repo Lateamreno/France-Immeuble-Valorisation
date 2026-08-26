@@ -12,11 +12,13 @@
  * c'est-à-dire l'adresse à laquelle on écrit.
  */
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   chercherCibles, chercherCommunes, exporterCibles,
   type Cible, type CritèresProspection,
 } from "@/lib/bo/prospection-actions";
+import { ficheDirigeants, type FicheDirigeants } from "@/lib/bo/dirigeants-actions";
 
 const FORMES = ["SCI", "SC", "SARL", "SAS", "SASU", "SNC", "SA", "SCPI"];
 
@@ -52,6 +54,8 @@ export function Prospection() {
   const [choisis, setChoisis] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
   const [export_, setExport] = useState<string | null>(null);
+  /** La ligne dépliée sur ses dirigeants — une seule à la fois. */
+  const [ouvert, setOuvert] = useState<string | null>(null);
   const zone = useRef<HTMLDivElement>(null);
 
   const criteres = (p = 0): CritèresProspection => ({
@@ -251,22 +255,36 @@ export function Prospection() {
               {lignes.map((l) => {
                 const cle = `${l.insee}|${l.adresse}|${l.siren}`;
                 return (
-                  <tr key={cle} className={choisis.has(cle) ? "on" : ""}>
-                    <td>
-                      <input type="checkbox" checked={choisis.has(cle)} onChange={() => basculer(cle)} />
-                    </td>
-                    <td><b>{l.adresse}</b></td>
-                    <td>{l.commune ?? l.insee}</td>
-                    <td className="n"><b>{l.locaux}</b></td>
-                    <td>{l.nom}{l.forme ? <i> · {l.forme}</i> : null}</td>
-                    <td className="mono">{l.siren}</td>
-                    <td>
-                      <a className="fadd" target="_blank" rel="noreferrer"
-                        href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${l.siren}`}>
-                        Fiche société
-                      </a>
-                    </td>
-                  </tr>
+                  <Fragment key={cle}>
+                    <tr className={choisis.has(cle) ? "on" : ""}>
+                      <td>
+                        <input type="checkbox" checked={choisis.has(cle)} onChange={() => basculer(cle)} />
+                      </td>
+                      <td><b>{l.adresse}</b></td>
+                      <td>{l.commune ?? l.insee}</td>
+                      <td className="n"><b>{l.locaux}</b></td>
+                      <td>{l.nom}{l.forme ? <i> · {l.forme}</i> : null}</td>
+                      <td className="mono">{l.siren}</td>
+                      <td className="act">
+                        <button type="button" className="fadd"
+                          onClick={() => setOuvert(ouvert === cle ? null : cle)}>
+                          {ouvert === cle ? "Masquer" : "Qui décide ?"}
+                        </button>
+                        <a className="fadd" target="_blank" rel="noreferrer"
+                          href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${l.siren}`}>
+                          Fiche société
+                        </a>
+                      </td>
+                    </tr>
+                    {ouvert === cle && (
+                      <tr className="pro-det">
+                        <td />
+                        <td colSpan={6}>
+                          <Dirigeants siren={l.siren} ville={l.commune ?? ""} societe={l.nom} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -297,6 +315,96 @@ export function Prospection() {
           n&apos;est plus à diviser.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Qui décide, derrière la société — et par où le joindre.
+ *
+ * Trois colonnes dans l'ordre où on s'en sert : le registre du commerce donne
+ * le nom du gérant ; notre propre fichier dit si on le connaît déjà (c'est le
+ * seul endroit d'où sortent un portable et un e-mail légitimes) ; et à défaut,
+ * deux recherches préparées, à ouvrir d'un clic.
+ */
+function Dirigeants({ siren, ville, societe }: { siren: string; ville: string; societe: string }) {
+  const [f, setF] = useState<FicheDirigeants | null>(null);
+  const [charge, setCharge] = useState(true);
+
+  useEffect(() => {
+    let vivant = true;
+    ficheDirigeants(siren)
+      .then((r) => { if (vivant) setF(r); })
+      .catch((e) => { if (vivant) setF({ ok: false, erreur: e instanceof Error ? e.message : String(e) }); })
+      .finally(() => { if (vivant) setCharge(false); });
+    return () => { vivant = false; };
+  }, [siren]);
+
+  if (charge) return <div className="pro-dir-att">Recherche des dirigeants au registre du commerce…</div>;
+  if (!f) return null;
+  if (!f.ok) return <div className="pro-dir-att">{f.erreur}</div>;
+
+  const personnes = f.dirigeants.filter((d) => d.type === "personne");
+  const societes = f.dirigeants.filter((d) => d.type === "societe");
+
+  return (
+    <div className="pro-dir">
+      <div className="pro-dir-col">
+        <h4>Dirigeants au registre</h4>
+        {personnes.length === 0 && <p className="v">Aucune personne physique déclarée.</p>}
+        {personnes.map((d, i) => {
+          const nomComplet = [d.prenoms?.split(/\s+/)[0], d.nom].filter(Boolean).join(" ");
+          return (
+            <div className="pro-dir-p" key={`${d.nom}-${i}`}>
+              <b>{nomComplet}</b>
+              <span>
+                {[d.qualite, d.annee ? `né(e) en ${d.annee}` : ""].filter(Boolean).join(" · ")}
+              </span>
+              <div className="pro-dir-l">
+                {/* Préparé, pas automatisé : aspirer LinkedIn serait contraire
+                    à ses conditions, et une usine à homonymes. */}
+                <a target="_blank" rel="noreferrer"
+                  href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${nomComplet} ${ville}`)}`}>
+                  LinkedIn
+                </a>
+                <a target="_blank" rel="noreferrer"
+                  href={`https://www.google.com/search?q=${encodeURIComponent(`"${nomComplet}" ${ville} ${societe}`)}`}>
+                  Recherche web
+                </a>
+              </div>
+            </div>
+          );
+        })}
+        {societes.length > 0 && (
+          <div className="pro-dir-h">
+            <span>Associées :</span>
+            {societes.slice(0, 4).map((s) => (
+              <a key={s.siren ?? s.nom} target="_blank" rel="noreferrer"
+                href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${s.siren ?? ""}`}>
+                {s.nom}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="pro-dir-col">
+        <h4>Déjà dans notre fichier</h4>
+        {f.contacts.length === 0 ? (
+          <p className="v">
+            Personne à ce nom parmi les 42 000 fiches. Le courrier au siège reste la voie sûre :
+            <br />
+            <i>{f.siege ?? "siège non renseigné"}</i>
+          </p>
+        ) : (
+          f.contacts.map((c) => (
+            <div className="pro-dir-c" key={c.id}>
+              <Link href={`/contact/${c.id}`}><b>{c.nom}</b></Link>
+              <span>{[c.type, c.tel, c.email].filter(Boolean).join(" · ") || "Fiche sans coordonnées"}</span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

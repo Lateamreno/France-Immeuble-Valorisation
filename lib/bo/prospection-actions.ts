@@ -177,64 +177,83 @@ export async function exporterCibles(c: CritèresProspection, avecSiege = false)
     const noms = await communes(rows.map((r) => String(r.insee ?? "")));
     const cibles = rows.map((r) => enCible(r, noms));
 
-    const sieges = new Map<string, string>();
+    const connus = new Map<string, Connu>();
     let manquants = 0;
     if (avecSiege) {
       const uniques = [...new Set(cibles.map((x) => x.siren))].filter((s) => /^\d{9}$/.test(s));
-      for (const [code, adr] of await siegesConnus(uniques)) sieges.set(code, adr);
-      const aChercher = uniques.filter((s) => !sieges.has(s));
+      for (const [code, c] of await dejaConnus(uniques)) connus.set(code, c);
+      const aChercher = uniques.filter((s) => !connus.has(s));
       manquants = Math.max(0, aChercher.length - PLAFOND_SIEGES);
       const lot = aChercher.slice(0, PLAFOND_SIEGES);
-      const neufs: { code: string; siege: string }[] = [];
+      const neufs: Record<string, unknown>[] = [];
       for (let i = 0; i < lot.length; i += 20) {
         const r = await Promise.all(
-          lot.slice(i, i + 20).map(async (s) => [s, await siege(s)] as const),
+          lot.slice(i, i + 20).map(async (s) => [s, await annuaire(s)] as const),
         );
-        for (const [s, adr] of r) if (adr) { sieges.set(s, adr); neufs.push({ code: s, siege: adr }); }
+        for (const [s, f] of r) {
+          if (!f) continue;
+          connus.set(s, { siege: f.siege, dirigeant: principal(f.dirigeants) });
+          neufs.push({
+            code: s, nom: f.nom, siege: f.siege ?? null,
+            dirigeants: f.dirigeants, maj: new Date().toISOString(),
+          });
+        }
       }
-      await memoriserSieges(neufs);
+      await memoriserSocietes(neufs);
     }
 
     const entete = [
       "Commune", "Adresse de l'immeuble", "Locaux détenus", "Société", "Forme", "SIREN",
-      "Siège social",
+      "Siège social", "Dirigeant",
     ];
     const lignes = cibles.map((x) => [
       x.commune ?? x.insee, x.adresse, String(x.locaux), x.nom, x.forme ?? "", x.siren,
-      sieges.get(x.siren) ?? "",
+      connus.get(x.siren)?.siege ?? "", connus.get(x.siren)?.dirigeant ?? "",
     ]);
     const csv = [entete, ...lignes]
       .map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";"))
       .join("\r\n");
     /* Le BOM : sans lui, Excel lit « SCI FRANÇOIS » en mojibake. */
-    return { ok: true, csv: `\uFEFF${csv}`, lignes: cibles.length, sieges: sieges.size, manquants };
+    return { ok: true, csv: `\uFEFF${csv}`, lignes: cibles.length, sieges: connus.size, manquants };
   } catch (e) {
     return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
   }
 }
 
-/** Les sièges déjà connus, gardés d'un export à l'autre. */
-async function siegesConnus(codes: string[]) {
-  if (!SB_KEY || !codes.length) return [] as [string, string][];
-  const out: [string, string][] = [];
+/** Ce qu'on sait déjà d'une société : son siège, et qui la dirige. */
+type Connu = { siege?: string; dirigeant?: string };
+
+async function dejaConnus(codes: string[]) {
+  const out = new Map<string, Connu>();
+  if (!SB_KEY || !codes.length) return out;
   for (let i = 0; i < codes.length; i += 300) {
     const liste = codes.slice(i, i + 300).map((c) => `"${c}"`).join(",");
     const res = await fetch(
-      `${SB_URL}/rest/v1/fi_pm_soc?select=code,siege&siege=not.is.null`
-      + `&code=in.(${encodeURIComponent(liste)})`,
+      `${SB_URL}/rest/v1/fi_pm_soc?select=code,siege,dirigeants&code=in.(${encodeURIComponent(liste)})`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
     ).catch(() => null);
     if (!res?.ok) continue;
-    for (const r of (await res.json()) as { code: string; siege: string }[]) out.push([r.code, r.siege]);
+    const rows = (await res.json()) as {
+      code: string; siege?: string;
+      dirigeants?: { type?: string; nom?: string; prenoms?: string }[];
+    }[];
+    for (const r of rows) {
+      if (!r.siege && !r.dirigeants) continue;
+      out.set(r.code, { siege: r.siege ?? undefined, dirigeant: principal(r.dirigeants) });
+    }
   }
   return out;
 }
 
-async function memoriserSieges(lignes: { code: string; siege: string }[]) {
-  if (!SB_KEY || !lignes.length) return;
-  /* `nom` est obligatoire en base : à défaut de mieux le SIREN fera l'affaire,
-     jusqu'à ce qu'une consultation le remplace par la vraie dénomination. */
-  const corps = lignes.map((l) => ({ code: l.code, nom: l.code, siege: l.siege }));
+/** Le premier dirigeant personne physique : celui qu'on nomme sur l'enveloppe. */
+function principal(dirigeants?: { type?: string; nom?: string; prenoms?: string }[]) {
+  const d = (dirigeants ?? []).find((x) => x.type === "personne" && x.nom);
+  if (!d) return undefined;
+  return [d.prenoms?.split(/\s+/)[0], d.nom].filter(Boolean).join(" ");
+}
+
+async function memoriserSocietes(corps: Record<string, unknown>[]) {
+  if (!SB_KEY || !corps.length) return;
   await fetch(`${SB_URL}/rest/v1/fi_pm_soc?on_conflict=code`, {
     method: "POST",
     headers: {
@@ -246,15 +265,36 @@ async function memoriserSieges(lignes: { code: string; siege: string }[]) {
   }).catch(() => null);
 }
 
-/** Le siège social d'après l'annuaire des entreprises (public, sans clé). */
-async function siege(siren: string) {
+/**
+ * Le siège ET les dirigeants, en un seul appel.
+ *
+ * L'annuaire rend les deux dans la même réponse : les demander séparément
+ * doublerait l'attente d'un export pour rien.
+ */
+async function annuaire(siren: string) {
   const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${siren}&per_page=1`, {
     cache: "no-store",
   }).catch(() => null);
   if (!r?.ok) return null;
   const d = (await r.json().catch(() => null)) as {
-    results?: { siren?: string; siege?: { adresse?: string } }[];
+    results?: {
+      siren?: string; nom_raison_sociale?: string; siege?: { adresse?: string };
+      dirigeants?: {
+        nom?: string; prenoms?: string; qualite?: string; denomination?: string;
+        type_dirigeant?: string;
+      }[];
+    }[];
   } | null;
   const e = d?.results?.[0];
-  return e?.siren === siren ? (e.siege?.adresse ?? null) : null;
+  if (!e || e.siren !== siren) return null;
+  const dirigeants = (e.dirigeants ?? []).map((x) => (
+    x.type_dirigeant === "personne morale"
+      ? { type: "societe", nom: (x.denomination ?? "").toUpperCase(), qualite: x.qualite }
+      : { type: "personne", nom: (x.nom ?? "").toUpperCase(), prenoms: x.prenoms, qualite: x.qualite }
+  ));
+  return {
+    nom: (e.nom_raison_sociale ?? "").toUpperCase() || siren,
+    siege: e.siege?.adresse ?? undefined,
+    dirigeants,
+  };
 }
