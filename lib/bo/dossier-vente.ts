@@ -20,6 +20,7 @@
 import type { BienData } from "@/lib/bubble/server";
 import { rendements } from "./rendements";
 import { photoUrl } from "./dossier";
+import { estFacadeRue } from "./facade";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -146,12 +147,17 @@ export function construireDossierVente(
 
     /* La photo principale ouvre le dossier ; les autres suivent dans l'ordre
        du BO, « de gauche à droite » (#184). Les captures de carte et de
-       cadastre n'en sont pas (voir #179). */
+       cadastre n'en sont pas (voir #179).
+
+       La façade Street View non plus : elle sert de repère dans l'outil, mais
+       Google interdit de la réutiliser comme photo d'un bien dans un document
+       commercial. Un dossier sans couverture vaut mieux qu'un dossier envoyé
+       au vendeur avec le filigrane Google dessus. */
     photoPrincipale: b.photos.find((p) => p.type === "Principale")?.urlPleine
       ?? b.photos.find((p) => p.type === "Principale")?.url
-      ?? photoUrl(S(im.photo_main_compressed)),
+      ?? (estFacadeRue(im.photo_main_compressed) ? "" : photoUrl(S(im.photo_main_compressed))),
     photos: b.photos
-      .filter((p) => p.type !== "Principale" && !["Cadastre", "Carte"].includes(S(p.type)))
+      .filter((p) => p.type !== "Principale" && !["Cadastre", "Carte", "Vue de rue"].includes(S(p.type)))
       .sort((x, y) => x.ordre - y.ordre)
       .map((p) => p.urlPleine ?? p.url)
       .filter((u): u is string => !!u),

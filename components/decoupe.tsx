@@ -14,6 +14,7 @@ import type { OperationDecoupe } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { PHASES, STATUTS_OPERATION, avancement, phase } from "@/lib/decoupe";
 import { majOperation } from "@/lib/bo/actions";
+import { Facade } from "@/components/facade";
 
 const pct = (bloc?: number, dec?: number) =>
   bloc && dec && bloc > 0 ? Math.round(((dec - bloc) / bloc) * 100) : undefined;
@@ -88,15 +89,8 @@ function LigneOperation({ o }: { o: OperationDecoupe }) {
     <div className="dec-op">
       <div className="dec-op-h">
         <div className="vign">
-          {o.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={o.photoUrl} alt="" />
-          ) : o.adresseGeo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/api/streetview?a=${encodeURIComponent(o.adresseGeo)}&w=120&h=96`} alt="" loading="lazy" />
-          ) : (
-            <svg viewBox="0 0 24 24"><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>
-          )}
+          <Facade photoUrl={o.photoUrl} facadeRue={o.facadeRue}
+            repli={<svg viewBox="0 0 24 24"><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>} />
         </div>
         <div className="dec-op-id">
           <Link className="v" href={`/bien/${o.immeubleId}`}>{o.ville || "Immeuble"}</Link>

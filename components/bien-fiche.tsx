@@ -332,9 +332,7 @@ export function BienFiche({
       <aside className="brail">
         <div className="brail-head">
           <div className="bthumb">
-            {b.photoUrl
-              ? <Image src={b.photoUrl} alt="" width={128} height={128} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <Facade adresse={b.adresseGeo} w={256} h={256} badge={false} />}
+            <Facade photoUrl={b.photoUrl} facadeRue={b.facadeRue} />
             <span className="rv">{b.agentInitials}</span>
           </div>
           <div className="bh">

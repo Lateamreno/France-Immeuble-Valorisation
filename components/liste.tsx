@@ -18,6 +18,7 @@ export function ListeShell({
   filtres = false,
   vignettes = false,
   titre,
+  actions,
 }: {
   rows: ListCard[];
   tabs: { key: string; label: string }[];
@@ -27,6 +28,8 @@ export function ListeShell({
   vignettes?: boolean;
   /** Repris dans la barre collée quand les filtres sont affichés. */
   titre?: string;
+  /** Action propre à l'écran, posée à droite de la barre du haut. */
+  actions?: React.ReactNode;
 }) {
   const [tab, setTab] = useState(tabs[0]?.key ?? "");
   const [q, setQ] = useState("");
@@ -71,6 +74,7 @@ export function ListeShell({
       ) : (
         <span className="lst-count">{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</span>
       )}
+      {actions}
     </div>
   );
 
@@ -94,7 +98,7 @@ export function ListeShell({
                 comprend rien » (retour #122). */}
             {vignettes && (
               <span className="lphoto">
-                <Facade photoUrl={r.photoUrl} adresse={r.adresseGeo} w={120} h={96}
+                <Facade photoUrl={r.photoUrl} facadeRue={r.facadeRue}
                   repli={<i>Pas de photo</i>} />
               </span>
             )}

@@ -14,6 +14,7 @@
 
 import "server-only";
 import { unstable_cache } from "next/cache";
+import { estFacadeRue } from "@/lib/bo/facade";
 import { correspond } from "@/lib/bo/matching";
 import { cache } from "react";
 
@@ -449,10 +450,11 @@ export async function getDashboardLive(
          coffre et s'écrit « storage:… », que `?u=` ne sait pas lire. On passe
          par le même aiguillage que partout ailleurs. */
       photoUrl: photo ? photoProxy(im.photo_main_compressed) : undefined,
-      // Faute de photo, la vignette ira chercher la façade en vue de rue :
-      // sur les deux premières colonnes du dashboard, moins d'un immeuble sur
-      // cinq a une photo — ils viennent d'arriver.
-      adresseGeo: !photo && typeof im.adresse === "string" ? (im.adresse as string) : undefined,
+      // La façade en vue de rue n'est plus chargée depuis Google à
+      // l'affichage : elle a été capturée une fois et rangée dans le coffre,
+      // donc elle arrive par `photoUrl` comme n'importe quelle photo. Le
+      // drapeau sert seulement à la signaler « à remplacer ».
+      facadeRue: estFacadeRue(im.photo_main_compressed),
       rv: true,
       rvText: agent.initials,
       history: !!suivi,
@@ -646,8 +648,8 @@ export type BienData = {
   ville: string;
   adresse: string;
   photoUrl?: string;
-  /** Adresse géocodée : sert la façade en vue de rue à défaut de photo. */
-  adresseGeo?: string;
+  /** La photo principale est une capture Street View, à remplacer. */
+  facadeRue?: boolean;
   prix?: string;
   statut: string;
   standby?: string;
@@ -757,7 +759,7 @@ export async function getBien(id: string): Promise<BienData | null> {
     ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? im.adresse_dpt ?? ""})`,
     adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
     photoUrl: photoProxy(im.photo_main_compressed),
-    adresseGeo: typeof im.adresse === "string" ? (im.adresse as string) : undefined,
+    facadeRue: estFacadeRue(im.photo_main_compressed),
     prix: euros(im.prix_hai),
     statut: String(im.Statut ?? "").replace(/^\d+ - /, ""),
     standby: typeof im.standby_Statut === "string" ? im.standby_Statut : undefined,
@@ -947,9 +949,9 @@ export type ListCard = {
   /* --- Vignette d'immeuble (retour #122) --- */
   /** Photo principale : « sinon on comprend rien » dans la liste. */
   photoUrl?: string;
-  /** Adresse géocodée : faute de photo, la vignette montre la façade en vue
-   *  de rue plutôt qu'un « Pas de photo » identique pour tout le monde. */
-  adresseGeo?: string;
+  /** La photo principale est une capture Street View, pas une vraie photo :
+   *  la vignette le signale, « à remplacer ». */
+  facadeRue?: boolean;
   /** Street View du bien, ouvert dans une autre fenêtre — sans sortir de la liste. */
   streetUrl?: string;
   /** Clé d'onglet (en_cours / termines / archives…). */
@@ -1037,7 +1039,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
     title: imLabel(im),
     sub: contactLabel(contacts.get(String(im.PROPRIETAIRE ?? ""))) || undefined,
     photoUrl: photoProxy(im.photo_main_compressed),
-    adresseGeo: typeof im.adresse === "string" ? (im.adresse as string) : undefined,
+    facadeRue: estFacadeRue(im.photo_main_compressed),
     streetUrl: street(im),
     badge: (() => {
       const st = String(im.Statut ?? "").replace(/^\d+ - /, "");
@@ -2278,7 +2280,8 @@ export type OperationDecoupe = {
   ville?: string;
   adresse?: string;
   photoUrl?: string;
-  adresseGeo?: string;
+  /** La photo principale est une capture Street View, à remplacer. */
+  facadeRue?: boolean;
   /** Lots de l'immeuble : total, et ceux qui ne sont plus occupés. */
   lots?: number;
   lotsLibres?: number;
@@ -2335,7 +2338,7 @@ export async function listOperations(): Promise<OperationDecoupe[]> {
       ville: im ? `${im.adresse_ville ?? ""} (${im.adresse_dpt ?? ""})` : undefined,
       adresse: im ? [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ") : undefined,
       photoUrl: photo ? photoProxy(im!.photo_main_compressed) : undefined,
-      adresseGeo: !photo && typeof im?.adresse === "string" ? (im.adresse as string) : undefined,
+      facadeRue: estFacadeRue(im?.photo_main_compressed),
       lots: c?.total ?? 0,
       lotsLibres: c?.libres ?? 0,
     };

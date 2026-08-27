@@ -355,15 +355,10 @@ const estTel = () => typeof document !== "undefined" && document.body.classList.
  * annonce comprises.
  */
 function Vignette({ c }: { c: KCard }) {
-  const aVisuel = !!c.photoUrl || !!c.adresseGeo;
   return (
-    <div className={`kthumb${aVisuel ? " has-photo" : ""}`}>
-      {c.photoUrl ? (
-        <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      ) : (
-        <Facade adresse={c.adresseGeo}
-          repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
-      )}
+    <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
+      <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
+        repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
       {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
     </div>
   );

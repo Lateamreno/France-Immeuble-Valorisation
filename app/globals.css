@@ -1983,3 +1983,9 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .dos-histo-l:hover { border-color: var(--gold-bo); background: #fffaf0; }
 .dos-histo-l b { font-family: var(--font-title); font-size: 13px; color: var(--slate); white-space: nowrap; }
 .dos-histo-l span { font-size: 11.5px; color: var(--gray-lt); }
+
+/* Rattrapage des façades (liste Immeubles) : une action ponctuelle, discrète,
+   qui disparaît quand le stock est passé. */
+.fac-rat { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.fac-rat .fadd { white-space: nowrap; }
+.fac-bilan { font-size: 11.5px; font-style: normal; color: var(--gray-lt); white-space: nowrap; }

@@ -17,6 +17,8 @@
  * une section de la fiche qu'on ouvre d'un clic.
  */
 
+import { estFacadeRue } from "./facade";
+
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
@@ -135,7 +137,17 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
   }
 
   /* --- Les photos : jamais bloquantes, souvent décisives --- */
-  const utiles = b.photos.filter((p) => !["Cadastre", "Carte"].includes(S(p.type))).length;
+  /* La façade Street View ne compte pas : c'est un repère provisoire, elle ne
+     part pas dans le dossier et doit être remplacée par une vraie photo. */
+  if (estFacadeRue(im.photo_main_compressed)) {
+    out.push({
+      cle: "facade-rue", titre: "La photo du bien est une façade Google", bloquant: false,
+      section: "photos", champs: [],
+      detail: "Elle sert de repère dans l'outil mais ne part pas dans le dossier : déposez une vraie photo.",
+    });
+  }
+  const utiles = b.photos
+    .filter((p) => !["Cadastre", "Carte", "Vue de rue"].includes(S(p.type))).length;
   if (utiles < PHOTOS_ATTENDUES) {
     out.push({
       cle: "photos", titre: "Les photos semblent insuffisantes", bloquant: false,

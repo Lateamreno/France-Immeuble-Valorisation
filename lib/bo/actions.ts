@@ -1213,6 +1213,11 @@ export async function createImmeuble(input: {
       lat: input.geo.lat, lon: input.geo.lon, label: input.geo.label,
     });
   }
+  /* La façade est capturée une fois, ici, et jamais redemandée : c'est le seul
+     appel Google de la vie de la fiche. Après la réponse — créer un immeuble
+     ne doit pas attendre le réseau — et sans faire échouer la création si
+     Google ne répond pas. */
+  after(async () => { await capturerFacadeRue(id).catch(() => undefined); });
   refresh(id);
   return id;
 }
@@ -3061,6 +3066,10 @@ export async function saveAdresse(
       adresse_rue: a.rue,
       adresse_zipcode: a.cp,
       adresse_ville: a.ville,
+      // Bubble tient une copie à plat de l'adresse complète ; la capture de
+      // façade et les liens externes la lisent. Sans elle, une fiche créée
+      // depuis le nouveau BO restait sans adresse exploitable.
+      adresse: a.label,
     }),
   });
 
@@ -3403,4 +3412,160 @@ export async function creerContactDepuisQuestion(input: {
   revalidatePath("/questions");
   revalidatePath(`/contact/${contactId}`);
   return contactId;
+}
+
+/* ======================= Façade en vue de rue =======================
+ *
+ * Arbitrage MAV : « je veux pas que tu charges x visuels Google à chaque fois
+ * que je vais sur le BO ». La façade n'est donc PAS chargée à l'affichage.
+ * Elle est capturée **une fois**, rangée dans notre coffre, et promue photo
+ * principale. Ensuite le BO ne sert que notre copie : parcourir le dashboard,
+ * la liste ou une fiche ne coûte aucun appel d'API.
+ *
+ * Coût total : un appel de métadonnées (gratuit chez Google) et un appel
+ * d'image par immeuble, une seule fois dans sa vie.
+ *
+ * La capture reste une photo *provisoire* : elle porte la mention « à
+ * remplacer » dans l'outil et ne part pas dans le dossier de vente — Google
+ * interdit de réutiliser Street View comme photo d'un bien dans un document
+ * commercial ou une annonce.
+ */
+
+const CLE_MAPS = () =>
+  process.env.GOOGLE_MAPS_SERVER_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+
+export type ResultatFacade =
+  | { ok: true; deja?: boolean }
+  | { ok: false; raison: string };
+
+/**
+ * Capture la façade d'un immeuble et l'installe comme photo principale.
+ *
+ * Ne fait rien si l'immeuble a déjà une photo : une vraie photo prime toujours
+ * sur une capture, et on ne redemande jamais deux fois la même image à Google.
+ */
+export async function capturerFacadeRue(immeubleId: string): Promise<ResultatFacade> {
+  const cle = CLE_MAPS();
+  if (!cle) return { ok: false, raison: "clé Google Maps non configurée" };
+
+  const [im] = await bqIn("bo_immeuble", [immeubleId]);
+  if (!im) return { ok: false, raison: "immeuble introuvable" };
+  const actuelle = im.photo_main_compressed;
+  if (typeof actuelle === "string" && actuelle.length > 0) return { ok: true, deja: true };
+
+  /* Bubble range l'adresse complète dans `adresse` ; une fiche créée depuis
+     le nouveau BO ne l'a pas encore, on la recompose depuis ses morceaux. */
+  const rue = [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ").trim();
+  const adresse = typeof im.adresse === "string" && im.adresse.trim()
+    ? im.adresse.trim()
+    : [rue, [im.adresse_zipcode, im.adresse_ville].filter(Boolean).join(" ")]
+        .filter(Boolean).join(", ");
+  // Une adresse sans rue (« , 79110 Chef-Boutonne ») situerait un point au
+  // hasard dans la commune : la capture ne montrerait pas l'immeuble.
+  if (adresse.split(",")[0].trim().length < 4) return { ok: false, raison: "adresse trop imprécise" };
+
+  const lieu = encodeURIComponent(adresse);
+  /* L'appel « metadata » est gratuit et dit si une prise de vue existe. Sans
+     lui, Google facturerait une image et renverrait une tuile grise. */
+  const meta = await fetch(
+    `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lieu}&key=${cle}`,
+    { cache: "no-store" },
+  ).then((r) => r.json() as Promise<{ status?: string }>).catch(() => null);
+  if (meta?.status !== "OK") return { ok: false, raison: "pas de vue de rue à cette adresse" };
+
+  /* Une seule taille demandée : 640×480 sert aussi bien la vignette de 82 px
+     du dashboard que l'en-tête de fiche. Deux tailles = deux appels facturés
+     pour un gain invisible. */
+  const r = await fetch(
+    `https://maps.googleapis.com/maps/api/streetview?location=${lieu}` +
+      `&size=640x480&fov=80&pitch=8&return_error_code=true&key=${cle}`,
+    { cache: "no-store" },
+  );
+  if (!r.ok) return { ok: false, raison: `Google a refusé l'image (${r.status})` };
+  const jpeg = Buffer.from(await r.arrayBuffer());
+
+  const { DOSSIER_FACADE } = await import("./facade");
+  const id = newId();
+  const chemin = `${DOSSIER_FACADE}/${immeubleId}/${id}.jpg`;
+  try {
+    await deposer(chemin, jpeg, "image/jpeg");
+  } catch (e) {
+    return { ok: false, raison: e instanceof Error ? e.message : String(e) };
+  }
+
+  const now = new Date().toISOString();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_photo",
+    p_id: id,
+    p_doc: cleanPatch({
+      IMMEUBLE: immeubleId,
+      image: `storage:${chemin}`,
+      compressed: `storage:${chemin}`,
+      /* Un type à part : elle ne doit pas être confondue avec une photo du
+         bien, et les trois cases de diffusion restent fermées. */
+      Type: "Vue de rue",
+      format: "image/jpeg",
+      largeur: 640,
+      hauteur: 480,
+      size_kB: Math.round(jpeg.length / 1024),
+      order: 999,
+      show_in_doss: false,
+      show_in_ann: false,
+      show_in_est: false,
+      date: now,
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: { photo_main_compressed: `storage:${chemin}`, "Modified Date": now },
+  });
+  return { ok: true };
+}
+
+/**
+ * Rattrapage du stock : capture la façade des immeubles qui n'ont pas de photo.
+ *
+ * Par paquets, pour que l'agent voie l'avancement et puisse s'arrêter. Chaque
+ * immeuble n'est traité qu'une fois : dès qu'il a une photo principale, il
+ * sort du lot suivant.
+ */
+export async function capturerFacadesManquantes(paquet = 40): Promise<{
+  traites: number; captures: number; echecs: number; restants: number;
+}> {
+  if (!SB_KEY) return { traites: 0, captures: 0, echecs: 0, restants: 0 };
+
+  const sansPhoto = async (limite: number) => {
+    const res = await fetch(
+      `${SB_URL}/rest/v1/bo_immeuble` +
+        `?or=(data->>photo_main_compressed.is.null,data->>photo_main_compressed.eq.)` +
+        /* Les archives ne servent plus à personne : leur capturer une façade
+           serait dépenser des appels d'API pour des fiches qu'on ne regarde
+           pas. Sur 945 fiches sans photo, 911 sont archivées. */
+        `&data->>archived=eq.false&select=id&limit=${limite}`,
+      { headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`, Prefer: "count=exact" },
+        cache: "no-store" },
+    );
+    if (!res.ok) return { ids: [] as string[], total: 0 };
+    const ids = ((await res.json()) as { id: string }[]).map((r) => r.id);
+    const plage = res.headers.get("content-range") ?? "";
+    const total = Number(plage.split("/")[1]) || ids.length;
+    return { ids, total };
+  };
+
+  const { ids, total } = await sansPhoto(Math.max(1, Math.min(200, paquet)));
+  let captures = 0;
+  let echecs = 0;
+  /* En série, volontairement : Google limite le débit par clé, et une rafale
+     de quarante appels simultanés se fait rejeter en bloc. */
+  for (const id of ids) {
+    const r = await capturerFacadeRue(id).catch(() => ({ ok: false as const, raison: "erreur" }));
+    if (r.ok && !("deja" in r && r.deja)) captures++;
+    else if (!r.ok) echecs++;
+  }
+  revalidatePath("/", "layout");
+  revalidatePath("/immeubles");
+  return { traites: ids.length, captures, echecs, restants: Math.max(0, total - captures) };
 }
