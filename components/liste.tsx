@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ListCard } from "@/lib/bubble/server";
 import { appliquerFiltres, FILTRES_VIDES, PanneauFiltres, type Filtres } from "@/components/filtres-liste";
+import { Facade } from "@/components/facade";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -93,10 +94,8 @@ export function ListeShell({
                 comprend rien » (retour #122). */}
             {vignettes && (
               <span className="lphoto">
-                {r.photoUrl
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={r.photoUrl} alt="" loading="lazy" />
-                  : <i>Pas de photo</i>}
+                <Facade photoUrl={r.photoUrl} adresse={r.adresseGeo} w={120} h={96}
+                  repli={<i>Pas de photo</i>} />
               </span>
             )}
             {/* La couleur du commercial vient de la base : c'est elle qui fait

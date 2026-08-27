@@ -646,6 +646,8 @@ export type BienData = {
   ville: string;
   adresse: string;
   photoUrl?: string;
+  /** Adresse géocodée : sert la façade en vue de rue à défaut de photo. */
+  adresseGeo?: string;
   prix?: string;
   statut: string;
   standby?: string;
@@ -755,6 +757,7 @@ export async function getBien(id: string): Promise<BienData | null> {
     ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? im.adresse_dpt ?? ""})`,
     adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
     photoUrl: photoProxy(im.photo_main_compressed),
+    adresseGeo: typeof im.adresse === "string" ? (im.adresse as string) : undefined,
     prix: euros(im.prix_hai),
     statut: String(im.Statut ?? "").replace(/^\d+ - /, ""),
     standby: typeof im.standby_Statut === "string" ? im.standby_Statut : undefined,
@@ -944,6 +947,9 @@ export type ListCard = {
   /* --- Vignette d'immeuble (retour #122) --- */
   /** Photo principale : « sinon on comprend rien » dans la liste. */
   photoUrl?: string;
+  /** Adresse géocodée : faute de photo, la vignette montre la façade en vue
+   *  de rue plutôt qu'un « Pas de photo » identique pour tout le monde. */
+  adresseGeo?: string;
   /** Street View du bien, ouvert dans une autre fenêtre — sans sortir de la liste. */
   streetUrl?: string;
   /** Clé d'onglet (en_cours / termines / archives…). */
@@ -1031,6 +1037,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
     title: imLabel(im),
     sub: contactLabel(contacts.get(String(im.PROPRIETAIRE ?? ""))) || undefined,
     photoUrl: photoProxy(im.photo_main_compressed),
+    adresseGeo: typeof im.adresse === "string" ? (im.adresse as string) : undefined,
     streetUrl: street(im),
     badge: (() => {
       const st = String(im.Statut ?? "").replace(/^\d+ - /, "");

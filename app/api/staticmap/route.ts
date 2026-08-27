@@ -20,8 +20,12 @@ export async function GET(req: NextRequest) {
   if (!cle) return new Response("clé Google Maps non configurée", { status: 404 });
 
   const p = req.nextUrl.searchParams;
-  const lat = Number(p.get("lat"));
-  const lon = Number(p.get("lon"));
+  // Attention : Number(null) vaut 0, pas NaN. Sans ce test explicite, un appel
+  // sans coordonnées passait le garde-fou et Google renvoyait une carte du
+  // large de l'Afrique — une image valide, donc une erreur invisible.
+  const nb = (v: string | null) => (v === null || v.trim() === "" ? NaN : Number(v));
+  const lat = nb(p.get("lat"));
+  const lon = nb(p.get("lon"));
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     return new Response("coordonnées manquantes", { status: 400 });
   }

@@ -22,6 +22,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { ManquesDossier } from "@/components/dossier-manques";
+import { Facade } from "@/components/facade";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
@@ -331,7 +332,9 @@ export function BienFiche({
       <aside className="brail">
         <div className="brail-head">
           <div className="bthumb">
-            {b.photoUrl && <Image src={b.photoUrl} alt="" width={128} height={128} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+            {b.photoUrl
+              ? <Image src={b.photoUrl} alt="" width={128} height={128} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <Facade adresse={b.adresseGeo} w={256} h={256} badge={false} />}
             <span className="rv">{b.agentInitials}</span>
           </div>
           <div className="bh">

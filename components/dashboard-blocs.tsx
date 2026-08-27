@@ -10,6 +10,7 @@ import {
   transfererImmeuble,
 } from "@/lib/bo/actions";
 import { SuiviModal } from "@/components/suivi-modal";
+import { Facade } from "@/components/facade";
 import {
   FicheContact, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
 } from "@/components/dashboard-modales";
@@ -354,28 +355,14 @@ const estTel = () => typeof document !== "undefined" && document.body.classList.
  * annonce comprises.
  */
 function Vignette({ c }: { c: KCard }) {
-  /* La route répond 404 quand la clé manque, que l'adresse est trop imprécise
-     ou qu'aucune prise de vue n'existe : on retombe alors sur le pictogramme
-     plutôt que d'afficher un cadre cassé. */
-  const [rueKo, setRueKo] = useState(false);
-  const rue = !c.photoUrl && !rueKo && c.adresseGeo
-    ? `/api/streetview?a=${encodeURIComponent(c.adresseGeo)}`
-    : null;
-
+  const aVisuel = !!c.photoUrl || !!c.adresseGeo;
   return (
-    <div className={`kthumb${c.photoUrl || rue ? " has-photo" : ""}`}>
+    <div className={`kthumb${aVisuel ? " has-photo" : ""}`}>
       {c.photoUrl ? (
         <Image src={c.photoUrl} alt="" width={164} height={152} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      ) : rue ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={rue} alt="" loading="lazy" onError={() => setRueKo(true)} />
-          <span className="kvue" title="Vue de rue Google — repère, pas photo du bien">Vue de rue</span>
-        </>
-      ) : c.photo ? (
-        <svg viewBox="0 0 24 24">{COL_IC.building}</svg>
       ) : (
-        <svg viewBox="0 0 24 24">{COL_IC.form}</svg>
+        <Facade adresse={c.adresseGeo}
+          repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
       )}
       {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
     </div>
