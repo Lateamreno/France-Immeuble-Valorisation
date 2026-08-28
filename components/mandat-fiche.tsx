@@ -155,7 +155,8 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
           />
         )}
         {tab === "Objet" && (
-          <OngletObjet m={m} im={im} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
+          <OngletObjet m={m} im={im} lots={lots} parcelles={d.parcelles}
+            mandatId={mandatId} immeubleId={immeubleId} locked={locked}
             onSuivant={suivant} />
         )}
         {tab === "Prix" && (
@@ -677,15 +678,29 @@ function Piece({
 /* ---------------------------------------------------- Onglet 2 · Objet */
 
 function OngletObjet({
-  m, im, lots, mandatId, immeubleId, locked, onSuivant,
+  m, im, lots, parcelles, mandatId, immeubleId, locked, onSuivant,
 }: {
   m: Record<string, unknown>; im: Record<string, unknown> | null; lots: Record<string, unknown>[];
+  /** Parcelles déjà connues de l'onglet Emplacement (retour #202). */
+  parcelles: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
   onSuivant?: () => void;
 }) {
   const [pending, start] = useTransition();
   const s = useMemo(() => synthese(lots), [lots]);
-  const [cad, setCad] = useState(S(m.ref_cadastre));
+
+  /* Retour #202 — « si elles sont remplies dans Emplacement alors c'est bloqué
+     ici ; si c'est vide dans Emplacement on peut remplir et ça remplit l'info
+     dans Emplacement ». Une parcelle n'a qu'un seul propriétaire de la vérité,
+     et c'est la fiche du bien. Le mandat la lit quand elle existe, la saisit
+     quand elle manque, ne la contredit jamais. */
+  const refsEmplacement = useMemo(
+    () => parcelles.map((p) => S(p.ref_cadastre).trim()).filter(Boolean).join(", "),
+    [parcelles],
+  );
+  const cadVerrouille = refsEmplacement !== "";
+
+  const [cad, setCad] = useState(refsEmplacement || S(m.ref_cadastre));
   const [terrain, setTerrain] = useState(S(num(m.surface_terrain)));
   const auto = useMemo(
     () => descriptifLegal(im ?? {}, lots, cad || undefined, parse(terrain)),
@@ -697,7 +712,7 @@ function OngletObjet({
   const texte = libre ? desc : auto;
   const { modifie, valider } = useModifie(JSON.stringify([cad, terrain, libre, desc]));
   const annuler = () => {
-    setCad(S(m.ref_cadastre));
+    setCad(refsEmplacement || S(m.ref_cadastre));
     setTerrain(S(num(m.surface_terrain)));
     setLibre(!!dejaEcrit && dejaEcrit !== auto);
     setDesc(dejaEcrit || auto);
@@ -765,8 +780,17 @@ function OngletObjet({
       <div className="mdt-sub">Ce qui reste à saisir</div>
       <div className="mdt-grid">
         <Champ label="Références cadastrales">
-          <input className="mi" value={cad} disabled={locked} placeholder="ex. AB 0123"
-            onChange={(e) => setCad(e.target.value)} />
+          <input
+            className={`mi${cadVerrouille ? " gris" : ""}`} value={cad}
+            disabled={locked} readOnly={cadVerrouille} placeholder="ex. AB 0123"
+            title={cadVerrouille
+              ? "Renseignée sur l'onglet Emplacement du bien — c'est là qu'elle se modifie."
+              : "Ce que vous saisissez ici est reporté sur l'onglet Emplacement du bien."}
+            onChange={(e) => setCad(e.target.value)}
+          />
+          {cadVerrouille && immeubleId && (
+            <Link className="mdt-lien" href={`/bien/${immeubleId}`}>Modifier dans Emplacement</Link>
+          )}
         </Champ>
         <Champ label="Surface du terrain (m²)">
           <input className="mi" value={terrain} disabled={locked} inputMode="numeric"

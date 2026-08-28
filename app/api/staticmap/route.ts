@@ -33,9 +33,16 @@ export async function GET(req: NextRequest) {
   const w = Math.min(640, Math.max(80, Number(p.get("w") ?? 400)));
   const h = Math.min(640, Math.max(80, Number(p.get("h") ?? 300)));
   const type = p.get("sat") === "1" ? "hybrid" : "roadmap";
-  // Marqueur seulement sur la vue rapprochée : au zoom région il masquerait
-  // la ville qu'il est censé situer.
-  const marqueur = p.get("pin") === "0" ? "" : `&markers=color:red%7C${lat},${lon}`;
+  /* Marqueur. Retour #203 : « il manque le point de localisation sur la carte
+     de gauche ». La vue France n'en portait aucun — la goutte pleine taille y
+     aurait couvert un département entier. Google sait faire un point discret
+     (`size:tiny`) : c'est celui-là qu'on met au zoom région, la goutte restant
+     pour la vue de quartier. */
+  const pin = p.get("pin");
+  const marqueur =
+    pin === "0" ? ""
+      : pin === "petit" ? `&markers=size:tiny%7Ccolor:red%7C${lat},${lon}`
+        : `&markers=color:red%7C${lat},${lon}`;
 
   const url =
     `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}` +

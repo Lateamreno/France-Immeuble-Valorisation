@@ -882,6 +882,11 @@ export async function getMandat(id: string): Promise<{
   im: Record<string, unknown> | null;
   lots: Record<string, unknown>[];
   agent: Agent | null;
+  /* Parcelles de l'immeuble (retour #202). Le mandat s'en sert pour savoir
+     s'il doit verrouiller sa case cadastre : quand Emplacement les connaît,
+     c'est lui qui fait foi ; quand il ne les connaît pas, le mandat les
+     saisit et les lui renvoie. */
+  parcelles: Record<string, unknown>[];
 } | null> {
   const r = await bq("mandat", {
     constraints: [{ key: "_id", constraint_type: "equals", value: id }],
@@ -905,7 +910,12 @@ export async function getMandat(id: string): Promise<{
     (a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0),
   );
   const agent = tousAgents.find((a) => a.id === String(m.AGENT ?? "")) ?? null;
-  return { m, im, lots: lotsTries, agent };
+  const refsParcelles = Array.isArray(im?.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
+  const parcelles = refsParcelles.length
+    ? await fetchAll("parcelle", [{ key: "_id", constraint_type: "in", value: refsParcelles }], 100)
+      .catch(() => [] as Record<string, unknown>[])
+    : [];
+  return { m, im, lots: lotsTries, agent, parcelles };
 }
 
 /* ---------- Vues listes (réplique des modules de la sidebar) ---------- */

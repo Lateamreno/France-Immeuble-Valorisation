@@ -28,7 +28,7 @@ import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
 import { MOTIFS_VENTE } from "@/lib/referentiels";
 import { DocumentsCoffre } from "@/components/fichiers";
-import { PhotosEcran } from "@/components/photos";
+import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { copierTexte } from "@/components/copier";
 import { PrixEcran } from "@/components/prix";
@@ -350,18 +350,26 @@ export function BienFiche({
         </div>
         {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
         <nav>
+          {/* Retour #201 — « il faut avoir une croix pour fermer cette fenêtre,
+              de telle façon qu'on puisse aller chercher des infos dans le reste
+              de la sidebar et revenir là où on en était ». Le mandat restait
+              bien monté quand on changeait de menu, mais rien ne permettait de
+              le refermer : son entrée du rail porte maintenant la même croix
+              que l'estimation, et elle ramène à la fiche. */}
           {contenu && (
-            <button
-              type="button"
-              className={`srow2 encours${sect === "encours" ? " on" : ""}`}
-              onClick={() => setSect("encours")}
-            >
-              <span className="sic2">
-                <svg viewBox="0 0 24 24">{contenuIcone === "mandat" ? I.brief : I.calc}</svg>
-              </span>
-              {contenuLabel ?? "Estimation en cours"}
-              <span className="right"><span className="pastille" /></span>
-            </button>
+            <div className={`srow2 encours ouvert${sect === "encours" ? " on" : ""}`}>
+              <button type="button" className="srow2-in" onClick={() => setSect("encours")}>
+                <span className="sic2">
+                  <svg viewBox="0 0 24 24">{contenuIcone === "mandat" ? I.brief : I.calc}</svg>
+                </span>
+                {contenuLabel ?? "Estimation en cours"}
+                <span className="right"><span className="pastille" /></span>
+              </button>
+              <Link
+                className="srow2-x" href={`/bien/${String(b.im._id)}`}
+                title={contenuIcone === "mandat" ? "Fermer le mandat" : "Fermer l'estimation"}
+              >✕</Link>
+            </div>
           )}
           {/* L'estimation ouverte : une entrée du rail comme les autres. On
               passe à l'état locatif et on revient, rien n'a bougé (#125). */}
@@ -940,7 +948,13 @@ function DescriptifForm({ b }: { b: BienData }) {
 }
 
 function PhotosSection({ b }: { b: BienData }) {
-  const compte = (t: string) => b.photos.filter((p) => p.type === t).length;
+  /* Retour #199 — l'en-tête annonçait « 1 photos » sur un immeuble dont la
+     galerie était vide : il comptait la capture de carte prise dans
+     Emplacement, que la grille écarte depuis le retour #179. Les compteurs
+     comptent maintenant exactement ce que l'écran montre — même ensemble,
+     même source. */
+  const photos = b.photos.filter((p) => !HORS_GALERIE.has(String(p.type)));
+  const compte = (t: string) => photos.filter((p) => p.type === t).length;
   return (
     <>
       <SectTitle
@@ -948,8 +962,8 @@ function PhotosSection({ b }: { b: BienData }) {
         title="Photos"
         chips={
           <>
-            <span className="fchip">{b.photos.length} photos</span>
-            <span className="fchip">{b.photos.filter((p) => p.dossier).length} au dossier</span>
+            <span className="fchip">{photos.length} photo{photos.length > 1 ? "s" : ""}</span>
+            <span className="fchip">{photos.filter((p) => p.dossier).length} au dossier</span>
             <span className="fchip">{compte("Extérieur")} extérieure{compte("Extérieur") > 1 ? "s" : ""}</span>
             <span className="fchip">{compte("Parties communes")} des PC</span>
             <span className="fchip">{compte("Lot")} des lots</span>

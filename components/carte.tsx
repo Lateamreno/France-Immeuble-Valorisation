@@ -9,7 +9,7 @@
 // facturée et un domaine autorisé. Si une clé Google est fournie un jour
 // (NEXT_PUBLIC_GOOGLE_MAPS_KEY), la vue rapprochée bascule automatiquement sur
 // Google Static Maps, plus proche des captures actuelles du dossier.
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { capturerCartes, uploadPhoto } from "@/lib/bo/actions";
 
 const TAILLE = 256;
@@ -178,7 +178,7 @@ function VueCarte({
       {statique ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt={titre}
-          src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? 0 : 1}`}
+          src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? "petit" : "1"}`}
           onError={() => { setStatique(false); onEchec?.(); }} />
       ) : (
         <iframe title={titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
@@ -214,6 +214,20 @@ function CaptureCarte({
       }
     });
 
+  /* Retour #203 : « si la capture de la carte se fait automatiquement on a pas
+     besoin de le faire nous-même, tu peux enlever le bouton ». Elle se fait
+     donc toute seule, une fois, quand Google répond et qu'aucune capture
+     n'existe encore. Une seule fois : la capture part au coffre et l'écran ne
+     redemande jamais rien à Google ensuite. Le dépôt manuel reste, pour la
+     remplacer quand elle ne plaît pas. */
+  const lance = useRef(false);
+  useEffect(() => {
+    if (!auto || dejaCapturee || lance.current) return;
+    lance.current = true;
+    capturer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, dejaCapturee]);
+
   const envoyer = (f: File) =>
     start(async () => {
       const fd = new FormData();
@@ -227,19 +241,21 @@ function CaptureCarte({
     <div className="carte-cap">
       <p>
         {auto
-          ? (dejaCapturee
-            ? "Une capture existe déjà : « Capturer les cartes » la remplacera dans le dossier de vente."
-            : "L'app peut fabriquer la capture des deux cartes toute seule — ou collez la vôtre (Ctrl+V).")
+          ? (pending
+            ? "Capture des cartes en cours…"
+            : "La capture des deux cartes se fait toute seule et part au dossier de vente. Déposez la vôtre (Ctrl+V) si celle-ci ne vous convient pas.")
           : (dejaCapturee
             ? "Une capture existe déjà : en déposer une nouvelle la remplacera dans le dossier de vente."
             : "La capture de la carte n'est pas encore faite. Collez (Ctrl+V) ou déposez-la : elle remplacera la carte ici et sera reprise dans le dossier de vente.")}
       </p>
-      {auto && (
-        <button type="button" className="carte-auto" disabled={pending} onClick={capturer}>
-          {pending ? "Capture en cours…" : ok ? "✓ Cartes capturées — recommencer" : "📷 Capturer les cartes"}
-        </button>
+      {/* La capture automatique peut échouer (Google refuse, réseau) : il faut
+          alors pouvoir la relancer sans quitter l'écran. */}
+      {erreur && (
+        <p className="carte-err">
+          {erreur}
+          <button type="button" className="fadd" disabled={pending} onClick={capturer}>Réessayer</button>
+        </p>
       )}
-      {erreur && <p className="carte-err">{erreur}</p>}
       <div
         className="carte-drop"
         onPaste={(e) => {
