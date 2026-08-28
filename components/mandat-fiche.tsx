@@ -16,6 +16,7 @@ import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
 import { baremeTexte, plafondTaux } from "@/lib/bareme";
+import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { ContactPicker } from "@/components/contact-picker";
 import {
@@ -942,11 +943,14 @@ function OngletConditions({
   m, mandatId, immeubleId, locked,
 }: { m: Record<string, unknown>; mandatId: string; immeubleId: string; locked: boolean }) {
   const [pending, start] = useTransition();
-  const [debut, setDebut] = useState(dateInput(m.date_effet));
+  /* Retour #193 : la prise d'effet part de la date du jour, et reste
+     modifiable. Un mandat sans date d'effet n'a pas d'échéance. */
+  const [debut, setDebut] = useState(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
   const [duree, setDuree] = useState(S(num(m["durée_tot_month"]) ?? 12));
   const [exclu, setExclu] = useState(S(m.Type_exclu) || "Simple");
-  const [dExclu, setDExclu] = useState(S(num(m["durée_exclu_jours"]) ?? 14));
-  const [irrevoc, setIrrevoc] = useState(S(num(m["durée_irrevoc_days"]) ?? 14));
+  const [dExclu, setDExclu] = useState(S(num(m["durée_exclu_jours"]) ?? 90));
+  const [irrevoc, setIrrevoc] = useState(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
+  const [revoc, setRevoc] = useState(dateInput(m.date_revoc_exclu));
   const [web, setWeb] = useState(publicationWeb(m));
 
   const fin = (() => {
@@ -964,6 +968,8 @@ function OngletConditions({
         "durée_tot_month": parse(duree),
         Type_exclu: exclu,
         "durée_exclu_jours": exclu === "Semi-exclusif" ? parse(dExclu) : undefined,
+        // La date de révocation de la seule exclusivité ne vaut qu'en exclusif.
+        date_revoc_exclu: exclu === "Exclusif" && revoc ? new Date(revoc).toISOString() : undefined,
         "durée_irrevoc_days": parse(irrevoc),
         publication_web_yn: web,
       }),
@@ -1005,8 +1011,22 @@ function OngletConditions({
           <input className="mi" value={irrevoc} disabled={locked} inputMode="numeric" onChange={(e) => setIrrevoc(e.target.value)} />
         </Champ>
         {exclu === "Semi-exclusif" && (
-          <Champ label="Délai de présentation (jours)">
+          /* Retour #194 : ce champ porte la DURÉE D'EXCLUSIVITÉ, au terme de
+             laquelle elle s'éteint d'elle-même et le mandat se poursuit en
+             mandat simple. « Délai de présentation » désignait autre chose. */
+          <Champ label="Durée de l'exclusivité (jours)">
             <input className="mi" value={dExclu} disabled={locked} inputMode="numeric" onChange={(e) => setDExclu(e.target.value)} />
+          </Champ>
+        )}
+        {exclu === "Exclusif" && (
+          /* Retour #195 : en exclusif l'exclusivité court sur toute la durée du
+             mandat, mais le mandant peut la lever seule — par courriel ou
+             recommandé — à compter de cette date, sans mettre fin au mandat,
+             qui se poursuit alors en mandat simple. Trois mois par défaut,
+             plafond légal de l'irrévocabilité. */
+          <Champ label="Exclusivité révocable à compter du">
+            <input className="mi" type="date" value={revoc} disabled={locked}
+              onChange={(e) => setRevoc(e.target.value)} />
           </Champ>
         )}
         <Champ label="Fin du mandat">
@@ -1048,7 +1068,12 @@ function OngletEnvoi({
   const [msg, setMsg] = useState<string | null>(null);
   const [pdf, setPdf] = useState(S(m.pdf_mandat) || "");
   const [dateSig, setDateSig] = useState(dateInput(m.date_signature) || new Date().toISOString().slice(0, 10));
-  const pret = trous.length === 0;
+  /* Retour #198 : le numéro de registre s'attribue AVANT la génération. Un
+     mandat imprimé sans numéro ne peut pas être inscrit au registre après
+     coup sans y faire un trou — et le registre sans trou est le premier point
+     qu'un contrôle Hoguet regarde. */
+  const sansNumero = !S(m.numero);
+  const pret = trous.length === 0 && !sansNumero;
   const envoye = S(m.date_last_envoi);
   const signe = !!S(m.date_signature);
   const destinataires = mandants.map((x) => x.email).filter(Boolean) as string[];
@@ -1098,8 +1123,15 @@ function OngletEnvoi({
           <b>Générer le mandat</b>
           <span>
             Le document est rédigé à partir de tout ce qui précède : parties, désignation depuis l&apos;état
-            locatif, prix, durées, publication en ligne. {S(m.numero) ? `Il portera le numéro ${S(m.numero)}.` : "Attribuez un numéro de registre avant l'envoi."}
+            locatif, prix, durées, publication en ligne. {S(m.numero) ? `Il portera le numéro ${S(m.numero)}.` : ""}
           </span>
+          {sansNumero && (
+            <span className="er">
+              Attribuez d&apos;abord un numéro au registre des mandats — bouton « Attribuer un numéro »
+              en haut de l&apos;écran. Le numéro est séquentiel et sans trou : il se réserve avant la
+              génération, jamais après.
+            </span>
+          )}
           <div className="mdt-btns">
             <Link className="mdt-btn" href={`/bien/${immeubleId}/mandat/${mandatId}/imprimer`} target="_blank">
               Prévisualiser

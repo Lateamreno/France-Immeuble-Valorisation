@@ -2150,7 +2150,10 @@ export type MandatPatch = Partial<{
   prix_nv: number; honos_taux: number; honos_ttc: number; prix_hai: number; Charge_hono: string;
   // Conditions
   date_effet: string; "durée_tot_month": number; "durée_exclu_jours": number;
-  "durée_irrevoc_days": number; renouvelable_yn: boolean; date_fin: string;
+  "durée_irrevoc_days": number;
+  /** Exclusif : date à partir de laquelle le mandant peut lever la seule
+   *  exclusivité, sans dénoncer le mandat (retour #195). */
+  date_revoc_exclu: string; renouvelable_yn: boolean; date_fin: string;
   // Pièces et diffusion
   justif_propriete: string; kbis: string;
   /** Publication en ligne : « oui » par défaut, retirable à la demande du client. */
@@ -2516,7 +2519,15 @@ export async function genererMandat(immeubleId: string, mandatId: string) {
     const now = new Date().toISOString();
     const m = await bqOne("bo_mandat", mandatId);
     const numero = m?.numero ? String(m.numero) : mandatId.slice(-6);
-    const path = `mandats/${mandatId}/mandat-${numero}.pdf`;
+    /* Un chemin NEUF à chaque génération, et pas un écrasement.
+       Deux raisons, la première étant un bug rapporté par MAV : le relais sert
+       les fichiers du coffre en « immutable, un jour ». À chemin identique,
+       le navigateur rendait l'ancien PDF alors que l'aperçu, lui, montrait
+       bien le nouveau — on téléchargeait un exclusif corrigé en simple.
+       La seconde est de fond : chaque version reste récupérable, ce qu'un
+       mandat contesté deux ans plus tard exige. */
+    const horodatage = now.replace(/[-:]/g, "").replace(/\..+$/, "");
+    const path = `mandats/${mandatId}/mandat-${numero}-${horodatage}.pdf`;
     if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
     const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
       method: "POST",

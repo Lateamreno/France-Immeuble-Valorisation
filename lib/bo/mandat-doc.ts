@@ -529,7 +529,12 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
             + "date convenue aux présentes. Le mandat se poursuit alors jusqu'à son échéance en qualité de mandat simple : "
             + "le Mandant retrouve la faculté de confier la vente à d'autres intermédiaires et de traiter directement, "
             + "les honoraires du Mandataire restant dus pour tout acquéreur qu'il aura présenté.",
-          "Cette révocation s'effectue dans les mêmes formes et avec le même préavis de <b>quinze (15) jours</b> que la dénonciation du mandat.",
+          /* Retour #195 : le mandant doit lire noir sur blanc qu'un simple
+             courriel suffit. Renvoyer aux « mêmes formes que la dénonciation »
+             était exact mais lui faisait chercher ailleurs. */
+          "Elle s'exerce par <b>simple courriel adressé au négociateur</b> en charge du mandat, "
+            + `<b>${negoEmail}</b>, ou par lettre recommandée, avec un préavis de <b>quinze (15) jours</b> `
+            + "courant à compter de la réception.",
         ]
       : [
           "L'exclusivité interdit au Mandant, pendant toute sa durée, de confier la vente du bien à un autre intermédiaire "
