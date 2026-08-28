@@ -420,6 +420,7 @@ function CarteMandant({
           <Piece
             key={p.cle} label={p.label} url={p.url} locked={locked}
             mandatId={mandatId} immeubleId={immeubleId} cle={p.cle} contactId={x.contactId}
+            mandantUid={x.uid}
             onDepose={(url) => onMaj({ [p.cle]: url } as Partial<Mandant>)}
           />
         ))}
@@ -586,10 +587,12 @@ function Champ({ label, children, large }: { label: string; children: React.Reac
 }
 
 function Piece({
-  label, url, locked, mandatId, immeubleId, cle, contactId, onDepose,
+  label, url, locked, mandatId, immeubleId, cle, contactId, onDepose, mandantUid,
 }: {
   label: string; url?: string; locked: boolean; mandatId: string; immeubleId: string;
   cle: "cni" | "kbis" | "titre"; contactId?: string; onDepose: (url: string) => void;
+  /** Le mandant concerné : le serveur en a besoin pour ranger la pièce. */
+  mandantUid?: string;
 }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
@@ -600,7 +603,7 @@ function Piece({
       setErr(null);
       const fd = new FormData();
       fd.set("file", f);
-      const r = await deposerPieceMandat(mandatId, immeubleId, cle, contactId, fd);
+      const r = await deposerPieceMandat(mandatId, immeubleId, cle, contactId, fd, mandantUid);
       if (r.ok) onDepose(r.url);
       else setErr(r.message);
     });

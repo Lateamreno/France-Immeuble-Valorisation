@@ -2259,11 +2259,39 @@ export async function cancelMandat(mandatId: string, immeubleId: string, motif: 
  * prénom/nom m1 et m2, `Type_personne` — pour que les écrans Bubble encore en
  * service et le champ de recherche continuent de fonctionner.
  */
+/**
+ * Enregistre les mandants — et retient ce qui a été saisi.
+ *
+ * Trois écritures, pas une (retour MAV) :
+ *
+ *   1. Le mandat lui-même, liste `mandants` et champs plats Bubble.
+ *   2. Les pièces déjà déposées sont RECOLLÉES depuis la version enregistrée :
+ *      l'écran ne les renvoie pas toujours (un dépôt suivi d'un changement
+ *      d'onglet, une carte rouverte), et sans ce recollement l'enregistrement
+ *      écrasait le lien par null — le document paraissait avoir disparu.
+ *   3. L'état civil et la société remontent sur la FICHE CONTACT : date de
+ *      naissance, lieu, adresse, raison sociale, SIREN, RCS, capital, siège.
+ *      Ce sont des informations de la personne, pas de ce mandat-ci ; saisies
+ *      une fois, elles resservent au mandat suivant, au compromis, à la vente.
+ */
 export async function majMandants(
   mandatId: string,
   immeubleId: string,
   mandants: MandantEnregistre[],
 ) {
+  /* Recollement des pièces : on ne perd jamais un lien de document parce que
+     l'écran ne l'avait pas en main au moment d'enregistrer. */
+  const avant = await bqOne("bo_mandat", mandatId).catch(() => null);
+  const ancien = Array.isArray(avant?.mandants)
+    ? (avant!.mandants as MandantEnregistre[])
+    : [];
+  const piecesDe = (x: MandantEnregistre) =>
+    ancien.find((v) => v.uid === x.uid || (!!x.contactId && v.contactId === x.contactId));
+  mandants = mandants.map((x) => {
+    const a = piecesDe(x);
+    return { ...x, cni: x.cni || a?.cni, kbis: x.kbis || a?.kbis };
+  });
+
   const plat: Record<string, unknown> = {
     mandants,
     MANDANTs: mandants.map((x) => x.contactId).filter(Boolean),
@@ -2296,7 +2324,53 @@ export async function majMandants(
   plat["Modified Date"] = new Date().toISOString();
 
   await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: plat });
+  await Promise.all(mandants.map((x) => renvoyerSurLeContact(x)));
   rafraichirMandat(mandatId, immeubleId);
+}
+
+/**
+ * Recopie sur la fiche contact ce qui a été saisi au mandat.
+ *
+ * Rien n'est effacé : seuls les champs renseignés au mandat sont écrits, et
+ * seulement s'ils apportent quelque chose. Un contact sans date de naissance
+ * la gagne ; un contact qui en a déjà une la garde — c'est sa fiche qui fait
+ * foi, pas un mandat rédigé à la hâte.
+ */
+async function renvoyerSurLeContact(x: MandantEnregistre) {
+  if (!x.contactId || !SB_KEY) return;
+  const c = await bqOne("bo_contact", x.contactId).catch(() => null);
+  if (!c) return;
+
+  const vide = (v: unknown) => v === undefined || v === null || String(v).trim() === "";
+  const patch: Record<string, unknown> = {};
+  /** N'écrit que si le mandat sait quelque chose que la fiche ignore. */
+  const combler = (champ: string, valeur: unknown) => {
+    if (vide(valeur) || !vide(c[champ])) return;
+    patch[champ] = valeur;
+  };
+  const comblerGeo = (champ: string, valeur?: string) => {
+    if (vide(valeur) || !vide((c[champ] as { address?: string } | undefined)?.address)) return;
+    patch[champ] = { address: valeur };
+  };
+
+  combler("date_naissance", x.dateNaissance);
+  comblerGeo("lieu_naissance_geo", x.lieuNaissance);
+  comblerGeo("adresse_geo", x.adresse);
+  combler("email", x.email);
+  combler("poste", x.fonction);
+  if (x.societe) {
+    combler("entreprise_nom", x.societe.nom);
+    combler("entreprise_siren", x.societe.siren);
+    combler("entreprise_rcs", x.societe.rcs);
+    combler("entreprise_capital", x.societe.capital);
+    comblerGeo("entreprise_siege_geo", x.societe.siege);
+  }
+  if (Object.keys(patch).length === 0) return;
+
+  patch["Modified Date"] = new Date().toISOString();
+  await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: x.contactId, p_patch: patch })
+    .catch(() => undefined);
+  revalidatePath(`/contact/${x.contactId}`);
 }
 
 export type MandantEnregistre = {
@@ -2336,6 +2410,8 @@ export async function deposerPieceMandat(
   cle: "cni" | "kbis" | "titre",
   contactId: string | undefined,
   fd: FormData,
+  /** Le mandant concerné : sans lui, la pièce ne se rattache à personne. */
+  mandantUid?: string,
 ): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
   try {
     const file = fd.get("file");
@@ -2351,16 +2427,38 @@ export async function deposerPieceMandat(
         p_id: mandatId,
         p_patch: { justif_propriete: url, "Modified Date": new Date().toISOString() },
       });
-    } else if (contactId) {
-      // La pièce enrichit la fiche contact — elle vivra plus longtemps que ce mandat.
-      await rpc("bo_patch_doc", {
-        p_table: "bo_contact",
-        p_id: contactId,
-        p_patch: {
-          [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
-          "Modified Date": new Date().toISOString(),
-        },
-      });
+    } else {
+      /* La pièce est écrite TOUT DE SUITE sur le mandat, sans attendre que
+         l'agent pense à enregistrer l'onglet. Elle ne vivait jusqu'ici que
+         dans l'état de l'écran : changer d'onglet avant d'enregistrer la
+         faisait disparaître, alors que le fichier, lui, était bien déposé. */
+      const m = await bqOne("bo_mandat", mandatId).catch(() => null);
+      const liste = Array.isArray(m?.mandants) ? (m!.mandants as MandantEnregistre[]) : [];
+      const vise = (x: MandantEnregistre) =>
+        (mandantUid && x.uid === mandantUid) || (!!contactId && x.contactId === contactId);
+      const i = liste.findIndex(vise);
+      if (i >= 0) {
+        liste[i] = { ...liste[i], [cle]: url };
+        const patch: Record<string, unknown> = { mandants: liste, "Modified Date": new Date().toISOString() };
+        // Les champs plats que Bubble lit, tenus en phase avec la liste.
+        if (cle === "cni") patch[i === 0 ? "cni_m1" : "cni_m2"] = url;
+        else patch.kbis = url;
+        await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: patch });
+      }
+
+      // Et elle enrichit la fiche contact : elle resservira au mandat suivant,
+      // au compromis, à la vente.
+      if (contactId) {
+        await rpc("bo_patch_doc", {
+          p_table: "bo_contact",
+          p_id: contactId,
+          p_patch: {
+            [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
+            "Modified Date": new Date().toISOString(),
+          },
+        });
+        revalidatePath(`/contact/${contactId}`);
+      }
     }
     // Le coffre de l'immeuble garde une trace, comme pour tout document déposé.
     await rpc("bo_insert_doc", {
