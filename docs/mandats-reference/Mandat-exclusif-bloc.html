@@ -1,0 +1,325 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Mandat de vente exclusif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--noir:#0A0A0A;--or:#C19B6E;--or-p:#EFE0CD;--or-pp:#FAF4EC;
+--gris:#7C7C7C;--ligne:#E5E2DC;--point:#C7C3BC}
+html{background:#E9E9E9}
+body{font-family:'Inter',Arial,sans-serif;color:var(--noir);-webkit-font-smoothing:antialiased}
+.page{background:#fff;width:210mm;height:297mm;overflow:hidden;margin:0 auto 9mm;padding:15mm 15mm 26mm;position:relative;display:block;break-after:page}
+.page:last-child{break-after:auto}
+.doc-hd{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:3mm;margin-bottom:6mm;border-bottom:1px solid var(--ligne)}
+.logo svg{height:7mm;display:block}.lg-t{fill:#0A0A0A}.lg-b{fill:var(--or)}
+.doc-hd .ref{font-size:6.4pt;letter-spacing:.12em;color:var(--gris);text-transform:uppercase}
+.doc-ft{position:absolute;left:15mm;right:15mm;bottom:11mm;padding-top:3mm;display:flex;justify-content:space-between;align-items:flex-end;gap:6mm}
+.ft-l{font-size:5.8pt;color:var(--gris);line-height:1.4;max-width:76mm}
+.par{display:flex;align-items:flex-end;gap:2.4mm}
+.par-l{font-size:5.6pt;text-transform:uppercase;letter-spacing:.12em;color:var(--gris);margin-right:.5mm}
+.par i{display:block;width:11mm;height:6mm}
+.pg{font-size:6.2pt;color:var(--gris);white-space:nowrap}
+h1{font-family:'Archivo',Arial;font-size:22pt;line-height:1.05;letter-spacing:-.025em;font-weight:700}
+h2{font-family:'Archivo',Arial;font-size:9pt;text-transform:uppercase;letter-spacing:.16em;font-weight:700;margin:0 0 4.5mm;display:flex;align-items:center;gap:3mm;border-bottom:1px solid var(--ligne);padding-bottom:2.6mm}
+h2 .anum{display:inline-flex;align-items:center;justify-content:center;width:6.4mm;height:6.4mm;border-radius:999px;background:var(--or);color:#fff;font-size:6.6pt;letter-spacing:0}
+h3{font-size:7.6pt;font-weight:700;margin:5mm 0 2.2mm;color:var(--noir);text-transform:uppercase;letter-spacing:.12em}
+h3.pill{display:inline-block;background:var(--or);color:#fff;border-radius:999px;padding:1.5mm 4mm;font-size:7pt;letter-spacing:.16em;margin:7mm 0 3mm}
+.card{border:1px solid var(--or-p);border-radius:3mm;padding:4mm 4.5mm 4.5mm;margin-bottom:4.5mm;overflow:hidden}
+.card-t{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:var(--or);margin-bottom:3mm;padding-bottom:2mm;border-bottom:1px solid var(--or-p)}
+.card p:last-child{margin-bottom:0}
+p{font-size:8.1pt;line-height:1.55;text-align:justify;margin-bottom:1.8mm}
+p.intro{color:var(--gris)}
+p.legal{font-size:8.1pt;line-height:1.5;margin-bottom:1.4mm}
+.eyebrow{font-size:6.4pt;letter-spacing:.3em;text-transform:uppercase;color:var(--or);font-weight:700;margin-bottom:2.5mm}
+.hero{padding-bottom:5mm;margin-bottom:6mm;border-bottom:2px solid var(--or)}
+.hero-sub{font-size:9pt;color:var(--noir);margin-top:2mm;font-weight:600}
+.hero-meta{font-size:7.2pt;color:var(--gris);margin-top:1.5mm}
+.kv{display:grid;grid-template-columns:34mm 1fr;font-size:7.8pt}
+.kv dt{color:var(--gris);font-size:6.2pt;text-transform:uppercase;letter-spacing:.07em;font-weight:600;padding:1.15mm 0;border-top:1px dotted var(--point)}
+.kv dd{padding:1.15mm 0;border-top:1px dotted var(--point);line-height:1.38}
+.kv dt:first-of-type,.kv dd:first-of-type{border-top:none}
+.kv.tight{grid-template-columns:23mm 1fr;font-size:7.3pt}
+.kv.tight dt,.kv.tight dd{padding:1mm 0}
+/* parties */
+.pty{margin-bottom:3mm;border:1px solid var(--ligne);border-radius:3mm;padding:0 3.6mm 3.6mm;background:#fff;overflow:hidden}
+.pty-h{display:flex;align-items:center;gap:3mm;margin:0 -3.6mm 2.4mm;padding:2.2mm 3.6mm;background:var(--or-pp);border-bottom:1px solid var(--or-p)}
+.chip{font-size:6.2pt;text-transform:uppercase;letter-spacing:.14em;font-weight:700;padding:1.1mm 3mm;border-radius:999px;background:var(--or);color:#fff}
+.pty-role{font-size:6.2pt;color:var(--gris);text-transform:uppercase;letter-spacing:.1em}
+.pty-k{font-size:8pt;font-weight:700}
+.pty-sep{opacity:.6}
+.pty-name{font-size:9pt;font-weight:700;line-height:1.2;margin-bottom:1.6mm}
+.pty-foot{font-size:6.4pt;color:var(--gris);margin-top:1.6mm;text-align:left}
+.ptys.many{display:grid;grid-template-columns:1fr 1fr;gap:3mm;grid-auto-rows:1fr}
+.ptys.many .pty{margin-bottom:0}
+/* registres */
+.ldg{margin:2mm 0 3mm}
+.ld{display:flex;align-items:baseline;gap:2.5mm;padding:1.8mm 0}
+.ld+.ld{border-top:1px dotted var(--point)}
+.ld-k{font-size:8pt;font-weight:600;flex:none;max-width:100mm}
+.ld-k em{display:block;font-style:normal;font-size:6.6pt;color:var(--gris);font-weight:400;line-height:1.35;margin-top:.4mm}
+.ld i{flex:1;border-bottom:1px dotted var(--point);transform:translateY(-1mm)}
+.ld-v{font-size:9.6pt;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ld-tot{border-top:1.4pt solid var(--noir)!important;margin-top:1mm;padding-top:2.4mm}
+.ld-tot .ld-v{font-size:12pt}
+.gap{display:flex;align-items:center;gap:1.6mm;padding:1.2mm 0}
+.gap span{font-size:6.2pt;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.12em}
+.gap:before{content:"";width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-top:1.8mm solid var(--or)}
+/* prix */
+.pviz{display:flex;align-items:stretch;gap:2.5mm;margin:1mm 0 3mm}
+.pcard{flex:1;border:1px solid var(--ligne);border-radius:3mm;padding:3.4mm;display:flex;flex-direction:column;gap:1mm}
+.pcard-hi{background:var(--or);border-color:var(--or)}
+.pcard-hi .plab,.pcard-hi .pnote{color:#fff;opacity:.9}.pcard-hi .pval{color:#fff}
+.plab{font-size:6.2pt;text-transform:uppercase;letter-spacing:.12em;color:var(--gris);font-weight:600}
+.pval{font-family:'Archivo',Arial;font-size:13.5pt;font-weight:700;letter-spacing:-.02em}
+.pnote{font-size:6.2pt;color:var(--gris)}
+.pop{display:flex;align-items:center;font-size:11pt;color:var(--or);font-weight:700}
+/* durée — D1 gantt */
+.gantt{margin:1mm 0 3mm}
+.gt{display:flex;align-items:center;gap:4mm;margin-bottom:2.2mm}
+.gt-e{width:22mm;flex:none;font-size:7pt;font-weight:700;text-align:right}
+.gt-h{margin-bottom:1mm}
+.gt-h .gt-e{font-size:5.8pt;color:var(--gris);font-weight:600}
+.gt-hd{background:transparent!important;height:0}
+.viz-lead{font-size:7.4pt;color:var(--gris);margin-bottom:2.4mm}
+.gt-l{width:26mm;flex:none;font-size:6.4pt;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--gris);text-align:right}
+.gt-t{flex:1;position:relative;height:6mm;background:#F7F5F2;border-radius:999px}
+.gt-t i{position:absolute;left:0;top:0;height:6mm;border-radius:999px;display:flex;align-items:center;justify-content:center}
+.gt-t em{font-style:normal;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.b-mandat{background:var(--or)}.b-mandat em{color:#fff}
+.b-exclu{background:var(--or-p)}.b-exclu em{color:var(--noir)}
+.b-irr{background:#fff;border:1px solid var(--noir)}.b-irr em{color:var(--noir);font-size:5pt}
+.gt-ax .gt-t{background:transparent;height:5mm;border-top:1px dotted var(--point);border-radius:0}
+.ax{position:absolute;top:1.4mm;font-size:6pt;color:var(--gris);white-space:nowrap;transform:translateX(-50%)}
+.ax:first-of-type{transform:none}
+.ax-r{right:0;left:auto;transform:none}
+.viz-note{font-size:6.6pt;color:var(--gris);margin:2mm 0 3mm}
+/* durée — D2 frise verticale */
+.vf{position:relative;margin:2mm 0 3mm;padding-left:32mm}
+.vf:before{content:"";position:absolute;left:26mm;top:2mm;bottom:4mm;width:1.2px;background:var(--or-p)}
+.vf-n{position:relative;padding-bottom:1.5mm}
+.vf-n:before{content:"";position:absolute;left:-6.7mm;top:1.1mm;width:3.4mm;height:3.4mm;border-radius:999px;background:var(--or);box-shadow:0 0 0 1mm #fff}
+.vf-end:before{background:var(--noir)}
+.vf-d{position:absolute;left:-32mm;top:.3mm;width:22mm;text-align:right;font-size:7.6pt;font-weight:700}
+.vf-t{display:block;font-size:8pt;font-weight:700;line-height:1.3}
+.vf-n p{font-size:7pt;color:var(--gris);margin:.6mm 0 0;text-align:left;line-height:1.4}
+.vf-g{position:relative;padding:2mm 0}
+.vf-g span{display:inline-block;font-size:6pt;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.12em;background:#fff;padding:0 1.6mm;margin-left:-6.6mm}
+/* durée — D3 barre surlignée */
+.tl{margin:1mm 0 4mm}
+.tl-over{display:flex;align-items:center;gap:2.4mm;margin-top:1.6mm}
+.tl-over i{background:var(--noir);border-radius:999px;height:2.6mm;flex:none}
+.tl-over span{font-size:6pt;font-weight:700;color:var(--noir);text-transform:uppercase;letter-spacing:.1em}
+.tl-dates{position:relative;height:5mm;margin-top:2mm;border-top:1px dotted var(--point)}
+.tl-dates span{position:absolute;top:1.4mm;font-size:6pt;color:var(--gris);transform:translateX(-50%)}
+.tl-dates span:first-child{left:0;transform:none}
+.tl-dates .r{right:0;left:auto;transform:none}
+.tl-track{display:flex;height:6mm;gap:1mm}
+.tl-track i{border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.tl-track em{font-style:normal;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sg-1{background:var(--noir)}.sg-1 em{color:#fff}
+.sg-2{background:var(--or)}.sg-2 em{color:#fff}
+.sg-3{background:var(--or-p)}.sg-3 em{color:var(--noir)}
+.tl-legend{display:flex;align-items:center;gap:6mm;margin-top:3mm;padding-top:2.4mm;border-top:1px dotted var(--point)}
+.lgd{display:flex;align-items:center;gap:1.6mm;font-size:6.4pt;color:var(--gris);text-transform:uppercase;letter-spacing:.08em}
+.lgd b{width:3mm;height:3mm;border-radius:999px;display:block}
+.lgd .d1{background:var(--noir)}.lgd .d2{background:var(--or)}.lgd .d3{background:var(--or-p)}
+.lgd-r{margin-left:auto;font-size:6.4pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--noir)}
+.phases{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2.5mm;margin-bottom:3mm}
+.ph{border:1px solid var(--or-p);border-radius:3mm;padding:3mm 3.4mm;position:relative}
+.ph-n{position:absolute;top:2.4mm;right:3mm;font-family:'Archivo';font-size:11pt;font-weight:700;color:var(--or-p);line-height:1}
+.ph-t{display:block;font-size:6.2pt;text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:1.4mm;color:var(--or)}
+.ph p{font-size:7pt;margin:0;text-align:left;line-height:1.4;color:var(--noir)}
+/* encadrés */
+.box{border:1px solid var(--or);border-radius:3mm;padding:4.5mm 5mm;margin-bottom:3.5mm;background:#fff}
+.box-t{font-size:6.8pt;text-transform:uppercase;letter-spacing:.15em;font-weight:700;margin-bottom:2.8mm;padding-bottom:2mm;color:var(--or);border-bottom:1px solid var(--or-p)}
+.box p.lead{font-size:7.9pt;font-weight:600;line-height:1.45}
+.box p.fine{font-size:6.9pt;font-weight:400;margin-bottom:0;color:var(--gris)}
+/* tableaux */
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:7.6pt;margin:2mm 0}
+.tbl th{background:var(--or);color:#fff;font-size:6.3pt;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:2mm 2.4mm;border-right:1px solid rgba(255,255,255,.4)}
+.tbl thead th:first-child{border-radius:999px 0 0 999px}
+.tbl thead th:last-child{border-radius:0 999px 999px 0;border-right:none}
+.tbl td{padding:1.9mm 2.4mm;border-bottom:1px dotted var(--point);border-right:1px dotted var(--point)}
+.tbl td:last-child{border-right:none}
+.tbl .num{text-align:right}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tfoot td{font-weight:700;border-top:1.4pt solid var(--noir);border-bottom:none;padding-top:2.2mm}
+/* listes */
+.lst{list-style:none;font-size:7.9pt}
+.lst li{position:relative;padding-left:4.6mm;margin-bottom:1.4mm;line-height:1.45;text-align:justify}
+.lst li:before{content:"";position:absolute;left:0;top:1.4mm;width:2.6mm;height:1.2mm;border-radius:999px;background:var(--or)}
+.plain{margin-bottom:3mm}
+.plain p.lead{font-size:8.1pt;font-weight:400;line-height:1.55;text-align:justify;margin-bottom:2mm}
+.plain p.lead b{font-weight:700}
+.plain p.fine{font-size:7pt;color:var(--gris);margin:0;text-align:justify}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:7mm}
+.nopow{font-size:7.2pt;line-height:1.45;margin-top:3mm;padding:2.6mm 3mm;background:var(--or-pp);border-radius:2.4mm;text-align:left}
+.mentions{font-size:6.9pt}.mentions.two{columns:2;column-gap:8mm}
+.ment{break-inside:avoid;margin-bottom:2.6mm}
+.ment h4{font-size:6.3pt;text-transform:uppercase;letter-spacing:.09em;color:var(--or);margin-bottom:.8mm}
+.ment p{font-size:6.9pt;line-height:1.42;margin:0}
+/* signatures */
+.sgs{display:grid;grid-template-columns:1fr 1fr;gap:7mm 8mm;margin-top:5mm}
+.sg{display:flex;flex-direction:column}
+.sg-r{font-size:6.2pt;text-transform:uppercase;letter-spacing:.14em;font-weight:700;color:var(--noir);background:var(--or);border-radius:999px;padding:1.1mm 3mm;align-self:flex-start;margin-bottom:2.4mm}
+.sg-n{font-size:8.6pt;font-weight:700;line-height:1.25}
+.sg-q{font-size:6.6pt;color:var(--gris)}
+.sg-z{height:30mm}
+.sg-l{font-size:6.2pt;color:var(--gris);padding-top:1.4mm}
+/* annexe */
+.coupon{border:1px solid var(--or);border-radius:3mm;padding:6mm;margin-top:4mm}
+.coupon-t{font-size:6.6pt;text-transform:uppercase;letter-spacing:.15em;font-weight:700;margin-bottom:3mm;color:var(--or)}
+.coupon p{font-size:7.8pt}
+.clines{margin-top:5mm;display:grid;gap:6mm}
+.clines div{display:flex;align-items:flex-end;gap:3mm}
+.clines span{font-size:6.4pt;color:var(--gris);text-transform:uppercase;letter-spacing:.08em;width:28mm;flex:none}
+.clines i{flex:1;border-bottom:1px dotted var(--point);height:1px}
+@media print{html{background:#fff}.page{margin:0}}
+@page{size:A4;margin:0}
+
+/* B — Or en aplat sur les en-têtes de carte et d'encadré */
+.pty-h{background:var(--or);border-bottom:none;align-items:baseline}
+.pty-h .pty-k{color:#fff;font-size:8pt;font-weight:700;letter-spacing:.02em}
+.pty-h .pty-sep{color:#fff;opacity:.7;font-size:7pt}
+.pty-h .pty-role{color:#fff;opacity:.9;font-size:6.2pt}
+.box{border:1px solid var(--or-p);overflow:hidden;padding:4mm 5mm}
+.box-t{background:var(--or);color:#fff;margin:0 -5mm 3.2mm;padding:2.6mm 5mm;border-bottom:none;border-radius:0}
+.ph{border:none;background:var(--or-pp)}
+.ph-n{color:var(--or-p)}
+.coupon{overflow:hidden;padding:0 6mm 6mm}
+.coupon-t{background:var(--or);color:#fff;margin:0 -6mm 4mm;padding:2.6mm 6mm}
+
+/* tableau — gélule, séparateurs fins, pas d'alternance */
+.tbl{border-radius:3mm;overflow:hidden;border:1px solid var(--or-p);margin:0 0 2mm}
+.tbl th{background:var(--or);color:#fff;border-right:1px solid rgba(255,255,255,.45);padding:2.2mm 2.6mm}
+.tbl thead th:first-child,.tbl thead th:last-child{border-radius:0}
+.tbl thead th:last-child{border-right:none}
+.tbl td{padding:2.1mm 2.6mm;border-bottom:1px dotted var(--point);border-right:1px dotted var(--point)}
+.tbl td:last-child{border-right:none}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tfoot td{border-top:1.4pt solid var(--noir);border-bottom:none;padding-top:2.4mm}
+/* vignette prix de vente : libellés en noir, montant en blanc */
+.pcard-hi{background:var(--or);border-color:var(--or)}
+.pcard-hi .plab,.pcard-hi .pnote{color:var(--noir);opacity:1}
+.pcard-hi .pval{color:#fff}
+
+.gt-out{position:absolute;top:1.4mm;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--noir)}
+.lots th,.lots td{font-size:7.4pt}
+.note-copro{font-size:7.4pt;color:var(--gris);margin-top:2mm}
+</style></head><body><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><div class="hero">
+<div class="eyebrow">Mandat n° 2109 · Registre des mandats</div>
+<h1>Mandat de vente exclusif</h1>
+<div class="hero-sub">Exclusivité consentie pour toute la durée du mandat</div>
+<div class="hero-meta">Immeuble mixte de rapport · 18 avenue Gambetta, 93100 Montreuil · Vente en bloc · Signé le 27 août 2026</div>
+</div><h2><span class="anum">1</span>Les parties</h2>
+<article class="pty pty-a">
+<header class="pty-h"><span class="pty-k">Mandataire</span><span class="pty-sep">—</span><span class="pty-role">Titulaire de la carte professionnelle · Agent d’entremise</span></header>
+<div class="pty-name">France Immeuble S.A.S.</div>
+<dl class="kv"><dt>Raison sociale</dt><dd>France Immeuble S.A.S. — SAS au capital de 100&nbsp;000,00&nbsp;€</dd><dt>SIREN / RCS</dt><dd>835 369 562 — RCS Paris</dd><dt>Siège social</dt><dd>66 avenue des Champs-Élysées, 75008 Paris</dd><dt>Carte professionnelle</dt><dd>CPI 7501 2018 000 026 00 — CCI Paris Île-de-France</dd><dt>Garantie et assurance</dt><dd>Garantie financière 120&nbsp;000&nbsp;€ (GALIAN) · RCP MMA Entreprises n°&nbsp;120 137 405</dd><dt>Représenté par</dt><dd>Marc-Antoine VOCI, Président</dd><dt>Contact</dt><dd>06.30.76.83.81 — ma.voci@france-immeuble.fr</dd></dl>
+<p class="pty-foot">Le Mandataire ne reçoit aucun fonds, effet ou valeur au titre des présentes.</p>
+</article>
+<p class="intro" style="font-size:7.4pt;margin:2mm 0 2.5mm">Les mandants ci-dessous, copropriétaires du bien désigné à l’article 2, agissent conjointement et s’obligent solidairement.</p>
+<div class="ptys many">
+<article class="pty pty-m">
+<header class="pty-h"><span class="pty-k">Mandant 01</span><span class="pty-sep">—</span><span class="pty-role">Personne morale</span></header>
+<div class="pty-name">SCI DU MARCHÉ CENTRAL</div>
+<dl class="kv tight"><dt>Forme et capital</dt><dd>Société civile immobilière au capital de 1&nbsp;000,00&nbsp;€</dd><dt>SIREN / RCS</dt><dd>512 447 903 — RCS Bobigny</dd><dt>Siège social</dt><dd>14 rue de la Fontaine, 93100 Montreuil</dd><dt>Représentée par</dt><dd>Monsieur Étienne LAURENT, gérant</dd></dl>
+</article>
+<article class="pty pty-m">
+<header class="pty-h"><span class="pty-k">Mandant 02</span><span class="pty-sep">—</span><span class="pty-role">Personne physique</span></header>
+<div class="pty-name">Monsieur Étienne LAURENT</div>
+<dl class="kv tight"><dt>Date de naissance</dt><dd>12 mars 1962</dd><dt>Lieu de naissance</dt><dd>Paris 14<sup>e</sup> arrondissement</dd><dt>Adresse</dt><dd>8 rue Lecourbe</dd><dt>Ville</dt><dd>75015 Paris</dd></dl>
+</article>
+<article class="pty pty-m">
+<header class="pty-h"><span class="pty-k">Mandant 03</span><span class="pty-sep">—</span><span class="pty-role">Personne physique</span></header>
+<div class="pty-name">Madame Hélène LAURENT épouse MOREAU</div>
+<dl class="kv tight"><dt>Date de naissance</dt><dd>5 septembre 1965</dd><dt>Lieu de naissance</dt><dd>Vincennes (Val-de-Marne)</dd><dt>Adresse</dt><dd>22 avenue Foch</dd><dt>Ville</dt><dd>94300 Vincennes</dd></dl>
+</article>
+</div></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="par"><span class="par-l">Paraphes</span><i></i><i></i><i></i><i></i><i></i></div><div class="pg">Page 1 / 5</div></div>
+</section><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><h2><span class="anum">2</span>Le bien et le prix</h2>
+<h3 class="pill" style="margin-top:0">Désignation</h3>
+<p class="legal">Dans un ensemble immobilier sis à <b>MONTREUIL (93100), 18 avenue Gambetta</b>, édifié en 1968, élevé sur rez-de-chaussée de trois étages, cadastré <b>section AL numéro 214</b> pour une contenance de six ares douze centiares (612 m²).</p>
+<p class="legal">Ledit immeuble comprenant <b>trois (3) locaux commerciaux</b> en rez-de-chaussée, <b>douze (12) appartements</b> et <b>dix (10) emplacements de stationnement</b>, représentant une surface privative totale d’environ <b>1&nbsp;180 m²</b> au sens de l’article 46 de la loi du 10 juillet 1965.</p>
+<p class="legal">L’immeuble est à ce jour <b>entièrement libre de toute occupation</b>, l’ensemble des baux ayant pris fin. Il est vendu en bloc, en l’état.</p>
+<h3>Composition</h3>
+<table class="tbl lots"><thead><tr><th class="">Nature des locaux</th><th class="num">Nombre</th><th class="num">Surface</th><th class="">Occupation</th></tr></thead><tbody><tr><td class="">Locaux commerciaux</td><td class="num">3</td><td class="num">412 m²</td><td class="">Libres</td></tr><tr><td class="">Appartements</td><td class="num">12</td><td class="num">768 m²</td><td class="">Libres</td></tr><tr><td class="">Stationnements</td><td class="num">10</td><td class="num">—</td><td class="">Libres</td></tr></tbody><tfoot><tr><td class="">Total</td><td class="num">25</td><td class="num">1&nbsp;180 m²</td><td class="">Entièrement libre</td></tr></tfoot></table>
+<h3 class="pill">Prix et honoraires</h3>
+<p>Le prix de vente HAI, honoraires d’agence inclus, est fixé à la somme de <b>4&nbsp;620&nbsp;000,00&nbsp;€</b> (quatre millions six cent vingt mille euros), se décomposant en un prix net vendeur de <b>4&nbsp;400&nbsp;000,00&nbsp;€</b> (quatre millions quatre cent mille euros) et des honoraires de <b>220&nbsp;000,00&nbsp;€</b> (deux cent vingt mille euros) toutes taxes comprises, soit <b>5,00 % TTC du prix net vendeur</b>, dont 36&nbsp;666,67&nbsp;€ (trente-six mille six cent soixante-six euros et soixante-sept centimes) de taxe sur la valeur ajoutée, <b>à la charge de l’acquéreur</b>.</p>
+<div class="pviz">
+ <div class="pcard"><span class="plab">Prix net vendeur</span><span class="pval">4&nbsp;400&nbsp;000&nbsp;€</span><span class="pnote">Revient au Mandant</span></div>
+ <div class="pop">+</div>
+ <div class="pcard"><span class="plab">Honoraires</span><span class="pval">220&nbsp;000&nbsp;€</span><span class="pnote">5,00 % TTC du net vendeur</span></div>
+ <div class="pop">=</div>
+ <div class="pcard pcard-hi"><span class="plab">Prix de vente HAI</span><span class="pval">4&nbsp;620&nbsp;000&nbsp;€</span><span class="pnote">Honoraires d’agence inclus · payé par l’acquéreur</span></div>
+</div>
+<div class="ldg">
+<div class="ld"><span class="ld-k">Prix net vendeur<em>Somme revenant au Mandant, hors honoraires et hors TVA si applicable</em></span><i></i><span class="ld-v">4&nbsp;400&nbsp;000,00&nbsp;€</span></div>
+<div class="ld"><span class="ld-k">Honoraires du Mandataire<em>Soit 5,00 % TTC du prix net vendeur, dont 36&nbsp;666,67&nbsp;€ de TVA · à la charge de l’acquéreur</em></span><i></i><span class="ld-v">220&nbsp;000,00&nbsp;€</span></div>
+<div class="ld ld-tot"><span class="ld-k">Prix de vente HAI<em>Honoraires d’agence inclus · somme payée par l’acquéreur</em></span><i></i><span class="ld-v">4&nbsp;620&nbsp;000,00&nbsp;€</span></div>
+</div>
+<p>Les honoraires sont payables au comptant à la signature de l’acte authentique, par prélèvement sur le prix entre les mains du notaire. Le bien étant libre de toute occupation, aucun droit de préemption locatif n’est susceptible d’être exercé. Les frais d’acte et droits d’enregistrement s’ajoutent au prix de vente HAI et restent à la charge de l’acquéreur. Le prix net vendeur peut être modifié par avenant, assorti de la modification corrélative des honoraires selon le barème en vigueur consultable sur www.france-immeuble.fr.</p></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="par"><span class="par-l">Paraphes</span><i></i><i></i><i></i><i></i><i></i></div><div class="pg">Page 2 / 5</div></div>
+</section><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><h2><span class="anum">3</span>Durée, irrévocabilité et dénonciation</h2>
+<div class="ldg">
+<div class="ld"><span class="ld-k">Date de signature</span><i></i><span class="ld-v">27/08/2026</span></div>
+<div class="ld"><span class="ld-k">Durée du mandat<em>Sans reconduction tacite</em></span><i></i><span class="ld-v">12 mois — jusqu’au 27/08/2027</span></div>
+<div class="ld"><span class="ld-k">Durée d’irrévocabilité<em>Période pendant laquelle le mandat ne peut être dénoncé</em></span><i></i><span class="ld-v">2 mois — jusqu’au 27/10/2026</span></div>
+<div class="ld"><span class="ld-k">Durée de l’exclusivité<em>Consentie pour toute la durée du mandat, sauf révocation</em></span><i></i><span class="ld-v">12 mois — jusqu’au 27/08/2027</span></div>
+<div class="ld"><span class="ld-k">Révocation de l’exclusivité<em>Date à partir de laquelle le Mandant peut lever la seule exclusivité</em></span><i></i><span class="ld-v">possible à compter du 27/11/2026</span></div>
+</div>
+<div class="plain">
+<p class="lead">Le présent mandat est signé le <b>27 août 2026</b> pour une durée de <b>douze (12) mois</b>. Il prendra fin de plein droit le <b>27 août 2027</b>, sans reconduction tacite. Il est consenti à titre <b>exclusif pour toute sa durée</b>, avec une période d’irrévocabilité de <b>deux (2) mois</b>. L’exclusivité pourra être révoquée seule à compter du <b>27 novembre 2026</b>, dans les conditions de l’article 4.</p>
+<p class="lead">Pendant la période d’irrévocabilité, soit jusqu’au <b>27 octobre 2026 inclus</b>, le Mandant ne peut pas mettre fin au mandat, que celui-ci comporte ou non une clause d’exclusivité.</p>
+<p class="lead">Passé cette période, chacune des parties peut dénoncer le mandat à tout moment. La partie qui entend y mettre fin en avise l’autre <b>quinze (15) jours au moins à l’avance</b>, par lettre recommandée avec avis de réception, par lettre recommandée électronique ou par courriel adressé au négociateur en charge du mandat, <b>ma.voci@france-immeuble.fr</b>, le délai courant à compter de la réception.</p>
+<p class="fine">La durée d’irrévocabilité ne peut excéder trois mois (article 78 du décret n° 72-678 du 20 juillet 1972). Elle est indépendante de la date de révocabilité de l’exclusivité, librement convenue entre les parties.</p></div>
+<p class="viz-lead">Les périodes ci-dessous courent à compter de la signature, le 27 août 2026.</p>
+<div class="gantt">
+ <div class="gt gt-h"><span class="gt-l"></span><div class="gt-t gt-hd"></div><span class="gt-e">Échéance</span></div>
+ <div class="gt"><span class="gt-l">Mandat</span><div class="gt-t"><i class="b-mandat" style="width:100%"><em>12 mois</em></i></div><span class="gt-e">27/08/2027</span></div><div class="gt"><span class="gt-l">Exclusivité</span><div class="gt-t"><i class="b-exclu" style="width:100%"><em>12 mois</em></i></div><span class="gt-e">27/08/2027</span></div><div class="gt"><span class="gt-l">Irrévocabilité</span><div class="gt-t"><i class="b-irr" style="width:16.67%"><em>2 mois</em></i></div><span class="gt-e">27/10/2026</span></div>
+</div>
+<h2 style="margin-top:5mm"><span class="anum">4</span>Exclusivité</h2>
+<div class="plain">
+<p class="lead">L’exclusivité interdit au Mandant, pendant toute sa durée, de confier la vente du bien à un autre intermédiaire et de traiter directement avec un acquéreur, quelle que soit l’origine de celui-ci. Elle est ici consentie <b>pour toute la durée du mandat</b>, soit jusqu’au <b>27 août 2027 inclus</b>.</p>
+<p class="lead">Le Mandant peut mettre fin à la seule exclusivité, sans dénoncer le mandat, <b>à compter du 27 novembre 2026</b>, date convenue aux présentes. Le mandat se poursuit alors jusqu’à son échéance en qualité de mandat simple : le Mandant retrouve la faculté de confier la vente à d’autres intermédiaires et de traiter directement, les honoraires du Mandataire restant dus pour tout acquéreur qu’il aura présenté.</p>
+<p class="lead">Cette révocation s’effectue dans les mêmes formes et avec le même préavis de <b>quinze (15) jours</b> que la dénonciation du mandat.</p>
+<p class="fine">La date de révocabilité de l’exclusivité et la durée d’irrévocabilité du mandat sont deux stipulations distinctes, librement convenues entre les parties. À défaut de révocation, l’exclusivité se poursuit jusqu’au terme du mandat.</p></div></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="par"><span class="par-l">Paraphes</span><i></i><i></i><i></i><i></i><i></i></div><div class="pg">Page 3 / 5</div></div>
+</section><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><h2><span class="anum">5</span>Clause pénale</h2>
+<div class="plain"><p class="lead">Le Mandant s’engage à régulariser tout avant-contrat avec un acquéreur présenté par le Mandataire qu’il aura accepté, aux prix, charges et conditions des présentes ou modifiés par avenant.</p>
+<p class="lead">Si, <b>pendant toute la durée de l’exclusivité</b>, le Mandant vend le bien sans le concours du Mandataire, par l’intermédiaire d’un autre professionnel ou en violation de l’exclusivité, ou s’il refuse sans motif légitime de signer avec un acquéreur présenté par le Mandataire, il s’engage à verser à ce dernier, en application de l’article 1231-5 du Code civil, une <b>indemnité compensatrice forfaitaire égale au montant des honoraires stipulés au présent mandat</b>.</p>
+<p class="lead">Il en va de même si la vente intervient dans les <b>douze (12) mois</b> suivant la fin du mandat au profit d’un acquéreur que le Mandataire aura <b>effectivement présenté</b> au Mandant pendant la durée de celui-ci.</p><p class="fine">Cette stipulation ne s’applique pas aux acquéreurs que le Mandant aurait trouvés par lui-même et auxquels le Mandataire n’aura jamais présenté le bien. En cas de contestation, il appartient au Mandataire de justifier de la présentation. L’indemnité ne peut excéder le montant des honoraires stipulés au mandat.</p></div>
+<h2 style="margin-top:5mm"><span class="anum">6</span>Obligations des parties</h2>
+<div class="duo">
+<div><h3 style="margin-top:0">Le Mandant s’engage à</h3><ul class='lst'><li>Remettre au Mandataire, sous huitaine, les actes et pièces justifiant sa propriété ainsi que les diagnostics obligatoires, sans lesquels aucune publicité ne peut être engagée.</li><li>Garantir l’exactitude des informations transmises et signaler sans délai toute modification juridique ou matérielle affectant le bien, tout congé, toute vacance ou tout impayé.</li><li>Assurer au Mandataire les moyens de visiter et de faire visiter le bien, dans le respect des droits des occupants.</li><li>Signer toute promesse ou tout compromis de vente avec un acquéreur présenté par le Mandataire et acceptant les prix, charges et conditions des présentes.</li><li>Ne pas mettre le Mandataire en situation de concurrence déloyale, notamment sur le prix.</li></ul></div>
+<div><h3 style="margin-top:0">Le Mandataire s’engage à</h3><ul class='lst'><li>Mettre en œuvre les moyens nécessaires à la commercialisation du bien et rendre compte régulièrement de son activité.</li><li>Négocier, si nécessaire, avec tout titulaire d’un droit de préemption, le Mandant restant libre d’accepter ou de refuser un prix inférieur.</li><li>Notifier au Mandant la réalisation du contrat de vente dans les huit jours suivant la signature de l’acquéreur ou la fin du délai de rétractation.</li><li>Informer le Mandant de tout lien capitalistique ou juridique avec une banque ou un établissement financier. Il déclare n’en avoir aucun à ce jour.</li></ul><h3>Pouvoirs conférés</h3><ul class='lst'><li>Présenter, visiter, faire visiter et proposer le bien à toute personne de son choix.</li><li>Engager toute publicité sur tout support à sa convenance, les frais restant à sa charge.</li><li>Requérir tout confrère, groupement ou réseau autorisé par la loi à présenter des opérations immobilières.</li><li>Recevoir toute offre d’achat, assortie ou non d’une condition suspensive de financement, et la transmettre sans délai au Mandant.</li><li>En cas d’offre acceptée par le Mandant, solliciter et recueillir pour son compte, auprès de toute administration, syndic, notaire ou tiers, les documents nécessaires à la vente. Les pièces dont l’obtention est payante ne sont commandées qu’avec l’accord préalable du Mandant, à qui elles sont facturées.</li></ul></div>
+</div></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="par"><span class="par-l">Paraphes</span><i></i><i></i><i></i><i></i><i></i></div><div class="pg">Page 4 / 5</div></div>
+</section><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><h2><span class="anum">7</span>Mentions légales</h2>
+<div class="mentions two"><div class="ment"><h4>Information des parties</h4><p>Chaque partie ayant des informations dont l’importance est déterminante pour le consentement de l’autre devra les lui communiquer, conformément à l’article 1112-1 du Code civil.</p></div><div class="ment"><h4>Élection de domicile</h4><p>Les parties font élection de domicile à leur adresse respective stipulée à l’article 1, exception faite pour la notification de rétractation de l’acquéreur, adressée au siège du Mandataire.</p></div><div class="ment"><h4>Données à caractère personnel</h4><p>Données traitées aux seules fins d’exécution du présent mandat, conformément au Règlement (UE) 2016/679 et à la loi n° 78-17 du 6 janvier 1978 modifiée. Droits d’accès, de rectification, d’effacement, de limitation, d’opposition et de portabilité auprès de France Immeuble, 66 avenue des Champs-Élysées, 75008 Paris, ou à contact@france-immeuble.fr.</p></div><div class="ment"><h4>Règlement extrajudiciaire des litiges</h4><p>Médiateur désigné conformément à l’article R.616-1 du Code de la consommation : Médiation – Vivons mieux ensemble, 465 avenue de la Libération, 54000 Nancy — www.mediation-vivons-mieux-ensemble.fr</p></div><div class="ment"><h4>Registre des mandats et remise d’un exemplaire</h4><p>Le présent mandat est inscrit au registre des mandats de France Immeuble S.A.S. sous le numéro 2108. Un exemplaire est remis au Mandant le jour de sa signature.</p></div></div>
+<h2 style="margin-top:7mm"><span class="anum">8</span>Signatures</h2>
+<p class="intro">Le présent mandat est signé électroniquement le 27 août 2026, chaque partie en recevant un exemplaire. Le Mandant dispose d’un délai de rétractation de quatorze jours dont les modalités figurent en annexe.</p>
+<div class="sgs"><div class="sg"><span class="sg-r">Le Mandataire</span><span class="sg-n">France Immeuble S.A.S.</span><span class="sg-q">Marc-Antoine VOCI, Président</span><div class="sg-z"></div><span class="sg-l">Signature</span></div><div class="sg"><span class="sg-r">Le Mandant 01</span><span class="sg-n">SCI DU MARCHÉ CENTRAL</span><span class="sg-q">Représentée par Étienne LAURENT, gérant</span><div class="sg-z"></div><span class="sg-l">Signature</span></div><div class="sg"><span class="sg-r">Le Mandant 02</span><span class="sg-n">Monsieur Étienne LAURENT</span><span class="sg-q">Personne physique</span><div class="sg-z"></div><span class="sg-l">Signature</span></div><div class="sg"><span class="sg-r">Le Mandant 03</span><span class="sg-n">Madame Hélène LAURENT épouse MOREAU</span><span class="sg-q">Personne physique</span><div class="sg-z"></div><span class="sg-l">Signature</span></div></div></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="par"><span class="par-l">Paraphes</span><i></i><i></i><i></i><i></i><i></i></div><div class="pg">Page 5 / 5</div></div>
+</section><section class="page">
+<div class="doc-hd"><span class="logo"><svg viewBox="0 0 680.31 121.89" xmlns="http://www.w3.org/2000/svg"><g class="lg-t"><path d="M130.46,10.27V23.76h38.16v8.13H130.46V53.58H119.67V2.07h50.18v8.2Z"/><path d="M216.55,34H197.36V53.58H186.57V2.07h34.25c15.27,0,19.69,8.34,19.69,15.74,0,5.73-3.11,12.56-12.38,14.88l14.34,20.89H230Zm-19.19-7.62H218.5c8.18,0,10.64-4.35,10.64-8.41S226.76,9.9,218.57,9.9H197.36Z"/><path d="M303.14,42.7H269.91L264.4,53.58H252.74L280.19,2.07h12.67L320.3,53.58H308.64Zm-3.91-7.62-6.66-13.2c-3.12-5.81-4.64-8.78-5.94-12.84h-.22c-1.3,4.06-2.82,7-5.93,12.84l-6.67,13.2Z"/><path d="M334.78,2.07h12.16l32.51,34.32a20.84,20.84,0,0,1,3.77,5.22h.22V2.07h9.77V53.58H382.13l-33.59-35a26.94,26.94,0,0,1-3.7-5.15h-.29c.08,2.1.08,4.28.08,6.38V53.58h-9.85Z"/><path d="M407,27.9C407,11.5,420.79.26,441,.26c16.51,0,27.95,7.11,31.35,19.44L461,21.37c-2.38-8.2-9.48-12.63-20.34-12.63-13.83,0-22.37,7.33-22.37,19.09,0,11.46,8.9,19,22.59,19,10.64,0,17.52-4,20.34-11.75l10.94,2.18c-4.35,11.68-15.43,18.14-31.79,18.14C420,55.4,407,44.58,407,27.9Z"/><path d="M538.08,45.53v8H487.4V2.07h50.17v8H498.18V23.47h38.16v7.69H498.18V45.53Z"/><path d="M119.67,120.33V68.82h10.79v51.51Z"/><path d="M151.45,68.82h16.29l17.31,36.06a26.84,26.84,0,0,1,1.66,4.71h.22a33.72,33.72,0,0,1,1.67-4.79l17.52-36H222.7v51.51h-9.92V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09l-18.68,37.73H181.5L163.18,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M243.69,68.82H260l17.3,36.06a27,27,0,0,1,1.67,4.71h.21a35,35,0,0,1,1.67-4.79l17.52-36h16.58v51.51H305V83.18a46.85,46.85,0,0,1,.44-6.67h-.37c-.36,1-1.44,3.92-2.46,6.09L284,120.33H273.74L255.42,82.6c-.94-2.17-1.66-4.5-2.17-6.09h-.36a42.15,42.15,0,0,1,.36,6.67v37.15h-9.56Z"/><path d="M386.62,112.28v8H335.94V68.82h50.17v8.05H346.72V90.22h38.16v7.69H346.72v14.37Z"/><path d="M414.06,68.82V96.1c0,9.72,6.73,17.34,18.68,17.34s18.68-7.62,18.68-17.34V68.82h10.86V96.9c0,14.8-10.57,25.24-29.54,25.24S403.2,111.62,403.2,96.82v-28Z"/><path d="M535.33,105.89c0,8-5.29,14.44-18.83,14.44H478.92V68.82h37.36c12.6,0,17.67,6.24,17.67,13.2,0,5.37-3.18,10.16-9.7,11.47C532,94.72,535.33,99.36,535.33,105.89ZM489.71,76.58V90.37h24.11c7.68,0,9-3.78,9-7.33,0-3-1.81-6.46-9-6.46Zm34.54,28.59c0-4.36-2.75-7.4-9.85-7.4H489.71v14.8H514.4C521.35,112.57,524.25,109.66,524.25,105.17Z"/><path d="M550.65,68.82h10.78v42.73h37.22v8.78h-48Z"/><path d="M661.28,112.28v8H610.59V68.82h50.18v8.05H621.38V90.22h38.16v7.69H621.38v14.37Z"/></g><g class="lg-b"><path d="M57.16,1.5a60,60,0,0,0-54,34.05A49.4,49.4,0,0,1,43.85,14.08H96V1.5Z"/><path d="M1.38,66.17v54.46H14V66.17a27,27,0,0,1,7.79-19v73.43H34.32V39.94h0v-.84H96V26.48H41A39.7,39.7,0,0,0,1.38,66.17Z"/><polygon points="48.83 78.03 60.74 89.96 72.5 78.17 60.6 66.23 48.83 78.03"/></g></svg></span><div class="ref">Mandat n° 2109 · France Immeuble</div></div>
+<div class="pc"><h2><span class="anum">A</span>Annexe — Formulaire de rétractation</h2>
+<p class="intro">Le présent mandat étant conclu à distance, le Mandant consommateur dispose d’un délai de quatorze (14) jours à compter de sa signature pour se rétracter sans avoir à motiver sa décision ni à supporter de frais, conformément aux articles L.221-18 et suivants du Code de la consommation.</p>
+<p class="intro">Pour exercer ce droit, il notifie sa décision au moyen du formulaire ci-dessous ou de toute autre déclaration dénuée d’ambiguïté, adressée à France Immeuble S.A.S., 66 avenue des Champs-Élysées, 75008 Paris, ou à contact@france-immeuble.fr.</p>
+<div class="coupon">
+ <div class="coupon-t">Formulaire de rétractation</div>
+ <p>À l’attention de France Immeuble S.A.S., 66 avenue des Champs-Élysées, 75008 Paris — contact@france-immeuble.fr</p>
+ <p>Je vous notifie par la présente ma rétractation du mandat de vente n° 2109 signé le 27/08/2026 et portant sur l’immeuble sis 18 avenue Gambetta, 93100 Montreuil.</p>
+ <div class="clines"><div><span>Nom du Mandant</span><i></i></div><div><span>Adresse</span><i></i></div><div><span>Date</span><i></i></div><div><span>Signature</span><i></i></div></div>
+</div></div>
+<div class="doc-ft"><div class="ft-l">France Immeuble S.A.S. — 66 avenue des Champs-Élysées, 75008 Paris — Carte professionnelle CPI 7501 2018 000 026 00</div><div class="pg">Annexe au mandat n° 2109 — document détachable</div></div>
+</section></body></html>
