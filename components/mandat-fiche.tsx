@@ -11,13 +11,14 @@
 // vend (Objet, servi par l'état locatif) → À COMBIEN (Prix) → À QUELLES
 // CONDITIONS (Conditions) → et enfin ON ENVOIE (Envoi), verrouillé tant que
 // les pièces obligatoires manquent.
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
 import { baremeTexte, plafondTaux } from "@/lib/bareme";
 import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { ContactPicker } from "@/components/contact-picker";
 import {
   FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
@@ -54,6 +55,14 @@ export function MandatFiche({ d }: { d: Data }) {
   const mandatId = String(m._id);
   const immeubleId = im ? String(im._id) : "";
   const [tab, setTab] = useState<Tab>("Mandants");
+  /* Retour #197 : enregistrer un onglet fait passer au suivant. La chaîne des
+     onglets EST le déroulé du dossier — qui signe, quoi, à combien, à quelles
+     conditions, on envoie — et rester sur place obligeait l'agent à cliquer
+     l'onglet d'après à chaque fois. Le dernier onglet ne mène nulle part. */
+  const suivant = () => {
+    const i = TABS.indexOf(tab);
+    if (i >= 0 && i < TABS.length - 1) setTab(TABS[i + 1]);
+  };
   const [pending, start] = useTransition();
 
   const statut = S(m.Statut);
@@ -142,13 +151,21 @@ export function MandatFiche({ d }: { d: Data }) {
               ? [S(im.adresse_numero_rue), S(im.adresse_rue), S(im.adresse_zipcode), S(im.adresse_ville)]
                 .filter(Boolean).join(" ")
               : undefined}
+            onSuivant={suivant}
           />
         )}
         {tab === "Objet" && (
-          <OngletObjet m={m} im={im} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked} />
+          <OngletObjet m={m} im={im} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
+            onSuivant={suivant} />
         )}
-        {tab === "Prix" && <OngletPrix m={m} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked} />}
-        {tab === "Conditions" && <OngletConditions m={m} mandatId={mandatId} immeubleId={immeubleId} locked={locked} />}
+        {tab === "Prix" && (
+          <OngletPrix m={m} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
+            onSuivant={suivant} />
+        )}
+        {tab === "Conditions" && (
+          <OngletConditions m={m} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
+            onSuivant={suivant} />
+        )}
         {tab === "Envoi" && (
           <OngletEnvoi m={m} mandants={mandants} trous={trous} agent={agent}
             mandatId={mandatId} immeubleId={immeubleId} onAller={setTab} />
@@ -160,35 +177,47 @@ export function MandatFiche({ d }: { d: Data }) {
 
 /* ------------------------------------------------------------- Barre bas */
 
-function SaveBar({ onSave, disabled, note }: { onSave: () => void; disabled: boolean; note?: string }) {
-  return (
-    <div className="mdt-save">
-      {note && <span className="nt">{note}</span>}
-      <span style={{ flex: 1 }} />
-      <button className="mdt-go" type="button" disabled={disabled} onClick={onSave}>
-        <span className="ch">›</span> Enregistrer
-      </button>
-    </div>
-  );
+/**
+ * Suit ce qui a changé depuis le dernier enregistrement (retours #192/#196).
+ *
+ * Chaque onglet lui donne l'empreinte de sa saisie. Tant qu'elle correspond à
+ * celle qui est en base, le bouton reste gris ; dès qu'elle en diffère il
+ * passe au vert, et il y retourne une fois l'enregistrement passé.
+ */
+function useModifie(empreinte: string) {
+  const enregistre = useRef(empreinte);
+  // Un rechargement de la fiche (revalidation) rebat la référence.
+  const [, forcer] = useState(0);
+  const valider = () => { enregistre.current = empreinte; forcer((n) => n + 1); };
+  return { modifie: empreinte !== enregistre.current, valider };
 }
 
 /* ------------------------------------------------- Onglet 1 · Mandants */
 
 function OngletMandants({
-  mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
+  mandatId, immeubleId, mandants: init, locked, adresseImmeuble, onSuivant,
 }: {
   mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
   /** L'adresse de l'immeuble : c'est par elle qu'on retrouve le propriétaire. */
   adresseImmeuble?: string;
+  /** Enchaîne sur l'étape suivante une fois l'onglet enregistré (retour #197). */
+  onSuivant?: () => void;
 }) {
-  const [rows, setRows] = useState<Mandant[]>(init.length ? init : [mandantVide(0)]);
+  const depart = init.length ? init : [mandantVide(0)];
+  const [rows, setRows] = useState<Mandant[]>(depart);
   const [pending, start] = useTransition();
+  const { modifie, valider } = useModifie(JSON.stringify(rows));
 
   const maj = (uid: string, patch: Partial<Mandant>) =>
     setRows((r) => r.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
   const supprimer = (uid: string) => setRows((r) => r.filter((x) => x.uid !== uid));
 
-  const save = () => start(() => majMandants(mandatId, immeubleId, rows));
+  const save = () =>
+    start(async () => {
+      await majMandants(mandatId, immeubleId, rows);
+      valider();
+      onSuivant?.();
+    });
 
   return (
     <>
@@ -235,7 +264,14 @@ function OngletMandants({
         </button>
       )}
 
-      {!locked && <SaveBar onSave={save} disabled={pending} note={`${rows.length} mandant${rows.length > 1 ? "s" : ""} · indivision, usufruit et sociétés : autant de lignes que nécessaire`} />}
+      {!locked && (
+        <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save}
+          onAnnuler={() => setRows(depart)}>
+          {modifie
+            ? `${rows.length} mandant${rows.length > 1 ? "s" : ""} — modifications non enregistrées`
+            : "Indivision, usufruit et sociétés : autant de lignes que nécessaire"}
+        </BarreEnregistrer>
+      )}
     </>
   );
 }
@@ -641,10 +677,11 @@ function Piece({
 /* ---------------------------------------------------- Onglet 2 · Objet */
 
 function OngletObjet({
-  m, im, lots, mandatId, immeubleId, locked,
+  m, im, lots, mandatId, immeubleId, locked, onSuivant,
 }: {
   m: Record<string, unknown>; im: Record<string, unknown> | null; lots: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
+  onSuivant?: () => void;
 }) {
   const [pending, start] = useTransition();
   const s = useMemo(() => synthese(lots), [lots]);
@@ -658,12 +695,21 @@ function OngletObjet({
   const [libre, setLibre] = useState(!!dejaEcrit && dejaEcrit !== auto);
   const [desc, setDesc] = useState(dejaEcrit || auto);
   const texte = libre ? desc : auto;
+  const { modifie, valider } = useModifie(JSON.stringify([cad, terrain, libre, desc]));
+  const annuler = () => {
+    setCad(S(m.ref_cadastre));
+    setTerrain(S(num(m.surface_terrain)));
+    setLibre(!!dejaEcrit && dejaEcrit !== auto);
+    setDesc(dejaEcrit || auto);
+  };
 
   const save = () =>
     start(async () => {
       /* #175 — la parcelle saisie ici appartient à l'immeuble : on la reporte
          sur sa fiche si elle n'y est pas encore. */
       await reporterCadastre(immeubleId, cad, parse(terrain));
+      valider();
+      onSuivant?.();
       await updateMandat(mandatId, immeubleId, {
         ref_cadastre: cad || undefined,
         surface_terrain: parse(terrain),
@@ -767,7 +813,9 @@ function OngletObjet({
         </div>
       )}
 
-      {!locked && <SaveBar onSave={save} disabled={pending} />}
+      {!locked && (
+        <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler} />
+      )}
     </>
   );
 }
@@ -785,10 +833,11 @@ function Stat({ k, v, d }: { k: string; v: string; d?: string }) {
 /* ----------------------------------------------------- Onglet 3 · Prix */
 
 function OngletPrix({
-  m, lots, mandatId, immeubleId, locked,
+  m, lots, mandatId, immeubleId, locked, onSuivant,
 }: {
   m: Record<string, unknown>; lots: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
+  onSuivant?: () => void;
 }) {
   const [pending, start] = useTransition();
   const [p, setP] = useState<Prix>({
@@ -799,6 +848,13 @@ function OngletPrix({
   const [pilotes, setPilotes] = useState<ChampPrix[]>(["hai"]);
   const [charge, setCharge] = useState(S(m.Charge_hono) || "Acheteur");
   const [mode, setMode] = useState<Mode>(modeVente(m));
+  const { modifie, valider } = useModifie(JSON.stringify([p, charge, mode]));
+  const annuler = () => {
+    setP({ nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc) });
+    setCharge(S(m.Charge_hono) || "Acheteur");
+    setMode(modeVente(m));
+    setPilotes(["hai"]);
+  };
   const s = useMemo(() => synthese(lots), [lots]);
   const regime = useMemo(() => regimeHonoraires(lots, mode, charge), [lots, mode, charge]);
   const remise = useMemo(() => venteDirecteLocataire(p), [p]);
@@ -810,13 +866,15 @@ function OngletPrix({
   };
 
   const save = () =>
-    start(() =>
-      updateMandat(mandatId, immeubleId, {
+    start(async () => {
+      await updateMandat(mandatId, immeubleId, {
         prix_nv: p.nv, prix_hai: p.hai, honos_taux: p.taux, honos_ttc: p.honos,
         Charge_hono: regime.charge,
         vente_mode: mode,
-      } as MandatPatch),
-    );
+      } as MandatPatch);
+      valider();
+      onSuivant?.();
+    });
 
   /* La case mise en avant est celle qu'on vient d'écrire ; le prix HAI reste
      toujours signalé, puisque c'est lui qui tient tout le reste. */
@@ -909,7 +967,9 @@ function OngletPrix({
         </div>
       )}
 
-      {!locked && <SaveBar onSave={save} disabled={pending} />}
+      {!locked && (
+        <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler} />
+      )}
     </>
   );
 }
@@ -940,8 +1000,11 @@ function CasePrix({
 /* ----------------------------------------------- Onglet 4 · Conditions */
 
 function OngletConditions({
-  m, mandatId, immeubleId, locked,
-}: { m: Record<string, unknown>; mandatId: string; immeubleId: string; locked: boolean }) {
+  m, mandatId, immeubleId, locked, onSuivant,
+}: {
+  m: Record<string, unknown>; mandatId: string; immeubleId: string; locked: boolean;
+  onSuivant?: () => void;
+}) {
   const [pending, start] = useTransition();
   /* Retour #193 : la prise d'effet part de la date du jour, et reste
      modifiable. Un mandat sans date d'effet n'a pas d'échéance. */
@@ -952,6 +1015,16 @@ function OngletConditions({
   const [irrevoc, setIrrevoc] = useState(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
   const [revoc, setRevoc] = useState(dateInput(m.date_revoc_exclu));
   const [web, setWeb] = useState(publicationWeb(m));
+  const { modifie, valider } = useModifie(JSON.stringify([debut, duree, exclu, dExclu, irrevoc, revoc, web]));
+  const annuler = () => {
+    setDebut(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
+    setDuree(S(num(m["durée_tot_month"]) ?? 12));
+    setExclu(S(m.Type_exclu) || "Simple");
+    setDExclu(S(num(m["durée_exclu_jours"]) ?? 90));
+    setIrrevoc(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
+    setRevoc(dateInput(m.date_revoc_exclu));
+    setWeb(publicationWeb(m));
+  };
 
   const fin = (() => {
     const d0 = parse(duree);
@@ -962,8 +1035,8 @@ function OngletConditions({
   })();
 
   const save = () =>
-    start(() =>
-      updateMandat(mandatId, immeubleId, {
+    start(async () => {
+      await updateMandat(mandatId, immeubleId, {
         date_effet: debut ? new Date(debut).toISOString() : undefined,
         "durée_tot_month": parse(duree),
         Type_exclu: exclu,
@@ -972,8 +1045,10 @@ function OngletConditions({
         date_revoc_exclu: exclu === "Exclusif" && revoc ? new Date(revoc).toISOString() : undefined,
         "durée_irrevoc_days": parse(irrevoc),
         publication_web_yn: web,
-      }),
-    );
+      });
+      valider();
+      onSuivant?.();
+    });
 
   return (
     <>
@@ -1047,7 +1122,13 @@ function OngletConditions({
         </span>
       </button>
 
-      {!locked && <SaveBar onSave={save} disabled={pending} note="Ces réglages réécrivent les articles 4 et 6 du mandat" />}
+      {!locked && (
+        <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler}>
+          {modifie
+            ? "Ces réglages réécrivent les articles du mandat — modifications non enregistrées"
+            : "Ces réglages réécrivent les articles du mandat"}
+        </BarreEnregistrer>
+      )}
     </>
   );
 }

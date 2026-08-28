@@ -5681,3 +5681,11 @@ a.cfc-t:hover { text-decoration: underline; }
   background: #fffaf3; color: var(--slate); font-size: 12px; line-height: 1.45;
   padding: 8px 12px; margin: 10px 0 0;
 }
+
+/* Barre d'enregistrement au repos (retour #196) : elle reste en place, mais
+   sans rien réclamer — texte neutre, bouton gris et inactif. C'est le
+   passage au vert qui signale qu'il reste quelque chose à valider. */
+.savebar.calme { box-shadow: 0 -2px 8px rgba(0, 0, 0, .04); }
+.savebar.calme .savebar-t { color: var(--gray-lt); font-weight: 500; }
+.savebar.calme .savebar-go { background: var(--cols); color: var(--gray-lt); }
+.savebar.calme .savebar-go:disabled { opacity: 1; }
