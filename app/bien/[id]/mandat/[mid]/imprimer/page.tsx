@@ -1,15 +1,20 @@
 // Le mandat imprimable : aperçu à l'écran, source du PDF généré par le
-// serveur, et secours si la génération échoue. Même principe que le dossier
-// d'estimation — une seule mise en forme à maintenir.
+// serveur, et secours si la génération échoue.
+//
+// Un seul rendu sert l'écran et le PDF. Écrire deux chaînes ferait diverger
+// l'aperçu du document signé, ce qui est précisément le genre d'écart qu'on ne
+// découvre qu'une fois le mandat parti chez le client.
 import Link from "next/link";
-import { getMandat } from "@/lib/bubble/server";
+import { getAgentFiche, getMandat } from "@/lib/bubble/server";
 import { lireMandants } from "@/lib/mandat";
-import { redigerMandat } from "@/lib/mandat-texte";
-import { MandatDocument } from "@/components/mandat-document";
+import { redigerMandatBloc } from "@/lib/bo/mandat-doc";
+import { MandatDoc } from "@/components/mandat-doc";
 import { BarreImpression } from "@/components/barre-impression";
-import "../../../../../mandat.css";
+import "../../../../../mandat-doc.css";
 
 export const dynamic = "force-dynamic";
+
+const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
 export default async function ImprimerMandat({
   params, searchParams,
@@ -28,12 +33,26 @@ export default async function ImprimerMandat({
     );
   }
 
-  const texte = redigerMandat({
+  /* Le téléphone et le courriel du négociateur vivent sur sa fiche, pas sur
+     l'agent résumé que porte le mandat. */
+  const a = d.agent ? await getAgentFiche(d.agent.id).catch(() => null) : null;
+
+  const { doc, trous } = redigerMandatBloc({
     m: d.m,
-    im: d.im,
+    im: d.im ?? {},
     lots: d.lots,
     mandants: lireMandants(d.m),
-    agent: d.agent ? { nom: d.agent.name } : undefined,
+    /* L'adresse de dénonciation imprimée sur le mandat est celle du
+       négociateur qui le suit. Elle est figée à la signature et jamais
+       recalculée : si le dossier change de mains en interne, l'adresse portée
+       au document reste opposable. */
+    negociateur: d.agent
+      ? {
+          nom: d.agent.name,
+          email: S(a?.email) || undefined,
+          tel: S(a?.["portable (TXT)"]) || S(a?.portable) || undefined,
+        }
+      : undefined,
   });
 
   return (
@@ -41,16 +60,12 @@ export default async function ImprimerMandat({
       {/* « nu » : rendu sans barre ni décor, c'est ce que capture le PDF. */}
       {!nu && (
         <BarreImpression retour={`/bien/${id}/mandat/${mid}`}>
-          {texte.titre}
-          {texte.numero ? ` n° ${texte.numero}` : " — sans numéro"}
-          {texte.trous.length > 0 ? ` · ${texte.trous.length} information(s) manquante(s)` : ""}
+          {doc.titre}
+          {doc.sansNumero ? " — sans numéro de registre" : ` n° ${doc.numero}`}
+          {trous.length > 0 ? ` · ${trous.length} information(s) manquante(s)` : ""}
         </BarreImpression>
       )}
-      <MandatDocument
-        d={texte}
-        nu={!!nu}
-        lieu={typeof d.im?.adresse_ville === "string" ? String(d.im.adresse_ville) : undefined}
-      />
+      <MandatDoc d={doc} nu={!!nu} />
     </>
   );
 }

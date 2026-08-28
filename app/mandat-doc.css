@@ -225,3 +225,55 @@ p.legal{font-size:8.1pt;line-height:1.5;margin-bottom:1.4mm}
 .lots tr.bd td{background:var(--or-pp);font-size:5.8pt;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--or-f,#8A6A44);padding:1.6mm}
 .lots tr.st td{border-top:1px solid var(--noir);border-bottom:none;font-weight:700;background:#fff}
 .lots tfoot td{font-size:7.2pt}
+
+/* Article 78 du décret du 20 juillet 1972 : la faculté de dénoncer le mandat
+   passé le délai d'irrévocabilité doit figurer « en caractères très
+   apparents ». La jurisprudence sanctionne son absence par la nullité ABSOLUE
+   du contrat entier — c'est la seule règle du document dont le non-respect
+   annule le mandat.
+
+   Les maquettes ne la portaient pas : ce paragraphe y était un alinéa comme
+   les autres. Il a donc désormais sa classe, plus grasse et plus grande que
+   le corps courant, et RIEN ne doit la surcharger. */
+/* Sélecteur et !important assumés : `.plain p.lead` l'emportait sur la seule
+   classe, et cette règle-ci ne doit JAMAIS pouvoir être défaite par une
+   retouche ultérieure de la feuille. C'est le seul !important du document. */
+.legal-apparent,
+.plain p.legal-apparent { font-weight: 700 !important; font-size: 8.6pt !important; }
+
+/* Le mandat est un document, pas un écran de l'outil : la coquille de
+   l'application s'efface autour de lui, à l'écran comme à l'impression. Même
+   précaution que pour les dossiers — sans elle, la barre du haut décale la
+   première page et le pied ajoute une feuille vide au PDF. */
+body:has(.mdoc) .main { margin: 0; padding: 0; min-height: 0; }
+body:has(.mdoc) .side, body:has(.mdoc) .bottbar { display: none; }
+/* Rendu « nu » (celui que capture la génération PDF) : aucun élément d'outil. */
+body:has(.mdoc.nu) .rv-fab, body:has(.mdoc.nu) .rv-chip, body:has(.mdoc.nu) .rv-pin,
+body:has(.mdoc.nu) .rv-zone, body:has(.mdoc.nu) .rv-panel,
+body:has(.mdoc.nu) .brg-bar, body:has(.mdoc.nu) .brg-voile,
+body:has(.mdoc.nu) .fadd, body:has(.mdoc.nu) .fchip { display: none; }
+body:has(.mdoc.nu) html, body:has(.mdoc.nu) { background: #fff; }
+.mdoc.nu .page { margin: 0 auto; box-shadow: none; }
+
+/* La barre d'aperçu, décrite dans la feuille du dossier d'estimation que
+   cette page ne charge pas. Sans ces règles elle sort en texte brut. */
+.dos-bar {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+  background: #fff; border-bottom: 1px solid #e3e3e3; padding: 9px 16px;
+  font-family: var(--font-title), sans-serif; font-size: 13px; color: #44525f;
+}
+.dos-bar a { color: #44525f; }
+.dos-bar .sp { flex: 1; }
+.dos-bar button {
+  border: 0; background: #3db327; color: #fff; border-radius: 4px;
+  padding: 7px 14px; font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+
+@media print {
+  .dos-bar, .brg-bar, .brg-voile, .side, .bottbar, .fadd, .fchip,
+  .rv-fab, .rv-chip, .rv-pin, .rv-zone, .rv-panel { display: none !important; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .shell, .main { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+  .mdoc .page { margin: 0; box-shadow: none; break-after: page; }
+  .mdoc .page:last-child { break-after: auto; }
+}
