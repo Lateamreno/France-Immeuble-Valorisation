@@ -252,8 +252,14 @@ export function BienFiche({
               change d'onglet dans la sidebar de droite ». Le clic sur le rail
               choisit donc la section qu'on trouvera en refermant. */}
           {contenu && <div hidden={sect !== "encours"}>{contenu}</div>}
+          {/* #185 — l'estimation se comporte comme n'importe quelle page : elle
+              reste MONTÉE quand on va voir l'état locatif ou les photos, mais
+              elle se masque au lieu de tout recouvrir. J'avais sur-appliqué le
+              retour #159 : MAV demandait que la saisie ne soit pas perdue en
+              changeant d'onglet, pas que l'estimation bloque la navigation —
+              d'où l'impression de modale qui ne se referme jamais. */}
           {est && (
-            <div>
+            <div hidden={sect !== "encours"}>
               {est.mode === "lecture" ? (
                 <EstimationEnLecture
                   key={est.reprise.id}
@@ -282,9 +288,10 @@ export function BienFiche({
               {chargement ? "Ouverture de l'estimation…" : "Aucune estimation ouverte."}
             </div>
           )}
-          {/* Tant qu'une estimation est ouverte, elle occupe l'écran : les
-              sections de la fiche attendent qu'on la referme (#159). */}
-          {!est && (
+          {/* Les sections de la fiche restent accessibles pendant qu'une
+              estimation est ouverte (#185) : elle attend, masquée, et on la
+              retrouve intacte en revenant. */}
+          {sect !== "encours" && (
             <>
               {sect === "suivi" && <SuiviSection b={b} />}
               {sect === "proprietaire" && <ProprioSection b={b} />}

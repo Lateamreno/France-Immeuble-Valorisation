@@ -1223,6 +1223,22 @@ export function EstimationWizard({
               </div>
             )}
             <div className="est-nav">
+              {/* Retour #187 : l'ordre suit la main. À gauche ce qu'on fait
+                  quand on N'envoie PAS — classer en interne, ou noter qu'on a
+                  envoyé autrement. À droite, seul, l'envoi lui-même. Et
+                  « Marquer envoyée » n'a plus la couleur de l'envoi : consigner
+                  un envoi déjà fait n'est pas envoyer. */}
+              <button className="est-prec" type="button" disabled={pending || !!marque}
+                onClick={() => marquer("4 - Interne")}>
+                Estimation interne
+              </button>
+              <button className="est-marque" type="button"
+                disabled={pending || !!marque || (!!envoye && !marque)}
+                title={envoye ? `Déjà envoyée le ${dmyfr(envoye)} à ${heure(envoye)}` : undefined}
+                onClick={() => marquer("3 - Envoyée")}>
+                {marque ? "✓ Enregistré" : envoye ? `✓ Envoyée le ${dmyfr(envoye)}` : "Marquer envoyée"}
+              </button>
+              <span className="sp" style={{ flex: 1 }} />
               {destinataires.length > 0 && (
                 envoiActif ? (
                   /* Renvoyer reste possible : une estimation se renvoie souvent
@@ -1243,16 +1259,6 @@ export function EstimationWizard({
                 )
               )}
               <span className="sp" style={{ flex: 1 }} />
-              <button className="est-suiv" type="button"
-                disabled={pending || !!marque || (!!envoye && !marque)}
-                title={envoye ? `Déjà envoyée le ${dmyfr(envoye)} à ${heure(envoye)}` : undefined}
-                onClick={() => marquer("3 - Envoyée")}>
-                {marque ? "✓ Enregistré" : envoye ? `✓ Envoyée le ${dmyfr(envoye)}` : "Marquer envoyée"}
-              </button>
-              <button className="est-prec" type="button" disabled={pending || !!marque}
-                onClick={() => marquer("4 - Interne")}>
-                Estimation interne
-              </button>
             </div>
           </>
         )}

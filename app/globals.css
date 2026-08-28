@@ -5716,3 +5716,13 @@ a.cfc-t:hover { text-decoration: underline; }
 .rgl-ok { color: var(--green); font-size: 13px; font-weight: 600; }
 .rgl-err { color: var(--red); font-size: 13px; font-weight: 600; }
 @media (max-width: 760px) { .rgl-grid { grid-template-columns: 1fr; } .rgl-ch.large { grid-column: span 1; } }
+
+/* « Marquer envoyée » (retour #187) : gris foncé, pas la couleur de l'envoi.
+   Consigner un envoi déjà fait n'est pas envoyer — deux gestes, deux poids. */
+.est-marque {
+  border: 0; background: var(--slate); color: #fff; border-radius: 4px;
+  padding: 9px 18px; font-family: var(--font-title); font-size: 13.5px;
+  font-weight: 700; cursor: pointer;
+}
+.est-marque:hover:not(:disabled) { background: var(--slate-2); }
+.est-marque:disabled { opacity: .5; cursor: default; }
