@@ -107,12 +107,24 @@ const Fleche = ({ arriere }: { arriere?: boolean }) => (
    le nom du point d'intérêt et le temps de marche, les deux cases à remplir.
    La ville est accolée au nom parce que « Gare » seul se perd à l'autre bout
    de la France. */
-const Itineraire = ({ depuis, vers, ville, titre }: {
+/**
+ * Le lien d'itinéraire.
+ *
+ * Retour #186 : « pour le supermarché il m'a mis un hypermarché alors qu'il y
+ * avait un supermarché juste à côté ». La destination partait avec le NOM du
+ * commerce et la ville — « Carrefour Bordeaux » — que Google résolvait à sa
+ * guise, en général vers le plus gros établissement de l'agglomération. Quand on
+ * connaît les coordonnées du point retenu, on les envoie : elles ne se
+ * discutent pas. Le nom ne sert plus que de repli.
+ */
+const Itineraire = ({ depuis, vers, ville, titre, geo }: {
   depuis: string; vers: string; ville: string; titre: string;
+  /** « lat,lon » du point retenu, quand la fiche le connaît. */
+  geo?: string;
 }) => (
   <a
     className="est-itin" title={titre} target="_blank" rel="noreferrer"
-    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depuis)}&destination=${encodeURIComponent(`${vers} ${ville}`.trim())}&travelmode=walking`}
+    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depuis)}&destination=${encodeURIComponent(geo || `${vers} ${ville}`.trim())}&travelmode=walking`}
   >
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
@@ -219,6 +231,12 @@ export function EstimationWizard({
   const [gareTime, setGareTime] = useMem("gareTime", S(num(im.emp_gare_time)));
   const [comName, setComName] = useMem("comName", S(im.emp_com_name));
   const [comTime, setComTime] = useMem("comTime", S(num(im.emp_com_time)));
+  /* Coordonnées du point retenu par l'onglet Emplacement (retour #186). Elles
+     rendent l'itinéraire exact ; mais dès qu'on retape le nom à la main, elles
+     désignent un autre lieu que celui écrit — on les oublie alors, et le lien
+     repart sur le nom saisi. */
+  const [gareGeo, setGareGeo] = useMem("gareGeo", S(im.emp_gare_geo));
+  const [comGeo, setComGeo] = useMem("comGeo", S(im.emp_com_geo));
   /* Point de départ des itinéraires, et ville à accoler au nom du point
      d'intérêt : « Gare de Bordeaux » tout court trouve la mauvaise ville. */
   const adressePoi = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
@@ -227,7 +245,13 @@ export function EstimationWizard({
      l'estimation : on le redescend sur la fiche en quittant l'étape. */
   const poiModifie =
     gareName !== S(im.emp_gare_name) || comName !== S(im.emp_com_name) ||
-    gareTime !== S(num(im.emp_gare_time)) || comTime !== S(num(im.emp_com_time));
+    gareTime !== S(num(im.emp_gare_time)) || comTime !== S(num(im.emp_com_time)) ||
+    gareGeo !== S(im.emp_gare_geo) || comGeo !== S(im.emp_com_geo);
+
+  /* Retaper le nom d'un point d'intérêt invalide ses coordonnées : elles
+     pointaient sur le lieu d'avant. */
+  const majGareName = (v: string) => { setGareName(v); if (gareGeo) setGareGeo(""); };
+  const majComName = (v: string) => { setComName(v); if (comGeo) setComGeo(""); };
 
   /* #161 — la modale du secteur, ouverte depuis l'étape « secteur », a besoin
      des mêmes deux choses que sur la fiche : le poids de chaque destination
@@ -561,6 +585,10 @@ export function EstimationWizard({
       emp_gare_time: parse(gareTime),
       emp_com_name: comName || undefined,
       emp_com_time: parse(comTime),
+      // `null` efface vraiment : la chaîne vide, elle, serait écartée du patch
+      // et la fiche garderait l'ancien point sous le nouveau nom.
+      emp_gare_geo: gareGeo || null,
+      emp_com_geo: comGeo || null,
     });
   };
 
@@ -698,23 +726,35 @@ export function EstimationWizard({
                 du bien les donne tous les deux d'un coup. Le lien reste après
                 coup, pour vérifier. Ce qu'on saisit ici redescend sur la fiche
                 (voir `poiModifie`). */}
+            {/* Retour #186 : « on peut toujours pas modifier directement depuis
+                l'estimation les points d'intérêt ». Ils l'étaient, mais derrière
+                l'interrupteur « Personnaliser » — donc en pratique, non. Ces
+                quatre cases sortent du verrou : elles ne sont pas des valeurs
+                calculées qu'on risquerait d'écraser, ce sont des observations
+                qu'on écrit là où on les fait. Ce qu'on y tape redescend sur la
+                fiche en quittant l'étape. */}
             <div className="est-sect">Points d&apos;intérêt</div>
             <div className="est-l">
               <Itineraire depuis={adressePoi} vers={gareName || "gare"} ville={villePoi}
-                titre="Itinéraire à pied vers les transports" />
-              <Champ label="Nom des transports" valeur={gareName} editable={perso} onChange={setGareName} />
-              <Champ label="Temps" valeur={gareTime ? `${gareTime} min` : ""} editable={perso}
+                geo={gareGeo} titre="Itinéraire à pied vers les transports" />
+              <Champ label="Nom des transports" valeur={gareName} editable onChange={majGareName} />
+              <Champ label="Temps" valeur={gareTime ? `${gareTime} min` : ""} editable
                 onChange={(v) => setGareTime(v.replace(/[^\d]/g, ""))} largeur={110} />
               <Etat ok={!!(gareName && gareTime)} />
             </div>
             <div className="est-l">
               <Itineraire depuis={adressePoi} vers={comName || "supermarché"} ville={villePoi}
-                titre="Itinéraire à pied vers les commerces" />
-              <Champ label="Nom des commerces" valeur={comName} editable={perso} onChange={setComName} />
-              <Champ label="Temps" valeur={comTime ? `${comTime} min` : ""} editable={perso}
+                geo={comGeo} titre="Itinéraire à pied vers les commerces" />
+              <Champ label="Nom des commerces" valeur={comName} editable onChange={majComName} />
+              <Champ label="Temps" valeur={comTime ? `${comTime} min` : ""} editable
                 onChange={(v) => setComTime(v.replace(/[^\d]/g, ""))} largeur={110} />
               <Etat ok={!!(comName && comTime)} />
             </div>
+            <p className="est-aide">
+              Les points d&apos;intérêt se saisissent ici sans passer par
+              « Personnaliser » : ce que vous écrivez est enregistré sur l&apos;onglet
+              Emplacement de la fiche en quittant l&apos;étape.
+            </p>
 
             <div className="est-sect">Charges</div>
             <div className="est-l">
@@ -1151,15 +1191,22 @@ export function EstimationWizard({
                 {autresDocs.length > 0 && (
                   <details>
                     <summary>+ Joindre un document du bien ({autresDocs.length})</summary>
+                    {/* Retour #188 : « ferré à gauche avec les cases de
+                        sélection alignées, et si le titre tient sur une ligne
+                        c'est mieux que sur deux ». Un nom qui passait à la
+                        ligne décalait sa case vers le milieu de la rangée et
+                        cassait la colonne. Le nom tient donc sur une ligne,
+                        coupé au besoin — il reste entier au survol. */}
                     <div className="est-pjlist">
                       {autresDocs.map((d) => {
                         const id = String(d._id);
+                        const nom = S(d.name) || S(d.file_name) || "Document";
                         return (
-                          <label key={id}>
+                          <label key={id} title={nom}>
                             <input type="checkbox" checked={pjDocs.includes(id)}
                               onChange={(e) => setPjDocs((v) =>
                                 e.target.checked ? [...v, id] : v.filter((x) => x !== id))} />
-                            {S(d.name) || S(d.file_name) || "Document"}
+                            <span>{nom}</span>
                           </label>
                         );
                       })}

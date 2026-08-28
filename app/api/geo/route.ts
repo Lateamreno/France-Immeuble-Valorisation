@@ -16,6 +16,12 @@ export type POI = {
   distance: number;
   minutes: number;
   moyen: string;
+  /* Coordonnées du point (retour #186). L'itinéraire partait avec le seul NOM
+     du commerce et la ville — « Carrefour Bordeaux » — que Google résolvait à
+     sa guise, en général vers le plus gros établissement de l'agglomération.
+     On les calcule déjà pour la distance : autant les rendre. */
+  lat?: number;
+  lon?: number;
 };
 
 const R = 6371e3;
@@ -54,7 +60,7 @@ async function ods(
     const { nom, sous, geo } = lire(r.fields ?? {});
     if (!nom || !geo) continue;
     const d = dist(lat, lon, geo[0], geo[1]);
-    out.push({ nom, sous, distance: d, ...trajet(d) });
+    out.push({ nom, sous, distance: d, lat: geo[0], lon: geo[1], ...trajet(d) });
   }
   return out;
 }
@@ -131,7 +137,7 @@ async function annuaire(lat: number, lon: number, naf: string, rayon: number): P
       ? brut.toLowerCase().replace(/(^|[\s'-])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase())
       : brut;
     const d = dist(lat, lon, la, lo);
-    out.push({ nom, sous: "Commerce", distance: d, ...trajet(d) });
+    out.push({ nom, sous: "Commerce", distance: d, lat: la, lon: lo, ...trajet(d) });
   }
   return out;
 }

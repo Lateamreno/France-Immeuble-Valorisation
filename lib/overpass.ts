@@ -20,6 +20,12 @@ export type PoiOsm = {
   distance: number;
   minutes: number;
   moyen: string;
+  /* Coordonnées du point (retour #186). Sans elles, l'itinéraire ne pouvait
+     partir qu'avec le NOM du commerce, et Google choisissait librement :
+     « Carrefour » l'emmenait à l'hypermarché de la zone commerciale plutôt
+     qu'au supermarché d'en face. Un couple de coordonnées ne se discute pas. */
+  lat?: number;
+  lon?: number;
 };
 
 /** Clés des vignettes de la fiche. */
@@ -210,6 +216,8 @@ export async function chercherPoi(
       nom,
       sous: preciser(t, cle),
       distance,
+      lat: pLat,
+      lon: pLon,
       ...trajet(distance),
       // Les écoles se classent par niveau puis par distance ; ailleurs, seule
       // la distance compte.

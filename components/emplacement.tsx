@@ -59,7 +59,7 @@ const POIS = [
 type CleP = (typeof POIS)[number][0];
 
 /** Points d'intérêt proposés par /api/geo (l'agent garde la main). */
-type Suggestion = { nom: string; sous?: string; distance: number; minutes: number; moyen: string };
+type Suggestion = { nom: string; sous?: string; distance: number; minutes: number; moyen: string; lat?: number; lon?: number };
 type Enrichissement = {
   commune?: { nom: string; code: string; population: number } | null;
   revenus?: number;
@@ -89,6 +89,7 @@ function AdresseTab({ b }: { b: BienData }) {
         [`${k}_name`, S(im[`emp_${k}_name`])],
         [`${k}_time`, S(num(im[`emp_${k}_time`]))],
         [`${k}_moyen`, S(im[`emp_${k}_moyen`]) || "à pied"],
+        [`${k}_geo`, S(im[`emp_${k}_geo`])],
       ]),
     ) as Record<string, string>,
   );
@@ -162,8 +163,16 @@ function AdresseTab({ b }: { b: BienData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon]);
 
+  /* Les coordonnées du point choisi sont retenues avec son nom (#186) : c'est
+     elles, et non le nom, qui serviront à tracer l'itinéraire. */
   const remplirPoi = (k: CleP, p: Suggestion) =>
-    setPoi((prev) => ({ ...prev, [`${k}_name`]: p.nom, [`${k}_time`]: String(p.minutes), [`${k}_moyen`]: p.moyen }));
+    setPoi((prev) => ({
+      ...prev,
+      [`${k}_name`]: p.nom,
+      [`${k}_time`]: String(p.minutes),
+      [`${k}_moyen`]: p.moyen,
+      [`${k}_geo`]: p.lat !== undefined && p.lon !== undefined ? `${p.lat},${p.lon}` : "",
+    }));
 
   const enrichir = async () => {
     setChargement(true);
@@ -198,6 +207,8 @@ function AdresseTab({ b }: { b: BienData }) {
           const first = d.poi?.[k]?.[0];
           if (first && !next[`${k}_name`]) {
             next[`${k}_name`] = first.nom;
+            next[`${k}_geo`] = first.lat !== undefined && first.lon !== undefined
+              ? `${first.lat},${first.lon}` : "";
             next[`${k}_time`] = String(first.minutes);
             next[`${k}_moyen`] = first.moyen;
           }
@@ -226,6 +237,10 @@ function AdresseTab({ b }: { b: BienData }) {
       };
       for (const [k] of POIS) {
         patch[`emp_${k}_name`] = poi[`${k}_name`] || undefined;
+        // « lat,lon » du point choisi : l'itinéraire s'y rend sans interpréter.
+        // `null` plutôt qu'`undefined` quand c'est vide : il faut que
+        // l'effacement passe, sinon d'anciennes coordonnées survivent au nom.
+        patch[`emp_${k}_geo`] = poi[`${k}_geo`] || null;
         patch[`emp_${k}_time`] = parse(poi[`${k}_time`]);
         patch[`emp_${k}_moyen`] = poi[`${k}_moyen`] || undefined;
       }
@@ -309,7 +324,13 @@ function AdresseTab({ b }: { b: BienData }) {
             key={k} cle={k} label={label}
             nom={poi[`${k}_name`]} minutes={poi[`${k}_time`]} moyen={poi[`${k}_moyen`]}
             suggestions={sugg?.poi?.[k] ?? []}
-            onChange={(champ, v) => setPoi((prev) => ({ ...prev, [`${k}_${champ}`]: v }))}
+            /* Retaper le nom à la main désigne un autre lieu que celui retenu :
+               ses coordonnées ne valent plus rien, on les oublie (#186). */
+            onChange={(champ, v) => setPoi((prev) => ({
+              ...prev,
+              [`${k}_${champ}`]: v,
+              ...(champ === "name" ? { [`${k}_geo`]: "" } : null),
+            }))}
             onChoisir={(s2) => remplirPoi(k, s2)}
           />
         ))}

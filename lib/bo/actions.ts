@@ -523,13 +523,17 @@ export async function deleteCharge(immeubleId: string, chargeId: string) {
 
 /* ---------- Emplacement (adresse / parcelles-PLU / prix du secteur) ---------- */
 
+/* Les `_geo` acceptent `null` — et pas seulement la chaîne vide, que
+   `cleanPatch` écarterait. Retaper à la main le nom d'un point d'intérêt rend
+   ses coordonnées fausses : il faut pouvoir les effacer, pas seulement les
+   laisser tranquilles (retour #186). */
 export type EmplacementPatch = Partial<{
-  emp_gare_name: string; emp_gare_time: number; emp_gare_moyen: string;
-  emp_bus_name: string; emp_bus_time: number; emp_bus_moyen: string;
-  emp_route_name: string; emp_route_time: number; emp_route_moyen: string;
-  emp_school_name: string; emp_school_time: number; emp_school_moyen: string;
-  emp_com_name: string; emp_com_time: number; emp_com_moyen: string;
-  emp_autre_name: string; emp_autre_time: number; emp_autre_moyen: string;
+  emp_gare_name: string; emp_gare_time: number; emp_gare_moyen: string; emp_gare_geo: string | null;
+  emp_bus_name: string; emp_bus_time: number; emp_bus_moyen: string; emp_bus_geo: string | null;
+  emp_route_name: string; emp_route_time: number; emp_route_moyen: string; emp_route_geo: string | null;
+  emp_school_name: string; emp_school_time: number; emp_school_moyen: string; emp_school_geo: string | null;
+  emp_com_name: string; emp_com_time: number; emp_com_moyen: string; emp_com_geo: string | null;
+  emp_autre_name: string; emp_autre_time: number; emp_autre_moyen: string; emp_autre_geo: string | null;
   emp_population: number; emp_revenus: number;
   emp_zone_tendue: boolean; emp_tension_locative: string;
   plu_zone: string; plu_Type_zone: string; plu_hauteur: number; plu_emprise: number;
