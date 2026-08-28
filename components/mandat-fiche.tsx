@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
+import { baremeTexte, plafondTaux } from "@/lib/bareme";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { ContactPicker } from "@/components/contact-picker";
 import {
@@ -792,8 +793,9 @@ function OngletPrix({
   const [p, setP] = useState<Prix>({
     nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc),
   });
-  /* Les deux dernières cases touchées pilotent les deux autres (retour #104). */
-  const [pilotes, setPilotes] = useState<ChampPrix[]>(["nv", "taux"]);
+  /* Le prix HAI est l'ancre : c'est lui qu'on annonce, il ne bouge pas tout
+     seul quand on ajuste les honoraires ou le net vendeur (retour #190). */
+  const [pilotes, setPilotes] = useState<ChampPrix[]>(["hai"]);
   const [charge, setCharge] = useState(S(m.Charge_hono) || "Acheteur");
   const [mode, setMode] = useState<Mode>(modeVente(m));
   const s = useMemo(() => synthese(lots), [lots]);
@@ -815,26 +817,42 @@ function OngletPrix({
       } as MandatPatch),
     );
 
-  const deux = [...pilotes].reverse().filter((c, i, t) => t.indexOf(c) === i).slice(0, 2);
-  const pilote = (c: ChampPrix) => deux.includes(c);
+  /* La case mise en avant est celle qu'on vient d'écrire ; le prix HAI reste
+     toujours signalé, puisque c'est lui qui tient tout le reste. */
+  const dernier = pilotes[pilotes.length - 1];
+  const pilote = (c: ChampPrix) => c === dernier || c === "hai";
+  /* Le barème est un plafond : au-delà, l'écran le dit. */
+  const tropCher = p.nv && p.taux ? p.taux > plafondTaux(p.nv) + 0.005 : false;
   const rendement = p.hai && s.loyerMensuel ? ((s.loyerMensuel * 12) / p.hai) * 100 : undefined;
 
   return (
     <>
       <Titre
         titre="Le prix et les honoraires"
-        aide="Quatre cases, deux suffisent : saisissez-en deux, les deux autres se calculent. La dernière case touchée reste toujours celle que vous venez d'écrire."
+        aide="Saisissez le prix HAI : les honoraires se calculent au barème et le net vendeur s'en déduit. Ajuster les honoraires, le net vendeur ou le taux ne fait jamais bouger le prix HAI — c'est lui qui est annoncé au client."
       />
+      <p className="mdt-bareme">
+        Barème en vigueur — <b>{baremeTexte()}</b>. Depuis l'arrêté du 26 janvier 2022 c'est un
+        maximum : le taux peut être inférieur, jamais supérieur.
+      </p>
 
       <div className="mdt-prix">
+        <CasePrix label="Prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={locked} onChange={saisir("hai")} fort />
+        <span className="op sep">dont</span>
         <CasePrix label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} locked={locked} onChange={saisir("nv")} />
         <span className="op">+</span>
         <CasePrix label="Honoraires" unite="€" v={p.honos} pilote={pilote("honos")} locked={locked} onChange={saisir("honos")} />
-        <span className="op">=</span>
-        <CasePrix label="Prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={locked} onChange={saisir("hai")} fort />
         <span className="op sep">soit</span>
         <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={locked} onChange={saisir("taux")} decimal />
       </div>
+
+      {tropCher && (
+        <p className="mdt-alerte">
+          Le taux saisi dépasse le barème affiché ({plafondTaux(p.nv!).toFixed(2).replace(".", ",")} % pour
+          ce net vendeur). Depuis l'arrêté du 26 janvier 2022 le barème est un maximum opposable :
+          au-delà, les honoraires sont contestables.
+        </p>
+      )}
 
       {/* La nature de la vente commande la charge des honoraires : c'est le
           droit de préemption du locataire qui décide, pas l'occupation. */}

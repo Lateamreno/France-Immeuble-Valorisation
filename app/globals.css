@@ -5670,3 +5670,14 @@ a.cfc-t:hover { text-decoration: underline; }
 .fac-rat { display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .fac-rat .fadd { white-space: nowrap; }
 .fac-bilan { font-size: 11.5px; font-style: normal; color: var(--gray-lt); white-space: nowrap; }
+
+/* Barème et alerte de dépassement, sous les cases de prix du mandat. */
+.mdt-bareme {
+  font-size: 11.5px; color: var(--gray-lt); margin: -4px 0 12px;
+}
+.mdt-bareme b { color: var(--slate); font-weight: 600; }
+.mdt-alerte {
+  border: 1px solid var(--orange); border-left-width: 3px; border-radius: 4px;
+  background: #fffaf3; color: var(--slate); font-size: 12px; line-height: 1.45;
+  padding: 8px 12px; margin: 10px 0 0;
+}

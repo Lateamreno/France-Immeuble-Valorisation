@@ -8,6 +8,7 @@ import {
   filtreMots, getAgentFiche, getBien, getEstimation, getPrixSecteur, motsRecherche,
 } from "@/lib/bubble/server";
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
+import { netVendeurDepuisHai } from "@/lib/bareme";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -2173,6 +2174,15 @@ export async function createMandat(
 ) {
   const id = newId();
   const now = new Date().toISOString();
+
+  /* Le prix part de l'estimation (retour #189) : c'est le montant qu'on vient
+     d'annoncer au propriétaire, ce serait absurde de le ressaisir. Il reste
+     modifiable, et les honoraires en découlent par le barème. */
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+  const haiEstime = nombre(im?.prix_hai_estim) ?? nombre(im?.prix_hai);
+  const prix = haiEstime ? netVendeurDepuisHai(haiEstime) : null;
+
   await rpc("bo_insert_doc", {
     p_table: "bo_mandat",
     p_id: id,
@@ -2187,11 +2197,20 @@ export async function createMandat(
       nom_m1: input.nom_m1,
       raison_sociale: input.raison_sociale,
       description: input.remarques,
-      Charge_hono: "Vendeur",
-      honos_taux: 5,
+      /* Charge acquéreur par défaut en bloc (retour #191) : elle ne bascule
+         sur le vendeur que si l'état locatif ne compte qu'un seul locataire,
+         seul cas où un droit de préemption d'ensemble peut jouer. C'est
+         `regimeHonoraires` qui l'impose alors, sans que l'agent ait à choisir. */
+      Charge_hono: "Acheteur",
+      prix_hai: haiEstime,
+      prix_nv: prix?.nv,
+      honos_ttc: prix?.honos,
+      honos_taux: prix?.taux ?? 5,
       "durée_tot_month": 12,
-      "durée_exclu_jours": 14,
-      "durée_irrevoc_days": 14,
+      "durée_exclu_jours": 90,
+      "durée_irrevoc_days": 30,
+      // La prise d'effet part d'aujourd'hui (retour #193), et reste modifiable.
+      date_effet: now,
       "Created Date": now,
       "Modified Date": now,
     }),

@@ -12,6 +12,7 @@
 
 import { group } from "./format";
 import { RATTACHE } from "./referentiels";
+import { honorairesBareme, netVendeurDepuisHai } from "./bareme";
 
 /* ---------------------------------------------------------------- Mandants */
 
@@ -329,13 +330,23 @@ export type ChampPrix = keyof Prix;
 const arrondi = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Quatre cases, deux degrés de liberté : on résout les deux cases restantes à
- * partir des deux dernières saisies. `pilotes` est l'historique des champs
- * touchés, du plus ancien au plus récent.
+ * Résolution du prix — le prix HAI est l'ancre (retour MAV #190).
+ *
+ * C'est le prix HAI que l'agent annonce, affiche et négocie : c'est donc lui
+ * qu'il saisit, et c'est lui qui ne doit JAMAIS bouger tout seul. Les trois
+ * autres cases s'ajustent entre elles sous cette contrainte :
+ *
+ *   · on saisit le HAI      → honoraires au barème, net vendeur déduit ;
+ *   · on saisit les honos   → net vendeur = HAI − honoraires, taux recalculé ;
+ *   · on saisit le net vend.→ honoraires = HAI − net vendeur, taux recalculé ;
+ *   · on saisit le taux     → net vendeur = HAI ÷ (1 + taux), honos déduits.
+ *
+ * La règle précédente — « les deux dernières cases touchées pilotent les deux
+ * autres » — faisait bouger le prix de vente quand l'agent ajustait ses
+ * honoraires, ce qui n'a pas de sens : le client, lui, paie le HAI convenu.
  */
 export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
-  const deux = [...pilotes].reverse().filter((c, i, t) => t.indexOf(c) === i).slice(0, 2);
-  const a = new Set(deux);
+  const dernier = pilotes[pilotes.length - 1] ?? "hai";
   const v = (k: ChampPrix) => (typeof p[k] === "number" && p[k]! > 0 ? p[k]! : undefined);
   const nv = v("nv"), hai = v("hai"), taux = v("taux"), honos = v("honos");
 
@@ -346,33 +357,34 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
     taux: r.taux !== undefined ? arrondi(r.taux) : undefined,
   });
 
-  if (a.has("nv") && a.has("taux") && nv && taux) {
-    const h = nv * (taux / 100);
-    return out({ nv, taux, honos: h, hai: nv + h });
+  /* Le HAI vient d'être saisi, ou il est seul renseigné : le barème donne les
+     honoraires, et le net vendeur s'en déduit. */
+  if (dernier === "hai" || (hai && !nv && !honos && !taux)) {
+    if (!hai) return out({ nv, hai, taux, honos });
+    const r = netVendeurDepuisHai(hai);
+    return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux });
   }
-  if (a.has("nv") && a.has("honos") && nv && honos) {
-    return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
+
+  /* Sans prix HAI on ne peut rien ancrer : on le fabrique depuis ce qu'on a,
+     c'est le seul cas où il se calcule. */
+  if (!hai) {
+    if (nv && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+    if (nv && honos) return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
+    if (nv) { const r = honorairesBareme(nv); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
+    return out({ nv, hai, taux, honos });
   }
-  if (a.has("nv") && a.has("hai") && nv && hai) {
-    const h = hai - nv;
-    return out({ nv, hai, honos: h, taux: (h / nv) * 100 });
-  }
-  if (a.has("hai") && a.has("taux") && hai && taux) {
-    const n = hai / (1 + taux / 100);
-    return out({ hai, taux, nv: n, honos: hai - n });
-  }
-  if (a.has("hai") && a.has("honos") && hai && honos) {
+
+  if (dernier === "honos" && honos !== undefined) {
     const n = hai - honos;
     return out({ hai, honos, nv: n, taux: n > 0 ? (honos / n) * 100 : undefined });
   }
-  if (a.has("taux") && a.has("honos") && taux && honos) {
-    const n = honos / (taux / 100);
-    return out({ taux, honos, nv: n, hai: n + honos });
+  if (dernier === "nv" && nv !== undefined) {
+    const h = hai - nv;
+    return out({ hai, nv, honos: h, taux: nv > 0 ? (h / nv) * 100 : undefined });
   }
-  // Pas encore deux cases exploitables : on complète ce qu'on peut.
-  if (nv && taux) {
-    const h = nv * (taux / 100);
-    return out({ nv, taux, honos: h, hai: nv + h });
+  if (dernier === "taux" && taux !== undefined) {
+    const n = hai / (1 + taux / 100);
+    return out({ hai, taux, nv: n, honos: hai - n });
   }
   return out({ nv, hai, taux, honos });
 }

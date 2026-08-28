@@ -277,3 +277,14 @@ body:has(.mdoc.nu) html, body:has(.mdoc.nu) { background: #fff; }
   .mdoc .page { margin: 0; box-shadow: none; break-after: page; }
   .mdoc .page:last-child { break-after: auto; }
 }
+
+/* Vignettes d'intertitre (« DÉSIGNATION », « PRIX ET HONORAIRES »).
+   Retour MAV : trop hautes, texte blanc pas assez gras et mal centré en
+   hauteur. La maquette les composait en bloc avec un rembourrage vertical :
+   les capitales, qui n'ont pas de jambage, se retrouvaient poussées vers le
+   haut de la gélule. Hauteur fixe et centrage par flex règlent les trois. */
+.mdoc h3.pill {
+  display: inline-flex; align-items: center;
+  height: 4.8mm; padding: 0 4mm; line-height: 1;
+  font-weight: 800;
+}
