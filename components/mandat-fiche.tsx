@@ -20,6 +20,7 @@ import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { ContactPicker } from "@/components/contact-picker";
+import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
 import {
   FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
   nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
@@ -50,8 +51,39 @@ const dateInput = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : "");
 const TABS = ["Mandants", "Objet", "Prix", "Conditions", "Envoi"] as const;
 type Tab = (typeof TABS)[number];
 
+/* Un picto par onglet (retour #206 : « des pictos à chaque titre »). Mêmes
+   dessins que le rail de la fiche, pour que l'œil retrouve ses repères. */
+const IC_TAB: Record<Tab, React.ReactNode> = {
+  Mandants: <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></>,
+  Objet: <><path d="M5 2h11v19h3v2H4v-2h1z" /><path d="M8 6h2M8 10h2M8 14h2M12 6h1M12 10h1M12 14h1" /></>,
+  Prix: <><path d="M15 6H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H8" /><path d="M12 3v18" /></>,
+  Conditions: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 7l2.6 1.5M17.2 15.5 19.8 17M4.2 17l2.6-1.5M17.2 8.5 19.8 7" /></>,
+  Envoi: <><path d="m3 11 18-7-7 18-2.5-7.5z" /><path d="m11.5 14.5 3-6" /></>,
+};
+
+/** Initiales d'un agent, comme les pastilles du BO : « Marc-Antoine VOCI » → MAV. */
+const initiales = (nom?: string | null) =>
+  (nom ?? "")
+    .split(/[\s-]+/).filter(Boolean)
+    .map((mot) => mot[0]?.toUpperCase() ?? "")
+    .join("").slice(0, 3);
+
+/**
+ * La durée à afficher à côté du type, en jours.
+ *
+ * L'exclusif tient son exclusivité sur toute la durée du mandat ; le
+ * semi-exclusif porte la sienne dans `durée_exclu_jours`. Le simple n'en a
+ * aucune — et n'affiche donc rien plutôt qu'un « (0 j) » trompeur.
+ */
+const dureeExclu = (m: Record<string, unknown>) => {
+  const regime = regimeDe(m);
+  if (regime === "simple") return 0;
+  if (regime === "exclusif") return Math.round((num(m["durée_tot_month"]) ?? 12) * 30);
+  return num(m["durée_exclu_jours"]) ?? 90;
+};
+
 export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
-  const { m, im, lots, agent } = d;
+  const { m, im, lots, agent, vignettes } = d;
   const mandatId = String(m._id);
   const immeubleId = im ? String(im._id) : "";
   const [tab, setTab] = useState<Tab>("Mandants");
@@ -67,6 +99,8 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
 
   const statut = S(m.Statut);
   const numero = S(m.numero);
+  /** Le propriétaire de la fiche — mandant par défaut de tout le mandat. */
+  const proprietaireId = S(im?.PROPRIETAIRE) || undefined;
   const motifVerrou = verrou(m);
   const locked = motifVerrou !== null;
   const mandants = useMemo(() => lireMandants(m), [m]);
@@ -77,40 +111,81 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
 
   return (
     <div className="mdt">
-      {/* --- Bandeau d'identité, repris du BO : type, numéro, honos, dates --- */}
+      {/* --- Cartouche, repris du BO (retour #205) ---------------------------
+          MAV, capture à l'appui : « le cartouche qui va de part en part avec le
+          séparateur qui touche les deux sidebars, une première partie avec un
+          picto mandat et les initiales de l'agent, une deuxième section avec le
+          type de mandat et la durée de l'exclusivité, le badge attente d'infos
+          si tout n'est pas rempli, la petite vignette sur le nom du client. »
+
+          Le badge dit l'état réel du dossier et non le statut déclaré : tant
+          qu'il manque une pièce ou une donnée de rédaction, « Attente infos » ;
+          quand tout est là, « Infos obtenues ». C'est la même liste de manques
+          qui alimente les onglets, donc les deux ne peuvent pas se contredire. */}
       <div className="mdt-head">
+        {/* Les initiales et la couleur viennent de la table des agents : ce sont
+            celles du BO, pas une reconstitution à partir du nom. */}
+        <div className="mdt-agent" title={agent?.name ?? "Agent"}>
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="currentColor" stroke="none" />
+            <path d="M14 3v4h4" fill="#fff" stroke="none" />
+          </svg>
+          <b style={agent?.color ? { background: agent.color } : undefined}>
+            {agent?.initials || initiales(agent?.name) || "FI"}
+          </b>
+        </div>
+
         <div className="mdt-id">
           <span className="t">
             {S(m.Type) || "Vente"} {S(m.Type_exclu)}
-            {num(m["durée_exclu_jours"]) && S(m.Type_exclu) === "Semi-exclusif"
-              ? ` (${m["durée_exclu_jours"]} j)`
-              : ""}
+            {dureeExclu(m) ? ` (${dureeExclu(m)} j)` : ""}
           </span>
           <span className={numero ? "n on" : "n"}>{numero ? `# ${numero}` : "Pas de numéro"}</span>
           {euros(m.honos_ttc) && <span className="h">◈ {euros(m.honos_ttc)}</span>}
         </div>
+
         <div className="mdt-meta">
-          <span className={`badge-${statut === "En cours" || statut === "Vendu" ? "g" : ["Annulé", "Expiré"].includes(statut) ? "r" : "o"}`}>
-            {statut || "Attente infos"}
+          <span className={`badge-${trous.length === 0 ? "g" : ["Annulé", "Expiré"].includes(statut) ? "r" : "o"}`}>
+            {["Annulé", "Expiré", "Vendu"].includes(statut)
+              ? statut
+              : trous.length === 0 ? "Infos obtenues" : "Attente infos"}
           </span>
           <span className="dts">{dmy(m.date_effet) ?? "…"} → {dmy(m.date_fin) ?? "…"}</span>
+        </div>
+
+        {/* Les deux lignes du BO : qui signe, et sur quoi. */}
+        <div className="mdt-liens">
           {mandants.length > 0 && (
-            <span className="mdt-tag">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-              {mandants.map(nomMandant).join(" · ")}
+            <span className="mdt-l">
+              <i>Mandant{mandants.length > 1 ? "s" : ""}</i>
+              {/* À défaut de contact propre à la ligne, celui de la fiche :
+                  c'est lui le mandant, par construction (retour #205). */}
+              {mandants.map((x) => (
+                <VignetteContact key={x.uid}
+                  v={vignettes[x.contactId ?? proprietaireId ?? ""]}
+                  nom={nomMandant(x)} />
+              ))}
             </span>
           )}
           {im && (
-            <span className="mdt-tag">
-              <svg viewBox="0 0 24 24"><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>
-              {S(im.adresse_ville)} — {[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}
+            <span className="mdt-l">
+              <i>Objet du mandat</i>
+              <Link className="mdt-obj" href={`/bien/${immeubleId}`}>
+                <svg viewBox="0 0 24 24" aria-hidden><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>
+                <b>{S(im.adresse_ville)}</b>
+                <span>{[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}</span>
+              </Link>
             </span>
           )}
         </div>
+
         <div className="mdt-act">
           {!numero && <ReserveBtn mandatId={mandatId} immeubleId={immeubleId} />}
           {statut === "Attente infos" && (
-            <button className="mdt-go" type="button" disabled={pending}
+            <button className="mdt-go" type="button" disabled={pending || trous.length > 0}
+              title={trous.length > 0
+                ? `Il manque encore ${trous.length} information${trous.length > 1 ? "s" : ""} — voyez les onglets marqués ⚠`
+                : undefined}
               onClick={() => act(() => mandatInfosRecues(mandatId, immeubleId))}>
               <span className="ch">›</span> Infos mandat reçues
             </button>
@@ -131,13 +206,28 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
         </div>
       )}
 
-      <div className="mdt-tabs">
+      {/* Retour #206 — « pour la progression dans le mandat, tu le mets sur
+          toute la largeur entre les deux sidebars, en responsive, avec des
+          pictos à chaque titre et une notification quand il manque quelque
+          chose à droite du titre ». Le compte de manques est celui des onglets
+          eux-mêmes : la pastille dit combien, pas seulement qu'il en reste. */}
+      <div className="mdt-tabs bord-a-bord">
         {TABS.map((t) => {
           const n = trousPar(t);
+          const bloque = t === "Envoi" && trous.length > 0;
           return (
-            <button key={t} type="button" className={`mdt-tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>
-              {t === "Envoi" && trous.length > 0 ? <span className="lk">🔒</span> : n > 0 ? <span className="wn">⚠</span> : <span className="okv">✓</span>}
-              {t}
+            <button
+              key={t} type="button"
+              className={`mdt-tab${tab === t ? " on" : ""}${n > 0 ? " ko" : ""}`}
+              onClick={() => setTab(t)}
+            >
+              <span className="pic"><svg viewBox="0 0 24 24">{IC_TAB[t]}</svg></span>
+              <span className="lb">{t}</span>
+              {bloque
+                ? <span className="lk" title={`${trous.length} information${trous.length > 1 ? "s" : ""} manquante${trous.length > 1 ? "s" : ""}`}>🔒</span>
+                : n > 0
+                  ? <span className="nb" title={`${n} information${n > 1 ? "s" : ""} à compléter`}>{n}</span>
+                  : <span className="okv">✓</span>}
             </button>
           );
         })}
@@ -151,6 +241,7 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
               ? [S(im.adresse_numero_rue), S(im.adresse_rue), S(im.adresse_zipcode), S(im.adresse_ville)]
                 .filter(Boolean).join(" ")
               : undefined}
+            vignettes={vignettes} proprietaireId={proprietaireId}
             onSuivant={suivant}
           />
         )}
@@ -196,15 +287,27 @@ function useModifie(empreinte: string) {
 /* ------------------------------------------------- Onglet 1 · Mandants */
 
 function OngletMandants({
-  mandatId, immeubleId, mandants: init, locked, adresseImmeuble, onSuivant,
+  mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
+  vignettes, proprietaireId, onSuivant,
 }: {
   mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
   /** L'adresse de l'immeuble : c'est par elle qu'on retrouve le propriétaire. */
   adresseImmeuble?: string;
+  /** Cartes de visite chargées avec le mandat (retour #205). */
+  vignettes: Record<string, VignetteData>;
+  /** Le propriétaire de la fiche : mandant par défaut, plutôt que « aucun ». */
+  proprietaireId?: string;
   /** Enchaîne sur l'étape suivante une fois l'onglet enregistré (retour #197). */
   onSuivant?: () => void;
 }) {
-  const depart = init.length ? init : [mandantVide(0)];
+  /* Retour #205 : « le contact c'est celui de la fiche du bien, c'est logique ».
+     La première ligne adopte donc le propriétaire de la fiche quand elle n'a
+     pas déjà le sien — pas seulement à l'affichage : le rattachement est réel,
+     sans quoi les pièces déposées resteraient sur le mandat au lieu d'enrichir
+     la fiche du client. Les lignes suivantes d'une indivision, elles, se
+     désignent à la main : rien ne dit qui elles sont. */
+  const depart = (init.length ? init : [mandantVide(0)]).map((x, i) =>
+    i === 0 && !x.contactId && proprietaireId ? { ...x, contactId: proprietaireId } : x);
   const [rows, setRows] = useState<Mandant[]>(depart);
   const [pending, start] = useTransition();
   const { modifie, valider } = useModifie(JSON.stringify(rows));
@@ -227,7 +330,10 @@ function OngletMandants({
         aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil, et les pièces déposées ici enrichissent sa fiche pour les affaires suivantes."
       />
 
-      {!locked && adresseImmeuble && (
+      {/* La recherche DGFiP ne sert qu'à trouver un propriétaire qu'on n'a pas.
+          Rattaché, la question ne se pose plus : l'encart s'efface (retour
+          #205 — « pas besoin de ce bouton alors que c'est déjà le cas »). */}
+      {!locked && adresseImmeuble && !rows.some((x) => x.contactId || x.societe?.nom) && (
         <QuiPossede
           adresse={adresseImmeuble}
           onRetenir={(p) => {
@@ -253,6 +359,7 @@ function OngletMandants({
           <CarteMandant
             key={x.uid} x={x} rang={i + 1} seul={rows.length === 1} locked={locked}
             mandatId={mandatId} immeubleId={immeubleId}
+            vignettes={vignettes} proprietaireId={proprietaireId}
             onMaj={(p) => maj(x.uid, p)} onSupprimer={() => supprimer(x.uid)}
           />
         ))}
@@ -278,10 +385,14 @@ function OngletMandants({
 }
 
 function CarteMandant({
-  x, rang, seul, locked, mandatId, immeubleId, onMaj, onSupprimer,
+  x, rang, seul, locked, mandatId, immeubleId, vignettes, proprietaireId, onMaj, onSupprimer,
 }: {
   x: Mandant; rang: number; seul: boolean; locked: boolean;
   mandatId: string; immeubleId: string;
+  /** Cartes de visite chargées avec le mandat (retour #205). */
+  vignettes: Record<string, VignetteData>;
+  /** Le propriétaire de la fiche : mandant par défaut de la ligne. */
+  proprietaireId?: string;
   onMaj: (p: Partial<Mandant>) => void; onSupprimer: () => void;
 }) {
   const [picker, setPicker] = useState(false);
@@ -291,7 +402,9 @@ function CarteMandant({
   return (
     <div className="mdt-md">
       <div className="mdt-md-h">
-        <span className="r">{seul ? "Mandant" : `Mandant ${rang}`}</span>
+        {/* Retour #205 : « fais peut-être une gélule autour de Mandant 1 pour
+            que ça se voie mieux. » */}
+        <span className="r gel">{seul ? "Mandant" : `Mandant ${rang}`}</span>
         <div className="seg">
           {(["physique", "morale"] as const).map((p) => (
             <button key={p} type="button" className={x.personne === p ? "on" : undefined}
@@ -306,21 +419,25 @@ function CarteMandant({
         )}
       </div>
 
-      {/* Le contact : la carte d'identité de la ligne. */}
+      {/* Le contact de la ligne (retour #205).
+          MAV : « ce que je comprends pas c'est qu'il y a écrit "aucun contact
+          rattaché" ; le contact c'est celui de la fiche du bien, c'est logique.
+          Pas besoin de ce bouton alors que c'est déjà le cas. » À défaut de
+          contact propre à la ligne, on affiche donc celui de la fiche — il est
+          le mandant par défaut — et le bouton ne sert plus qu'à en désigner un
+          autre, ce qui arrive en indivision. */}
       <div className="mdt-md-ct">
-        <span className="ic">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-        </span>
-        <span className={x.contactId ? "nm on" : "nm"}>
-          {x.contactId ? [x.prenom, x.nom].filter(Boolean).join(" ") || "Contact sélectionné" : "Aucun contact rattaché"}
-        </span>
+        <VignetteContact
+          v={x.contactId ? vignettes[x.contactId] : undefined}
+          nom={[x.prenom, x.nom].filter(Boolean).join(" ") || "À désigner"}
+        />
+        {x.contactId && x.contactId === proprietaireId && (
+          <span className="mdt-md-dft">propriétaire de la fiche</span>
+        )}
         {!locked && (
           <button type="button" className="mdt-lien" onClick={() => setPicker(true)}>
             {x.contactId ? "Changer" : "Sélectionner ou créer"}
           </button>
-        )}
-        {x.contactId && (
-          <Link className="mdt-lien" href={`/contact/${x.contactId}`}>Ouvrir la fiche</Link>
         )}
       </div>
 
@@ -366,8 +483,13 @@ function CarteMandant({
         />
       )}
 
-      {/* Toutes les cases sur une grille — plus d'escalier (retour #101). */}
-      <div className="mdt-grid">
+      {/* Retour #205 : « c'est mieux quand c'est sur 3 lignes, tu peux reprendre
+          la façon dont c'était affiché sur le BO. » Le BO tenait en identité /
+          naissance / adresse ; on garde ce rythme en y logeant les deux cases
+          qu'il n'avait pas — la civilité, qui va avec le nom, et la qualité au
+          mandat, qui va avec l'état civil. L'adresse prend la ligne entière :
+          c'est la plus longue, et la casser en deux la rendait illisible. */}
+      <div className="mdt-grid trois">
         <Champ label="Civilité">
           <select className="mi" value={x.qualite ?? ""} disabled={locked}
             onChange={(e) => onMaj({ qualite: e.target.value || undefined })}>
@@ -382,6 +504,15 @@ function CarteMandant({
           <input className="mi maj" value={x.nom ?? ""} disabled={locked}
             onChange={(e) => onMaj({ nom: e.target.value || undefined })} />
         </Champ>
+
+        <Champ label="Né(e) le">
+          <input className="mi" type="date" value={(x.dateNaissance ?? "").slice(0, 10)} disabled={locked}
+            onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
+        </Champ>
+        <Champ label="Lieu de naissance">
+          <input className="mi" value={x.lieuNaissance ?? ""} disabled={locked}
+            onChange={(e) => onMaj({ lieuNaissance: e.target.value || undefined })} />
+        </Champ>
         <Champ label="Qualité au mandat">
           {/* Champ libre avec suggestions : le BO contient « Gérant dûment
               habilité », « Gérant - Associé »… qu'une liste fermée perdrait. */}
@@ -392,15 +523,8 @@ function CarteMandant({
             {FONCTIONS_MANDANT.map((f) => <option key={f} value={f} />)}
           </datalist>
         </Champ>
-        <Champ label="Né(e) le">
-          <input className="mi" type="date" value={(x.dateNaissance ?? "").slice(0, 10)} disabled={locked}
-            onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
-        </Champ>
-        <Champ label="Lieu de naissance">
-          <input className="mi" value={x.lieuNaissance ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ lieuNaissance: e.target.value || undefined })} />
-        </Champ>
-        <Champ label="Adresse" large>
+
+        <Champ label="Adresse" pleine>
           {/* Adresse géolocalisée : on tape les premières lettres, la Base
               Adresse Nationale complète (retour #134). */}
           <AdresseInput classe="mi" valeur={x.adresse ?? ""} disabled={locked}
@@ -616,9 +740,15 @@ function ChercheSociete({ onChoisir }: { onChoisir: (e: EntrepriseTrouvee) => vo
   );
 }
 
-function Champ({ label, children, large }: { label: string; children: React.ReactNode; large?: boolean }) {
+function Champ({ label, children, large, pleine }: {
+  label: string; children: React.ReactNode;
+  /** Deux colonnes de large. */
+  large?: boolean;
+  /** Toute la ligne — pour l'adresse, qu'on ne coupe pas (retour #205). */
+  pleine?: boolean;
+}) {
   return (
-    <label className={`mdt-ch${large ? " lg" : ""}`}>
+    <label className={`mdt-ch${large ? " lg" : ""}${pleine ? " pleine" : ""}`}>
       <span>{label}</span>
       {children}
     </label>
@@ -648,8 +778,13 @@ function Piece({
     });
   };
 
-  return (
-    <div className={`mdt-pc${url ? " ok" : ""}`}>
+  /* Retour #205 : « il faut qu'on puisse cliquer partout sur ce bouton et ça
+     ouvre la fenêtre pour ajouter le document ». La ligne entière est donc un
+     <label> : viser le petit « Déposer » n'était pas raisonnable. Le lien
+     « Ouvrir » reste seul à faire autre chose — il sort du label pour que le
+     clic dessus n'ouvre pas le sélecteur de fichiers. */
+  const contenu = (
+    <>
       <span className="ic">
         {url ? (
           <svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7" /></svg>
@@ -658,18 +793,23 @@ function Piece({
         )}
       </span>
       <span className="l">{label}</span>
-      {url ? (
-        <a className="mdt-lien" href={url} target="_blank" rel="noreferrer">Ouvrir</a>
+      {!url && <span className="mq">manquante</span>}
+    </>
+  );
+
+  return (
+    <div className={`mdt-pc${url ? " ok" : ""}`}>
+      {locked ? (
+        <span className="mdt-pc-in">{contenu}</span>
       ) : (
-        <span className="mq">manquante</span>
-      )}
-      {!locked && (
-        <label className="mdt-up">
-          {pending ? "Envoi…" : url ? "Remplacer" : "Déposer"}
+        <label className={`mdt-pc-in cliquable${pending ? " off" : ""}`}>
+          {contenu}
+          <span className="mdt-up">{pending ? "Envoi…" : url ? "Remplacer" : "Déposer"}</span>
           <input type="file" accept="image/*,application/pdf" disabled={pending}
             onChange={(e) => choisir(e.target.files?.[0])} />
         </label>
       )}
+      {url && <a className="mdt-lien" href={url} target="_blank" rel="noreferrer">Ouvrir</a>}
       {err && <span className="er">{err}</span>}
     </div>
   );
@@ -777,8 +917,14 @@ function OngletObjet({
         )}
       </div>
 
+      {/* Retour #206 — « l'occupation est déterminée par l'état locatif, donc tu
+          peux enlever ce bouton, tu remplaces par le loyer actuel. Et tu mets la
+          référence cadastrale et la surface de terrain sur la même ligne. »
+          L'occupation reste dite, mais là où elle a du sens : sur le badge de la
+          carte du bien, juste au-dessus. La répéter en case grisée occupait la
+          place d'une information qui, elle, manque souvent. */}
       <div className="mdt-sub">Ce qui reste à saisir</div>
-      <div className="mdt-grid">
+      <div className="mdt-grid deux">
         <Champ label="Références cadastrales">
           <input
             className={`mi${cadVerrouille ? " gris" : ""}`} value={cad}
@@ -796,11 +942,17 @@ function OngletObjet({
           <input className="mi" value={terrain} disabled={locked} inputMode="numeric"
             onChange={(e) => setTerrain(e.target.value)} />
         </Champ>
+      </div>
+      <div className="mdt-grid deux">
         <Champ label="Surface bâtie (m²)">
           <input className="mi gris" value={s.surface ? group(s.surface) : ""} readOnly title="Somme des lots" />
         </Champ>
-        <Champ label="Occupation">
-          <input className="mi gris" value={badge.t} readOnly title="Déduite des baux de l'état locatif" />
+        <Champ label="Loyer actuel">
+          <input
+            className="mi gris"
+            value={s.loyerMensuel ? `${group(s.loyerMensuel)} € / mois HC — ${group(s.loyerMensuel * 12)} € / an` : "—"}
+            readOnly title="Somme des loyers en cours de l'état locatif"
+          />
         </Champ>
       </div>
 

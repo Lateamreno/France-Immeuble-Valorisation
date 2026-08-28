@@ -270,6 +270,53 @@ async function count(type: string, constraints?: Constraint[]) {
   return p.remaining + p.results.length;
 }
 
+/**
+ * La carte de visite d'un contact (retour #205).
+ *
+ * MAV : « la petite vignette sur le nom du client, cliquable, qui affiche ses
+ * coordonnées, son nombre d'immeubles et de recherches, et quand on clique sur
+ * la fiche — sauf sur Appeler ou E-mail — ça renvoie à la fiche contact. Ça
+ * c'est quelque chose que tu dois implémenter à plusieurs endroits. »
+ *
+ * D'où un chargeur volontairement maigre : une seule lecture par lot
+ * d'identifiants, et rien de plus que ce que la vignette affiche. Les nombres
+ * d'immeubles et de recherches sont portés par la fiche contact elle-même
+ * (`IMMEUBLES`, `RECHERCHEs`) — aucun comptage à faire.
+ */
+export type Vignette = {
+  id: string;
+  nom: string;
+  /** « Particulier », « Marchand de biens »… tel que la fiche le porte. */
+  qualite?: string;
+  tel?: string;
+  email?: string;
+  immeubles: number;
+  recherches: number;
+};
+
+const longueur = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+
+export async function getVignettes(ids: string[]): Promise<Record<string, Vignette>> {
+  const uniques = [...new Set(ids.filter(Boolean))];
+  if (uniques.length === 0) return {};
+  const rows = await parIds("contact", uniques, 50).catch(() => [] as Record<string, unknown>[]);
+  const out: Record<string, Vignette> = {};
+  for (const c of rows) {
+    const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ").trim();
+    const types = Array.isArray(c.Types) ? (c.Types as unknown[]).map(String) : [];
+    out[String(c._id)] = {
+      id: String(c._id),
+      nom: nom || String(c.entreprise_nom ?? "") || String(c.email ?? "Contact"),
+      qualite: types[0] ?? (c.vendeur === true ? "Vendeur" : undefined),
+      tel: (c.portable_formatted ?? c.portable) ? String(c.portable_formatted ?? c.portable) : undefined,
+      email: c.email ? String(c.email) : undefined,
+      immeubles: longueur(c.IMMEUBLES),
+      recherches: longueur(c.RECHERCHEs),
+    };
+  }
+  return out;
+}
+
 /* ---------- helpers de présentation ---------- */
 
 import { dmy, euros, keur } from "@/lib/format";
@@ -887,6 +934,8 @@ export async function getMandat(id: string): Promise<{
      c'est lui qui fait foi ; quand il ne les connaît pas, le mandat les
      saisit et les lui renvoie. */
   parcelles: Record<string, unknown>[];
+  /** Cartes de visite des contacts cités, par identifiant (retour #205). */
+  vignettes: Record<string, Vignette>;
 } | null> {
   const r = await bq("mandat", {
     constraints: [{ key: "_id", constraint_type: "equals", value: id }],
@@ -915,7 +964,21 @@ export async function getMandat(id: string): Promise<{
     ? await fetchAll("parcelle", [{ key: "_id", constraint_type: "in", value: refsParcelles }], 100)
       .catch(() => [] as Record<string, unknown>[])
     : [];
-  return { m, im, lots: lotsTries, agent, parcelles };
+  /* Les fiches des mandants, pour la vignette du cartouche (retour #205). Les
+     mandants sont stockés à plat sur le mandat ; ceux qui portent un contact
+     rattaché ont droit à leur carte de visite. */
+  const idsMandants = [
+    // Modèle actuel : les mandants sont un tableau porté par le mandat.
+    ...(Array.isArray(m.mandants)
+      ? (m.mandants as Record<string, unknown>[]).map((x) => S2(x.contactId))
+      : []),
+    // Repli hérité de Bubble : les contacts sont dans `MANDANTs`, par position.
+    ...(Array.isArray(m.MANDANTs) ? (m.MANDANTs as unknown[]).map(S2) : []),
+    // Le propriétaire de l'immeuble : c'est lui, le contact de la fiche.
+    S2(im?.PROPRIETAIRE),
+  ].filter((x): x is string => !!x);
+  const vignettes = await getVignettes(idsMandants).catch(() => ({}));
+  return { m, im, lots: lotsTries, agent, parcelles, vignettes };
 }
 
 /* ---------- Vues listes (réplique des modules de la sidebar) ---------- */

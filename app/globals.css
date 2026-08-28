@@ -456,7 +456,13 @@ button { font-family: inherit; cursor: pointer; }
    Or de la fiche échantillonné : #b6a359 ; header sombre #424242.
    =================================================================== */
 .fiche { display: flex; min-height: calc(100vh - var(--bottbar-h)); }
-.fiche-main { flex: 1; min-width: 0; background: var(--bg); padding: 26px 30px 40px; }
+/* La gouttière de la fiche vit dans une variable : les blocs « bord à bord »
+   (tableau des lots, cartouche et onglets du mandat) l'annulent par une marge
+   négative, et doivent donc connaître sa valeur du moment. Elle change à deux
+   endroits — le mode étroit, posé en JS sur <body>, et le format téléphone —
+   qu'une media query recopiée à la main ne pouvait pas suivre : à 1000 px la
+   page débordait de 16 px. */
+.fiche-main { flex: 1; min-width: 0; background: var(--bg); --gout: 30px; padding: 26px var(--gout) 40px; }
 .fiche-inner { max-width: 880px; margin: 0 auto; }
 /* L'état locatif occupe toute la largeur disponible (d'une barre à l'autre),
    sans scroll horizontal : demande MAV du 11/08. */
@@ -707,7 +713,7 @@ body.nav-etroite .brail {
   z-index: 940; border-left: 1px solid var(--line);
 }
 body.nav-etroite.fiche-ouverte .brail { transform: none; box-shadow: -2px 0 14px rgba(0, 0, 0, .25); }
-body.nav-etroite .fiche-main { padding-left: 14px; padding-right: 14px; }
+body.nav-etroite .fiche-main { --gout: 14px; }
 body.nav-etroite .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -14px; }
 body.nav-etroite .ltools.v2 { left: 0; }
 
@@ -1913,13 +1919,12 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 /* Tableau des lots collé aux deux sidebars : il sort des gouttières de la
    fiche pour toucher 0 px de part et d'autre (retour #49). */
 .ltable-wrap.bord-a-bord {
-  margin-left: -30px; margin-right: -30px;
+  margin-left: calc(var(--gout, 30px) * -1); margin-right: calc(var(--gout, 30px) * -1);
   border-left: 0; border-right: 0; border-radius: 0;
 }
 /* La colonne Commentaire porte du texte long : elle seule s'enroule. */
 .ltable.v2 td.com, .ltable.v2 th.com { white-space: normal; }
 .ltable.v2 td.com .lcell { white-space: nowrap; }
-@media (max-width: 900px) { .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -14px; } }
 
 /* --- Contrôles de carte : satellite et croix directionnelle (retour #43) --- */
 .emp-map { position: relative; }
@@ -3322,7 +3327,7 @@ select.pr-in { cursor: pointer; }
      redeviennent visibles du même coup — ils l'étaient déjà sur ordinateur. */
   .brail-head { padding: 10px 12px; }
   .bthumb { width: 44px; height: 44px; }
-  .fiche-main { padding: 12px 12px 30px; }
+  .fiche-main { --gout: 12px; padding: 12px var(--gout) 30px; }
   .fiche-inner { max-width: none; }
   .modal { width: calc(100vw - 20px); max-width: none; }
   .gph-grid { grid-template-columns: repeat(2, 1fr); }
@@ -3536,13 +3541,32 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .mdt { padding: 2px 0 40px; }
 
 /* --- Bandeau d'identité --- */
+/* Cartouche du mandat — repris du BO (retour #205).
+   Il va de part en part : le séparateur du bas touche les deux sidebars, comme
+   dans le BO. D'où les marges négatives qui annulent les gouttières de la
+   fiche, et le padding rendu à l'intérieur. */
 .mdt-head {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: "id act" "meta act";
-  gap: 6px 16px;
-  padding: 0 0 12px;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "agent id   act"
+                       "agent meta act"
+                       "agent liens act";
+  gap: 5px 18px;
+  margin: -26px calc(var(--gout, 30px) * -1) 0;
+  padding: 16px var(--gout, 30px) 14px;
   border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+/* Le picto mandat et les initiales de l'agent, comme la pastille du BO. */
+.mdt-agent {
+  grid-area: agent; align-self: start;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: 54px; color: var(--slate);
+}
+.mdt-agent svg { width: 34px; height: 34px; }
+.mdt-agent b {
+  font-family: var(--font-title); font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  color: #fff; background: var(--slate); border-radius: 2px; padding: 1px 5px;
 }
 .mdt-id { grid-area: id; display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
 .mdt-id .t { font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); }
@@ -3558,6 +3582,24 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 }
 .mdt-tag svg { width: 12px; height: 12px; fill: currentColor; stroke: none; opacity: .75; }
 .mdt-act { grid-area: act; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+
+/* Les deux lignes du BO : « Mandant · [vignette] » et « Objet du mandat · […] ». */
+.mdt-liens { grid-area: liens; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.mdt-l { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mdt-l > i {
+  font-style: normal; font-size: 11.5px; color: var(--gray-lt);
+  min-width: 84px;
+}
+.mdt-obj {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--slate); text-decoration: none;
+  background: var(--cols); border: 1px solid transparent; border-radius: 3px; padding: 3px 9px;
+}
+.mdt-obj:hover { border-color: var(--gold-bo); }
+.mdt-obj svg { width: 12px; height: 12px; fill: currentColor; stroke: none; opacity: .7; }
+.mdt-obj b { font-weight: 700; }
+.mdt-obj span { color: var(--gray-txt); }
+
 
 .mdt-go {
   display: inline-flex; align-items: center; gap: 7px; justify-content: center;
@@ -3593,19 +3635,53 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .mdt-note { background: #fbf8ee; border: 1px solid #e6dcb8; color: #6d5f28; }
 
 /* --- Onglets --- */
-.mdt-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 0; overflow-x: auto; }
+/* Progression du mandat (retour #206) : pleine largeur entre les deux
+   sidebars, un picto par titre, et le nombre de manques à droite du titre.
+   Les cinq onglets se partagent la largeur — c'est ce qui en fait une barre de
+   progression et non une simple rangée d'onglets. */
+.mdt-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--line);
+  margin: 0 0 4px; background: var(--cols);
+}
+.mdt-tabs.bord-a-bord { margin-left: calc(var(--gout, 30px) * -1); margin-right: calc(var(--gout, 30px) * -1); }
 .mdt-tab {
-  display: inline-flex; align-items: center; gap: 7px;
+  flex: 1 1 0; min-width: 0; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   font-family: var(--font-title); font-size: 13.5px; font-weight: 600;
   color: var(--gray-txt); background: none; border: 0;
-  border-bottom: 2px solid transparent; padding: 9px 18px 10px;
-  cursor: pointer; white-space: nowrap;
+  border-bottom: 2px solid transparent; padding: 11px 12px 12px;
+  cursor: pointer;
 }
-.mdt-tab:hover { color: var(--slate); }
-.mdt-tab.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
-.mdt-tab .wn { color: var(--red); font-size: 12px; }
+/* Le libellé cède avant tout le reste : le picto et la pastille disent
+   l'essentiel, et rien ne déborde de la fenêtre. */
+.mdt-tab .lb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdt-tab + .mdt-tab { box-shadow: inset 1px 0 0 #e4e4e4; }
+.mdt-tab:hover { color: var(--slate); background: #fff; }
+.mdt-tab.on { color: var(--slate); background: #fff; border-bottom-color: var(--gold-bo); }
+.mdt-tab .pic { display: inline-flex; width: 15px; height: 15px; flex: none; }
+.mdt-tab .pic svg {
+  width: 100%; height: 100%; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+.mdt-tab.ko .pic { color: var(--red); }
+/* La notification : combien il manque, pas seulement qu'il manque. */
+.mdt-tab .nb {
+  min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--red); color: #fff; border-radius: 8px;
+  font-size: 10.5px; font-weight: 700;
+}
 .mdt-tab .okv { color: var(--green); font-size: 12px; }
 .mdt-tab .lk { font-size: 11px; filter: grayscale(1); }
+
+@media (max-width: 900px) {
+  .mdt-tab { padding: 10px 6px 11px; font-size: 12px; gap: 5px; }
+}
+/* Trop étroit pour cinq libellés : les pictos et les pastilles suffisent. */
+@media (max-width: 620px) {
+  .mdt-tab .lb { display: none; }
+  .mdt-tab { gap: 5px; }
+}
 
 .mdt-body { padding: 18px 2px 0; }
 
@@ -3695,8 +3771,21 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   gap: 10px 14px;
   align-items: end;
 }
+/* Deux colonnes fixes (retour #206 : « réf. cadastrale et surface de terrain
+   sur la même ligne »). Sur mobile, la grille automatique retombe à une. */
+/* Un peu d'air entre les lignes : la case cadastre porte un lien sous elle et
+   collait la ligne suivante. */
+.mdt-grid.deux { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px; }
+.mdt-grid .mdt-lien { align-self: start; margin-top: 3px; font-size: 11.5px; }
+/* Trois colonnes, trois lignes : identité / naissance / adresse (retour #205). */
+.mdt-grid.trois { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) { .mdt-grid.trois { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .mdt-grid.deux, .mdt-grid.trois { grid-template-columns: 1fr; }
+}
 .mdt-ch { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mdt-ch.lg { grid-column: span 2; }
+.mdt-ch.pleine { grid-column: 1 / -1; }
 .mdt-ch > span { font-size: 11.5px; color: var(--gray-txt); }
 .mi {
   width: 100%; box-sizing: border-box;
@@ -3729,26 +3818,43 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .mdt-md-h .r {
   font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--slate);
 }
+/* Retour #205 : une gélule autour de « Mandant 1 », pour qu'on voie tout de
+   suite où commence chaque mandant dans une indivision. */
+.mdt-md-h .r.gel {
+  background: var(--slate); color: #fff; border-radius: 11px;
+  padding: 3px 12px; font-size: 12px; letter-spacing: .01em;
+}
 .mdt-md-ct {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--cols); border-radius: 4px; padding: 8px 12px; margin-bottom: 14px;
+  background: var(--cols); border-radius: 4px; padding: 7px 10px; margin-bottom: 14px;
 }
-.mdt-md-ct .ic svg { width: 16px; height: 16px; fill: none; stroke: var(--gray-txt); stroke-width: 1.6; }
-.mdt-md-ct .nm { font-size: 13px; color: var(--gray-lt); }
-.mdt-md-ct .nm.on { color: var(--slate); font-weight: 600; }
+.mdt-md-dft { font-size: 11.5px; color: var(--gray-lt); font-style: italic; }
 
 /* --- Pièces justificatives --- */
 .mdt-pieces { display: flex; flex-wrap: wrap; gap: 10px; }
 .mdt-pc {
   display: flex; align-items: center; gap: 9px; flex: 1 1 280px;
-  border: 1px dashed #d5d5d5; border-radius: 5px; padding: 9px 12px; background: #fcfcfc;
+  border: 1px dashed #d5d5d5; border-radius: 5px; padding: 0 12px 0 0; background: #fcfcfc;
 }
 .mdt-pc.ok { border-style: solid; border-color: #cfe0cf; background: #f6faf6; }
+/* Retour #205 : « il faut qu'on puisse cliquer partout sur ce bouton et ça
+   ouvre la fenêtre pour ajouter le document ». La ligne entière est le bouton ;
+   seul « Ouvrir » en sort, parce qu'il fait autre chose. */
+.mdt-pc-in {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 0 9px 12px;
+}
+.mdt-pc-in.cliquable { cursor: pointer; border-radius: 4px; }
+.mdt-pc-in.cliquable:hover { background: rgba(0, 0, 0, .03); }
+.mdt-pc-in.cliquable:hover .mdt-up { border-color: var(--gold-bo); }
+.mdt-pc-in.off { cursor: progress; opacity: .7; }
+.mdt-pc-in input { display: none; }
 .mdt-pc .ic svg { width: 16px; height: 16px; fill: none; stroke: var(--gray-lt); stroke-width: 1.8; }
 .mdt-pc.ok .ic svg { stroke: var(--green); }
 .mdt-pc .l { font-size: 13px; color: var(--slate); font-weight: 600; font-family: var(--font-title); }
 .mdt-pc .mq { font-size: 11.5px; color: var(--red); }
-.mdt-pc .er { font-size: 11.5px; color: var(--red); flex: 1 1 100%; }
+.mdt-pc .er { font-size: 11.5px; color: var(--red); flex: 1 1 100%; padding: 0 0 8px 12px; }
 .mdt-up {
   margin-left: auto; cursor: pointer;
   font-family: var(--font-title); font-size: 12px; font-weight: 600; color: var(--gold-bo);
@@ -3757,6 +3863,57 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 }
 .mdt-up input { display: none; }
 .mdt-up.gros { margin-left: 0; padding: 9px 16px; font-size: 13px; }
+
+/* ---------------- Vignette de contact (retour #205) -----------------------
+   Commune à tous les écrans : le mandat, la fiche du bien, les listes. Une
+   pastille cliquable, et dessous une carte de visite dont le corps mène à la
+   fiche du contact — sauf les deux boutons du bas. */
+.vgn { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.vgn-pre { font-style: normal; font-size: 11.5px; color: var(--gray-lt); }
+.vgn-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--cols); border: 1px solid transparent; border-radius: 3px;
+  padding: 3px 9px; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--slate);
+}
+.vgn-chip:hover, .vgn-chip.on { border-color: var(--gold-bo); background: #fff; }
+.vgn-chip.plat { cursor: default; font-weight: 500; color: var(--gray-txt); }
+.vgn-chip svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; opacity: .7; }
+
+.vgn-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  display: block; width: 262px;
+  background: #fff; border: 1px solid var(--gold-bo); border-radius: 5px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .18); overflow: hidden;
+}
+.vgn-card { display: flex; gap: 10px; padding: 11px 12px; text-decoration: none; }
+.vgn-card:hover { background: #fbf9f3; }
+.vgn-card .av {
+  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  background: var(--cols); display: grid; place-items: center;
+}
+.vgn-card .av svg { width: 20px; height: 20px; fill: none; stroke: var(--gray-txt); stroke-width: 1.6; }
+.vgn-card .txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vgn-card b { font-family: var(--font-title); font-size: 13.5px; color: var(--slate); }
+.vgn-card i { font-style: italic; font-size: 11.5px; color: var(--gray-lt); }
+.vgn-card .l {
+  font-size: 12px; color: var(--gray-txt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vgn-card .cpt { display: flex; gap: 12px; margin-top: 4px; }
+.vgn-card .cpt span { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--gray-txt); }
+.vgn-card .cpt svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.7; opacity: .75; }
+
+.vgn-act { display: flex; border-top: 1px solid var(--line); }
+.vgn-act a {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 4px; text-decoration: none;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate);
+}
+.vgn-act a + a { border-left: 1px solid var(--line); }
+.vgn-act a:hover { background: var(--cols); }
+.vgn-act a.off { color: var(--gray-lt); pointer-events: none; }
+.vgn-act svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 
 .mdt-add {
   display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
