@@ -12,7 +12,7 @@
 
 import { group } from "./format";
 import { RATTACHE } from "./referentiels";
-import { honorairesBareme, netVendeurDepuisHai } from "./bareme";
+import { honorairesBareme, netVendeurDepuisHai, type Tranche } from "./bareme";
 
 /* ---------------------------------------------------------------- Mandants */
 
@@ -345,7 +345,7 @@ const arrondi = (n: number) => Math.round(n * 100) / 100;
  * autres » — faisait bouger le prix de vente quand l'agent ajustait ses
  * honoraires, ce qui n'a pas de sens : le client, lui, paie le HAI convenu.
  */
-export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
+export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]): Prix {
   const dernier = pilotes[pilotes.length - 1] ?? "hai";
   const v = (k: ChampPrix) => (typeof p[k] === "number" && p[k]! > 0 ? p[k]! : undefined);
   const nv = v("nv"), hai = v("hai"), taux = v("taux"), honos = v("honos");
@@ -361,7 +361,7 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
      honoraires, et le net vendeur s'en déduit. */
   if (dernier === "hai" || (hai && !nv && !honos && !taux)) {
     if (!hai) return out({ nv, hai, taux, honos });
-    const r = netVendeurDepuisHai(hai);
+    const r = netVendeurDepuisHai(hai, bareme);
     return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux });
   }
 
@@ -370,7 +370,7 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[]): Prix {
   if (!hai) {
     if (nv && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
     if (nv && honos) return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
-    if (nv) { const r = honorairesBareme(nv); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
+    if (nv) { const r = honorairesBareme(nv, bareme); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
     return out({ nv, hai, taux, honos });
   }
 

@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
-import { baremeTexte, plafondTaux } from "@/lib/bareme";
+import { baremeTexte, plafondTaux, type Tranche } from "@/lib/bareme";
 import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
@@ -50,7 +50,7 @@ const dateInput = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : "");
 const TABS = ["Mandants", "Objet", "Prix", "Conditions", "Envoi"] as const;
 type Tab = (typeof TABS)[number];
 
-export function MandatFiche({ d }: { d: Data }) {
+export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
   const { m, im, lots, agent } = d;
   const mandatId = String(m._id);
   const immeubleId = im ? String(im._id) : "";
@@ -160,7 +160,7 @@ export function MandatFiche({ d }: { d: Data }) {
         )}
         {tab === "Prix" && (
           <OngletPrix m={m} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
-            onSuivant={suivant} />
+            onSuivant={suivant} bareme={bareme} />
         )}
         {tab === "Conditions" && (
           <OngletConditions m={m} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
@@ -833,11 +833,13 @@ function Stat({ k, v, d }: { k: string; v: string; d?: string }) {
 /* ----------------------------------------------------- Onglet 3 · Prix */
 
 function OngletPrix({
-  m, lots, mandatId, immeubleId, locked, onSuivant,
+  m, lots, mandatId, immeubleId, locked, onSuivant, bareme,
 }: {
   m: Record<string, unknown>; lots: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
   onSuivant?: () => void;
+  /** Le barème des Réglages de l'agence ; celui du code à défaut. */
+  bareme?: Tranche[];
 }) {
   const [pending, start] = useTransition();
   const [p, setP] = useState<Prix>({
@@ -862,7 +864,7 @@ function OngletPrix({
   const saisir = (cle: ChampPrix) => (v: string) => {
     const suite = [...pilotes.filter((c) => c !== cle), cle];
     setPilotes(suite);
-    setP(resoudrePrix({ ...p, [cle]: parse(v) }, suite));
+    setP(resoudrePrix({ ...p, [cle]: parse(v) }, suite, bareme));
   };
 
   const save = () =>
@@ -881,7 +883,7 @@ function OngletPrix({
   const dernier = pilotes[pilotes.length - 1];
   const pilote = (c: ChampPrix) => c === dernier || c === "hai";
   /* Le barème est un plafond : au-delà, l'écran le dit. */
-  const tropCher = p.nv && p.taux ? p.taux > plafondTaux(p.nv) + 0.005 : false;
+  const tropCher = p.nv && p.taux ? p.taux > plafondTaux(p.nv, bareme) + 0.005 : false;
   const rendement = p.hai && s.loyerMensuel ? ((s.loyerMensuel * 12) / p.hai) * 100 : undefined;
 
   return (
@@ -891,7 +893,7 @@ function OngletPrix({
         aide="Saisissez le prix HAI : les honoraires se calculent au barème et le net vendeur s'en déduit. Ajuster les honoraires, le net vendeur ou le taux ne fait jamais bouger le prix HAI — c'est lui qui est annoncé au client."
       />
       <p className="mdt-bareme">
-        Barème en vigueur — <b>{baremeTexte()}</b>. Depuis l'arrêté du 26 janvier 2022 c'est un
+        Barème en vigueur — <b>{baremeTexte(bareme)}</b>. Depuis l'arrêté du 26 janvier 2022 c'est un
         maximum : le taux peut être inférieur, jamais supérieur.
       </p>
 
@@ -907,7 +909,7 @@ function OngletPrix({
 
       {tropCher && (
         <p className="mdt-alerte">
-          Le taux saisi dépasse le barème affiché ({plafondTaux(p.nv!).toFixed(2).replace(".", ",")} % pour
+          Le taux saisi dépasse le barème affiché ({plafondTaux(p.nv!, bareme).toFixed(2).replace(".", ",")} % pour
           ce net vendeur). Depuis l'arrêté du 26 janvier 2022 le barème est un maximum opposable :
           au-delà, les honoraires sont contestables.
         </p>

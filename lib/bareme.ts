@@ -28,21 +28,25 @@ export const BAREME: Tranche[] = [
 
 const arrondi2 = (n: number) => Math.round(n * 100) / 100;
 
+/* Toutes les fonctions acceptent un barème en argument : c'est celui des
+   « Réglages de l'agence » quand l'écran le fournit, celui du code sinon. Sans
+   cette porte, régler le barème n'aurait aucun effet. */
+
 /** La tranche applicable à un net vendeur. */
-export const trancheDe = (nv: number) =>
-  BAREME.find((t) => nv <= t.jusqua) ?? BAREME[BAREME.length - 1];
+export const trancheDe = (nv: number, bareme: Tranche[] = BAREME) =>
+  bareme.find((t) => nv <= t.jusqua) ?? bareme[bareme.length - 1];
 
 /** Honoraires TTC dus au barème pour un net vendeur donné. */
-export function honorairesBareme(nv: number): { honos: number; taux: number } {
+export function honorairesBareme(nv: number, bareme: Tranche[] = BAREME): { honos: number; taux: number } {
   if (!Number.isFinite(nv) || nv <= 0) return { honos: 0, taux: 0 };
-  const t = trancheDe(nv);
+  const t = trancheDe(nv, bareme);
   const honos = Math.round(Math.max(nv * (t.taux / 100), t.minimum));
   return { honos, taux: arrondi2((honos / nv) * 100) };
 }
 
 /** Le taux maximal admis pour ce net vendeur — le barème est un plafond. */
-export const plafondTaux = (nv: number) =>
-  !Number.isFinite(nv) || nv <= 0 ? BAREME[0].taux : honorairesBareme(nv).taux;
+export const plafondTaux = (nv: number, bareme: Tranche[] = BAREME) =>
+  !Number.isFinite(nv) || nv <= 0 ? bareme[0].taux : honorairesBareme(nv, bareme).taux;
 
 /**
  * L'opération inverse : quel net vendeur donne ce prix HAI, honoraires du
@@ -56,11 +60,11 @@ export const plafondTaux = (nv: number) =>
  * propre tranche. Un plancher se résout à part : les honoraires y sont fixes,
  * donc le net vendeur vaut simplement le HAI moins ce plancher.
  */
-export function netVendeurDepuisHai(hai: number): { nv: number; honos: number; taux: number } {
+export function netVendeurDepuisHai(hai: number, bareme: Tranche[] = BAREME): { nv: number; honos: number; taux: number } {
   if (!Number.isFinite(hai) || hai <= 0) return { nv: 0, honos: 0, taux: 0 };
 
   let bas = 0;
-  for (const t of BAREME) {
+  for (const t of bareme) {
     // Cas « plancher » : les honoraires ne dépendent plus du net vendeur.
     const nvPlancher = hai - t.minimum;
     if (nvPlancher > bas && nvPlancher <= t.jusqua && nvPlancher * (t.taux / 100) <= t.minimum) {
@@ -76,13 +80,13 @@ export function netVendeurDepuisHai(hai: number): { nv: number; honos: number; t
     bas = t.jusqua;
   }
   // Filet : ne jamais rendre un prix incohérent.
-  const nv = Math.round(hai / (1 + BAREME[BAREME.length - 1].taux / 100));
+  const nv = Math.round(hai / (1 + bareme[bareme.length - 1].taux / 100));
   return { nv, honos: hai - nv, taux: arrondi2(((hai - nv) / nv) * 100) };
 }
 
 /** Le barème en clair, pour l'afficher à côté de la saisie. */
-export const baremeTexte = () =>
-  BAREME.slice(0, 2)
+export const baremeTexte = (bareme: Tranche[] = BAREME) =>
+  bareme.slice(0, 2)
     .map((t, i) =>
       `${i === 0 ? "jusqu'à" : "de 5 M€ à"} ${t.jusqua >= 1e6 ? `${t.jusqua / 1e6} M€` : t.jusqua} : `
       + `${String(t.taux).replace(".", ",")} % TTC, minimum ${t.minimum.toLocaleString("fr-FR")} € TTC`)

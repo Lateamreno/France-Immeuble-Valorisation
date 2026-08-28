@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getBien, getMandat, getOperation } from "@/lib/bubble/server";
 import { BienFiche } from "@/components/bien-fiche";
 import { MandatFiche } from "@/components/mandat-fiche";
+import { lireReglages } from "@/lib/bo/reglages";
 
 export const dynamic = "force-dynamic";
 // Génération du PDF : Chromium met quelques secondes à démarrer à froid.
@@ -32,12 +33,15 @@ export default async function MandatDansFiche({
     );
   }
   const operation = await getOperation(id).catch(() => null);
+  /* Le barème vient des Réglages de l'agence : sans ça, l'écran de réglage
+     serait décoratif et le mandat continuerait sur les valeurs du code. */
+  const { bareme } = await lireReglages();
 
   return (
     <BienFiche
       b={b}
       operation={operation}
-      contenu={<MandatFiche d={d} />}
+      contenu={<MandatFiche d={d} bareme={bareme} />}
       contenuLabel={`Mandat ${d.m.numero ? `n° ${d.m.numero}` : "en cours"}`}
       contenuIcone="mandat"
       /* L'identifiant demandé : sans lui, cliquer sur un autre mandat changeait

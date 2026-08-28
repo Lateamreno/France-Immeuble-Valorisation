@@ -5689,3 +5689,30 @@ a.cfc-t:hover { text-decoration: underline; }
 .savebar.calme .savebar-t { color: var(--gray-lt); font-weight: 500; }
 .savebar.calme .savebar-go { background: var(--cols); color: var(--gray-lt); }
 .savebar.calme .savebar-go:disabled { opacity: 1; }
+
+/* ---------------- Réglages de l'agence (retour #191) ---------------- */
+.rgl { max-width: 940px; padding-top: 18px; }
+.rgl-intro { font-size: 13px; color: var(--gray-txt); line-height: 1.5; margin: 6px 0 14px; max-width: 70ch; }
+.rgl-avert {
+  border: 1px solid var(--orange); border-left-width: 3px; border-radius: 5px;
+  background: #fffaf3; font-size: 12.5px; line-height: 1.5; color: var(--slate);
+  padding: 10px 14px; margin-bottom: 20px;
+}
+.rgl-aide { font-size: 12px; color: var(--gray-lt); line-height: 1.5; margin: 4px 0 10px; max-width: 78ch; }
+.rgl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-bottom: 22px; }
+.rgl-ch { display: flex; flex-direction: column; gap: 4px; }
+.rgl-ch.large { grid-column: span 2; }
+.rgl-ch .l { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-lt); font-weight: 600; }
+.rgl-ch .a { font-size: 11.5px; color: var(--gray-lt); }
+.rgl-bareme { width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 13px; }
+.rgl-bareme th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--gray-lt); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line);
+}
+.rgl-bareme th.num, .rgl-bareme td.num { text-align: right; }
+.rgl-bareme td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.rgl-bareme .mi { width: 130px; }
+.rgl-audela { color: var(--gray-lt); font-style: italic; }
+.rgl-ok { color: var(--green); font-size: 13px; font-weight: 600; }
+.rgl-err { color: var(--red); font-size: 13px; font-weight: 600; }
+@media (max-width: 760px) { .rgl-grid { grid-template-columns: 1fr; } .rgl-ch.large { grid-column: span 1; } }

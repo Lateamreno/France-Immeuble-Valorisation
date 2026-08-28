@@ -3697,3 +3697,38 @@ export async function capturerFacadesManquantes(paquet = 40): Promise<{
   revalidatePath("/immeubles");
   return { traites: ids.length, captures, echecs, restants: Math.max(0, total - captures) };
 }
+
+/* ===================== Réglages de l'agence (retour #191) =====================
+ *
+ * Ce que l'admin règle ici pilote le reste du site : identité imprimée sur les
+ * documents, barème d'honoraires, remise en vente directe au locataire.
+ *
+ * ⚠️ La restriction au seul compte admin n'est PAS encore réelle : le BO n'a
+ * aujourd'hui aucune authentification, il n'existe donc pas de « compte agent »
+ * à distinguer d'un « compte admin ». L'écran est en place et la porte se
+ * fermera le jour où la connexion existera — d'ici là, qui a l'URL a l'accès.
+ * Le code à six chiffres demandé par MAV viendra avec cette même livraison.
+ */
+export async function majReglages(valeurs: Record<string, unknown>) {
+  if (!SB_KEY) return { ok: false as const, message: "SUPABASE_SERVICE_ROLE_KEY absente" };
+  const res = await fetch(`${SB_URL}/rest/v1/fi_reglages?cle=eq.agence`, {
+    method: "PATCH",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({ valeurs, maj_le: new Date().toISOString() }),
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) {
+    return { ok: false as const, message: `Écriture refusée (${res?.status ?? "réseau"})` };
+  }
+  /* Les réglages sont lus partout : on décroche l'étiquette et on revalide la
+     mise en page, sinon le mandat garderait l'ancien barème en mémoire. */
+  const { TAG_REGLAGES } = await import("./reglages");
+  revalidateTag(TAG_REGLAGES, { expire: 0 });
+  revalidatePath("/", "layout");
+  return { ok: true as const };
+}

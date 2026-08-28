@@ -39,6 +39,12 @@ export const NAV: NavItem[] = [
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },
   { href: "#mailing", label: "Mailing" },
+  /* Réglages de l'agence (retour #191) : identité sur les documents, barème
+     d'honoraires, remise locataire. En bas du menu parce qu'on n'y va pas
+     tous les jours — mais dans le menu, parce que c'est de là que le reste du
+     site tire ses valeurs. Réservé à l'admin le jour où la connexion
+     existera ; il n'y a pas encore d'authentification. */
+  { href: "/reglages", label: "Réglages" },
 ];
 
 /* Retirés du menu le 21/08 sur demande de MAV : Notion, l'interrupteur
