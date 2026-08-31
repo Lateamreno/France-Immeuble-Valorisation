@@ -49,12 +49,12 @@ export function mailConfigure() {
  *    qui a envoyé. Si c'est l'adresse personnelle de l'agent, ce sont ses
  *    échanges quotidiens qui partent ensuite en indésirables.
  *
- * D'où une seconde route, dédiée : un relais d'envoi (SendGrid, Brevo,
- * Mailjet — le code ne présume de rien, c'est du SMTP), avec sa propre adresse
- * d'expédition. Recommandation ferme : la poser sur un SOUS-DOMAINE dédié
- * (envois.france-immeuble.fr par exemple), et pas sur le domaine courant. Une
- * campagne qui tourne mal n'entame alors rien de la messagerie de tous les
- * jours.
+ * D'où une seconde route, dédiée : un relais d'envoi — SendGrid en pratique
+ * (`smtp.sendgrid.net`, identifiant littéral `apikey`, mot de passe = la clé),
+ * mais le code ne présume de rien, c'est du SMTP — avec sa propre adresse
+ * d'expédition. Règle ferme : la poser sur un SOUS-DOMAINE dédié
+ * (envois.france-immeuble.fr), et pas sur le domaine courant. Une campagne qui
+ * tourne mal n'entame alors rien de la messagerie de tous les jours.
  *
  * Ce que l'agent garde malgré tout : la réponse lui revient à LUI, par le
  * Reply-To. */

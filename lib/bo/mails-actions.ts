@@ -30,16 +30,53 @@ const PLAFOND_BOITE_PERSO = 25;
 /** Au-delà, la fenêtre « Nouveau message » renvoie vers la salve. */
 const PLAFOND_UNITAIRE = 10;
 
+/**
+ * Le plafond de la journée, tous envois de masse confondus.
+ *
+ * MAV : « j'enverrai rarement plus de 5 000 messages par jour, limite il
+ * faudrait simplement mettre une limite dans le BO pour ne pas l'atteindre et
+ * pas faire de bêtise. »
+ *
+ * 5 000 par jour est précisément le seuil au-delà duquel Gmail vous classe
+ * « expéditeur en masse » et vous impose ses obligations — taux de plainte
+ * sous 0,3 %, authentification complète, désabonnement en un clic. On s'arrête
+ * donc AVANT, avec une marge : franchir la ligne par mégarde un jour de grosse
+ * salve coûterait des semaines de réputation.
+ *
+ * Le compte porte sur la journée civile et sur les salves réellement parties.
+ * Réglable par la variable d'environnement `PLAFOND_JOUR` si le besoin change.
+ *
+ * NON exportée : ce fichier est un « use server », il ne peut exporter que des
+ * fonctions asynchrones. Une constante y passe la compilation et fait tomber
+ * la page à l'exécution. Sa valeur sort par `quotaDuJour()`.
+ */
+const PLAFOND_JOUR = Math.max(1, Number(process.env.PLAFOND_JOUR ?? 4000));
+
+/** Ce qui est déjà parti aujourd'hui, et ce qu'il reste avant le plafond. */
+export async function quotaDuJour(): Promise<{ envoyes: number; reste: number; plafond: number }> {
+  const debut = new Date();
+  debut.setHours(0, 0, 0, 0);
+  const lignes = await lire<{ envoyes: number | null }>(
+    "fi_salve",
+    `select=envoyes&statut=eq.envoyee&envoye_at=gte.${debut.toISOString()}`,
+  ).catch(() => [] as { envoyes: number | null }[]);
+  const envoyes = lignes.reduce((s, l) => s + (l.envoyes ?? 0), 0);
+  return { envoyes, reste: Math.max(0, PLAFOND_JOUR - envoyes), plafond: PLAFOND_JOUR };
+}
+
 /** Ce que l'écran de salve doit savoir avant d'envoyer : par où ça part. */
 export async function routeDeSalve(): Promise<{
   relais: boolean;
   expediteur: string;
   plafondBoitePerso: number;
+  /** Le compteur du jour, pour l'afficher avant d'appuyer (plafond quotidien). */
+  quota: { envoyes: number; reste: number; plafond: number };
 }> {
   return {
     relais: masseConfiguree(),
     expediteur: expediteurMasse(),
     plafondBoitePerso: PLAFOND_BOITE_PERSO,
+    quota: await quotaDuJour(),
   };
 }
 import { fusionner, valeursDe, type Expediteur, type RefPrenoms } from "@/lib/mails/fusion";
@@ -50,6 +87,17 @@ const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 /** Écriture REST sur une de nos tables, puis décrochage de son étiquette de
  *  cache — sans quoi l'agent enregistre et ne voit rien changer. */
+/** Lecture simple, sans cache : le compteur du jour doit dire le vrai. */
+async function lire<T>(table: string, qs = ""): Promise<T[]> {
+  if (!SB_KEY) return [];
+  const res = await fetch(`${SB_URL}/rest/v1/${table}${qs ? `?${qs}` : ""}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  return (await res.json()) as T[];
+}
+
 async function ecrire(
   table: string,
   methode: "POST" | "PATCH" | "DELETE",
@@ -280,6 +328,20 @@ export async function lancerSalve(
      relais dédié ; la boîte personnelle n'est acceptée qu'en dépannage, sur un
      petit volume, et seulement si on l'a demandé à l'écran. */
   const parRelais = masseConfiguree();
+
+  /* Le plafond de la journée, avant tout le reste : il ne sert à rien de
+     refuser au 4 001ᵉ message d'une salve déjà à moitié partie. On compte ce
+     qui est sorti aujourd'hui, on y ajoute cette salve, et on tranche avant
+     d'ouvrir la moindre connexion. */
+  const q = await quotaDuJour();
+  if (q.envoyes + candidats.length > PLAFOND_JOUR) {
+    throw new Error(
+      `Plafond du jour atteint : ${q.envoyes} message${q.envoyes > 1 ? "s" : ""} déjà envoyé${q.envoyes > 1 ? "s" : ""} `
+      + `sur ${PLAFOND_JOUR}. Cette salve en ajouterait ${candidats.length}, il n'en reste que ${q.reste}. `
+      + "Au-delà de 5 000 par jour, Gmail vous classe « expéditeur en masse » : mieux vaut étaler sur deux jours.",
+    );
+  }
+
   if (!parRelais) {
     if (!viaBoitePerso) {
       throw new Error(

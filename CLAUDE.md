@@ -35,7 +35,7 @@ Ce n'est **pas** un CRM généraliste ni un logiciel de gestion locative. C'est 
 - **Backend :** Supabase **« Plein Bail »** — projet mutualisé avec la marketplace « biens loués », déjà en production. PostgreSQL + RLS + Storage + Edge Functions.
   - Project ID : `fkfwucqpdhbkgkouccyi` · région `eu-west-1`.
 - **Auth :** Supabase Auth (table `profiles` déjà en place, extension de `auth.users`). Rôles applicatifs (voir §3.2).
-- **Email :** boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium ni SendGrid) synchronisée via **Gmail API** (envoi + réception threadée). Voir §7.1.
+- **Email :** deux routes (§7.1). Un-à-un : boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium) via **Gmail API**, envoi + réception threadée. Masse : relais **SendGrid** en SMTP, sur un **sous-domaine d'envoi dédié**, plafonné à 4 000 messages par jour.
 - **Signature (V2) :** Docusign (connecteur déjà disponible).
 - **Données de marché :** DVF + loyers **déjà chargés dans Plein Bail** (voir §4.3). Pas d'API externe à brancher.
 - **Diffusion :** Ubiflow (pont marketplace).
@@ -227,10 +227,47 @@ Générés par le moteur de séquencement + saisie manuelle. Le calendrier agrè
 
 ## 7. Intégrations
 
-### 7.1 Email (`devis@`)
-- Boîte **dédiée**, jamais la boîte FI premium, jamais SendGrid (doctrine délivrabilité).
+### 7.1 Email — deux routes, jamais une seule
+
+Le BO écrit à deux publics très différents, et confondre leurs routes est le
+meilleur moyen de griller le domaine. D'où deux chemins distincts, décidés au
+seul endroit qui décide (`lancerSalve` dans `lib/bo/mails-actions.ts`).
+
+**Route nominative — le un-à-un.** Estimation au propriétaire, demande de devis
+à un prestataire, réponse à un locataire.
+- Boîte **dédiée** `devis@`, jamais la boîte FI premium.
 - Gmail API : envoi (avec PJ depuis le coffre) + réception, threading rattaché à `operation_id`/`provider_id`.
-- Doctrine héritée du netlinking : **validation humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Pas d'envoi automatique en masse.
+- Part de l'adresse de l'agent : c'est une conversation, elle doit avoir un visage.
+
+**Route de masse — les salves.** Diffusion d'un dossier à un vivier
+d'acquéreurs, projets annexes.
+- Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
+  mot de passe = la clé d'API). Variables `MASSE_SMTP_*` / `MASSE_FROM`.
+- Adresse d'expédition sur un **sous-domaine dédié** (`envois.france-immeuble.fr`),
+  jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
+  de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
+  un nom de domaine proche de la marque et sans historique est le motif même du
+  phishing, c'est lui qui se fait signaler.
+- SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
+  sert à rien.
+- `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit
+  l'expéditeur affiché. C'est ce qui permet à la route de masse de rester
+  compatible avec « le commercial gère les retours ».
+- `List-Unsubscribe` + `List-Unsubscribe-Post` sur chaque message. Sans eux, le
+  bouton « désabonnement » des messageries devient « signaler comme spam ».
+- **Plafond du jour : `PLAFOND_JOUR` (4 000 par défaut).** Au-delà de 5 000 par
+  jour, Gmail classe l'expéditeur en « masse » et lui impose ses obligations :
+  on s'arrête avant, avec une marge. Le compteur s'affiche à l'écran de salve
+  et le bouton se ferme quand la salve ferait franchir la ligne.
+- Connexion SMTP mutualisée, cadence tenue à 4 messages/seconde. Une rafale de
+  connexions se fait limiter aussi sûrement qu'un volume excessif.
+- Montée en charge sur un domaine neuf : 20 le premier jour, 50, 100, puis le
+  régime normal à partir de la deuxième semaine. C'est le démarrage à froid qui
+  se fait signaler, pas le volume.
+
+**Commun aux deux routes :** doctrine héritée du netlinking — **validation
+humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
+automatique, jamais.
 
 ### 7.2 DVF / loyers
 Déjà en base (§4.3). Consommation directe, aucune API externe.
@@ -281,7 +318,7 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ## 10. Décisions actées
 
-- Boîte email **dédiée** (`devis@`), Gmail API, jamais la boîte FI premium ni SendGrid.
+- **Deux routes e-mail, jamais une seule** (§7.1) : le un-à-un part de la boîte dédiée `devis@` via Gmail API, jamais de la boîte FI premium ; la masse part de SendGrid sur un sous-domaine dédié, avec `Reply-To` sur l'agent et un plafond de 4 000 par jour.
 - Supabase **« Plein Bail »** (`fkfwucqpdhbkgkouccyi`) mutualisé : bien = `listings`, lots+baux = `listing_lots`, pas de table `properties`. Le cockpit ajoute la couche `operations`.
 - Benchmarks DVF/loyers déjà chargés → rapprochement DVF dès le MVP.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.

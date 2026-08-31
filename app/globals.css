@@ -5395,6 +5395,17 @@ a.cfc-t:hover { text-decoration: underline; }
 .sv-route > span { font-size: 12px; line-height: 1.5; color: var(--gray-txt); }
 .sv-route span b { color: var(--slate-2); }
 
+/* Le compteur du jour, avant d'appuyer : discret tant qu'on a de la marge,
+   rouge quand la salve ferait franchir le plafond. */
+.sv-quota {
+  margin-top: 10px; padding: 8px 12px; border-radius: 6px;
+  background: var(--cols); border: 1px solid var(--line);
+  font-size: 12px; line-height: 1.5; color: var(--gray-txt);
+}
+.sv-quota b { color: var(--slate-2); }
+.sv-quota.ko { background: #fdf3f3; border-color: #e6b3b3; color: var(--red); }
+.sv-quota.ko b { color: var(--red); }
+
 .sv-pied { flex-wrap: wrap; gap: 10px; }
 .sv-compteur { display: flex; flex-direction: column; min-width: 0; }
 .sv-compteur b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }

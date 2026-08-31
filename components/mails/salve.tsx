@@ -52,7 +52,10 @@ export function FenetreSalve({ agent, modeles, onClose }: {
   const [pending, start] = useTransition();
   /* Par où la salve va partir. On le dit AVANT d'envoyer : la question « est-ce
      que ça va saturer ma boîte ? » doit avoir sa réponse à l'écran. */
-  const [route, setRoute] = useState<{ relais: boolean; expediteur: string; plafondBoitePerso: number } | null>(null);
+  const [route, setRoute] = useState<{
+    relais: boolean; expediteur: string; plafondBoitePerso: number;
+    quota: { envoyes: number; reste: number; plafond: number };
+  } | null>(null);
   const [assume, setAssume] = useState(false);
 
   /* Le vivier est lourd (contacts + immeubles + recherches) : on ne le charge
@@ -309,6 +312,29 @@ export function FenetreSalve({ agent, modeles, onClose }: {
                   </label>
                 </div>
               ))}
+
+              {/* Le compteur du jour, AVANT d'appuyer. Au-delà de 5 000 par
+                  jour, Gmail classe l'expéditeur en « masse » et lui impose
+                  ses règles : on s'arrête avant, et on le dit. */}
+              {route && (
+                <div className={`sv-quota${route.quota.reste < destinataires.length ? " ko" : ""}`}>
+                  <b>{route.quota.envoyes.toLocaleString("fr-FR")}</b>
+                  {` message${route.quota.envoyes > 1 ? "s" : ""} envoyé${route.quota.envoyes > 1 ? "s" : ""} aujourd'hui `}
+                  sur {route.quota.plafond.toLocaleString("fr-FR")}.
+                  {route.quota.reste < destinataires.length ? (
+                    <>
+                      {` Cette salve en ajouterait ${destinataires.length.toLocaleString("fr-FR")} : `}
+                      il n&apos;en reste que <b>{route.quota.reste.toLocaleString("fr-FR")}</b> avant
+                      le plafond. Étalez sur deux jours.
+                    </>
+                  ) : (
+                    <>
+                      {` Cette salve en ajouterait ${destinataires.length.toLocaleString("fr-FR")} : `}
+                      il en restera <b>{(route.quota.reste - destinataires.length).toLocaleString("fr-FR")}</b>.
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -347,7 +373,9 @@ export function FenetreSalve({ agent, modeles, onClose }: {
             <button type="button" className="savebar-go"
               disabled={pending || !!resultat || destinataires.length === 0 || !objet.trim() || !corps.trim()
                 /* Sans relais, il faut avoir dit oui, et rester sous le plafond. */
-                || (route ? !route.relais && (!assume || destinataires.length > route.plafondBoitePerso) : false)}
+                || (route ? !route.relais && (!assume || destinataires.length > route.plafondBoitePerso) : false)
+                /* Et dans tous les cas, rester sous le plafond du jour. */
+                || (route ? route.quota.reste < destinataires.length : false)}
               onClick={envoyer}>
               <span className="ch">›</span>
               {pending ? "Envoi en cours…" : `Envoyer à ${destinataires.length} contact${destinataires.length > 1 ? "s" : ""}`}
