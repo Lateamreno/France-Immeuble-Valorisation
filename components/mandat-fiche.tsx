@@ -104,7 +104,10 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
   const motifVerrou = verrou(m);
   const locked = motifVerrou !== null;
   const mandants = useMemo(() => lireMandants(m), [m]);
-  const trous = useMemo(() => manques(m, mandants, im), [m, mandants, im]);
+  const trous = useMemo(
+    () => manques(m, mandants, im, d.parcelles),
+    [m, mandants, im, d.parcelles],
+  );
   const trousPar = (t: Tab) => trous.filter((x) => x.onglet === t).length;
 
   const act = (fn: () => Promise<unknown>) => start(async () => { await fn(); });

@@ -536,6 +536,11 @@ export function manques(
   m: Record<string, unknown>,
   mandants: Mandant[],
   im: Record<string, unknown> | null,
+  /* Les parcelles de la fiche (retour #204). La référence cadastrale a deux
+     sources légitimes — la case du mandat, et l'onglet Emplacement qui fait
+     foi quand il la connaît (retour #202). La réclamer alors qu'elle est déjà
+     sur la fiche ferait dire à l'écran le contraire de ce qu'il affiche. */
+  parcelles: Record<string, unknown>[] = [],
 ): Manque[] {
   const out: Manque[] = [];
   const push = (cle: string, label: string, onglet: string) => out.push({ cle, label, onglet });
@@ -552,6 +557,12 @@ export function manques(
   });
 
   if (!im) push("immeuble", "Aucun immeuble rattaché", "Objet");
+  /* Retour #204 : « si on n'a pas le kbis, ni la carte d'identité du gérant ou
+     de l'indivisaire, le numéro de parcelle etc., on ne peut pas le générer ».
+     Les deux premiers étaient déjà exigés ci-dessus ; la parcelle manquait, et
+     c'est elle qui désigne le bien vendu dans l'acte. */
+  const cadastree = !!S(m.ref_cadastre) || parcelles.some((p) => !!S(p.ref_cadastre));
+  if (!cadastree) push("cadastre", "Référence cadastrale", "Objet");
   if (!S(m.justif_propriete)) push("titre", "Titre de propriété", "Objet");
   if (!S(m.description)) push("descriptif", "Descriptif du bien", "Objet");
   if (!N(m.prix_nv)) push("prix", "Prix net vendeur", "Prix");

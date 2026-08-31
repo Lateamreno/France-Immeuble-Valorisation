@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { createDossier, genererPdfDossier } from "@/lib/bo/actions";
+import { bloquants, manquesDossier } from "@/lib/bo/completude";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -83,12 +84,37 @@ export function AddDossierButton({ b }: { b: BienData }) {
 
   const close = () => { setOpen(false); setStep(0); setCreatedId(null); setPdf(null); setErrPdf(null); };
 
+  /* Retour #204 — « ne laisse pas l'agent générer le dossier tant que toutes
+     les informations contenues dans le dossier ne sont pas remplies […] voilà,
+     empêche d'envoyer s'il n'y a pas toutes les infos ». Le bouton se ferme
+     donc tant qu'il reste un manque bloquant, et il dit lequel : un bouton
+     grisé sans motif est une impasse. La liste juste au-dessus porte les
+     champs et les liens pour les combler. */
+  const manquants = bloquants(manquesDossier({
+    im: b.im, lots: b.lots, parcelles: b.parcelles, photos: b.photos,
+    secteur: b.secteur, estimations: b.estimations,
+    charges: b.charges, composants: b.composants, proprietaire: b.proprietaire,
+  }));
+
   return (
     <>
-      <button className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}
+      <button
+        className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}
+        disabled={manquants.length > 0}
+        title={manquants.length > 0
+          ? `Il manque ${manquants.length} information${manquants.length > 1 ? "s" : ""} : ${manquants.map((x) => x.titre).join(" · ")}`
+          : undefined}
         onClick={() => { setAttribuee(null); setCreatedId(null); setStep(0); setOpen(true); }}>
         + Nouveau dossier
       </button>
+      {/* Un bouton grisé sans motif est une impasse : on dit ce qui manque, et
+          les lignes rouges juste au-dessus portent de quoi le combler. */}
+      {manquants.length > 0 && (
+        <p className="dos-bloque">
+          Le dossier ne peut pas être généré tant que ces points ne sont pas réglés —
+          voyez les lignes en rouge ci-dessus : <b>{manquants.map((x) => x.titre).join(" · ")}</b>
+        </p>
+      )}
       {open && (
         <div className="modal-ov">
           <div className="modal" onClick={(e) => e.stopPropagation()}>

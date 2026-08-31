@@ -5824,12 +5824,36 @@ a.cfc-t:hover { text-decoration: underline; }
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
   padding: 0 12px 12px; border-top: 1px dashed var(--line); margin-top: 2px; padding-top: 11px;
 }
+/* Retour #204 : une ligne par chose à remplir, et son lien juste à côté —
+   c'est en butant sur UNE case qu'on a besoin d'aller chercher la réponse. */
+.dmq-ligne { display: flex; align-items: flex-end; gap: 8px; }
 .dmq-c { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--gray-lt); }
 .dmq-c input, .dmq-c select {
   border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 170px;
   font-family: var(--font-body); font-size: 12.5px; color: var(--slate); background: #fff;
 }
 .dmq-c i { font-style: normal; font-size: 10.5px; }
+.dmq-lien {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  border: 1px solid #e0d8b8; border-radius: 4px; padding: 5px 9px; background: #fff;
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 600;
+  color: var(--gold-bo); text-decoration: none; white-space: nowrap;
+}
+.dmq-lien:hover { border-color: var(--gold-bo); background: #fffdf5; }
+.dmq-lien svg {
+  width: 12px; height: 12px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+/* Dans l'en-tête de rubrique, le lien s'aligne sur les boutons. */
+.dmq-h .dmq-lien { margin-left: auto; }
+.dmq-h .dmq-lien ~ .fadd, .dmq-h .dmq-lien ~ .kgo { margin-left: 0; }
+
+/* Retour #204 : pourquoi le bouton est fermé, écrit sous lui. */
+.dos-bloque {
+  max-width: 620px; margin: -6px auto 16px; text-align: center;
+  font-size: 12px; line-height: 1.5; color: var(--red);
+}
+.dos-bloque b { font-weight: 700; }
 
 /* #182 — la modale « Nouveau dossier » sur une seule page. */
 .dos-chips { display: flex; flex-wrap: wrap; gap: 6px; }

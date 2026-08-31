@@ -2643,6 +2643,8 @@ export async function updateBien(
     prix_permis: boolean;
     Motif_vente: string;
     notes: string;
+    /** Année de construction — bloque le dossier tant qu'elle manque (#204). */
+    year_constru: number;
   }>,
 ) {
   const clean = Object.fromEntries(
