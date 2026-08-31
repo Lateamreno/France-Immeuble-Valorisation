@@ -64,8 +64,12 @@ export async function quotaDuJour(): Promise<{ envoyes: number; reste: number; p
   return { envoyes, reste: Math.max(0, PLAFOND_JOUR - envoyes), plafond: PLAFOND_JOUR };
 }
 
-/** Ce que l'écran de salve doit savoir avant d'envoyer : par où ça part. */
-export async function routeDeSalve(): Promise<{
+/** Ce que l'écran de salve doit savoir avant d'envoyer : par où ça part.
+ *
+ *  L'agent est passé parce que l'expéditeur en dépend : avec un sous-domaine
+ *  d'envoi, la salve part sous SON adresse, et l'écran doit annoncer celle
+ *  qu'il verra vraiment — pas une adresse de service qui ne servira pas. */
+export async function routeDeSalve(agent?: { nom?: string; email?: string }): Promise<{
   relais: boolean;
   expediteur: string;
   plafondBoitePerso: number;
@@ -74,7 +78,7 @@ export async function routeDeSalve(): Promise<{
 }> {
   return {
     relais: masseConfiguree(),
-    expediteur: expediteurMasse(),
+    expediteur: expediteurMasse(agent),
     plafondBoitePerso: PLAFOND_BOITE_PERSO,
     quota: await quotaDuJour(),
   };
@@ -376,7 +380,10 @@ export async function lancerSalve(
     const b = fusionner(corps, v);
     try {
       if (parRelais) {
-        await envoyerEnMasse({ to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email });
+        await envoyerEnMasse({
+          to: c.email, subject: o.texte, text: b.texte,
+          replyTo: agent.email, agent,
+        });
       } else {
         await envoyerPourAgent(agentId, {
           to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email,

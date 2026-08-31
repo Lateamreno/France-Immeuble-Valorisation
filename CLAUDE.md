@@ -242,12 +242,25 @@ seul endroit qui décide (`lancerSalve` dans `lib/bo/mails-actions.ts`).
 **Route de masse — les salves.** Diffusion d'un dossier à un vivier
 d'acquéreurs, projets annexes.
 - Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
-  mot de passe = la clé d'API). Variables `MASSE_SMTP_*` / `MASSE_FROM`.
+  mot de passe = la clé d'API). Variables `MASSE_SMTP_*`, puis `MASSE_DOMAINE`
+  (une adresse par agent) ou `MASSE_FROM` (adresse de service unique).
 - Adresse d'expédition sur un **sous-domaine dédié** (`envois.france-immeuble.fr`),
   jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
   de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
   un nom de domaine proche de la marque et sans historique est le motif même du
   phishing, c'est lui qui se fait signaler.
+  - Nom du sous-domaine : **neutre et durable**. `dossiers.` deviendrait faux le
+    jour d'une salve « projets annexes » ; `communication.` est long (il s'affiche
+    dans chaque expéditeur, tronqué sur mobile) et sonne publipostage.
+    `envois.` reste vrai quoi qu'on envoie.
+  - **Une adresse par agent** sur ce sous-domaine, à sa convention habituelle :
+    `r.voci@envois.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
+    visage. Attention à deux illusions : ça ne cloisonne PAS la réputation entre
+    agents — les messageries la calculent au niveau du domaine signataire, pas de
+    l'adresse ; et chaque adresse doit **exister en renvoi** vers la vraie boîte
+    de l'agent, sinon une réponse qui ignore le `Reply-To` part dans le vide.
+  - Le **nom affiché** fait l'essentiel : c'est lui que montrent presque tous les
+    clients de messagerie, l'adresse ne venant qu'après.
 - SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
   sert à rien.
 - `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit

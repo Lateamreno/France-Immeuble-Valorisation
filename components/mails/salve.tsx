@@ -65,9 +65,14 @@ export function FenetreSalve({ agent, modeles, onClose }: {
     chargerVivier()
       .then((v) => { if (vivant) { setVivier(v as Vivier); setChargement(false); } })
       .catch((e) => { if (vivant) { setErreur(String(e)); setChargement(false); } });
-    routeDeSalve().then((r) => { if (vivant) setRoute(r); }).catch(() => undefined);
+    /* L'agent décide de l'expéditeur affiché : l'écran doit annoncer l'adresse
+       que le destinataire verra, pas une adresse de service générique. */
+    routeDeSalve({ nom: agent.nom, email: agent.email })
+      .then((r) => { if (vivant) setRoute(r); })
+      .catch(() => undefined);
     return () => { vivant = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.nom, agent.email]);
 
   const destinataires = useMemo(() => {
     if (!vivier) return [];

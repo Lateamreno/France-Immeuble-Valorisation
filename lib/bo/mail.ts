@@ -65,12 +65,47 @@ const MASSE = () => ({
   user: process.env.MASSE_SMTP_USER,
   pass: process.env.MASSE_SMTP_PASS,
   from: process.env.MASSE_FROM,
+  /* Le sous-domaine d'envoi. Posé, chaque agent expédie sous SON adresse —
+     r.voci@envois.france-immeuble.fr — au lieu d'une adresse de service
+     partagée. Une salve garde ainsi un visage, ce qui compte plus qu'on ne
+     croit à l'ouverture.
+
+     Deux choses à ne pas se raconter :
+       · ça ne cloisonne PAS la réputation entre agents. Les messageries la
+         calculent au niveau du DOMAINE signataire, pas de l'adresse. Le
+         cloisonnement qu'on obtient est celui du sous-domaine face au domaine
+         de tous les jours — celui-là est réel, et il suffit.
+       · l'adresse doit exister pour de bon, en renvoi vers la vraie boîte de
+         l'agent. Un client de messagerie qui ignore le Reply-To — il y en a —
+         répondrait dans le vide. */
+  domaine: process.env.MASSE_DOMAINE?.trim().replace(/^@/, ""),
 });
 
 /** La route d'envoi en masse est-elle branchée ? */
 export function masseConfiguree() {
   const c = MASSE();
-  return !!(c.host && c.user && c.pass && c.from);
+  return !!(c.host && c.user && c.pass && (c.from || c.domaine));
+}
+
+/**
+ * L'expéditeur affiché d'une salve.
+ *
+ * Avec `MASSE_DOMAINE`, l'adresse est celle de l'agent portée sur le
+ * sous-domaine d'envoi : on reprend la partie locale de sa vraie adresse
+ * (`r.voci`), pour que la convention maison n'ait pas deux orthographes.
+ * Sans elle, on retombe sur l'adresse de service `MASSE_FROM`.
+ *
+ * Le nom affiché fait l'essentiel du travail : c'est lui que presque tous les
+ * clients de messagerie montrent, l'adresse ne venant qu'après.
+ */
+export function expediteurDe(agent?: { nom?: string; email?: string }) {
+  const c = MASSE();
+  if (!c.domaine) return c.from ?? "";
+  const local = (agent?.email ?? "").split("@")[0].trim().toLowerCase();
+  if (!local) return c.from ?? "";
+  const nom = (agent?.nom ?? "").trim();
+  const adresse = `${local}@${c.domaine}`;
+  return nom ? `${nom} — France Immeuble <${adresse}>` : adresse;
 }
 
 /**
@@ -113,8 +148,8 @@ function transportMasse() {
 }
 
 /** L'adresse d'expédition des salves, pour l'afficher avant d'envoyer. */
-export function expediteurMasse() {
-  return MASSE().from ?? "";
+export function expediteurMasse(agent?: { nom?: string; email?: string }) {
+  return expediteurDe(agent);
 }
 
 /**
@@ -131,19 +166,23 @@ export async function envoyerEnMasse(m: {
   text: string;
   /** L'agent : c'est à lui que la réponse doit revenir. */
   replyTo?: string;
+  /** Et c'est sous son nom que le message part, si le sous-domaine est posé. */
+  agent?: { nom?: string; email?: string };
 }) {
   const c = MASSE();
   if (!masseConfiguree()) {
     throw new Error(
-      "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / MASSE_SMTP_PASS / MASSE_FROM).",
+      "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / MASSE_SMTP_PASS, "
+      + "puis MASSE_DOMAINE ou MASSE_FROM).",
     );
   }
+  const expediteur = expediteurDe(m.agent) || c.from;
   const t = transportMasse();
 
   const vers = REDIRECT();
-  const desabo = m.replyTo ?? c.from;
+  const desabo = m.replyTo ?? expediteur;
   const info = await t.sendMail({
-    from: c.from,
+    from: expediteur,
     to: vers || m.to,
     replyTo: m.replyTo || undefined,
     subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
