@@ -2384,12 +2384,38 @@ async function renvoyerSurLeContact(x: MandantEnregistre) {
   comblerGeo("adresse_geo", x.adresse);
   combler("email", x.email);
   combler("poste", x.fonction);
-  if (x.societe) {
+  if (x.societe?.nom) {
     combler("entreprise_nom", x.societe.nom);
     combler("entreprise_siren", x.societe.siren);
     combler("entreprise_rcs", x.societe.rcs);
     combler("entreprise_capital", x.societe.capital);
     comblerGeo("entreprise_siege_geo", x.societe.siege);
+
+    /* Retour #200 — « un propriétaire peut avoir plusieurs sociétés, donc on
+       peut associer plusieurs sociétés sur sa fiche contact et à chaque fois
+       elles s'enregistrent ». Les champs `entreprise_*` ci-dessus n'en tiennent
+       qu'une : ils restent, parce que Bubble et la fiche contact les lisent,
+       mais la vérité est désormais dans `societes`, qui les collectionne.
+       Une société déjà connue est complétée, pas dupliquée — le SIREN
+       l'identifie, à défaut son nom réduit à ses lettres et ses chiffres. */
+    type Soc = NonNullable<MandantEnregistre["societe"]>;
+    const cle = (s?: Soc) =>
+      (s?.siren ?? "").replace(/\D/g, "")
+      || (s?.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const liste: Soc[] = Array.isArray(c.societes) ? [...(c.societes as Soc[])] : [];
+    const i = liste.findIndex((s) => cle(s) && cle(s) === cle(x.societe));
+    if (i >= 0) {
+      liste[i] = {
+        nom: liste[i].nom || x.societe.nom,
+        siren: liste[i].siren || x.societe.siren,
+        rcs: liste[i].rcs || x.societe.rcs,
+        capital: liste[i].capital ?? x.societe.capital,
+        siege: liste[i].siege || x.societe.siege,
+      };
+    } else {
+      liste.push(x.societe);
+    }
+    if (JSON.stringify(liste) !== JSON.stringify(c.societes ?? [])) patch.societes = liste;
   }
   if (Object.keys(patch).length === 0) return;
 
@@ -2829,6 +2855,8 @@ export type MandantDepuisContact = {
   societe?: {
     nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string;
   };
+  /** Toutes celles que la fiche connaît (retour #200), la principale d'abord. */
+  societes?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string }[];
 };
 
 /** Une adresse Bubble est `{address, lat, lng}` — on n'en garde que le libellé. */
@@ -2884,7 +2912,50 @@ export async function mandantDepuisContact(id: string): Promise<MandantDepuisCon
       capital: Number.isFinite(capital) ? capital : undefined,
       siege: texteGeo(c.entreprise_siege_geo),
     },
+    /* Retour #200 — « si le vendeur en a plusieurs, quand on crée un mandat il
+       nous propose de sélectionner une des sociétés créées ». Toutes celles que
+       la fiche a collectionnées, la principale d'abord pour qu'un contact à une
+       seule société se comporte exactement comme avant. */
+    societes: societesDuContact(c),
   };
+}
+
+/**
+ * Les sociétés d'un contact, sans doublon (retour #200).
+ *
+ * Deux sources : le tableau `societes`, qui grandit à chaque mandat, et les
+ * vieux champs `entreprise_*` des fiches d'avant. On dédoublonne sur le SIREN,
+ * à défaut sur le nom réduit à ses lettres et ses chiffres — « SCI DU PARC » et
+ * « S.C.I. du Parc » sont la même société.
+ */
+function societesDuContact(c: Record<string, unknown>) {
+  type Soc = NonNullable<MandantEnregistre["societe"]>;
+  const S3 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const cap = typeof c.entreprise_capital === "number" ? c.entreprise_capital
+    : typeof c.entreprise_capital === "string" ? parseFloat(c.entreprise_capital.replace(/[^\d.]/g, "")) : undefined;
+
+  const principale: Soc | undefined = S3(c.entreprise_nom)
+    ? {
+        nom: S3(c.entreprise_nom),
+        siren: S3(c.entreprise_siren),
+        rcs: S3(c.entreprise_rcs),
+        capital: Number.isFinite(cap) ? cap : undefined,
+        siege: texteGeo(c.entreprise_siege_geo),
+      }
+    : undefined;
+
+  const cle = (s: Soc) =>
+    (s.siren ?? "").replace(/\D/g, "") || (s.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const out: Soc[] = [];
+  const vues = new Set<string>();
+  for (const s of [principale, ...(Array.isArray(c.societes) ? (c.societes as Soc[]) : [])]) {
+    if (!s?.nom) continue;
+    const k = cle(s);
+    if (!k || vues.has(k)) continue;
+    vues.add(k);
+    out.push(s);
+  }
+  return out;
 }
 
 /* ---------- Recherche d'entreprise en open data (retour #135) ---------- */

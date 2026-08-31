@@ -402,6 +402,26 @@ function CarteMandant({
   const [, start] = useTransition();
   const morale = x.personne === "morale";
 
+  /* Les sociétés déjà enregistrées sur la fiche du contact (retour #200). On
+     ne les demande qu'en personne morale, et seulement quand un contact est
+     rattaché : ailleurs, il n'y a rien à proposer.
+
+     Le cache retient POUR QUI il a été rempli, et la liste affichée s'en
+     déduit : sans ça, il aurait fallu le vider depuis l'effet, ce qui déclenche
+     un rendu en cascade — et, le temps d'un affichage, les sociétés du contact
+     précédent se seraient montrées sous le nom du nouveau. */
+  const [cache, setCache] = useState<{ id: string; liste: Societe[] } | null>(null);
+  const societesConnues =
+    morale && x.contactId && cache?.id === x.contactId ? cache.liste : [];
+  useEffect(() => {
+    if (!morale || !x.contactId) return;
+    let vivant = true;
+    mandantDepuisContact(x.contactId)
+      .then((f) => { if (vivant) setCache({ id: x.contactId!, liste: f?.societes ?? [] }); })
+      .catch(() => undefined);
+    return () => { vivant = false; };
+  }, [morale, x.contactId]);
+
   return (
     <div className="mdt-md">
       <div className="mdt-md-h">
@@ -551,6 +571,31 @@ function CarteMandant({
                 },
               })}
             />
+          )}
+          {/* Retour #200 — « un propriétaire peut avoir plusieurs sociétés […]
+              si le vendeur en a plusieurs, quand on crée un mandat il nous
+              propose de sélectionner une des sociétés créées ». Le choix
+              n'apparaît qu'à partir de deux : en proposer une seule serait un
+              menu à une entrée. Les sociétés viennent de la fiche du contact,
+              où chaque mandat dépose la sienne. */}
+          {societesConnues.length > 1 && !locked && (
+            <div className="mdt-socs">
+              <span className="l">Sociétés de {[x.prenom, x.nom].filter(Boolean).join(" ") || "ce contact"}</span>
+              {societesConnues.map((s) => {
+                const active = (s.siren && s.siren === x.societe?.siren)
+                  || (!!s.nom && s.nom === x.societe?.nom);
+                return (
+                  <button
+                    key={`${s.siren ?? ""}-${s.nom ?? ""}`} type="button"
+                    className={`mdt-soc-choix${active ? " on" : ""}`}
+                    onClick={() => onMaj({ societe: { ...s } })}
+                  >
+                    <b>{s.nom}</b>
+                    {s.siren && <i>SIREN {s.siren}</i>}
+                  </button>
+                );
+              })}
+            </div>
           )}
           <div className="mdt-grid">
             <Champ label="Raison sociale" large>
