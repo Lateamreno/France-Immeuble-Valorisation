@@ -73,6 +73,45 @@ export function masseConfiguree() {
   return !!(c.host && c.user && c.pass && c.from);
 }
 
+/**
+ * Le transport de la salve, RÉUTILISÉ d'un message à l'autre.
+ *
+ * Il était fabriqué à chaque message : deux cents destinataires, c'était deux
+ * cents connexions SMTP ouvertes et refermées, chacune avec sa poignée de main
+ * TLS. Lent — de l'ordre d'une seconde par message avant même d'écrire quoi que
+ * ce soit — et mal vu des relais, qui comptent les connexions autant que les
+ * messages.
+ *
+ * `pool` garde la connexion ouverte ; `maxConnections: 1` et `rateDelta/
+ * rateLimit` tiennent une cadence régulière plutôt qu'une rafale, ce que les
+ * grandes messageries préfèrent nettement. `maxMessages` renouvelle la
+ * connexion de temps en temps, parce que beaucoup de relais la coupent
+ * d'eux-mêmes au bout d'un certain nombre d'envois.
+ */
+let poolMasse: nodemailer.Transporter | null = null;
+let poolCle = "";
+
+function transportMasse() {
+  const c = MASSE();
+  const cle = `${c.host}:${c.port}:${c.user}`;
+  if (poolMasse && poolCle === cle) return poolMasse;
+  poolMasse?.close();
+  poolCle = cle;
+  poolMasse = nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.port === 465,
+    requireTLS: c.port !== 465,
+    auth: { user: c.user!, pass: c.pass! },
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 50,
+    rateDelta: 1000,
+    rateLimit: 4,
+  });
+  return poolMasse;
+}
+
 /** L'adresse d'expédition des salves, pour l'afficher avant d'envoyer. */
 export function expediteurMasse() {
   return MASSE().from ?? "";
@@ -99,13 +138,7 @@ export async function envoyerEnMasse(m: {
       "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / MASSE_SMTP_PASS / MASSE_FROM).",
     );
   }
-  const t = nodemailer.createTransport({
-    host: c.host,
-    port: c.port,
-    secure: c.port === 465,
-    requireTLS: c.port !== 465,
-    auth: { user: c.user!, pass: c.pass! },
-  });
+  const t = transportMasse();
 
   const vers = REDIRECT();
   const desabo = m.replyTo ?? c.from;

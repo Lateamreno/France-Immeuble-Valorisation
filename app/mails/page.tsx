@@ -10,6 +10,11 @@ import { boiteDe } from "@/lib/mails/boites";
 import { EcranMails } from "@/components/mails/ecran";
 
 export const dynamic = "force-dynamic";
+/* Une salve part depuis cette page, un message par destinataire et une pause
+   entre chacun : deux cents contacts, c'est plusieurs minutes. Sans cette
+   ligne, la fonction est coupée à la durée par défaut — et elle est coupée EN
+   PLEIN MILIEU, une partie des messages déjà partis. */
+export const maxDuration = 300;
 
 export default async function MailsPage({
   searchParams,
