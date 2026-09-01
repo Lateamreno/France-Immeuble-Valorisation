@@ -32,6 +32,41 @@ async function rogner(bytes: ArrayBuffer, type: string): Promise<Response> {
   }
 }
 
+/* Retour #217 — « quand on génère le PDF du dossier, il faut faire attention à
+   ce qu'il soit toujours suffisamment compressé pour ne pas dépasser trop des
+   1 Mo au total ».
+   Les photos sont stockées en 2200 px de côté : c'est ce qu'il faut à l'écran,
+   mais le dossier les imprime dans des cadres de 92 mm — environ 725 px à
+   200 points par pouce. On embarquait donc trois fois trop de pixels, et le
+   PDF les portait tels quels : Chromium n'y recompresse rien.
+   `?w=` sert la même photo à la taille qu'elle occupe vraiment. Le poids suit,
+   sans que personne ne voie la différence sur le papier. */
+async function reduire(bytes: ArrayBuffer, largeur: number): Promise<Response> {
+  try {
+    const out = await sharp(Buffer.from(bytes), { failOn: "none" })
+      .rotate()
+      // `withoutEnlargement` : une photo déjà petite n'est pas gonflée.
+      .resize({ width: largeur, withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+    return new Response(new Uint8Array(out), {
+      headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400, immutable" },
+    });
+  } catch {
+    // Format illisible par sharp : la photo d'origine vaut mieux que rien.
+    return new Response(new Uint8Array(bytes), {
+      headers: { "Cache-Control": "public, max-age=86400, immutable" },
+    });
+  }
+}
+
+/** La largeur demandée, bornée : personne ne réduit à 3 px ni n'agrandit. */
+function largeurDemandee(req: NextRequest): number | null {
+  const v = Number(req.nextUrl.searchParams.get("w"));
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return Math.min(2200, Math.max(80, Math.round(v)));
+}
+
 const ALLOWED_HOSTS = new Set([
   "vente.france-immeuble.fr",
   "s3.amazonaws.com",
@@ -68,6 +103,8 @@ export async function GET(req: NextRequest) {
     if (req.nextUrl.searchParams.get("trim") === "1" && type.startsWith("image/")) {
       return rogner(await upstream.arrayBuffer(), type);
     }
+    const w = type.startsWith("image/") ? largeurDemandee(req) : null;
+    if (w) return reduire(await upstream.arrayBuffer(), w);
     // Un PDF doit s'ouvrir dans le lecteur du navigateur quand on clique
     // dessus, pas se télécharger : « inline » plus un nom de fichier lisible.
     const nom = s.split("/").pop() || "document";
@@ -105,6 +142,8 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get("trim") === "1") {
     return rogner(await upstream.arrayBuffer(), type);
   }
+  const w = largeurDemandee(req);
+  if (w) return reduire(await upstream.arrayBuffer(), w);
   return new Response(upstream.body, {
     headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400, immutable" },
   });

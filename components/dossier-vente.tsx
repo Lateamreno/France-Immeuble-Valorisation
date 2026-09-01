@@ -20,6 +20,10 @@ const I = {
   pin: <><path d="M12 22s7-6.6 7-12a7 7 0 1 0-14 0c0 5.4 7 12 7 12z" /><circle cx="12" cy="10" r="2.6" /></>,
   pouls: <><path d="M3 12h4l2.5-6 4 12L16 12h5" /></>,
   cle: <><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l2 2M19 4l2 2" /></>,
+  /* Retour #222 : « le picto travaux à prévoir, si tu peux mettre une clé à
+     molette c'est mieux. » `cle` est déjà prise par l'état locatif — ce sont
+     les clés d'un bail, pas un outil. */
+  molette: <><path d="M20.4 5.1a4.7 4.7 0 0 1-6.1 6.1l-7.4 7.4a2.35 2.35 0 1 1-3.3-3.3l7.4-7.4a4.7 4.7 0 0 1 6.1-6.1l-3 3 .6 3.3 3.3.6z" /></>,
   euro: <><path d="M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5" /><path d="M4 10.5h8M4 13.5h8" /></>,
   ampoule: <><path d="M9.5 18h5M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" /></>,
   maison: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
@@ -64,9 +68,16 @@ const IC_POI: Record<string, React.ReactNode> = {
 };
 
 /**
- * Une page A4 du dossier : bandeau de titre, tranche dorée, pied de page.
+ * Une page A4 du dossier : tranche dorée titrée, pied de page.
  *
- * La couverture n'a ni bandeau ni pied ; le dos n'a rien du tout.
+ * La couverture n'a ni titre ni pied ; le dos n'a rien du tout.
+ *
+ * Retour #222 : « le bandeau or sur le côté de toutes les pages est énorme et
+ * ne contient plus le titre de la page, ce qu'il faudrait ajouter en gardant
+ * les pictos. » Le titre vivait dans un second bandeau, horizontal, en haut de
+ * page : 22 mm de hauteur qui répétaient ce que la tranche aurait dû dire.
+ * Elle le dit maintenant, elle a maigri, et la page y gagne la place qu'il
+ * fallait pour grossir les polices (#223, #224, #225).
  */
 function Page({ titre, picto, pied, enfants, nu, compact }: {
   titre?: string; picto?: React.ReactNode; pied?: string;
@@ -77,12 +88,6 @@ function Page({ titre, picto, pied, enfants, nu, compact }: {
   return (
     <section className={`dv-page${nu ? " nue" : ""}${compact ? " serre" : ""}`}>
       <div className="dv-in">
-        {titre && (
-          <div className="dv-band">
-            <span>{titre}</span>
-            {picto && <Ic d={picto} cls="dv-band-ic" />}
-          </div>
-        )}
         {enfants}
         {pied && (
           <div className="dv-pied">
@@ -92,30 +97,18 @@ function Page({ titre, picto, pied, enfants, nu, compact }: {
           </div>
         )}
       </div>
-      {!nu && <div className="dv-tranche" />}
-      {!nu && <Skyline />}
+      {/* Retour #222 : la tranche porte enfin le titre de la page et son picto.
+          Elle était vide sur les pages intérieures — 30 mm de doré pour rien,
+          pendant que le titre occupait un second bandeau en haut. */}
+      {!nu && (
+        <div className="dv-tranche">
+          {titre && <span className="dv-tr-t">{titre}</span>}
+          {picto && <Ic d={picto} cls="dv-tr-ic" />}
+        </div>
+      )}
     </section>
   );
 }
-
-/** La silhouette de ville en bas de page — la signature du dossier. */
-const Skyline = () => (
-  <svg className="dv-sky" viewBox="0 0 800 90" preserveAspectRatio="none" aria-hidden>
-    {[...Array(46)].map((_, i) => {
-      /* Hauteurs fixes : un dossier doit sortir identique à chaque impression,
-         donc pas de hasard. La suite ci-dessous a été relevée à l'œil sur le
-         PDF de référence. */
-      const h = [34, 52, 26, 68, 40, 58, 30, 74, 44, 36, 62, 28, 50, 70, 38, 56, 32, 66, 42, 48,
-        60, 30, 72, 40, 54, 26, 64, 46, 34, 58, 44, 68, 30, 52, 38, 62, 28, 70, 42, 56, 34, 48,
-        60, 32, 66, 40][i];
-      const or = i % 5 === 2;
-      return (
-        <rect key={i} x={i * 17.4} y={90 - h} width={15} height={h}
-          fill={or ? "#b99b63" : "#9a9aa2"} opacity={or ? 0.95 : 0.55} />
-      );
-    })}
-  </svg>
-);
 
 export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
   const pied = `${d.cp} ${d.ville} — ${d.adresse.split(",")[0]} (v${d.version} - ${d.date} ${d.heure})`;
@@ -190,7 +183,6 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
         <div className="dv-cv-adr">{d.adresse}</div>
         </div>
-        <Skyline />
       </section>
 
       {/* ---------------------------------------------------- 2. Photos */}
@@ -220,11 +212,23 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
       {/* ----------------------------------------------- 3. Emplacement */}
       <Page titre="Emplacement" picto={I.pin} pied={pied} enfants={<>
-        <div className="dv-carte">
-          {d.carte
+        {/* Retour #221 : les deux cartes viennent de Google, en direct.
+            La capture du coffre ne sert plus que de repli pour les fiches
+            sans coordonnées. */}
+        <div className={`dv-carte${d.cartes ? " duo" : ""}`}>
+          {d.cartes ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={d.cartes.region} alt="" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={d.cartes.quartier} alt="" />
+            </>
+          ) : d.carte ? (
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={d.carte} alt="" />
-            : <span className="dv-vide">Capture de carte à faire depuis l&apos;onglet Emplacement</span>}
+            <img src={d.carte} alt="" />
+          ) : (
+            <span className="dv-vide">Adresse non géocodée : la carte apparaîtra dès que la géolocalisation sera renseignée.</span>
+          )}
         </div>
         <div className="dv-adr-bar"><Ic d={I.pin} /> {d.adresse}</div>
 
@@ -284,17 +288,31 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           )}
         </table>
 
-        <h2 className="dv-h"><Ic d={I.outil} /> Travaux à prévoir</h2>
+        {/* Retour #222 : la clé à molette plutôt que l'outil générique. */}
+        <h2 className="dv-h"><Ic d={I.molette} /> Travaux à prévoir</h2>
         {d.travauxListe.length === 0 ? (
           <div className="dv-plat">Aucun travaux à prévoir</div>
         ) : (
           <table className="dv-tab">
+            <thead>
+              <tr>
+                <th>Objet des travaux</th><th>Description</th>
+                <th className="c">Urgence</th><th className="r">Montant</th>
+              </tr>
+            </thead>
             <tbody>
               {d.travauxListe.map((t, i) => (
-                <tr key={i}><td>{t.label}</td><td className="r">{eur(t.montant)}</td></tr>
+                <tr key={i}>
+                  <td>{t.objet}</td>
+                  <td className="gris">{nc(t.description)}</td>
+                  <td className={`c${/urgent|imm[ée]diat/i.test(t.urgence) ? " rouge" : ""}`}>{nc(t.urgence)}</td>
+                  <td className="r">{eur(t.montant)}</td>
+                </tr>
               ))}
             </tbody>
-            <tfoot><tr><td>Total</td><td className="r">{eur(d.prix.travaux)}</td></tr></tfoot>
+            <tfoot>
+              <tr><td colSpan={3}>Total</td><td className="r">{eur(d.prix.travaux)}</td></tr>
+            </tfoot>
           </table>
         )}
 

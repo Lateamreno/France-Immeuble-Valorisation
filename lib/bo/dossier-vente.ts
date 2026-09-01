@@ -25,6 +25,10 @@ import { estFacadeRue } from "./facade";
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
+/** Demande une photo du relais à la largeur où elle sera imprimée (#217). */
+const taille = (u: string | undefined, largeur: number) =>
+  !u || !u.startsWith("/api/photo") || u.includes("w=") ? u : `${u}&w=${largeur}`;
+
 /** Ordre d'affichage des destinations dans les tableaux du dossier. */
 const ORDRE_DEST = ["Logement", "Commerce", "Bureau", "Logistique", "Parking", "Cave", "Annexe"];
 
@@ -153,13 +157,21 @@ export function construireDossierVente(
        Google interdit de la réutiliser comme photo d'un bien dans un document
        commercial. Un dossier sans couverture vaut mieux qu'un dossier envoyé
        au vendeur avec le filigrane Google dessus. */
-    photoPrincipale: b.photos.find((p) => p.type === "Principale")?.urlPleine
-      ?? b.photos.find((p) => p.type === "Principale")?.url
-      ?? (estFacadeRue(im.photo_main_compressed) ? "" : photoUrl(S(im.photo_main_compressed))),
+    /* Retour #217 : chaque photo est demandée à la taille qu'elle occupe
+       réellement sur la page, pas en 2200 px de côté. La couverture couvre
+       194 mm, les planches 92 mm ; à 200 points par pouce, cela fait 1520 et
+       730 pixels. Le PDF n'y recompresse rien, c'est donc ici que se joue son
+       poids. */
+    photoPrincipale: taille(
+      b.photos.find((p) => p.type === "Principale")?.urlPleine
+        ?? b.photos.find((p) => p.type === "Principale")?.url
+        ?? (estFacadeRue(im.photo_main_compressed) ? "" : photoUrl(S(im.photo_main_compressed))),
+      1520,
+    ),
     photos: b.photos
       .filter((p) => p.type !== "Principale" && !["Cadastre", "Carte", "Vue de rue"].includes(S(p.type)))
       .sort((x, y) => x.ordre - y.ordre)
-      .map((p) => p.urlPleine ?? p.url)
+      .map((p) => taille(p.urlPleine ?? p.url, 760))
       .filter((u): u is string => !!u),
 
     /* Page 1 — les chiffres de couverture */
@@ -173,7 +185,34 @@ export function construireDossierVente(
     prix: { hai, nv, honos, taux, notaire, travaux, m2: surface > 0 ? Math.round(hai / surface) : 0 },
     rendement: r,
 
-    /* Page 3 — emplacement */
+    /* Page 3 — emplacement -------------------------------------------------
+       Retour #221 : « je vois pas les 2 maps de Google Map qui devraient être
+       affichées. Maintenant on va pas prendre des photos des maps si elles
+       s'affichent correctement avec Google Map […] du coup pas besoin
+       d'ajouter de photo, on reprend la capture que ça fait directement dans
+       le dossier. »
+
+       On dessinait la carte depuis une PHOTO capturée à l'avance et rangée
+       dans le coffre — une étape de plus, qui échouait en silence dès qu'elle
+       n'avait pas été faite, et laissait un cadre gris. Le dossier demande
+       maintenant ses deux cartes au relais, comme l'écran Emplacement : la vue
+       région et la vue de quartier, calculées depuis les coordonnées du bien.
+       La clé Google reste côté serveur, le relais s'en charge.
+
+       La capture reste en repli pour les fiches sans coordonnées. */
+    cartes: (() => {
+      /* Sans clé Google, le relais répond 404 et les deux cadres resteraient
+         vides : on garde alors la capture d'avant, qui existe peut-être. Cette
+         fonction ne tourne que côté serveur — la clé n'atteint jamais la page,
+         on ne fait que constater sa présence. */
+      if (!process.env.GOOGLE_MAPS_SERVER_KEY && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY) return null;
+      const g = b.adr?.geo as { lat?: number; lng?: number } | undefined;
+      const lat = N(g?.lat), lon = N(g?.lng);
+      if (lat === undefined || lon === undefined) return null;
+      const m = (z: number, pin: string, w: number, h: number) =>
+        `/api/staticmap?lat=${lat}&lon=${lon}&z=${z}&w=${w}&h=${h}&pin=${pin}`;
+      return { region: m(5, "petit", 400, 460), quartier: m(15, "1", 560, 460) };
+    })(),
     carte: (() => {
       const c = b.photos.find((p) => S(p.type) === "Carte");
       return c?.urlPleine ?? c?.url ?? photoUrl(S(im.photo_maps));
@@ -204,8 +243,15 @@ export function construireDossierVente(
       etat: S(c.Etat),
     })),
     etatGeneral: S(im.Etat),
+    /* Retour #222 : « il manque les titres des colonnes du tableau des travaux
+       à prévoir — objet des travaux, description et montant au minimum, si y a
+       pas urgence et devis. » L'objet et la description étaient jusqu'ici
+       repliés l'un sur l'autre en une seule colonne sans en-tête : le lecteur
+       voyait deux colonnes muettes. */
     travauxListe: b.travaux.map((t) => ({
-      label: S(t.Type_travaux) || S(t.description) || "Travaux",
+      objet: S(t.Type_travaux) || "Travaux",
+      description: S(t.description) || S(t.commentaire),
+      urgence: S(t.Urgence),
       montant: N(t.montant),
     })),
     terrain: {
