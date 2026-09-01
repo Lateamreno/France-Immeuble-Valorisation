@@ -87,14 +87,11 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
   const mandatId = String(m._id);
   const immeubleId = im ? String(im._id) : "";
   const [tab, setTab] = useState<Tab>("Mandants");
-  /* Retour #197 : enregistrer un onglet fait passer au suivant. La chaîne des
-     onglets EST le déroulé du dossier — qui signe, quoi, à combien, à quelles
-     conditions, on envoie — et rester sur place obligeait l'agent à cliquer
-     l'onglet d'après à chaque fois. Le dernier onglet ne mène nulle part. */
-  const suivant = () => {
-    const i = TABS.indexOf(tab);
-    if (i >= 0 && i < TABS.length - 1) setTab(TABS[i + 1]);
-  };
+  /* Retour #229 : « quand j'enregistre, passe pas direct au menu suivant. »
+     L'enchaînement automatique venait du #197 — la chaîne des onglets étant le
+     déroulé du dossier, on gagnait un clic. À l'usage il dépossède : on
+     enregistre souvent pour vérifier ce qu'on vient de saisir, pas pour
+     partir. Changer d'onglet redevient un geste de l'agent. */
   const [pending, start] = useTransition();
 
   const statut = S(m.Statut);
@@ -256,21 +253,18 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
                 .filter(Boolean).join(" ")
               : undefined}
             vignettes={vignettes} proprietaireId={proprietaireId}
-            onSuivant={suivant}
           />
         )}
         {tab === "Objet" && (
           <OngletObjet m={m} im={im} lots={lots} parcelles={d.parcelles}
-            mandatId={mandatId} immeubleId={immeubleId} locked={locked}
-            onSuivant={suivant} />
+            mandatId={mandatId} immeubleId={immeubleId} locked={locked} />
         )}
         {tab === "Prix" && (
           <OngletPrix m={m} lots={lots} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
-            onSuivant={suivant} bareme={bareme} />
+            bareme={bareme} />
         )}
         {tab === "Conditions" && (
-          <OngletConditions m={m} mandatId={mandatId} immeubleId={immeubleId} locked={locked}
-            onSuivant={suivant} />
+          <OngletConditions m={m} mandatId={mandatId} immeubleId={immeubleId} locked={locked} />
         )}
         {tab === "Envoi" && (
           <OngletEnvoi m={m} mandants={mandants} trous={trous} agent={agent}
@@ -302,7 +296,7 @@ function useModifie(empreinte: string) {
 
 function OngletMandants({
   mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
-  vignettes, proprietaireId, onSuivant,
+  vignettes, proprietaireId,
 }: {
   mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
   /** L'adresse de l'immeuble : c'est par elle qu'on retrouve le propriétaire. */
@@ -311,8 +305,6 @@ function OngletMandants({
   vignettes: Record<string, VignetteData>;
   /** Le propriétaire de la fiche : mandant par défaut, plutôt que « aucun ». */
   proprietaireId?: string;
-  /** Enchaîne sur l'étape suivante une fois l'onglet enregistré (retour #197). */
-  onSuivant?: () => void;
 }) {
   /* Retour #205 : « le contact c'est celui de la fiche du bien, c'est logique ».
      La première ligne adopte donc le propriétaire de la fiche quand elle n'a
@@ -334,7 +326,6 @@ function OngletMandants({
     start(async () => {
       await majMandants(mandatId, immeubleId, rows);
       valider();
-      onSuivant?.();
     });
 
   return (
@@ -897,13 +888,12 @@ function Piece({
 /* ---------------------------------------------------- Onglet 2 · Objet */
 
 function OngletObjet({
-  m, im, lots, parcelles, mandatId, immeubleId, locked, onSuivant,
+  m, im, lots, parcelles, mandatId, immeubleId, locked,
 }: {
   m: Record<string, unknown>; im: Record<string, unknown> | null; lots: Record<string, unknown>[];
   /** Parcelles déjà connues de l'onglet Emplacement (retour #202). */
   parcelles: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
-  onSuivant?: () => void;
 }) {
   const [pending, start] = useTransition();
   const s = useMemo(() => synthese(lots), [lots]);
@@ -941,6 +931,20 @@ function OngletObjet({
   const [libre, setLibre] = useState(!!dejaEcrit && dejaEcrit !== auto);
   const [desc, setDesc] = useState(dejaEcrit || auto);
   const texte = libre ? desc : auto;
+
+  /* Retour #231 : « dans l'objet il y a une notif disant qu'il manque quelque
+     chose, mais tout est rempli. » Le descriptif était le coupable : l'écran
+     affichait le texte rédigé automatiquement, mais la base restait vide tant
+     qu'on n'avait pas cliqué Enregistrer — l'agent voyait un onglet complet et
+     un compteur qui disait le contraire. Le texte étant déterministe et de
+     toute façon celui que le mandat portera, on l'inscrit dès qu'il manque :
+     l'écran et la base disent enfin la même chose. */
+  const [pose, setPose] = useState(false);
+  useEffect(() => {
+    if (pose || locked || dejaEcrit || !auto || !im) return;
+    setPose(true);
+    start(async () => { await updateMandat(mandatId, immeubleId, { description: auto }); });
+  }, [pose, locked, dejaEcrit, auto, im, mandatId, immeubleId, start]);
   const { modifie, valider } = useModifie(JSON.stringify([cad, terrain, libre, desc]));
   const annuler = () => {
     setCad(refsEmplacement || S(m.ref_cadastre));
@@ -955,7 +959,6 @@ function OngletObjet({
          sur sa fiche si elle n'y est pas encore. */
       await reporterCadastre(immeubleId, cad, parse(terrain));
       valider();
-      onSuivant?.();
       await updateMandat(mandatId, immeubleId, {
         ref_cadastre: cad || undefined,
         surface_terrain: parse(terrain),
@@ -1073,11 +1076,10 @@ function OngletObjet({
 /* ----------------------------------------------------- Onglet 3 · Prix */
 
 function OngletPrix({
-  m, lots, mandatId, immeubleId, locked, onSuivant, bareme,
+  m, lots, mandatId, immeubleId, locked, bareme,
 }: {
   m: Record<string, unknown>; lots: Record<string, unknown>[];
   mandatId: string; immeubleId: string; locked: boolean;
-  onSuivant?: () => void;
   /** Le barème des Réglages de l'agence ; celui du code à défaut. */
   bareme?: Tranche[];
 }) {
@@ -1115,7 +1117,6 @@ function OngletPrix({
         vente_mode: mode,
       } as MandatPatch);
       valider();
-      onSuivant?.();
     });
 
   /* La case mise en avant est celle qu'on vient d'écrire ; le prix HAI reste
@@ -1242,10 +1243,9 @@ function CasePrix({
 /* ----------------------------------------------- Onglet 4 · Conditions */
 
 function OngletConditions({
-  m, mandatId, immeubleId, locked, onSuivant,
+  m, mandatId, immeubleId, locked,
 }: {
   m: Record<string, unknown>; mandatId: string; immeubleId: string; locked: boolean;
-  onSuivant?: () => void;
 }) {
   const [pending, start] = useTransition();
   /* Retour #193 : la prise d'effet part de la date du jour, et reste
@@ -1289,7 +1289,6 @@ function OngletConditions({
         publication_web_yn: web,
       });
       valider();
-      onSuivant?.();
     });
 
   return (

@@ -319,7 +319,16 @@ export function BienFiche({
               {sect === "diffusion" && (
                 <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
               )}
-              {sect === "dossiers" && <DossiersSection b={b} onAller={(x) => setSect(x as SectionKey)} />}
+              {/* Retour #236 : une rubrique peut désigner son sous-onglet
+                  (« emplacement:parcelles »), sinon on tombait sur le premier
+                  de la section — les prix du secteur au lieu du PLU. */}
+              {sect === "dossiers" && (
+                <DossiersSection b={b} onAller={(x) => {
+                  const [s, sous2] = x.split(":");
+                  setSect(s as SectionKey);
+                  if (sous2) setSous((p) => ({ ...p, [s as SectionKey]: sous2 }));
+                }} />
+              )}
               {sect === "tous-docs" && (
                 <>
                   <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />

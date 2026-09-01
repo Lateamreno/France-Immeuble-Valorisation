@@ -765,8 +765,13 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           </div>
         </div>
       ) : (
+        /* Retour #237 : « le plan de parcelle, quand il manque, j'aimerais que
+           tu mettes le cadre en rouge et un gros picto qui brille au survol
+           pour dire de déposer une copie ici. » Il bloque la génération du
+           dossier : il doit se voir comme tel, pas comme une ligne de texte
+           grise parmi d'autres. */
         <div
-          className="carte-drop terr-drop"
+          className="carte-drop terr-drop manque"
           onPaste={(e) => envoyer([...e.clipboardData.files][0])}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); envoyer(e.dataTransfer.files[0]); }}
@@ -774,7 +779,12 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           tabIndex={0}
           role="button"
         >
-          {pending ? "Envoi…" : "Déposez le plan avec la parcelle entourée (cliquer, coller ou glisser)"}
+          <svg className="terr-ic" viewBox="0 0 24 24" aria-hidden>
+            <path d="M12 16V4M8 8l4-4 4 4" />
+            <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+          </svg>
+          <b>{pending ? "Envoi…" : "Déposez le plan avec la parcelle entourée"}</b>
+          <span>Cliquez, collez une capture, ou glissez le fichier ici</span>
         </div>
       )}
       <input ref={input} type="file" accept="image/*" hidden

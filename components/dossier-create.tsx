@@ -51,8 +51,10 @@ export function AddDossierButton({ b }: { b: BienData }) {
      annonce la version réellement enregistrée, pas la suivante. */
   const [attribuee, setAttribuee] = useState<number | null>(null);
   const version = attribuee ?? prochaine;
-  const [hai, setHai] = useState(S(num(b.im.prix_hai)));
-  const [pct, setPct] = useState("5");
+  /* Retour #238 : le prix et le taux ne se saisissent plus ici, ils se lisent
+     sur la fiche. Le dossier est un tirage, pas une saisie. */
+  const hai = S(num(b.im.prix_hai));
+  const pct = S(num(b.im.prix_Charge_honos) ?? 5);
   const vHai = parse(hai) ?? 0;
   const vPct = parse(pct) ?? 5;
   const nv = vHai > 0 ? Math.round(vHai / (1 + vPct / 100)) : 0;
@@ -104,8 +106,6 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const close = () => {
     setOpen(false); setStep(0); setCreatedId(null); setPdf(null); setErrPdf(null); setVu(false);
   };
-  /** Toute retouche du prix périme l'aperçu : il ne montre plus ce qu'on a. */
-  const retoucher = (fn: () => void) => { fn(); setVu(false); setPdf(null); };
 
   /* Retour #204 — « ne laisse pas l'agent générer le dossier tant que toutes
      les informations contenues dans le dossier ne sont pas remplies […] voilà,
@@ -159,16 +159,24 @@ export function AddDossierButton({ b }: { b: BienData }) {
                     {agg.dests.map((d) => <span key={d} className="fchip">{d}</span>)}
                   </div>
 
-                  <div className="mrow" style={{ alignItems: "flex-end", gap: 14, marginTop: 12 }}>
-                    <label className="dmq-c">
+                  {/* Retour #238 — « attention, ici il faut pas du tout qu'on
+                      puisse modifier le prix ni les honoraires. C'est vraiment
+                      du pur génératif. » Le dossier reprend le prix de la
+                      fiche, un point c'est tout : deux endroits pour saisir un
+                      prix, c'est deux prix qui finissent par diverger. Il se
+                      change là où il vit, sur Description et prix. */}
+                  <div className="dos-fige">
+                    <div>
                       <span>Prix HAI</span>
-                      <input value={hai} onChange={(e) => retoucher(() => setHai(e.target.value))} />
-                    </label>
-                    <label className="dmq-c">
-                      <span>Honoraires %</span>
-                      <input style={{ minWidth: 80 }} value={pct}
-                        onChange={(e) => retoucher(() => setPct(e.target.value))} />
-                    </label>
+                      <b>{euros(vHai) ?? "—"}</b>
+                    </div>
+                    <div>
+                      <span>Honoraires</span>
+                      <b>{vPct.toString().replace(".", ",")} % TTC</b>
+                    </div>
+                    <span className="fine">
+                      Repris de la fiche — ils se modifient sur <b>Description et prix</b>.
+                    </span>
                   </div>
                   {vHai > 0 && (
                     <div style={{ fontSize: 13, marginTop: 8 }}>
@@ -178,9 +186,10 @@ export function AddDossierButton({ b }: { b: BienData }) {
                     </div>
                   )}
 
-                  {/* L'historique des prix, déroulable : chaque ligne se
-                      reprend d'un clic — c'est le geste le plus fréquent,
-                      « on remet le prix du mandat ». */}
+                  {/* L'historique des prix, déroulable. Ses lignes se
+                      reprenaient d'un clic pour remplir la case au-dessus ;
+                      depuis #238 il n'y a plus de case à remplir, il ne reste
+                      donc que la lecture — savoir d'où vient le prix affiché. */}
                   {histo.length > 0 && (
                     <>
                       <button type="button" className="hest-plus" style={{ marginTop: 12 }}
@@ -190,15 +199,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
                       {voirHisto && (
                         <div className="dos-histo">
                           {histo.map((p) => (
-                            <button
-                              key={S(p._id)} type="button" className="dos-histo-l"
-                              title="Reprendre ce prix"
-                              onClick={() => {
-                                setHai(S(num(p.in_prix_hai)));
-                                const t = num(p["out_honos_taux_%"]);
-                                if (t) setPct(String(Math.round(t * 10) / 10));
-                              }}
-                            >
+                            <div key={S(p._id)} className="dos-histo-l lecture">
                               <b>{euros(num(p.in_prix_hai)) ?? "—"}</b>
                               <span>
                                 {S(p.in_Motif) || "Prix"}
@@ -206,7 +207,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
                                 {num(p.out_prix_m2) ? ` · ${Math.round(num(p.out_prix_m2)!)} €/m²` : ""}
                                 {num(p.out_rba) ? ` · ${num(p.out_rba)!.toFixed(1).replace(".", ",")} %` : ""}
                               </span>
-                            </button>
+                            </div>
                           ))}
                         </div>
                       )}
