@@ -6003,3 +6003,12 @@ a.cfc-t:hover { text-decoration: underline; }
 }
 .est-marque:hover:not(:disabled) { background: var(--slate-2); }
 .est-marque:disabled { opacity: .5; cursor: default; }
+
+/* Aperçu du dossier avant enregistrement (retour #219). */
+.dos-apercu {
+  margin-top: 12px; padding: 11px 13px; border: 1px solid var(--green);
+  border-radius: 5px; background: #f3fbf5;
+  display: flex; flex-direction: column; gap: 5px; font-size: 13px;
+}
+.dos-apercu b { color: #1f6b33; }
+.dos-apercu .fine { font-size: 11.5px; color: var(--gray-lt); }

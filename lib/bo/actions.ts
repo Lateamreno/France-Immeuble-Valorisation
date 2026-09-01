@@ -1675,6 +1675,62 @@ export async function genererPdfDossier(immeubleId: string, dossierId: string) {
   }
 }
 
+/**
+ * Le PDF d'un dossier PAS ENCORE ENREGISTRÉ (retour #219).
+ *
+ * MAV : « j'aimerais que, quand on génère un nouveau dossier, il soit demandé
+ * de le télécharger pour le vérifier avant de l'enregistrer. C'est seulement
+ * quand on l'enregistre que la dernière version est réellement créée — sinon,
+ * dès qu'on modifie quoi que ce soit, on a une infinité de dossiers déjà
+ * générés. »
+ *
+ * Rien n'est écrit en base : ni ligne de dossier, ni document. Le fichier va
+ * dans le coffre sous un nom d'aperçu, écrasé à chaque essai — c'est un
+ * brouillon, il n'a pas à s'accumuler.
+ */
+export async function apercuPdfDossier(
+  immeubleId: string,
+  input: { hai: number; pct: number; version: number },
+) {
+  try {
+    const { pdfDepuisUrl } = await import("./pdf");
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+    const q = new URLSearchParams({
+      nu: "1", hai: String(input.hai), pct: String(input.pct), v: String(input.version),
+    });
+    const pdf = await pdfDepuisUrl(
+      `${proto}://${hote}/bien/${immeubleId}/dossier/apercu?${q}`,
+      h.get("cookie") ?? undefined,
+    );
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+    /* Un nom par essai : le coffre sert les fichiers avec un cache d'un jour,
+       un chemin fixe aurait resservi l'aperçu précédent. */
+    const path = `dossiers/${immeubleId}/apercu-${Date.now()}.pdf`;
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/pdf",
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(pdf),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+    return {
+      ok: true as const,
+      url: `/api/photo?s=${encodeURIComponent(path)}`,
+      ko: Math.round(pdf.length / 1024),
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[apercu dossier]", message);
+    return { ok: false as const, message };
+  }
+}
+
 async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
   const { pdfDepuisUrl } = await import("./pdf");
   const { headers } = await import("next/headers");
