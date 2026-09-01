@@ -70,10 +70,8 @@ const H2 = ({ n, children }: { n: number | string; children: React.ReactNode }) 
   <h2><span className="anum">{n}</span>{children}</h2>
 );
 
-/* `fort` : pointillés plus gros et plus foncés. Réservé au registre de la
-   durée, pour qu'il se distingue des autres conducteurs du document. */
-const Registre = ({ lignes, fort }: { lignes: LigneRegistre[]; fort?: boolean }) => (
-  <div className={`ldg${fort ? " ldg-fort" : ""}`}>
+const Registre = ({ lignes }: { lignes: LigneRegistre[] }) => (
+  <div className="ldg">
     {lignes.map((l, i) => (
       <div key={i} className={`ld${i === lignes.length - 1 && l.k === "Prix de vente HAI" ? " ld-tot" : ""}`}>
         <span className="ld-k">{l.k}{l.note && <em>{l.note}</em>}</span>
@@ -216,7 +214,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
         <Entete d={d} />
         <div className="pc">
           <H2 n={d.art.duree}>Durée, irrévocabilité et dénonciation</H2>
-          <Registre lignes={d.registre} fort />
+          <Registre lignes={d.registre} />
           <div className="plain">
             {d.dureeParagraphes.map((p, i) => <p className="lead" key={i}><T t={p} /></p>)}
             {/* Article 78 du décret du 20 juillet 1972 : cette faculté doit
