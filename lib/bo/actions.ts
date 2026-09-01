@@ -9,6 +9,7 @@ import {
 } from "@/lib/bubble/server";
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { netVendeurDepuisHai } from "@/lib/bareme";
+import { greffeDe } from "@/lib/bo/greffes";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -2967,6 +2968,8 @@ export type EntrepriseTrouvee = {
   /** Forme juridique en clair (« SCI », « SAS »…), utile à l'œil. */
   forme?: string;
   ville?: string;
+  /** Ville du greffe, déduite du siège (retour #208) — voir lib/bo/greffes.ts. */
+  rcs?: string;
 };
 
 /**
@@ -2974,8 +2977,9 @@ export type EntrepriseTrouvee = {
  * DINUM, sans clé, alimentée par l'INSEE et l'INPI).
  *
  * Ce qu'elle donne : raison sociale, SIREN, forme juridique, siège. Ce qu'elle
- * ne donne pas : le capital et le numéro RCS, qui restent à saisir — ils
- * viennent du registre du commerce, pas de cette base.
+ * ne donne pas : le capital, qui vient du registre du commerce et demande un
+ * compte INPI — il reste à saisir. Le greffe du RCS, lui, se déduit du
+ * département du siège (retour #208).
  */
 export async function chercherEntreprise(q: string): Promise<EntrepriseTrouvee[]> {
   const t = (q ?? "").trim();
@@ -2987,7 +2991,10 @@ export async function chercherEntreprise(q: string): Promise<EntrepriseTrouvee[]
     results?: {
       nom_complet?: string; nom_raison_sociale?: string; siren?: string;
       nature_juridique?: string;
-      siege?: { adresse?: string; libelle_commune?: string; code_postal?: string };
+      siege?: {
+        adresse?: string; libelle_commune?: string; code_postal?: string;
+        departement?: string;
+      };
     }[];
   } | null;
   return (d?.results ?? [])
@@ -3002,6 +3009,7 @@ export async function chercherEntreprise(q: string): Promise<EntrepriseTrouvee[]
         || undefined,
       ville: r.siege?.libelle_commune ?? undefined,
       forme: FORMES[String(r.nature_juridique ?? "")] ?? undefined,
+      rcs: greffeDe(r.siege?.departement, r.siege?.libelle_commune),
     }))
     .filter((r) => r.nom);
 }

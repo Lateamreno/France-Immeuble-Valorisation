@@ -551,6 +551,12 @@ export function manques(
     const rang = mandants.length > 1 ? ` (mandant ${i + 1})` : "";
     if (x.personne === "physique" && !(x.prenom && x.nom)) push(`m${i}-nom`, `Nom et prénom manquants${rang}`, "Mandants");
     if (x.personne === "morale" && !x.societe?.nom) push(`m${i}-rs`, `Raison sociale manquante${rang}`, "Mandants");
+    /* Retour #210 : « il faut que le RCS et le capital soient obligatoires
+       avant de passer à la suite ». Ce sont deux mentions que l'acte reprend
+       mot pour mot — une société y est désignée par sa raison sociale, son
+       capital et son immatriculation. */
+    if (x.personne === "morale" && !x.societe?.rcs) push(`m${i}-rcs`, `RCS de ${x.societe?.nom ?? qui}`, "Mandants");
+    if (x.personne === "morale" && !x.societe?.capital) push(`m${i}-cap`, `Capital social de ${x.societe?.nom ?? qui}`, "Mandants");
     if (!x.adresse) push(`m${i}-adr`, `Adresse de ${qui}`, "Mandants");
     if (!x.cni) push(`m${i}-cni`, `Pièce d'identité de ${qui}`, "Mandants");
     if (x.personne === "morale" && !x.kbis) push(`m${i}-kbis`, `Kbis de ${x.societe?.nom ?? qui}`, "Mandants");

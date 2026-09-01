@@ -20,6 +20,8 @@ import { urlSeloger } from "@/lib/seloger";
 import { slugVille, urlUnemplacement, type ValeurUE } from "@/lib/unemplacement";
 import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
+import { MOYENS, itineraireGoogle } from "@/lib/bo/itineraire";
+import { TENSIONS_LOCATIVES } from "@/lib/referentiels";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -57,6 +59,14 @@ const POIS = [
   ["com", "Commerces"], ["autre", "Autre"],
 ] as const;
 type CleP = (typeof POIS)[number][0];
+
+/* Ce qu'on cherche quand le point n'est pas encore nommé (retour #215). Le
+   libellé de la vignette ne fait pas l'affaire tel quel : Google comprend
+   « gare » et « supermarché », pas « Gares » ni « Commerces ». */
+const CHERCHE: Record<CleP, string> = {
+  gare: "gare", bus: "arrêt de bus", route: "accès autoroute",
+  school: "école", com: "supermarché", autre: "commerces",
+};
 
 /** Points d'intérêt proposés par /api/geo (l'agent garde la main). */
 type Suggestion = { nom: string; sous?: string; distance: number; minutes: number; moyen: string; lat?: number; lon?: number };
@@ -300,10 +310,22 @@ function AdresseTab({ b }: { b: BienData }) {
       <div className="emp-sect">
         <h3>A proximité</h3>
         <div className="emp-liens">
+          {/* Retour #215 : un ITINÉRAIRE depuis l'immeuble, plus une recherche
+              Google. La page de résultats obligeait à retrouver le lieu, lancer
+              l'itinéraire, revenir ; l'itinéraire direct donne le nom et la
+              durée d'un coup — les deux cases que la vignette réclame. Il part
+              du point déjà retenu s'il y en a un, du type cherché sinon, et
+              respecte le moyen de locomotion choisi sur la vignette. */}
           {POIS.map(([k, label]) => (
-            <a key={k} className="emp-lien" href={gLink(label, b)} target="_blank" rel="noreferrer">
+            <a
+              key={k} className="emp-lien" target="_blank" rel="noreferrer"
+              href={itineraireGoogle(im, poi[`${k}_name`] || CHERCHE[k], {
+                geo: poi[`${k}_geo`], moyen: poi[`${k}_moyen`],
+              })}
+              title={`Itinéraire ${poi[`${k}_moyen`] || "à pied"} jusqu'${k === "route" ? "à l'accès" : `aux ${label.toLowerCase()}`}`}
+            >
               <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8" /><path d="M18 13v6H5V6h6" /></svg>
-              Google - {label}
+              Itinéraire - {label}
             </a>
           ))}
           {lat !== undefined && lon !== undefined && (
@@ -323,6 +345,9 @@ function AdresseTab({ b }: { b: BienData }) {
           <PoiVignette
             key={k} cle={k} label={label}
             nom={poi[`${k}_name`]} minutes={poi[`${k}_time`]} moyen={poi[`${k}_moyen`]}
+            itineraire={itineraireGoogle(im, poi[`${k}_name`] || CHERCHE[k], {
+              geo: poi[`${k}_geo`], moyen: poi[`${k}_moyen`],
+            })}
             suggestions={sugg?.poi?.[k] ?? []}
             /* Retaper le nom à la main désigne un autre lieu que celui retenu :
                ses coordonnées ne valent plus rien, on les oublie (#186). */
@@ -400,10 +425,17 @@ function AdresseTab({ b }: { b: BienData }) {
             {/* #177 — un tiret se lit comme « rien à dire ». Une liste vide,
                 elle, se lit comme « à renseigner » : on garde donc l'aspect
                 d'un sélecteur, chevron compris, tant que rien n'est choisi. */}
+            {/* Retour #216 — « il faudrait vraiment que ce qu'on voit ici pour
+                remplir soit une copie conforme de ce qu'on doit remplir ».
+                Cette liste était codée en dur à quatre valeurs quand celle du
+                bloc « ce qui reste à saisir » en propose six : une tension
+                enregistrée là-bas en « Très faible » ou « n.c. » ne trouvait
+                pas son option ici et s'affichait « À renseigner ». Les deux
+                écrans lisent désormais le même référentiel. */}
             <select className={`v bt sel${tension ? "" : " vide"}`} value={tension}
               onChange={(e) => setTension(e.target.value)}>
               <option value="">À renseigner</option>
-              <option>Faible</option><option>Modérée</option><option>Forte</option><option>Très forte</option>
+              {TENSIONS_LOCATIVES.map((t) => <option key={t}>{t}</option>)}
             </select>
           </div>
         </div>
@@ -423,10 +455,12 @@ function AdresseTab({ b }: { b: BienData }) {
 /** Vignette d'un point d'intérêt : affichage du BO (picto, nom, moyen, durée)
  *  et édition au clic, avec les propositions automatiques dessous. */
 function PoiVignette({
-  cle, label, nom, minutes, moyen, suggestions, onChange, onChoisir,
+  cle, label, nom, minutes, moyen, itineraire, suggestions, onChange, onChoisir,
 }: {
   cle: string; label: string;
   nom: string; minutes: string; moyen: string;
+  /** L'itinéraire Google vers ce point, calculé par l'écran (retour #215). */
+  itineraire: string;
   suggestions: Suggestion[];
   onChange: (champ: "name" | "time" | "moyen", v: string) => void;
   onChoisir: (s: Suggestion) => void;
@@ -458,10 +492,17 @@ function PoiVignette({
         <div className="poi-edit">
           <input className="min" style={{ width: 60 }} placeholder="min" value={minutes}
             onChange={(e) => onChange("time", e.target.value)} />
-          <select className="min" style={{ width: 105 }} value={moyen || "à pied"}
+          <select className="min" style={{ width: 125 }} value={moyen || "à pied"}
             onChange={(e) => onChange("moyen", e.target.value)}>
-            <option>à pied</option><option>en voiture</option>
+            {MOYENS.map((x) => <option key={x}>{x}</option>)}
           </select>
+          {/* Le lien qui donne la réponse aux deux cases d'à côté (#215). */}
+          <a className="poi-itin" href={itineraire} target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M10 14 20 4M15 4h5v5" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
+            </svg>
+            Itinéraire
+          </a>
           {suggestions.length > 0 && (
             <div className="vgts">
               {suggestions.map((s2) => (
