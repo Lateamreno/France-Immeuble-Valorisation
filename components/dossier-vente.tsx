@@ -38,6 +38,9 @@ const I = {
   gens: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
   billet: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /></>,
   tension: <><path d="M15.5 4.5 18 2l.8 2.2 2.2.8-2.5 2.5" /><circle cx="10" cy="14" r="6.5" /></>,
+  /* Retour #242 : la baguette magique ne disait rien d'une tension locative.
+     Un thermomètre, si — c'est le mot même de « tensiomètre ». */
+  thermo: <><path d="M14.5 13.4V5.5a2.5 2.5 0 0 0-5 0v7.9a4.5 4.5 0 1 0 5 0z" /><path d="M12 9v5.6" /></>,
   courbe: <><path d="M3 19h18" /><path d="M3 16.5 8.5 9l4 3.5L20 5v11.5z" /></>,
   outil: <><path d="m14.5 5.5 4 4-8.5 8.5H6v-4z" /><path d="M13 7 17 11" /><path d="M3 21h18" /></>,
   fleche: <><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>,
@@ -152,7 +155,9 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           <Case label="Surface carrez" valeur={d.surface > 0 ? group(d.surface) : "n.c."} unite="m²" />
           <div className="dv-case large">
             <b className="dv-cible">{d.cibles.length ? d.cibles.join(", ") : "Investissement locatif"}</b>
-            <div className="dv-chips">
+            {/* Retour #244 : deux par ligne au-delà de deux, et des cotes
+                resserrées à partir de quatre — le cadre, lui, ne grandit pas. */}
+            <div className={`dv-chips${d.compo.length > 2 ? " deux" : ""}${d.compo.length > 3 ? " serree" : ""}`}>
               {d.compo.map((c) => (
                 <span key={c.dest} className="dv-chip">
                   <Ic d={IC_DEST[c.dest] ?? I.maison} cls="dv-chip-ic" />{c.texte}
@@ -167,7 +172,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             <span className="dv-lab">Prix honoraires inclus</span>
             <b className="dv-prix">{group(d.prix.hai)} <i>€</i></b>
             <span className="dv-tvx">
-              <Ic d={I.outil} cls="dv-ic pt" />
+              <Ic d={I.molette} cls="dv-ic pt" />
               {d.prix.travaux > 0 ? `${group(d.prix.travaux)} € de travaux à prévoir` : "Pas de travaux à prévoir"}
             </span>
           </div>
@@ -253,7 +258,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             <Stat picto={I.billet} label="Revenus médian" source="INSEE"
               valeur={d.ville_stats.revenus !== undefined ? String(Math.round(d.ville_stats.revenus / 1000)) : "n.c."}
               unite="k€/habitant/an" />
-            <Stat picto={I.tension} label="Tension locative" source="LOCservice"
+            <Stat picto={I.thermo} label="Tension locative" source="LOCservice"
               valeur={nc(d.ville_stats.tension)} />
             <Stat picto={I.courbe} label="Prix des logements" source="Notaires"
               valeur={d.ville_stats.prix !== undefined ? group(d.ville_stats.prix) : "n.c."} unite="€/m²" />
@@ -352,7 +357,10 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             {d.lots.map((l, i) => (
               <tr key={i}>
                 <td className="gris">{l.n}</td>
-                <td><Ic d={IC_DEST[l.dest] ?? I.maison} cls="dv-ic mini" /> {l.type}</td>
+                {/* Retour #240 : le picto reste sur la ligne du type de lot.
+                    Il tombait dessous dès que le libellé remplissait la
+                    cellule — une image en ligne se replie comme un mot. */}
+                <td><span className="dv-lot"><Ic d={IC_DEST[l.dest] ?? I.maison} cls="dv-ic mini" />{l.type}</span></td>
                 <td className="c">{l.carrez !== undefined ? <>{group(l.carrez)} <i>m²</i></> : "n.a."}</td>
                 <td className="c">{l.sol !== undefined ? <>{group(l.sol)} <i>m²</i></> : "n.a."}</td>
                 <td className="c gris">{nc(l.dpe)}</td>
@@ -423,7 +431,13 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           <tbody>
             {d.revenus.map((r) => (
               <tr key={r.dest}>
-                <td><Ic d={IC_DEST[r.dest] ?? I.maison} cls="dv-ic mini" /> {r.label[0].toUpperCase()}{r.label.slice(1)}</td>
+                {/* Retour #239 : même chose sur les revenus hors charges. */}
+                <td>
+                  <span className="dv-lot">
+                    <Ic d={IC_DEST[r.dest] ?? I.maison} cls="dv-ic mini" />
+                    {r.label[0].toUpperCase()}{r.label.slice(1)}
+                  </span>
+                </td>
                 <td className="c">{group(r.actuel)} €/an</td>
                 <td className="c">{r.occupation} %</td>
                 <td className="r">{group(r.potentiel)} €/an</td>
@@ -537,12 +551,16 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         <div className="dv-fin-g">
           <Stat picto={I.euro} label="Prix au m²" source="avant travaux"
             valeur={d.prix.m2 > 0 ? group(d.prix.m2) : "n.c."} unite="€/m²" />
-          <Stat picto={I.outil} label="Travaux" source="à prévoir"
-            valeur={String(Math.round(d.prix.travaux / 1000))} unite="k€" />
+          {/* Retour #246 : « t'écris 5 k€ de travaux alors qu'il y a 4,5 k€ ».
+              Arrondir au millier faisait mentir le chiffre d'un demi-millier ;
+              le dixième dit la vérité sans allonger la ligne. Retour #245 : la
+              clé à molette, ici aussi. */}
+          <Stat picto={I.molette} label="Travaux" source="à prévoir"
+            valeur={fr1(d.prix.travaux / 1000)} unite="k€" />
           <Stat picto={I.fleche} label="Loyers hc" source="potentiels"
-            valeur={String(Math.round(d.revenusTot.potentiel / 1000))} unite="k€/an" />
+            valeur={fr1(d.revenusTot.potentiel / 1000)} unite="k€/an" />
           <Stat picto={I.billet} label="Charges" source="non récupérables"
-            valeur={String(Math.round(d.chargesTot.nonRecup / 1000))} unite="k€/an" />
+            valeur={fr1(d.chargesTot.nonRecup / 1000)} unite="k€/an" />
           <Stat picto={I.courbe} label="Rendement" source="brut après travaux"
             valeur={fr1(d.rendement.potentiel.brut)} unite="%" />
         </div>
