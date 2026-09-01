@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
@@ -22,6 +22,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { ManquesDossier } from "@/components/dossier-manques";
+import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { Facade } from "@/components/facade";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
@@ -862,9 +863,15 @@ function PrixSection({ b }: { b: BienData }) {
   return (
     <>
       <SectTitle icon={I.info} title="Description et prix" />
-      <PrixEcran b={b} />
-      <div className="fh2" style={{ marginTop: 20 }}>Descriptif</div>
+      {/* Retour #232 : « la section descriptif, mets-la au-dessus de
+          l'historique des prix pour qu'on puisse le voir plus facilement. »
+          C'est le texte qui part au vendeur et à l'acquéreur : il passe devant
+          l'historique, qui est une archive. */}
+      <div className="fh2">Descriptif</div>
       <DescriptifForm b={b} />
+      <div style={{ marginTop: 20 }}>
+        <PrixEcran b={b} />
+      </div>
     </>
   );
 }
@@ -940,26 +947,75 @@ function PrixForm({ b }: { b: BienData }) {
   );
 }
 
+/**
+ * Le descriptif du bien (retour #232).
+ *
+ * MAV : « le descriptif, je veux que tu le fasses automatiquement avec l'état
+ * locatif et l'emplacement […] je veux qu'on puisse le modifier à la main au
+ * besoin. Quand on a modifié à la main et qu'on modifie l'état locatif ou
+ * l'emplacement, qui aurait donc dû modifier le descriptif entre deux
+ * dossiers, tu le précises et tu dis qu'il faut modifier le descriptif ou du
+ * moins le vérifier […] donc il faut toujours un bouton pour repasser au
+ * descriptif automatique. »
+ *
+ * Le texte est donc rédigé par la fiche tant que personne n'y touche. Dès
+ * qu'on le corrige, on garde en mémoire l'automatique du jour : c'est le seul
+ * moyen de savoir plus tard si l'écart vient d'une reformulation ou d'un
+ * immeuble qui a changé. Voir lib/bo/descriptif.ts.
+ */
 function DescriptifForm({ b }: { b: BienData }) {
   const [pending, start] = useTransition();
-  const [txt, setTxt] = useState(typeof b.im.descriptif === "string" ? (b.im.descriptif as string) : "");
+  const source = useMemo(
+    () => ({ im: b.im, lots: b.lots, parcelles: b.parcelles }),
+    [b.im, b.lots, b.parcelles],
+  );
+  const auto = useMemo(() => descriptifAuto(source), [source]);
+  const enregistre = typeof b.im.descriptif === "string" ? (b.im.descriptif as string) : "";
+  const [txt, setTxt] = useState(enregistre || auto);
+  const [aLaMain, setALaMain] = useState(!!enregistre.trim());
+  const aVerifier = descriptifAVerifier(source);
+
+  const sauver = (valeur: string) =>
+    start(async () => {
+      /* On enregistre le texte ET l'automatique du jour : c'est ce témoin qui
+         permettra de dire, au prochain dossier, que la fiche a bougé depuis. */
+      await updateBien(String(b.im._id), { descriptif: valeur, descriptif_auto: auto });
+    });
+
   return (
     <div className="frow" style={{ display: "block" }}>
+      {aVerifier && (
+        <div className="dsc-alerte">
+          <b>L&apos;état locatif ou l&apos;emplacement ont changé depuis que ce texte a été écrit.</b>
+          <span>Relisez-le pour vérifier qu&apos;il décrit toujours le bien, ou reprenez le texte automatique.</span>
+        </div>
+      )}
       <textarea
         className="min"
-        rows={6}
+        rows={8}
         style={{ width: "100%", fontSize: 13 }}
         value={txt}
-        onChange={(e) => setTxt(e.target.value)}
+        onChange={(e) => { setTxt(e.target.value); setALaMain(true); }}
         placeholder="Descriptif de l'immeuble…"
       />
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+      <div className="dsc-pied">
+        <span className="fine">
+          {aLaMain
+            ? "Texte écrit à la main — il ne suivra plus les changements de la fiche."
+            : "Texte rédigé depuis l'état locatif et l'emplacement."}
+        </span>
+        {txt.trim() !== auto.trim() && (
+          <button type="button" className="fadd"
+            onClick={() => { setTxt(auto); setALaMain(false); }}>
+            Reprendre le texte automatique
+          </button>
+        )}
         <button
           className="kgo"
           type="button"
           disabled={pending}
           style={pending ? { opacity: 0.5 } : undefined}
-          onClick={() => start(async () => { await updateBien(String(b.im._id), { descriptif: txt }); })}
+          onClick={() => sauver(txt)}
         >
           <span className="ch">›</span> Enregistrer
         </button>

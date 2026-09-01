@@ -2718,6 +2718,9 @@ export async function updateBien(
   immeubleId: string,
   patch: Partial<{
     descriptif: string;
+    /* Le texte automatique au moment où l'agent a pris la main (retour #232) :
+       c'est lui qui dira, plus tard, si la fiche a bougé depuis. */
+    descriptif_auto: string;
     prix_nv: number;
     prix_honos_ttc: number;
     prix_hai: number;

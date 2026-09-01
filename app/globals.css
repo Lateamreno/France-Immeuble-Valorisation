@@ -6041,3 +6041,15 @@ a.cfc-t:hover { text-decoration: underline; }
 .dos-fige b { font-family: var(--font-title); font-size: 16px; color: var(--slate); }
 .dos-fige .fine { flex-basis: 100%; font-size: 11.5px; }
 .dos-histo-l.lecture { cursor: default; }
+
+/* Descriptif rédigé par la fiche (retour #232). */
+.dsc-alerte {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 10px; padding: 10px 13px;
+  border: 1px solid var(--orange); border-radius: 5px; background: #fdf8ef;
+  font-size: 12.5px;
+}
+.dsc-alerte b { color: #8a5a10; }
+.dsc-alerte span { color: var(--gray-lt); }
+.dsc-pied { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.dsc-pied .fine { flex: 1; font-size: 11.5px; color: var(--gray-lt); }

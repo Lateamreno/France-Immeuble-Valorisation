@@ -21,6 +21,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { rendements } from "./rendements";
 import { photoUrl } from "./dossier";
 import { estFacadeRue } from "./facade";
+import { descriptifRetenu } from "./descriptif";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -313,7 +314,10 @@ export function construireDossierVente(
       financement: S(im.condition_financement),
       permis: S(im.condition_pc),
     },
-    avis: S(im.descriptif),
+    /* Retour #232 : le descriptif est rédigé par la fiche tant que personne
+       n'y a touché. Le dossier n'a donc plus de page blanche à cet endroit,
+       même sur un immeuble dont on vient de saisir l'état locatif. */
+    avis: descriptifRetenu({ im, lots, parcelles: b.parcelles }),
   };
 }
 
