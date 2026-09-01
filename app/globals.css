@@ -2635,6 +2635,23 @@ select.pr-in { cursor: pointer; }
   display: flex; align-items: center; justify-content: center; text-align: center;
   white-space: normal; min-height: 90px; padding: 14px; background: #faf9f6; box-shadow: none;
 }
+/* Retour #237 : le plan manquant bloque la génération du dossier — il doit se
+   voir comme tel. Cadre rouge, gros picto, et le picto s'éclaire au survol
+   pour dire que la zone attend un fichier. */
+.terr-drop.manque {
+  flex-direction: column; gap: 6px; min-height: 132px;
+  border: 2px dashed var(--red); background: #fdf3f3; cursor: pointer;
+}
+.terr-drop.manque .terr-ic {
+  width: 40px; height: 40px; fill: none; stroke: var(--red); stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; opacity: .55;
+  transition: opacity .18s, transform .18s;
+}
+.terr-drop.manque b { font-size: 13.5px; color: var(--red); }
+.terr-drop.manque span { font-size: 12px; color: var(--gray-lt); }
+.terr-drop.manque:hover { background: #fbe9e9; }
+.terr-drop.manque:hover .terr-ic { opacity: 1; transform: translateY(-2px) scale(1.06); }
+
 .terr-photo { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .terr-photo img {
   max-width: 100%; max-height: 420px; border: 1px solid var(--line); border-radius: 5px; display: block;
@@ -6012,3 +6029,15 @@ a.cfc-t:hover { text-decoration: underline; }
 }
 .dos-apercu b { color: #1f6b33; }
 .dos-apercu .fine { font-size: 11.5px; color: var(--gray-lt); }
+
+/* Prix figé de la génération de dossier (retour #238). */
+.dos-fige {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 22px;
+  margin-top: 12px; padding: 11px 13px;
+  border: 1px solid var(--line); border-radius: 5px; background: var(--bg2, #fafafa);
+}
+.dos-fige > div { display: flex; flex-direction: column; gap: 2px; }
+.dos-fige span { font-size: 11px; color: var(--gray-lt); }
+.dos-fige b { font-family: var(--font-title); font-size: 16px; color: var(--slate); }
+.dos-fige .fine { flex-basis: 100%; font-size: 11.5px; }
+.dos-histo-l.lecture { cursor: default; }

@@ -41,7 +41,12 @@ export const POINTS = [
   { cle: "route", label: "Axes routiers", court: "Axes routiers", cherche: "accès autoroute" },
   { cle: "school", label: "Ecoles", court: "Écoles", cherche: "école" },
   { cle: "com", label: "Commerces", court: "Commerces", cherche: "supermarché" },
-  { cle: "autre", label: "Autres", court: "Autre", cherche: "commerces" },
+  /* Retour #234 : « pour l'emplacement, autre, s'il n'est pas rempli c'est pas
+     grave : c'est une ligne facultative qu'on utilise seulement s'il y a un
+     point d'intérêt particulier ici. Donc si c'est pas rempli c'est pas
+     bloquant pour le dossier. » Elle reste imprimée — une ligne vide dans le
+     document annonce simplement qu'il n'y a rien de notable à signaler. */
+  { cle: "autre", label: "Autres", court: "Autre", cherche: "commerces", facultatif: true },
 ] as const;
 
 export const adresseImmeuble = (im: Record<string, unknown>) =>

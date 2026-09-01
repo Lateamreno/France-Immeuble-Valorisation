@@ -243,6 +243,8 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
      autres pages que le document imprime en toutes lettres. */
   const emp: ChampManquant[] = [];
   for (const p of POINTS) {
+    // « Autre » ne se réclame pas : voir lib/bo/itineraire.ts (#234).
+    if ("facultatif" in p && p.facultatif) continue;
     const moyen = S(im[`emp_${p.cle}_moyen`]) || "à pied";
     const lien: LienSource = {
       href: itineraireGoogle(im, S(im[`emp_${p.cle}_name`]) || p.cherche, {
@@ -279,18 +281,30 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
   const urba = lienUrbanisme(im);
   if (b.parcelles.length === 0) terrain.push({ cle: "ref_cadastre", label: "Référence cadastrale", lien: cadastre });
   if (N(im.ter_surface) === undefined) terrain.push({ cle: "ter_surface", label: "Surface du terrain", unite: "m²", lien: cadastre });
+  /* Retour #241 : « avant de rédiger le dossier il faut aussi que tu m'obliges
+     à mettre l'info sur la façade dans la partie parcelle et PLU — là c'est
+     indiqué comme vide, c'est pas possible. » */
+  if (N(im.ter_facade) === undefined) terrain.push({ cle: "ter_facade", label: "Façade sur rue", unite: "m", lien: cadastre });
   if (!S(im.plu_zone)) terrain.push({ cle: "plu_zone", label: "Zone du PLU", lien: urba });
+  /* Retour #235 : « tu m'avais pas demandé le type de zone dans les champs
+     obligatoires. » Le dossier l'imprime entre parenthèses après la zone. */
+  if (!S(im.plu_Type_zone)) terrain.push({ cle: "plu_Type_zone", label: "Type de zone", lien: urba });
   if (N(im.plu_emprise) === undefined) terrain.push({ cle: "plu_emprise", label: "Emprise au sol max", unite: "%", lien: urba });
   if (N(im.plu_hauteur) === undefined) terrain.push({ cle: "plu_hauteur", label: "Hauteur max", unite: "m", lien: urba });
   if (terrain.length || !S(im.ter_parcelle_img)) {
     out.push({
       cle: "terrain", titre: "Le terrain et l'urbanisme sont incomplets", bloquant: true,
-      section: "emplacement", champs: terrain,
-      /* Le plan de parcelle est une image : il se dépose depuis l'onglet
-         Emplacement, pas dans une case de cette liste. */
+      /* Retour #236 : « quand on clique sur ouvrir la page on tombe sur les
+         prix de secteur et pas sur la page parcelle et PLU. » La rubrique
+         désigne maintenant son sous-onglet, pas seulement sa section. */
+      section: "emplacement:parcelles", champs: terrain,
+      /* Le plan de parcelle est une image : il se dépose sur l'onglet
+         Parcelles et PLU, pas dans une case de cette liste — d'où le lien vers
+         le cadastre, qui est l'endroit où on va le chercher (#236). */
+      lien: S(im.ter_parcelle_img) ? undefined : cadastre,
       detail: S(im.ter_parcelle_img)
         ? "Le dossier imprime la parcelle, sa superficie et le PLU."
-        : "Il manque aussi le plan de parcelle, à déposer depuis l'onglet Emplacement.",
+        : "Il manque aussi le plan de parcelle : ouvrez la page Parcelles et PLU pour le déposer.",
     });
   }
 
@@ -346,9 +360,20 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
       ],
     });
   }
+  /* Retour #238 : « t'as oublié de rendre obligatoire la saisie des éléments
+     sur l'état constructif du bien. » La règle ne se déclenchait que si des
+     composants existaient DÉJÀ : une fiche qui n'en avait aucun passait sans
+     rien dire, et le dossier sortait avec « Aucun composant renseigné » en
+     toutes lettres — le pire des deux mondes. */
   const composants = b.composants ?? [];
   const sansMateriau = composants.filter((c) => !S(c["Type_matériau"]).trim()).length;
-  if (composants.length > 0 && sansMateriau > 0) {
+  if (composants.length === 0) {
+    out.push({
+      cle: "materiaux", titre: "L'état constructif n'est pas renseigné", bloquant: true,
+      section: "technique", champs: [],
+      detail: "Le dossier décrit le bâti composant par composant : toiture, façade, menuiseries…",
+    });
+  } else if (sansMateriau > 0) {
     out.push({
       cle: "materiaux", titre: "Des composants n'ont pas de matériau", bloquant: true,
       section: "technique", champs: [],
