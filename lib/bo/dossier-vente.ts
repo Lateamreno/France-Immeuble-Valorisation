@@ -206,7 +206,10 @@ export function construireDossierVente(
        région et la vue de quartier, calculées depuis les coordonnées du bien.
        La clé Google reste côté serveur, le relais s'en charge.
 
-       La capture reste en repli pour les fiches sans coordonnées. */
+       Retour #233 : « je veux juste les aperçus de Google Map. » La capture de
+       repli disparaît complètement — une fiche sans coordonnées n'aura pas de
+       carte, ce qui se voit et se corrige, plutôt qu'une image périmée qui ne
+       se voit pas. */
     cartes: (() => {
       /* Sans clé Google, le relais répond 404 et les deux cadres resteraient
          vides : on garde alors la capture d'avant, qui existe peut-être. Cette
@@ -219,10 +222,6 @@ export function construireDossierVente(
       const m = (z: number, pin: string, w: number, h: number) =>
         `/api/staticmap?lat=${lat}&lon=${lon}&z=${z}&w=${w}&h=${h}&pin=${pin}`;
       return { region: m(5, "petit", 400, 460), quartier: m(15, "1", 560, 460) };
-    })(),
-    carte: (() => {
-      const c = b.photos.find((p) => S(p.type) === "Carte");
-      return c?.urlPleine ?? c?.url ?? photoUrl(S(im.photo_maps));
     })(),
     poi: POI.map((p) => ({
       label: p.label,

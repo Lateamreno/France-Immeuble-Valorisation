@@ -9,8 +9,7 @@
 // facturée et un domaine autorisé. Si une clé Google est fournie un jour
 // (NEXT_PUBLIC_GOOGLE_MAPS_KEY), la vue rapprochée bascule automatiquement sur
 // Google Static Maps, plus proche des captures actuelles du dossier.
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { capturerCartes, uploadPhoto } from "@/lib/bo/actions";
+import { useMemo, useState } from "react";
 
 const TAILLE = 256;
 
@@ -96,49 +95,23 @@ export function Carte({
  * contrôles ni de bandeau).
  */
 export function CartesSituation({
-  lat, lon, adresse, immeubleId, captures = [],
+  lat, lon, adresse,
 }: {
   lat: number;
   lon: number;
   adresse: string;
-  /** Permet d'enregistrer la capture dans les photos de l'immeuble. */
-  immeubleId?: string;
-  /** Captures de carte déjà enregistrées : la plus récente remplace la carte
-   *  vivante, comme le veut le BO (retour #44). */
-  captures?: { id: string; url?: string }[];
 }) {
-  const capture = captures.find((c) => c.url);
-  const [vivante, setVivante] = useState(!capture);
-  /* Google répond-il ? Tant que la clé n'est pas posée, /api/staticmap renvoie
-     404 : on retombe sur la carte intégrée et la capture reste manuelle. */
-  const [googleOk, setGoogleOk] = useState(true);
-
-  if (capture && !vivante) {
-    return (
-      <div className="emp-maps">
-        <figure className="emp-capture">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={capture.url} alt={`Carte de situation — ${adresse}`} />
-          <figcaption>
-            Capture enregistrée
-            <button type="button" className="fadd" onClick={() => setVivante(true)}>
-              Reprendre la carte
-            </button>
-          </figcaption>
-        </figure>
-      </div>
-    );
-  }
-
+  /* Retour #233 — « fais en sorte que je puisse plus mettre les maps à la main
+     en photo, je veux juste les aperçus de Google Map. » Il y avait ici deux
+     chemins vers la même image : la carte vivante, et une capture rangée dans
+     les photos de l'immeuble — faite automatiquement, remplaçable à la main,
+     et qui prenait ensuite la place de la carte. Deux chemins, donc deux
+     rendus possibles pour un même bien, et un dossier qui pouvait montrer une
+     capture périmée. Il n'en reste qu'un : Google, en direct. */
   return (
     <div className="emp-maps">
-      <VueCarte titre={`La France — ${adresse}`} lat={lat} lon={lon} zoom={5}
-        onEchec={() => setGoogleOk(false)} />
-      <VueCarte titre={`Le quartier — ${adresse}`} lat={lat} lon={lon} zoom={14}
-        onEchec={() => setGoogleOk(false)} />
-      {immeubleId && (
-        <CaptureCarte immeubleId={immeubleId} dejaCapturee={!!capture} auto={googleOk} />
-      )}
+      <VueCarte titre={`La France — ${adresse}`} lat={lat} lon={lon} zoom={5} />
+      <VueCarte titre={`Le quartier — ${adresse}`} lat={lat} lon={lon} zoom={14} />
     </div>
   );
 }
@@ -147,11 +120,9 @@ export function CartesSituation({
  *  comme dans le BO (retour #43). Ils agissent réellement sur la vue —
  *  la croix décale le centre, le carré bascule en vue aérienne. */
 function VueCarte({
-  titre, lat, lon, zoom, onEchec,
+  titre, lat, lon, zoom,
 }: {
   titre: string; lat: number; lon: number; zoom: number;
-  /** Prévient le parent que Google ne répond pas (clé absente ou refusée). */
-  onEchec?: () => void;
 }) {
   const [statique, setStatique] = useState(true);
   /* #178 — la croix de déplacement et la bascule plan/satellite ont disparu :
@@ -179,103 +150,12 @@ function VueCarte({
         // eslint-disable-next-line @next/next/no-img-element
         <img alt={titre}
           src={`/api/staticmap?lat=${cLat}&lon=${cLon}&z=${zoom}&w=400&h=300&pin=${zoom < 8 ? "petit" : "1"}`}
-          onError={() => { setStatique(false); onEchec?.(); }} />
+          onError={() => setStatique(false)} />
       ) : (
         <iframe title={titre} loading="lazy" referrerPolicy="no-referrer-when-downgrade"
           src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&output=embed`} />
       )}
 
-    </div>
-  );
-}
-
-/** Import d'une capture de carte : elle rejoint les photos de l'immeuble
- *  (type « Carte ») et devient donc disponible dans le dossier de vente. */
-function CaptureCarte({
-  immeubleId, dejaCapturee, auto,
-}: {
-  immeubleId: string; dejaCapturee?: boolean;
-  /** Google répond : l'app sait fabriquer la capture toute seule (#75). */
-  auto?: boolean;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
-  const [ok, setOk] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const capturer = () =>
-    start(async () => {
-      setErreur(null);
-      try {
-        await capturerCartes(immeubleId);
-        setOk(true);
-      } catch (e) {
-        setErreur(e instanceof Error ? e.message : "capture impossible");
-      }
-    });
-
-  /* Retour #203 : « si la capture de la carte se fait automatiquement on a pas
-     besoin de le faire nous-même, tu peux enlever le bouton ». Elle se fait
-     donc toute seule, une fois, quand Google répond et qu'aucune capture
-     n'existe encore. Une seule fois : la capture part au coffre et l'écran ne
-     redemande jamais rien à Google ensuite. Le dépôt manuel reste, pour la
-     remplacer quand elle ne plaît pas. */
-  const lance = useRef(false);
-  useEffect(() => {
-    if (!auto || dejaCapturee || lance.current) return;
-    lance.current = true;
-    capturer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, dejaCapturee]);
-
-  const envoyer = (f: File) =>
-    start(async () => {
-      const fd = new FormData();
-      fd.set("file", f);
-      const r = await uploadPhoto(immeubleId, "Carte", null, fd);
-      if (r.ok) setOk(true);
-      else setErreur(r.message);
-    });
-
-  return (
-    <div className="carte-cap">
-      <p>
-        {auto
-          ? (pending
-            ? "Capture des cartes en cours…"
-            : "La capture des deux cartes se fait toute seule et part au dossier de vente. Déposez la vôtre (Ctrl+V) si celle-ci ne vous convient pas.")
-          : (dejaCapturee
-            ? "Une capture existe déjà : en déposer une nouvelle la remplacera dans le dossier de vente."
-            : "La capture de la carte n'est pas encore faite. Collez (Ctrl+V) ou déposez-la : elle remplacera la carte ici et sera reprise dans le dossier de vente.")}
-      </p>
-      {/* La capture automatique peut échouer (Google refuse, réseau) : il faut
-          alors pouvoir la relancer sans quitter l'écran. */}
-      {erreur && (
-        <p className="carte-err">
-          {erreur}
-          <button type="button" className="fadd" disabled={pending} onClick={capturer}>Réessayer</button>
-        </p>
-      )}
-      <div
-        className="carte-drop"
-        onPaste={(e) => {
-          const f = [...e.clipboardData.files][0];
-          if (f) envoyer(f);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files[0];
-          if (f) envoyer(f);
-        }}
-        onClick={() => input.current?.click()}
-        tabIndex={0}
-        role="button"
-      >
-        {pending ? "Envoi…" : ok ? "✓ Capture enregistrée — recommencer" : "Cliquer, coller ou déposer une image"}
-      </div>
-      <input ref={input} type="file" accept="image/*" hidden
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) envoyer(f); }} />
     </div>
   );
 }
