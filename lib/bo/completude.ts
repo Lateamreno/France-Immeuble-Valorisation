@@ -152,6 +152,13 @@ const lienTaxe = (im: Record<string, unknown>): LienSource => ({
   label: "Chercher le taux de la commune",
 });
 
+/** Le PLU : le Géoportail de l'urbanisme sert le règlement de la commune. */
+const lienUrbanisme = (im: Record<string, unknown>): LienSource => ({
+  href: "https://www.geoportail-urbanisme.gouv.fr/map/",
+  label: "Géoportail de l'urbanisme",
+  copier: adresseDe(im),
+});
+
 /** L'année de construction : le cadastre la porte, Géoportail l'affiche. */
 const lienAnnee = (im: Record<string, unknown>): LienSource => ({
   href: `https://www.geoportail.gouv.fr/carte?c=&l=CADASTRALPARCELS.PARCELLAIRE_EXPRESS`,
@@ -207,6 +214,20 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
     });
   }
 
+  /* --- Le descriptif : la page de présentation du bien (retour #225) -----
+     « Que tu m'obliges à remplir le descriptif avant de m'autoriser à rédiger
+     le dossier. » C'est le seul texte du document qui ne se déduit de rien : ni
+     des lots, ni des charges, ni de l'estimation. Un dossier qui sort sans lui
+     a une page blanche là où le lecteur cherche à comprendre le bien. Il ne se
+     saisit pas ici — un descriptif ne tient pas dans une case d'une ligne. */
+  if (!S(im.descriptif).trim()) {
+    out.push({
+      cle: "descriptif", titre: "Le descriptif du bien n'est pas rédigé", bloquant: true,
+      section: "prix", champs: [],
+      detail: "C'est le seul texte du dossier qui ne se déduit d'aucune autre saisie.",
+    });
+  }
+
   /* --- L'emplacement : gare, commerces, tension -------------------------
      Retour #214 : « tu demandes le commerce le plus proche mais il faut mettre
      le nom et la distance en min, et dire si c'est à pied ou en voiture ». Le
@@ -247,16 +268,29 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
     });
   }
 
-  /* --- Le terrain : parcelle et superficie --- */
+  /* --- Le terrain et l'urbanisme ------------------------------------------
+     Retour #222 : « dans la partie dossier technique il manque quasiment
+     toutes les infos sur le PLU, sur les parcelles, il manque la photo du
+     cadastre. » Le dossier imprime un bloc en trois colonnes — terrain, plan,
+     PLU — qui sortait rempli de « n.c. » parce que rien ne le réclamait. Il
+     devient bloquant, comme les autres pages que le document imprime. */
   const terrain: ChampManquant[] = [];
   const cadastre = lienCadastre(im);
+  const urba = lienUrbanisme(im);
   if (b.parcelles.length === 0) terrain.push({ cle: "ref_cadastre", label: "Référence cadastrale", lien: cadastre });
   if (N(im.ter_surface) === undefined) terrain.push({ cle: "ter_surface", label: "Surface du terrain", unite: "m²", lien: cadastre });
-  if (terrain.length) {
+  if (!S(im.plu_zone)) terrain.push({ cle: "plu_zone", label: "Zone du PLU", lien: urba });
+  if (N(im.plu_emprise) === undefined) terrain.push({ cle: "plu_emprise", label: "Emprise au sol max", unite: "%", lien: urba });
+  if (N(im.plu_hauteur) === undefined) terrain.push({ cle: "plu_hauteur", label: "Hauteur max", unite: "m", lien: urba });
+  if (terrain.length || !S(im.ter_parcelle_img)) {
     out.push({
-      cle: "terrain", titre: "Le terrain semble incomplet", bloquant: false,
+      cle: "terrain", titre: "Le terrain et l'urbanisme sont incomplets", bloquant: true,
       section: "emplacement", champs: terrain,
-      detail: "La référence saisie ici s'ajoute aux parcelles de la fiche.",
+      /* Le plan de parcelle est une image : il se dépose depuis l'onglet
+         Emplacement, pas dans une case de cette liste. */
+      detail: S(im.ter_parcelle_img)
+        ? "Le dossier imprime la parcelle, sa superficie et le PLU."
+        : "Il manque aussi le plan de parcelle, à déposer depuis l'onglet Emplacement.",
     });
   }
 

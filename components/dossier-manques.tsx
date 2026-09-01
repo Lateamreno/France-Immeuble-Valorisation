@@ -141,7 +141,11 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
       for (const c of remplis) {
         const v = vals[c.cle].trim();
         if (HORS_EMPLACEMENT.has(c.cle)) continue;
-        if (c.unite === "min" || c.unite === "m²") emp[c.cle] = parse(v);
+        /* Toute case qui porte une unité est un nombre : minutes, m², mais
+           aussi le pourcentage d'emprise au sol et la hauteur du PLU (#222).
+           Sans ça, la base recevait « 12 » en texte et le dossier n'affichait
+           rien — le champ n'y est lu que comme nombre. */
+        if (c.unite) emp[c.cle] = parse(v);
         else emp[c.cle] = v;
       }
 
