@@ -515,19 +515,30 @@ function CarteMandant({
           mandat, qui va avec l'état civil. L'adresse prend la ligne entière :
           c'est la plus longue, et la casser en deux la rendait illisible. */}
       <div className="mdt-grid trois">
+        {/* Retours #226 et #227 — « quand je mets personne morale ça me propose
+            de mettre le mandant, autant pas le mettre ici, on le met après » ;
+            « pareil pour la personne physique, on met pas le nom ici, c'est
+            après avec les contacts, c'est pas du champ libre ».
+            L'identité appartient au contact, pas au mandat : la saisir ici,
+            c'est créer un second état civil qui dérive du premier au premier
+            mandat suivant. Rattaché, elle s'affiche et se corrige sur la fiche
+            du contact ; sans contact, ces cases n'ont rien à montrer. */}
         <Champ label="Civilité">
-          <select className="mi" value={x.qualite ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ qualite: e.target.value || undefined })}>
-            <option value="">—</option><option>M.</option><option>Mme</option>
-          </select>
+          <input className="mi gris" value={x.qualite ?? ""} readOnly
+            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
         </Champ>
         <Champ label="Prénom">
-          <input className="mi" value={x.prenom ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ prenom: e.target.value || undefined })} />
+          <input className="mi gris" value={x.prenom ?? ""} readOnly
+            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
         </Champ>
         <Champ label="Nom">
-          <input className="mi maj" value={x.nom ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ nom: e.target.value || undefined })} />
+          <input className="mi maj gris" value={x.nom ?? ""} readOnly
+            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
+          {x.contactId && !locked && (
+            <Link className="mdt-lien" href={`/contact/${x.contactId}`} target="_blank">
+              Corriger sur la fiche contact
+            </Link>
+          )}
         </Champ>
 
         <Champ label="Né(e) le">

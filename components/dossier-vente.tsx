@@ -217,9 +217,8 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
       {/* ----------------------------------------------- 3. Emplacement */}
       <Page titre="Emplacement" picto={I.pin} pied={pied} enfants={<>
-        {/* Retour #221 : les deux cartes viennent de Google, en direct.
-            La capture du coffre ne sert plus que de repli pour les fiches
-            sans coordonnées. */}
+        {/* Retours #221 et #233 : les deux cartes viennent de Google, en
+            direct, et de nulle part ailleurs. */}
         <div className={`dv-carte${d.cartes ? " duo" : ""}`}>
           {d.cartes ? (
             <>
@@ -228,9 +227,6 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={d.cartes.quartier} alt="" />
             </>
-          ) : d.carte ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={d.carte} alt="" />
           ) : (
             <span className="dv-vide">Adresse non géocodée : la carte apparaîtra dès que la géolocalisation sera renseignée.</span>
           )}

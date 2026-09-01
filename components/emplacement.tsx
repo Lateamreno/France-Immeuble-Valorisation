@@ -299,9 +299,10 @@ function AdresseTab({ b }: { b: BienData }) {
             <button type="button" className="fadd" onClick={() => setEditionAdr(false)}>Annuler</button>
           </div>
         )}
+        {/* Retour #233 : plus de capture déposée à la main, seulement les
+            aperçus Google. */}
         {lat !== undefined && lon !== undefined ? (
-          <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} immeubleId={immeubleId}
-            captures={b.photos.filter((p) => p.type === "Carte")} />
+          <CartesSituation lat={lat} lon={lon} adresse={adresseComplete} />
         ) : (
           <div className="fempty">Adresse non géocodée : les cartes de situation apparaîtront dès que la géolocalisation sera renseignée.</div>
         )}
