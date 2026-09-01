@@ -6,6 +6,7 @@
 // la place au travail en cours.
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { Precedent } from "@/components/precedent";
 
 /** Même seuil que la bascule des barres latérales côté CSS. */
 const SEUIL = 1100;
@@ -60,10 +61,15 @@ export function Burger() {
   return (
     <>
       <div className="brg-bar">
-        <button type="button" className={`brg${ouvert === "nav" ? " on" : ""}`}
-          aria-expanded={ouvert === "nav"} onClick={() => bascule("nav")}>
-          <Traits /> Menu
-        </button>
+        {/* En fenêtre étroite le menu est replié : sans ce doublon, le bouton
+            « Précédent » du rail serait injoignable (retour #212). */}
+        <span className="brg-g">
+          <Precedent classe="brg prec-brg" />
+          <button type="button" className={`brg${ouvert === "nav" ? " on" : ""}`}
+            aria-expanded={ouvert === "nav"} onClick={() => bascule("nav")}>
+            <Traits /> Menu
+          </button>
+        </span>
         {/* Poussé à droite par le `space-between` de la barre : c'est le bord
             d'où sort le sommaire. Sur les très petits écrans le libellé se
             réduit à « Sommaire », sinon les deux boutons se chevauchent. */}

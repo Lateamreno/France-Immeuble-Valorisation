@@ -103,7 +103,18 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
   const proprietaireId = S(im?.PROPRIETAIRE) || undefined;
   const motifVerrou = verrou(m);
   const locked = motifVerrou !== null;
-  const mandants = useMemo(() => lireMandants(m), [m]);
+  /* Retour #211 : l'envoi à la signature annonçait « aucune adresse e-mail sur
+     les mandants » alors que la fiche du contact rattaché en portait une. Un
+     mandat créé depuis le propriétaire du bien n'a jamais recopié l'adresse —
+     seul le rattachement manuel d'un contact le faisait. On la reprend donc de
+     la fiche à la lecture : c'est elle qui fait foi, et l'écran cesse de
+     réclamer ce qu'il a déjà sous la main. */
+  const mandants = useMemo(
+    () => lireMandants(m).map((x) => (
+      x.email || !x.contactId ? x : { ...x, email: vignettes[x.contactId]?.email || undefined }
+    )),
+    [m, vignettes],
+  );
   const trous = useMemo(
     () => manques(m, mandants, im, d.parcelles),
     [m, mandants, im, d.parcelles],
@@ -533,8 +544,13 @@ function CarteMandant({
             onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
         </Champ>
         <Champ label="Lieu de naissance">
-          <input className="mi" value={x.lieuNaissance ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ lieuNaissance: e.target.value || undefined })} />
+          {/* Retour #207 : la commune se complète dès les premières lettres,
+              sur la même base que l'adresse — gratuite et sans clé. La frappe
+              reste libre : on naît aussi hors de France. */}
+          <AdresseInput classe="mi" cible="commune" valeur={x.lieuNaissance ?? ""} disabled={locked}
+            placeholder="Ville de naissance"
+            onSaisie={(v) => onMaj({ lieuNaissance: v || undefined })}
+            onChoisir={(a) => onMaj({ lieuNaissance: a.label })} />
         </Champ>
         <Champ label="Qualité au mandat">
           {/* Champ libre avec suggestions : le BO contient « Gérant dûment
@@ -568,6 +584,10 @@ function CarteMandant({
                   nom: e.nom,
                   siren: e.siren,
                   siege: e.siege ?? x.societe?.siege,
+                  /* Retour #208 : le greffe se déduit du siège, l'annuaire des
+                     entreprises ne le sert pas. Pré-remplissage seulement — on
+                     n'écrase pas un greffe déjà saisi. */
+                  rcs: x.societe?.rcs ?? e.rcs,
                 },
               })}
             />
@@ -888,8 +908,20 @@ function OngletObjet({
   );
   const cadVerrouille = refsEmplacement !== "";
 
+  /* Retour #209 — « il y a la surface du terrain qui est déjà rentrée dans le
+     terrain dans Emplacement, donc elle devrait apparaître ». Même doctrine
+     que la référence cadastrale (#202) : la fiche du bien fait foi. Emplacement
+     la tient de la somme des superficies de parcelles, à défaut du champ de
+     l'immeuble — on la lit dans cet ordre, sans quoi le mandat afficherait une
+     surface que la fiche a déjà remplacée. */
+  const surfaceEmplacement = useMemo(() => {
+    const somme = parcelles.reduce((t, p) => t + (num(p.superficie) ?? 0), 0);
+    return somme || num(im?.ter_surface) || undefined;
+  }, [parcelles, im]);
+  const terrainVerrouille = surfaceEmplacement !== undefined;
+
   const [cad, setCad] = useState(refsEmplacement || S(m.ref_cadastre));
-  const [terrain, setTerrain] = useState(S(num(m.surface_terrain)));
+  const [terrain, setTerrain] = useState(S(surfaceEmplacement ?? num(m.surface_terrain)));
   const auto = useMemo(
     () => descriptifLegal(im ?? {}, lots, cad || undefined, parse(terrain)),
     [im, lots, cad, terrain],
@@ -901,7 +933,7 @@ function OngletObjet({
   const { modifie, valider } = useModifie(JSON.stringify([cad, terrain, libre, desc]));
   const annuler = () => {
     setCad(refsEmplacement || S(m.ref_cadastre));
-    setTerrain(S(num(m.surface_terrain)));
+    setTerrain(S(surfaceEmplacement ?? num(m.surface_terrain)));
     setLibre(!!dejaEcrit && dejaEcrit !== auto);
     setDesc(dejaEcrit || auto);
   };
@@ -947,22 +979,13 @@ function OngletObjet({
           <span className={`mdt-occ ${badge.c}`}>{badge.t}</span>
           {immeubleId && <Link className="mdt-lien" href={`/bien/${immeubleId}`}>Voir l&apos;état locatif</Link>}
         </div>
-        <div className="mdt-stats">
-          <Stat k="Lots" v={String(s.lots)} />
-          <Stat k="Occupés" v={String(s.occupes)} d={s.libres ? `${s.libres} libre${s.libres > 1 ? "s" : ""}` : undefined} />
-          <Stat k="Surface" v={s.surface ? `${group(s.surface)} m²` : "—"} d="Carrez cumulé" />
-          <Stat k="Loyers" v={s.loyerMensuel ? `${group(s.loyerMensuel)} €` : "—"} d="par mois HC" />
-          <Stat k="Baux" v={s.baux.length ? s.baux.join(", ") : "—"} />
-        </div>
-        {s.parDestination.length > 0 && (
-          <div className="mdt-dest">
-            {s.parDestination.map((x) => (
-              <span key={x.destination} className="pill">
-                <b>{x.nb}</b> {x.destination}{x.surface ? ` · ${group(x.surface)} m²` : ""}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Retour #209 — « tu peux me sortir directement le cadre avec les
+            lots, occupé, surface, loyers. Tu peux reprendre l'ancienne
+            présentation car tout est indiqué dans le texte en fait. » Le
+            bandeau de statistiques répétait, en chiffres, ce que le descriptif
+            légal rédigé plus bas dit déjà en toutes lettres — douze lots, tant
+            de m², tant de loyer. L'en-tête reste : l'adresse, l'occupation et
+            le lien vers l'état locatif ne sont pas dans le texte. */}
       </div>
 
       {/* Retour #206 — « l'occupation est déterminée par l'état locatif, donc tu
@@ -987,8 +1010,17 @@ function OngletObjet({
           )}
         </Champ>
         <Champ label="Surface du terrain (m²)">
-          <input className="mi" value={terrain} disabled={locked} inputMode="numeric"
-            onChange={(e) => setTerrain(e.target.value)} />
+          <input
+            className={`mi${terrainVerrouille ? " gris" : ""}`} value={terrain}
+            disabled={locked} readOnly={terrainVerrouille} inputMode="numeric"
+            title={terrainVerrouille
+              ? "Renseignée sur l'onglet Emplacement du bien — c'est là qu'elle se modifie."
+              : "Ce que vous saisissez ici est reporté sur l'onglet Emplacement du bien."}
+            onChange={(e) => setTerrain(e.target.value)}
+          />
+          {terrainVerrouille && immeubleId && (
+            <Link className="mdt-lien" href={`/bien/${immeubleId}`}>Modifier dans Emplacement</Link>
+          )}
         </Champ>
       </div>
       <div className="mdt-grid deux">
@@ -1041,16 +1073,6 @@ function OngletObjet({
         <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler} />
       )}
     </>
-  );
-}
-
-function Stat({ k, v, d }: { k: string; v: string; d?: string }) {
-  return (
-    <div className="mdt-st">
-      <span className="k">{k}</span>
-      <b>{v}</b>
-      {d && <span className="d">{d}</span>}
-    </div>
   );
 }
 

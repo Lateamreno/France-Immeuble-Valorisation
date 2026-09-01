@@ -13,7 +13,8 @@
  * bouton, parce qu'un menu déroulant n'y suffirait pas.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import {
   LIGNE_TAXE_FONCIERE, manquesDossier, type LienSource, type Manque,
@@ -70,10 +71,29 @@ export function ManquesDossier({ b, onAller }: {
   /** Ouvre la section de la fiche qui porte le sujet. */
   onAller: (section: string) => void;
 }) {
+  /* Retour #216 : « le lien du tensiomètre n'est pas dirigé comme celui dans
+     emplacement, il faudrait qu'il dirige vers la ville du bien ». LOCservice
+     range ses pages par code INSEE, que la fiche ne porte pas : on le résout
+     comme le fait l'onglet Emplacement, et on le passe au calcul des manques.
+     Tant qu'il n'est pas revenu, le lien reste celui de la recherche. */
+  const [insee, setInsee] = useState("");
+  const ville = S(b.im.adresse_ville);
+  const cp = S(b.im.adresse_zipcode);
+  useEffect(() => {
+    if (!ville) return;
+    let vivant = true;
+    fetch(`/api/insee?${new URLSearchParams({ ville, cp })}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (vivant && d?.code) setInsee(String(d.code)); })
+      .catch(() => {});
+    return () => { vivant = false; };
+  }, [ville, cp]);
+
   const manques = manquesDossier({
     im: b.im, lots: b.lots, parcelles: b.parcelles, photos: b.photos,
     secteur: b.secteur, estimations: b.estimations,
     charges: b.charges, composants: b.composants, proprietaire: b.proprietaire,
+    insee: insee || undefined,
   });
   const [ouvert, setOuvert] = useState<string | null>(null);
 
@@ -104,6 +124,7 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
   onOuvrir: () => void; onAller: () => void;
 }) {
   const immeubleId = String(b.im._id);
+  const router = useRouter();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
   const [fait, setFait] = useState(false);
@@ -131,19 +152,25 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
       }
 
       /* Le profil vit sur la fiche du propriétaire (#204) : c'est une
-         caractéristique de la personne, pas de l'immeuble. */
+         caractéristique de la personne, pas de l'immeuble.
+         Retour #213 — « j'ai noté le type de mandant et la raison de la vente
+         et quand j'ai été voir l'onglet propriétaire l'info n'était pas
+         synchronisée ». Le profil était bien envoyé au bon champ… mais jeté en
+         silence quand aucun propriétaire n'était rattaché au bien, l'écran
+         affichant quand même « Enregistré ». Sans contact à qui l'attacher, il
+         se pose désormais sur l'immeuble, où le dossier sait déjà le lire. */
       const prof = vals.profil_vendeur?.trim();
       const proprioId = S(b.proprietaire?._id);
       if (prof && proprioId) await updateContact(proprioId, { profil: prof });
 
       const motif = vals.Motif_vente?.trim();
       const annee = parse(vals.year_constru ?? "");
-      if (motif || annee !== undefined) {
-        await updateBien(immeubleId, {
-          ...(motif ? { Motif_vente: motif } : {}),
-          ...(annee !== undefined ? { year_constru: annee } : {}),
-        });
-      }
+      const surImmeuble = {
+        ...(motif ? { Motif_vente: motif } : {}),
+        ...(annee !== undefined ? { year_constru: annee } : {}),
+        ...(prof && !proprioId ? { profil_vendeur: prof } : {}),
+      };
+      if (Object.keys(surImmeuble).length) await updateBien(immeubleId, surImmeuble);
 
       /* La taxe foncière est une LIGNE DE CHARGE, pas un champ de l'immeuble :
          on modifie celle qui existe, sinon on la crée — comme le fait l'onglet
@@ -156,6 +183,12 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
       }
 
       if (Object.keys(emp).length) await updateEmplacement(immeubleId, emp as EmplacementPatch);
+      /* Retour #213 : l'onglet Propriétaire montrait encore l'ancienne valeur.
+         `updateBien` revalide la fiche, `updateContact` ne revalide que la
+         fiche du contact — la moitié des écritures de ce bloc laissaient donc
+         la page telle qu'elle était. Un rafraîchissement ici les couvre toutes,
+         quelle que soit celle qui a servi. */
+      router.refresh();
       setFait(true);
     });
 
@@ -188,7 +221,7 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
               a donc son lien à côté d'elle, pas un lien pour tout le bloc :
               c'est en butant sur UNE case qu'on a besoin de la source. */}
           {m.champs.map((c) => (
-            <div key={c.cle} className="dmq-ligne">
+            <div key={c.cle} className={`dmq-ligne${c.unite ? " court" : ""}`}>
               <label className="dmq-c">
                 <span>{c.label}</span>
                 {c.options ? (

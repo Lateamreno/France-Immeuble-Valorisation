@@ -705,9 +705,21 @@ function ProprioSection({ b }: { b: BienData }) {
   /* Profil et motif se saisissent depuis la fiche, et se signalent en rouge
      tant qu'ils manquent (#71). Le profil est un texte libre porté par le
      contact, le motif un choix du référentiel porté par l'immeuble. */
-  const profil0 = c ? S2(c.profil) ?? "" : "";
+  const profil0 = (c ? S2(c.profil) : undefined) ?? S2(b.im.profil_vendeur) ?? "";
   const [profilTxt, setProfilTxt] = useState(profil0);
   const [motifSel, setMotifSel] = useState(motif ?? "");
+  /* Retour #213 : ces deux cases se remplissent AUSSI depuis « ce qui reste à
+     saisir », sur la page Dossiers. La base était bien à jour, mais l'état
+     local restait sur ce qu'il avait lu au montage : l'onglet montrait
+     l'ancienne valeur et donnait à croire que rien n'avait été enregistré. On
+     se recale donc sur la fiche dès qu'elle change — sans écraser une frappe
+     en cours, dont la valeur ne correspond plus à ce qui a été lu. */
+  const [vu, setVu] = useState({ profil: profil0, motif: motif ?? "" });
+  if (vu.profil !== profil0 || vu.motif !== (motif ?? "")) {
+    setVu({ profil: profil0, motif: motif ?? "" });
+    if (profilTxt === vu.profil) setProfilTxt(profil0);
+    if (motifSel === vu.motif) setMotifSel(motif ?? "");
+  }
   const [, start] = useTransition();
   const entreprise = c ? S2(c.entreprise_nom) : undefined;
   const tel = c ? S2(c.portable_formatted) ?? S2(c.portable) ?? S2(c.fixe_formatted) : undefined;

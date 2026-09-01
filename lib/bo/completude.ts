@@ -30,6 +30,7 @@
 
 import { estFacadeRue } from "./facade";
 import { MOTIFS_VENTE, PROFILS_CONTACT, TENSIONS_LOCATIVES } from "@/lib/referentiels";
+import { MOYENS, POINTS, itineraireGoogle, libelleItineraire } from "@/lib/bo/itineraire";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -96,6 +97,11 @@ export type SourceCompletude = {
   charges?: Record<string, unknown>[];
   composants?: Record<string, unknown>[];
   proprietaire?: Record<string, unknown> | null;
+  /* Le code INSEE de la commune (retour #216). La fiche ne le porte pas : il
+     se résout par /api/insee, donc de façon asynchrone, donc hors de cette
+     fonction qui doit rester pure. L'écran le cherche et le passe ici ; sans
+     lui, le lien du tensiomètre retombe sur la recherche, comme avant. */
+  insee?: string;
 };
 
 /* --- Les liens, fabriqués depuis l'adresse du bien ------------------------ */
@@ -104,30 +110,27 @@ const adresseDe = (im: Record<string, unknown>) =>
   [S(im.adresse_numero_rue), S(im.adresse_rue), S(im.adresse_zipcode), S(im.adresse_ville)]
     .filter(Boolean).join(" ").trim();
 
-/** Itinéraire à pied depuis l'immeuble : il donne le nom ET la durée d'un coup. */
-const itineraire = (im: Record<string, unknown>, vers: string, geo?: unknown): LienSource => {
-  const depart = adresseDe(im);
-  const ville = `${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
-  /* Les coordonnées du point retenu priment sur son nom (retour #186) :
-     « Carrefour Bordeaux » emmenait Google à l'hypermarché de la zone
-     commerciale plutôt qu'au supermarché d'en face. */
-  const cible = S(geo) || `${vers} ${ville}`.trim();
-  return {
-    href: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depart)}`
-      + `&destination=${encodeURIComponent(cible)}&travelmode=walking`,
-    label: "Itinéraire à pied",
-  };
-};
+/* L'itinéraire lui-même vit dans lib/bo/itineraire.ts (retour #215) : l'onglet
+   Emplacement pose la même question et doit ouvrir exactement le même lien. */
 
-/* Le tensiomètre LOCservice range ses pages par code INSEE, que la fiche ne
-   porte pas : on ouvre donc la recherche en copiant le nom de la commune, à
-   coller dans leur champ. (L'onglet Emplacement, lui, va chercher le code par
-   /api/insee et peut ouvrir la page directe.) */
-const lienTension = (im: Record<string, unknown>): LienSource => ({
-  href: "https://www.locservice.fr/tensiometre/",
-  label: "Tensiomètre LOCservice",
-  copier: S(im.adresse_ville) || undefined,
-});
+/* Le tensiomètre LOCservice range ses pages par code INSEE
+   (tensiometre-33063.html pour Bordeaux). Retour #216 : « le lien du
+   tensiomètre n'est pas dirigé comme celui dans emplacement, il faudrait qu'il
+   dirige vers la ville du bien ». Il le fait maintenant dès que l'écran a
+   résolu le code ; sans code, on retombe sur la recherche en copiant le nom de
+   la commune, à coller dans leur champ. */
+const lienTension = (im: Record<string, unknown>, insee?: string): LienSource => (
+  insee
+    ? {
+      href: `https://www.locservice.fr/tensiometre/tensiometre-${insee}.html`,
+      label: "Tensiomètre LOCservice",
+    }
+    : {
+      href: "https://www.locservice.fr/tensiometre/",
+      label: "Tensiomètre LOCservice",
+      copier: S(im.adresse_ville) || undefined,
+    }
+);
 
 /** Le cadastre : pas de recherche par URL, on colle l'adresse dans son écran. */
 const lienCadastre = (im: Record<string, unknown>): LienSource => ({
@@ -204,24 +207,43 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
     });
   }
 
-  /* --- L'emplacement : gare, commerces, tension --- */
+  /* --- L'emplacement : gare, commerces, tension -------------------------
+     Retour #214 : « tu demandes le commerce le plus proche mais il faut mettre
+     le nom et la distance en min, et dire si c'est à pied ou en voiture ». Le
+     moyen de locomotion existait déjà sur la fiche (`emp_*_moyen`, saisi dans
+     l'onglet Emplacement) mais cette liste ne le réclamait pas : le dossier
+     imprimait « 8 min » sans dire de quoi. Trois cases par point d'intérêt,
+     donc, et le lien d'itinéraire les remplit toutes les trois d'un coup. */
+  /* Retour #218 : « il manquait les infos sur les distances avec les points
+     d'intérêt (bus, axes routiers et autres), ce qui n'aurait pas dû être
+     possible avant de générer le dossier ». Seuls les trains et les commerces
+     étaient réclamés, alors que le dossier imprime les six lignes — les quatre
+     autres sortaient vides. La rubrique devient donc bloquante, comme les
+     autres pages que le document imprime en toutes lettres. */
   const emp: ChampManquant[] = [];
-  const itGare = itineraire(im, "gare", im.emp_gare_geo);
-  const itCom = itineraire(im, "supermarché", im.emp_com_geo);
-  if (!S(im.emp_gare_name)) emp.push({ cle: "emp_gare_name", label: "Transports les plus proches", lien: itGare });
-  if (N(im.emp_gare_time) === undefined) emp.push({ cle: "emp_gare_time", label: "Temps à pied", unite: "min", lien: itGare });
-  if (!S(im.emp_com_name)) emp.push({ cle: "emp_com_name", label: "Commerces les plus proches", lien: itCom });
-  if (N(im.emp_com_time) === undefined) emp.push({ cle: "emp_com_time", label: "Temps à pied", unite: "min", lien: itCom });
+  for (const p of POINTS) {
+    const moyen = S(im[`emp_${p.cle}_moyen`]) || "à pied";
+    const lien: LienSource = {
+      href: itineraireGoogle(im, S(im[`emp_${p.cle}_name`]) || p.cherche, {
+        geo: im[`emp_${p.cle}_geo`], moyen,
+      }),
+      label: libelleItineraire(moyen),
+    };
+    if (!S(im[`emp_${p.cle}_name`])) emp.push({ cle: `emp_${p.cle}_name`, label: `${p.court} — le plus proche`, lien });
+    if (N(im[`emp_${p.cle}_time`]) === undefined) emp.push({ cle: `emp_${p.cle}_time`, label: `${p.court} — durée`, unite: "min", lien });
+    if (!S(im[`emp_${p.cle}_moyen`])) emp.push({ cle: `emp_${p.cle}_moyen`, label: `${p.court} — à pied ou en voiture`, options: [...MOYENS] });
+  }
   if (!S(im.emp_tension_locative)) {
     emp.push({
       cle: "emp_tension_locative", label: "Tension locative",
-      options: [...TENSIONS_LOCATIVES], lien: lienTension(im),
+      options: [...TENSIONS_LOCATIVES], lien: lienTension(im, b.insee),
     });
   }
   if (emp.length) {
     out.push({
-      cle: "emplacement", titre: "L'emplacement semble incomplet", bloquant: false,
+      cle: "emplacement", titre: "L'emplacement semble incomplet", bloquant: true,
       section: "emplacement", champs: emp,
+      detail: "Le dossier imprime les six points d'intérêt : une ligne vide se lit comme un oubli.",
     });
   }
 

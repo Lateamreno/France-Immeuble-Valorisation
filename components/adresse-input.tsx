@@ -18,13 +18,22 @@ type Feature = {
   properties: {
     label: string; housenumber?: string; street?: string; name?: string;
     postcode?: string; city?: string;
+    /** « 92, Hauts-de-Seine, Île-de-France » — servi en mode commune. */
+    context?: string;
   };
   geometry: { coordinates: [number, number] };
 };
 
+/* Un lieu de naissance s'écrit avec son département : deux Saint-Denis, deux
+   Nogent-sur-Marne dans une liste, on ne saurait pas lequel on choisit. */
+function libelleCommune(p: Feature["properties"]) {
+  const dep = (p.context ?? "").split(",")[0]?.trim();
+  return dep ? `${p.label} (${dep})` : p.label;
+}
+
 export function AdresseInput({
   valeur = "", placeholder = "Commencez à taper l'adresse…", autoFocus, classe = "min",
-  disabled, onChoisir, onSaisie,
+  disabled, cible = "adresse", onChoisir, onSaisie,
 }: {
   valeur?: string;
   placeholder?: string;
@@ -32,10 +41,13 @@ export function AdresseInput({
   /** Classe de l'input : les écrans n'ont pas tous la même grille. */
   classe?: string;
   disabled?: boolean;
+  /** « commune » ne propose que des villes : le lieu de naissance (#207). */
+  cible?: "adresse" | "commune";
   onChoisir: (a: AdresseChoisie) => void;
   /** Frappe libre : une adresse peut être hors base (lieu-dit, étranger). */
   onSaisie?: (v: string) => void;
 }) {
+  const communes = cible === "commune";
   const [q, setQ] = useState(valeur);
   const [sugg, setSugg] = useState<Feature[]>([]);
   const [ouvert, setOuvert] = useState(false);
@@ -61,12 +73,14 @@ export function AdresseInput({
 
   useEffect(() => {
     const t = q.trim();
-    const court = t.length < 4 || t === figee;
+    const court = t.length < (communes ? 3 : 4) || t === figee;
     const timer = setTimeout(async () => {
       if (court) { setSugg([]); return; }
       try {
         // Relais serveur : voir app/api/adresse/route.ts.
-        const r = await fetch(`/api/adresse?q=${encodeURIComponent(t)}`);
+        const r = await fetch(
+          `/api/adresse?q=${encodeURIComponent(t)}${communes ? "&type=municipality" : ""}`,
+        );
         if (!r.ok) return;
         const d = (await r.json()) as { features: Feature[] };
         setSugg(d.features ?? []);
@@ -75,7 +89,7 @@ export function AdresseInput({
       } catch { /* réseau coupé : la saisie manuelle reste possible */ }
     }, court ? 0 : 300);
     return () => clearTimeout(timer);
-  }, [q, figee]);
+  }, [q, figee, communes]);
 
   // Un clic hors du champ referme la liste.
   useEffect(() => {
@@ -88,11 +102,12 @@ export function AdresseInput({
 
   const choisir = (f: Feature) => {
     const p = f.properties;
-    setFigee(p.label);
-    setQ(p.label);
+    const libelle = communes ? libelleCommune(p) : p.label;
+    setFigee(libelle);
+    setQ(libelle);
     setOuvert(false);
     onChoisir({
-      label: p.label,
+      label: libelle,
       numero: p.housenumber,
       rue: p.street ?? (p.housenumber ? undefined : p.name),
       cp: p.postcode,
@@ -123,7 +138,7 @@ export function AdresseInput({
             <button key={`${f.properties.label}-${i}`} type="button"
               className={i === sel ? "on" : ""}
               onMouseDown={(e) => { e.preventDefault(); choisir(f); }}>
-              {f.properties.label}
+              {communes ? libelleCommune(f.properties) : f.properties.label}
             </button>
           ))}
           <span className="adr-src">Base Adresse Nationale</span>
