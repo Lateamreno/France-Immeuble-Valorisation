@@ -32,6 +32,33 @@ const geo = (v: unknown) => {
 /** On réécrit l'objet, pas une chaîne, pour ne pas casser la forme du champ. */
 const versGeo = (t: string) => (t.trim() ? { address: t.trim() } : undefined);
 
+/* --- Les sociétés du contact (retours #200 et #228) --- */
+
+type Soc = { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+
+/** Le SIREN identifie une société ; à défaut son nom réduit à ses lettres et
+ *  ses chiffres, « SCI DU PARC » et « S.C.I. du Parc » étant la même. */
+const cleSociete = (s: Soc) =>
+  (s.siren ?? "").replace(/\D/g, "") || (s.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** Range une société dans la liste : elle complète celle qu'on connaît déjà,
+ *  ou s'ajoute. Les valeurs fournies l'emportent — c'est la saisie du jour. */
+const fusionnerSociete = (liste: Soc[], s: Soc): Soc[] => {
+  const k = cleSociete(s);
+  if (!s.nom || !k) return liste;
+  const i = liste.findIndex((v) => cleSociete(v) === k);
+  if (i < 0) return [...liste, s];
+  const out = [...liste];
+  out[i] = {
+    nom: s.nom || out[i].nom,
+    siren: s.siren || out[i].siren,
+    rcs: s.rcs || out[i].rcs,
+    capital: s.capital ?? out[i].capital,
+    siege: s.siege || out[i].siege,
+  };
+  return out;
+};
+
 /** Les pièces jointes Bubble sont privées : elles passent par notre proxy. */
 const fichier = (u: unknown) => (S(u) ? `/api/photo?u=${encodeURIComponent(S(u))}` : undefined);
 const nomFichier = (u: unknown) => {
@@ -89,6 +116,32 @@ export function ContactFiche({ d, echanges = [] }: {
   const [siren, setSiren] = useState(S(c.entreprise_siren));
   const [rcs, setRcs] = useState(S(c.entreprise_rcs));
   const [siege, setSiege] = useState(geo(c.entreprise_siege_geo));
+  /* Retour #228 — les mandats déposent ici les sociétés du contact (retour
+     #200), mais la fiche n'en montrait qu'une : les autres n'existaient que
+     dans l'écran de mandat, invisibles et non corrigeables là où on vient les
+     chercher. Elles sont désormais listées, et un clic en met une au premier
+     plan — celle qui était affichée reprend sa place dans la liste. */
+  const [societes, setSocietes] = useState<Soc[]>(
+    Array.isArray(c.societes) ? (c.societes as Soc[]) : [],
+  );
+  const societeCourante = (): Soc => ({
+    nom: entreprise || undefined,
+    siren: siren || undefined,
+    rcs: rcs || undefined,
+    capital: capital ? Number(capital.replace(/[^\d.]/g, "")) : undefined,
+    siege: siege || undefined,
+  });
+  const autresSocietes = societes.filter(
+    (s) => s.nom && cleSociete(s) && cleSociete(s) !== cleSociete(societeCourante()),
+  );
+  const mettreAuPremierPlan = (s: Soc) => {
+    setSocietes(fusionnerSociete(societes, societeCourante()));
+    setEntreprise(s.nom ?? "");
+    setSiren(s.siren ?? "");
+    setRcs(s.rcs ?? "");
+    setCapital(s.capital === undefined ? "" : String(s.capital));
+    setSiege(s.siege ?? "");
+  };
   const [remarques, setRemarques] = useState(S(c.remarques));
   const [source, setSource] = useState(S(c.Source));
   const [notifSms, setNotifSms] = useState(c.notif_sms === true);
@@ -115,6 +168,9 @@ export function ContactFiche({ d, echanges = [] }: {
         entreprise_siren: siren || undefined,
         entreprise_rcs: rcs || undefined,
         entreprise_siege_geo: versGeo(siege),
+        /* La société affichée retourne dans la liste : sans ça, la corriger
+           ici la laissait fausse pour le mandat suivant, qui lit `societes`. */
+        societes: fusionnerSociete(societes, societeCourante()),
         remarques: remarques || undefined,
         Source: source || undefined,
         notif_sms: notifSms, notif_email: notifMail,
@@ -323,6 +379,20 @@ export function ContactFiche({ d, echanges = [] }: {
                 <Ligne label="K-bis">
                   <PieceJointe url={c.entreprise_kbis} />
                 </Ligne>
+                {autresSocietes.length > 0 && (
+                  <Ligne label="Autres sociétés">
+                    <div className="cfx-socs">
+                      {autresSocietes.map((s) => (
+                        <button key={cleSociete(s)} type="button" className="cfx-soc"
+                          title="Afficher cette société ci-dessus"
+                          onClick={() => mettreAuPremierPlan(s)}>
+                          <b>{s.nom}</b>
+                          {s.siren && <i>SIREN {s.siren}</i>}
+                        </button>
+                      ))}
+                    </div>
+                  </Ligne>
+                )}
               </Bloc>
             </div>
 

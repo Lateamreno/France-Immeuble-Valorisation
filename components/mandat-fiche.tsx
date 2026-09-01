@@ -332,7 +332,7 @@ function OngletMandants({
     <>
       <Titre
         titre={rows.length > 1 ? "Les mandants" : "Le mandant"}
-        aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil, et les pièces déposées ici enrichissent sa fiche pour les affaires suivantes."
+        aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil. Ce qui est saisi ou corrigé ici — naissance, adresse, qualité, société, pièces — remonte sur sa fiche à l'enregistrement, et repartira de là au mandat suivant."
       />
 
       {/* La recherche DGFiP ne sert qu'à trouver un propriétaire qu'on n'a pas.
@@ -556,11 +556,15 @@ function CarteMandant({
         </Champ>
         <Champ label="Qualité au mandat">
           {/* Champ libre avec suggestions : le BO contient « Gérant dûment
-              habilité », « Gérant - Associé »… qu'une liste fermée perdrait. */}
-          <input className="mi" list="mdt-fonctions" value={x.fonction ?? ""} disabled={locked}
+              habilité », « Gérant - Associé »… qu'une liste fermée perdrait.
+              L'identifiant de la liste porte l'uid du mandant (retour #230) :
+              il était fixe, si bien qu'une indivision à deux posait deux
+              éléments de même identifiant dans la page — les suggestions du
+              second mandant venaient alors de la liste du premier. */}
+          <input className="mi" list={`mdt-fonctions-${x.uid}`} value={x.fonction ?? ""} disabled={locked}
             placeholder={morale ? "Gérant, Président…" : "Propriétaire, Indivisaire…"}
             onChange={(e) => onMaj({ fonction: e.target.value || undefined })} />
-          <datalist id="mdt-fonctions">
+          <datalist id={`mdt-fonctions-${x.uid}`}>
             {FONCTIONS_MANDANT.map((f) => <option key={f} value={f} />)}
           </datalist>
         </Champ>

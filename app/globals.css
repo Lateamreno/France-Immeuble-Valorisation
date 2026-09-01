@@ -3899,6 +3899,18 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .mdt-soc-choix b { font-family: var(--font-title); font-size: 12.5px; color: var(--slate); }
 .mdt-soc-choix i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
 
+/* Les mêmes vignettes, sur la fiche contact (retour #228) : c'est là qu'on
+   vient corriger une société, et il faut donc les y voir toutes. */
+.cfx-socs { display: flex; flex-wrap: wrap; gap: 6px; }
+.cfx-soc {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px;
+  background: #fff; cursor: pointer; text-align: left; font-family: inherit;
+}
+.cfx-soc:hover { border-color: var(--gold-bo); background: #fffdf5; }
+.cfx-soc b { font-family: var(--font-title); font-size: 12px; color: var(--slate); font-weight: 600; }
+.cfx-soc i { font-style: normal; font-size: 10.5px; color: var(--gray-lt); }
+
 /* --- Pièces justificatives --- */
 .mdt-pieces { display: flex; flex-wrap: wrap; gap: 10px; }
 .mdt-pc {
@@ -6041,3 +6053,15 @@ a.cfc-t:hover { text-decoration: underline; }
 .dos-fige b { font-family: var(--font-title); font-size: 16px; color: var(--slate); }
 .dos-fige .fine { flex-basis: 100%; font-size: 11.5px; }
 .dos-histo-l.lecture { cursor: default; }
+
+/* Descriptif rédigé par la fiche (retour #232). */
+.dsc-alerte {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 10px; padding: 10px 13px;
+  border: 1px solid var(--orange); border-radius: 5px; background: #fdf8ef;
+  font-size: 12.5px;
+}
+.dsc-alerte b { color: #8a5a10; }
+.dsc-alerte span { color: var(--gray-lt); }
+.dsc-pied { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.dsc-pied .fine { flex: 1; font-size: 11.5px; color: var(--gray-lt); }
