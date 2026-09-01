@@ -957,11 +957,6 @@ function OngletObjet({
       });
     });
 
-  const badge =
-    s.occupation === "libre" ? { t: "Vendu libre", c: "v" }
-      : s.occupation === "occupe" ? { t: "Vendu occupé", c: "o" }
-      : { t: "Partiellement occupé", c: "m" };
-
   return (
     <>
       <Titre
@@ -969,31 +964,19 @@ function OngletObjet({
         aide="Occupation, surfaces et répartition des lots viennent de l'état locatif : ils ne se saisissent pas ici. Modifiez le tableau des lots et cet écran suit."
       />
 
-      {/* --- La carte du bien : ce que le mandat va décrire --- */}
-      <div className="mdt-bien">
-        <div className="mdt-bien-h">
-          <div className="ad">
-            <b>{im ? [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ") : "Aucun immeuble rattaché"}</b>
-            <span>{im ? `${S(im.adresse_zipcode)} ${S(im.adresse_ville)}` : "—"}</span>
-          </div>
-          <span className={`mdt-occ ${badge.c}`}>{badge.t}</span>
-          {immeubleId && <Link className="mdt-lien" href={`/bien/${immeubleId}`}>Voir l&apos;état locatif</Link>}
-        </div>
-        {/* Retour #209 — « tu peux me sortir directement le cadre avec les
-            lots, occupé, surface, loyers. Tu peux reprendre l'ancienne
-            présentation car tout est indiqué dans le texte en fait. » Le
-            bandeau de statistiques répétait, en chiffres, ce que le descriptif
-            légal rédigé plus bas dit déjà en toutes lettres — douze lots, tant
-            de m², tant de loyer. L'en-tête reste : l'adresse, l'occupation et
-            le lien vers l'état locatif ne sont pas dans le texte. */}
-      </div>
+      {/* Retour #209 — « je voulais garder le descriptif écrit qui reprend
+          toutes les infos et enlever le cadre en début de page. » Le cadre du
+          bien répétait ce que le descriptif légal, plus bas, dit déjà en toutes
+          lettres : douze lots, tant de m², tant de loyer, vendu occupé.
+          L'adresse, elle, figure déjà au cartouche du mandat, en tête d'écran —
+          la redire ici n'apprenait rien. */}
 
       {/* Retour #206 — « l'occupation est déterminée par l'état locatif, donc tu
           peux enlever ce bouton, tu remplaces par le loyer actuel. Et tu mets la
           référence cadastrale et la surface de terrain sur la même ligne. »
-          L'occupation reste dite, mais là où elle a du sens : sur le badge de la
-          carte du bien, juste au-dessus. La répéter en case grisée occupait la
-          place d'une information qui, elle, manque souvent. */}
+          L'occupation reste dite, mais là où elle a du sens : dans le descriptif
+          légal, qui l'écrit en toutes lettres. La répéter en case grisée
+          occupait la place d'une information qui, elle, manque souvent. */}
       <div className="mdt-sub">Ce qui reste à saisir</div>
       <div className="mdt-grid deux">
         <Champ label="Références cadastrales">
