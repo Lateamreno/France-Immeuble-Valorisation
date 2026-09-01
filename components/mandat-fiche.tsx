@@ -32,7 +32,7 @@ import {
   proprietairesPm, type ProprietairePM, type ResultatProprietaires,
 } from "@/lib/bo/proprio-actions";
 import {
-  cancelMandat, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
+  cancelMandat, capitalDuSiren, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
   majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reporterCadastre,
   reserveMandatNumero,
   updateMandat, type EntrepriseTrouvee, type MandatPatch,
@@ -578,8 +578,8 @@ function CarteMandant({
           <div className="mdt-sub">La société</div>
           {!locked && (
             <ChercheSociete
-              onChoisir={(e) => onMaj({
-                societe: {
+              onChoisir={(e) => {
+                const soc: Societe = {
                   ...x.societe,
                   nom: e.nom,
                   siren: e.siren,
@@ -588,8 +588,19 @@ function CarteMandant({
                      entreprises ne le sert pas. Pré-remplissage seulement — on
                      n'écrase pas un greffe déjà saisi. */
                   rcs: x.societe?.rcs ?? e.rcs,
-                },
-              })}
+                };
+                onMaj({ societe: soc });
+                /* Le capital vient du registre national, qui demande un compte :
+                   il arrive après coup, et seulement si la case est vide. Sans
+                   identifiants configurés, rien ne remonte et le champ reste à
+                   saisir — c'était le cas jusqu'ici. */
+                if (soc.capital === undefined && e.siren) {
+                  start(async () => {
+                    const c = await capitalDuSiren(e.siren).catch(() => undefined);
+                    if (c !== undefined) onMaj({ societe: { ...soc, capital: c } });
+                  });
+                }
+              }}
             />
           )}
           {/* Retour #200 — « un propriétaire peut avoir plusieurs sociétés […]

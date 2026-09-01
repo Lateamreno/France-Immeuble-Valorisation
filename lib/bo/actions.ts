@@ -3070,6 +3070,19 @@ export async function chercherEntreprise(q: string): Promise<EntrepriseTrouvee[]
     .filter((r) => r.nom);
 }
 
+/**
+ * Le capital social d'une société, au registre national (retour #208).
+ *
+ * Appelée au moment où l'agent RETIENT une société, pas à chaque frappe : le
+ * registre se consulte une fois, pour la bonne. Rend `undefined` tant que les
+ * identifiants INPI ne sont pas configurés — le champ reste alors à saisir,
+ * comme avant, sans que rien ne casse.
+ */
+export async function capitalDuSiren(siren: string): Promise<number | undefined> {
+  const { capitalSocial } = await import("@/lib/bo/inpi");
+  return capitalSocial(siren).catch(() => undefined);
+}
+
 /** Les formes juridiques croisées sur des immeubles de rapport. */
 const FORMES: Record<string, string> = {
   "5710": "SAS", "5720": "SASU", "5499": "SA", "5599": "SA",
