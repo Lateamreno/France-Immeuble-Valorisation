@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
-import { createDossier, genererPdfDossier } from "@/lib/bo/actions";
+import { apercuPdfDossier, createDossier, genererPdfDossier } from "@/lib/bo/actions";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -24,6 +24,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const histo: Record<string, unknown>[] = b.prixHisto ?? [];
   const [pending, start] = useTransition();
   const [createdId, setCreatedId] = useState<string | null>(null);
+  /** L'aperçu a été fabriqué : c'est ce qui ouvre l'enregistrement (#219). */
+  const [vu, setVu] = useState(false);
 
   const agg = useMemo(() => {
     const lots = b.lots;
@@ -55,6 +57,23 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const vPct = parse(pct) ?? 5;
   const nv = vHai > 0 ? Math.round(vHai / (1 + vPct / 100)) : 0;
 
+  /* Retour #219 — « j'aimerais que, quand on génère un nouveau dossier, il
+     soit demandé de le télécharger pour le vérifier avant de l'enregistrer.
+     C'est seulement quand on l'enregistre que la dernière version du dossier
+     est réellement créée. Sinon, dès qu'on modifie quoi que ce soit, on a une
+     infinité de dossiers déjà générés. »
+
+     Deux temps, donc : l'aperçu ne crée rien, l'enregistrement crée tout. Un
+     brouillon relu trois fois ne laisse plus trois versions derrière lui. */
+  const apercu = () =>
+    start(async () => {
+      setErrPdf(null);
+      const r = await apercuPdfDossier(immeubleId, { hai: vHai, pct: vPct, version: prochaine });
+      setPdf(r.ok ? { url: r.url, ko: r.ko } : null);
+      setVu(r.ok);
+      if (!r.ok) setErrPdf(r.message);
+    });
+
   const generer = () =>
     start(async () => {
       const id = await createDossier(immeubleId, String(b.im.AGENT ?? ""), {
@@ -82,7 +101,11 @@ export function AddDossierButton({ b }: { b: BienData }) {
       if (!r.ok) setErrPdf(r.message);
     });
 
-  const close = () => { setOpen(false); setStep(0); setCreatedId(null); setPdf(null); setErrPdf(null); };
+  const close = () => {
+    setOpen(false); setStep(0); setCreatedId(null); setPdf(null); setErrPdf(null); setVu(false);
+  };
+  /** Toute retouche du prix périme l'aperçu : il ne montre plus ce qu'on a. */
+  const retoucher = (fn: () => void) => { fn(); setVu(false); setPdf(null); };
 
   /* Retour #204 — « ne laisse pas l'agent générer le dossier tant que toutes
      les informations contenues dans le dossier ne sont pas remplies […] voilà,
@@ -139,11 +162,12 @@ export function AddDossierButton({ b }: { b: BienData }) {
                   <div className="mrow" style={{ alignItems: "flex-end", gap: 14, marginTop: 12 }}>
                     <label className="dmq-c">
                       <span>Prix HAI</span>
-                      <input value={hai} onChange={(e) => setHai(e.target.value)} />
+                      <input value={hai} onChange={(e) => retoucher(() => setHai(e.target.value))} />
                     </label>
                     <label className="dmq-c">
                       <span>Honoraires %</span>
-                      <input style={{ minWidth: 80 }} value={pct} onChange={(e) => setPct(e.target.value)} />
+                      <input style={{ minWidth: 80 }} value={pct}
+                        onChange={(e) => retoucher(() => setPct(e.target.value))} />
                     </label>
                   </div>
                   {vHai > 0 && (
@@ -189,9 +213,32 @@ export function AddDossierButton({ b }: { b: BienData }) {
                     </>
                   )}
 
-                  <div className="warnbox" style={{ marginTop: 12 }}>
-                    Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.
-                  </div>
+                  {/* L'aperçu (#219) : on le relit, puis on enregistre. Tant
+                      qu'on n'a pas enregistré, aucune version n'existe. */}
+                  {pdf && vu ? (
+                    <div className="dos-apercu">
+                      <b>Aperçu prêt — relisez-le avant d&apos;enregistrer.</b>
+                      <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
+                        Ouvrir le PDF ({pdf.ko} ko)
+                      </a>
+                      <Link className="lnk" target="_blank"
+                        href={`/bien/${immeubleId}/dossier/apercu?hai=${vHai}&pct=${vPct}&v=${prochaine}`}>
+                        Ouvrir la version imprimable
+                      </Link>
+                      <span className="fine">
+                        Rien n&apos;est enregistré pour l&apos;instant : la version V{prochaine} ne
+                        sera créée qu&apos;au moment où vous l&apos;enregistrerez.
+                      </span>
+                    </div>
+                  ) : errPdf ? (
+                    <div className="warnbox" style={{ marginTop: 12, color: "var(--red)", borderColor: "var(--red)" }}>
+                      Aperçu impossible : {errPdf}
+                    </div>
+                  ) : (
+                    <div className="warnbox" style={{ marginTop: 12 }}>
+                      Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ fontSize: 13, lineHeight: 1.7 }}>
@@ -215,10 +262,18 @@ export function AddDossierButton({ b }: { b: BienData }) {
             <div className="modal-f">
               <span style={{ flex: 1 }} />
               {!createdId ? (
-                <button className="kgo" type="button" disabled={pending || vHai <= 0}
-                  style={pending || vHai <= 0 ? { opacity: 0.5 } : undefined} onClick={generer}>
-                  <span className="ch">+</span> Générer le dossier PDF
-                </button>
+                <>
+                  <button className="fadd" type="button" disabled={pending || vHai <= 0}
+                    style={{ marginRight: 8 }} onClick={apercu}>
+                    {pending && !vu ? "Fabrication…" : vu ? "Refaire l'aperçu" : "Voir l'aperçu"}
+                  </button>
+                  <button className="kgo" type="button" disabled={pending || vHai <= 0 || !vu}
+                    style={pending || vHai <= 0 || !vu ? { opacity: 0.5 } : undefined}
+                    title={vu ? undefined : "Fabriquez d'abord l'aperçu et relisez-le."}
+                    onClick={generer}>
+                    <span className="ch">+</span> Enregistrer la version V{prochaine}
+                  </button>
+                </>
               ) : (
                 <button className="kgo" type="button" onClick={close}>Fermer</button>
               )}
