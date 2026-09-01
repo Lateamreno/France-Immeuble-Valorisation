@@ -1253,6 +1253,9 @@ export type ContactPatch = Partial<{
   entreprise_capital: number;
   entreprise_rcs: string;
   entreprise_siege_geo: GeoPoint;
+  /** Toutes les sociétés du contact (retours #200 et #228) : les champs
+   *  `entreprise_*` n'en tiennent qu'une, celle qui est affichée. */
+  societes: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string }[];
   /** Classement acquéreur A/B/C/D du BO. */
   Note: string;
   /** Profil du propriétaire, saisi librement depuis la fiche bien (#71). */
@@ -2414,10 +2417,23 @@ export async function majMandants(
 /**
  * Recopie sur la fiche contact ce qui a été saisi au mandat.
  *
- * Rien n'est effacé : seuls les champs renseignés au mandat sont écrits, et
- * seulement s'ils apportent quelque chose. Un contact sans date de naissance
- * la gagne ; un contact qui en a déjà une la garde — c'est sa fiche qui fait
- * foi, pas un mandat rédigé à la hâte.
+ * Retour #228 — « comme j'ai rentré toutes les informations il faudrait que
+ * toutes ces infos s'enregistrent dans le contact, de telle façon que quand je
+ * rentre un nouveau mandat avec ce contact j'ai toutes ces infos ».
+ *
+ * Le renvoi ne comblait jusqu'ici que les cases vides de la fiche : c'était la
+ * fiche qui faisait foi. À l'usage, c'est l'inverse. La fiche contact se
+ * remplit au téléphone, de mémoire ; le mandant, lui, se saisit pièce
+ * d'identité en main, sur un acte que le client signe. Quand les deux ne
+ * disent pas la même chose, c'est le mandat qui a raison — et laisser la
+ * vieille valeur en fiche, c'est la voir revenir au mandat suivant, ce que MAV
+ * décrit exactement.
+ *
+ * On écrit donc ce qui a été saisi, même par-dessus. Deux limites : jamais du
+ * vide par-dessus du plein — ne rien saisir n'est pas effacer — et jamais un
+ * champ que le mandat n'a pas à connaître (le nom et la civilité s'y affichent
+ * en lecture seule depuis les retours #226/#227, ils viennent de la fiche et y
+ * restent).
  */
 async function renvoyerSurLeContact(x: MandantEnregistre) {
   if (!x.contactId || !SB_KEY) return;
@@ -2426,35 +2442,38 @@ async function renvoyerSurLeContact(x: MandantEnregistre) {
 
   const vide = (v: unknown) => v === undefined || v === null || String(v).trim() === "";
   const patch: Record<string, unknown> = {};
-  /** N'écrit que si le mandat sait quelque chose que la fiche ignore. */
-  const combler = (champ: string, valeur: unknown) => {
-    if (vide(valeur) || !vide(c[champ])) return;
+  /** Écrit ce que le mandat a appris — sauf à effacer, ou à ne rien changer. */
+  const poser = (champ: string, valeur: unknown) => {
+    if (vide(valeur) || String(c[champ] ?? "") === String(valeur)) return;
     patch[champ] = valeur;
   };
-  const comblerGeo = (champ: string, valeur?: string) => {
-    if (vide(valeur) || !vide((c[champ] as { address?: string } | undefined)?.address)) return;
+  const poserGeo = (champ: string, valeur?: string) => {
+    const actuel = (c[champ] as { address?: string } | undefined)?.address;
+    if (vide(valeur) || actuel === valeur) return;
     patch[champ] = { address: valeur };
   };
 
-  combler("date_naissance", x.dateNaissance);
-  comblerGeo("lieu_naissance_geo", x.lieuNaissance);
-  comblerGeo("adresse_geo", x.adresse);
-  combler("email", x.email);
-  combler("poste", x.fonction);
+  poser("date_naissance", x.dateNaissance);
+  poserGeo("lieu_naissance_geo", x.lieuNaissance);
+  poserGeo("adresse_geo", x.adresse);
+  poser("email", x.email);
+  poser("poste", x.fonction);
   if (x.societe?.nom) {
-    combler("entreprise_nom", x.societe.nom);
-    combler("entreprise_siren", x.societe.siren);
-    combler("entreprise_rcs", x.societe.rcs);
-    combler("entreprise_capital", x.societe.capital);
-    comblerGeo("entreprise_siege_geo", x.societe.siege);
+    poser("entreprise_nom", x.societe.nom);
+    poser("entreprise_siren", x.societe.siren);
+    poser("entreprise_rcs", x.societe.rcs);
+    poser("entreprise_capital", x.societe.capital);
+    poserGeo("entreprise_siege_geo", x.societe.siege);
 
     /* Retour #200 — « un propriétaire peut avoir plusieurs sociétés, donc on
        peut associer plusieurs sociétés sur sa fiche contact et à chaque fois
        elles s'enregistrent ». Les champs `entreprise_*` ci-dessus n'en tiennent
        qu'une : ils restent, parce que Bubble et la fiche contact les lisent,
        mais la vérité est désormais dans `societes`, qui les collectionne.
-       Une société déjà connue est complétée, pas dupliquée — le SIREN
-       l'identifie, à défaut son nom réduit à ses lettres et ses chiffres. */
+       Une société déjà connue est mise à jour, pas dupliquée — le SIREN
+       l'identifie, à défaut son nom réduit à ses lettres et ses chiffres.
+       Comme pour l'état civil (retour #228), c'est la saisie du mandat qui
+       l'emporte : un capital corrigé au mandat doit se retrouver au suivant. */
     type Soc = NonNullable<MandantEnregistre["societe"]>;
     const cle = (s?: Soc) =>
       (s?.siren ?? "").replace(/\D/g, "")
@@ -2463,11 +2482,11 @@ async function renvoyerSurLeContact(x: MandantEnregistre) {
     const i = liste.findIndex((s) => cle(s) && cle(s) === cle(x.societe));
     if (i >= 0) {
       liste[i] = {
-        nom: liste[i].nom || x.societe.nom,
-        siren: liste[i].siren || x.societe.siren,
-        rcs: liste[i].rcs || x.societe.rcs,
-        capital: liste[i].capital ?? x.societe.capital,
-        siege: liste[i].siege || x.societe.siege,
+        nom: x.societe.nom || liste[i].nom,
+        siren: x.societe.siren || liste[i].siren,
+        rcs: x.societe.rcs || liste[i].rcs,
+        capital: x.societe.capital ?? liste[i].capital,
+        siege: x.societe.siege || liste[i].siege,
       };
     } else {
       liste.push(x.societe);

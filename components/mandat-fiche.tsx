@@ -332,7 +332,7 @@ function OngletMandants({
     <>
       <Titre
         titre={rows.length > 1 ? "Les mandants" : "Le mandant"}
-        aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil, et les pièces déposées ici enrichissent sa fiche pour les affaires suivantes."
+        aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil. Ce qui est saisi ou corrigé ici — naissance, adresse, qualité, société, pièces — remonte sur sa fiche à l'enregistrement, et repartira de là au mandat suivant."
       />
 
       {/* La recherche DGFiP ne sert qu'à trouver un propriétaire qu'on n'a pas.
