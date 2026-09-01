@@ -176,11 +176,18 @@ export function construireDossierVente(
 
     /* Page 1 — les chiffres de couverture */
     cibles: Array.isArray(im.Cibles) ? (im.Cibles as unknown[]).map(String) : [],
-    compo: dests.map((dest) => {
-      const n = lots.filter((l) => S(l.Destination) === dest).length;
-      const [un, plusieurs] = PLURIEL[dest] ?? [dest.toLowerCase(), `${dest.toLowerCase()}s`];
-      return { dest, texte: `${n} ${n > 1 ? plusieurs : un}` };
-    }),
+    /* Retour #244 : « normalement on ne peut pas en avoir plus que 4
+       (commerces, habitation, bureaux, entrepôt), le reste c'est des annexes
+       qui n'ont pas leur place ici. » Les caves, parkings et annexes se
+       comptent dans l'état locatif, pas en couverture : c'est la nature du bien
+       qu'on y annonce, pas son inventaire. */
+    compo: dests
+      .filter((dest) => !["Parking", "Cave", "Annexe"].includes(dest))
+      .map((dest) => {
+        const n = lots.filter((l) => S(l.Destination) === dest).length;
+        const [un, plusieurs] = PLURIEL[dest] ?? [dest.toLowerCase(), `${dest.toLowerCase()}s`];
+        return { dest, texte: `${n} ${n > 1 ? plusieurs : un}` };
+      }),
     surface, surfaceSol, surfaceOcc, occupation,
     prix: { hai, nv, honos, taux, notaire, travaux, m2: surface > 0 ? Math.round(hai / surface) : 0 },
     rendement: r,

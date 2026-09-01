@@ -11,18 +11,27 @@
   --dv-or: #b99b63;
   --dv-or-clair: #d8bd8b;
   --dv-texte: #f1f1f3;
-  --dv-gris: #9a9aa2;
+  /* Éclairci pour #239 : à #9a9aa2 sur fond #2f3038, le texte de service
+     passait sous le seuil de lisibilité une fois imprimé. */
+  --dv-gris: #b6b6be;
   --dv-vert: #6ec07a;
   --dv-rouge: #e2707a;
   --dv-ligne: #4a4b55;
 }
 
+/* Retour #239 : « je veux vraiment que les polices soient plus grasses car
+   c'est illisible, donc uniformise cela sur tout le dossier. » Le document est
+   composé en clair sur fond sombre, où un texte maigre se creuse au lieu de
+   ressortir — c'est le contraire du papier blanc. Le corps passe donc en
+   demi-gras, et le gris de service s'éclaircit pour rester lisible à côté. */
 .dv {
   background: #6b6b73;
   padding: 14px 0;
   font-family: var(--font-body), "Segoe UI", system-ui, sans-serif;
   color: var(--dv-texte);
+  font-weight: 500;
 }
+.dv b, .dv th { font-weight: 700; }
 .dv.nu { background: none; padding: 0; }
 
 .dv-page {
@@ -59,12 +68,10 @@
   width: 9mm; height: 9mm;
   fill: none; stroke: #fff; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round;
 }
-/* La couverture garde sa tranche pleine largeur : c'est elle qui pose le
-   format du document, et son titre y tient sur toute la hauteur. */
-.dv-page.dv-cv .dv-tranche { width: 30mm; }
-.dv-page.dv-cv .dv-tr-t { top: 26mm; font-size: 20pt; letter-spacing: .12em; }
-.dv-page.dv-cv .dv-tr-ic { top: 9mm; width: 11mm; height: 11mm; }
-.dv-page.dv-cv .dv-in { inset: 0 30mm 0 0; }
+/* Retour #243 : « uniformise la bande latérale de la première page avec celle
+   des autres, c'est celle des autres pages qu'il faut prendre en exemple. »
+   La couverture gardait les 30 mm d'origine : deux largeurs de tranche dans un
+   même document, ça se voit au feuilletage. */
 
 .dv-pied {
   position: absolute; left: 8mm; right: 8mm; bottom: 18mm;
@@ -115,12 +122,23 @@
 .dv-case b { font-size: 19pt; font-weight: 700; }
 .dv-case b i { font-style: normal; font-size: 10pt; color: var(--dv-gris); }
 .dv-cible { font-size: 15pt !important; line-height: 1.25; color: #fff; }
-.dv-chips { display: flex; flex-wrap: wrap; gap: 2mm; justify-content: center; margin-top: 2mm; }
-.dv-chip {
-  display: inline-flex; align-items: center; gap: 1.6mm;
-  background: #4c4d57; border-radius: 6mm; padding: 1.6mm 4mm;
-  font-size: 9.5pt; font-weight: 600;
+/* Retour #244 : « quand il y a plus de 2 types de lots, il faut présenter avec
+   deux types de lots par ligne afin que ça fasse plus joli. Le contenant a
+   toujours la même taille, donc il vaut mieux réduire la taille des types de
+   lots si ça passe plus. » Une grille de deux colonnes plutôt qu'un flux : les
+   pastilles s'alignent au lieu de finir en escalier. */
+.dv-chips {
+  display: grid; grid-template-columns: 1fr; gap: 1.8mm;
+  justify-items: center; margin-top: 2mm;
 }
+.dv-chips.deux { grid-template-columns: 1fr 1fr; }
+.dv-chip {
+  display: inline-flex; align-items: center; gap: 1.6mm; white-space: nowrap;
+  background: #4c4d57; border-radius: 6mm; padding: 1.6mm 4mm;
+  font-size: 9.5pt; font-weight: 700;
+}
+/* Quatre pastilles ou plus : on rentre les cotes plutôt que de déborder. */
+.dv-chips.serree .dv-chip { font-size: 8.5pt; padding: 1.3mm 3mm; gap: 1.2mm; }
 .dv-chip-ic { width: 4mm; height: 4mm; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .dv-prix { font-size: 26pt !important; color: #fff; }
 .dv-prix i { font-size: 14pt !important; color: var(--dv-or-clair) !important; }
@@ -231,6 +249,11 @@
 .dv-tab td.rouge { color: var(--dv-rouge); }
 .dv-tab td.or, .dv-tab td .or { color: var(--dv-or-clair); }
 .dv-tab td i { font-style: normal; font-size: 9pt; color: var(--dv-gris); }
+/* Retours #239 et #240 : le picto du type de lot reste sur SA ligne. Posé en
+   image dans le flux, il se repliait comme un mot dès que le libellé
+   remplissait la cellule — « ⌂ » au-dessus, « Duplex T2 + ext » en dessous. */
+.dv-lot { display: flex; align-items: center; gap: 1.8mm; }
+.dv-lot .dv-ic { flex: none; }
 .dv-tab tfoot td {
   border-top: .4mm solid var(--dv-or); border-bottom: 0;
   padding-top: 3mm; font-weight: 700; background: #45464f;
@@ -377,7 +400,14 @@ body:has(.dv.nu) .fadd, body:has(.dv.nu) .fchip { display: none; }
      vient de globals.css, qui impose `body { background: #fff }` à
      l'impression. On peint donc la feuille du même fond que les pages : la
      fraction non couverte devient invisible au lieu d'être blanche. */
+  /* Trois épaisseurs, parce que le blanc peut venir de trois endroits : la
+     feuille (globals.css impose `body { background: #fff }` à l'impression),
+     le conteneur du dossier, et la fraction de page que l'arrondi laisse
+     découverte. `:has()` passe devant globals.css sans dépendre de l'ordre
+     dans lequel Next assemble les feuilles — c'est ce qui manquait. */
   html, body { background: var(--dv-fond) !important; }
+  html:has(.dv), body:has(.dv) { background: var(--dv-fond) !important; }
+  .dv, .dv.nu { background: var(--dv-fond) !important; }
   .noprint, .dos-bar { display: none !important; }
   .brg-bar, .brg-voile, .side, .bottbar, .fadd, .fchip,
   .rv-fab, .rv-chip, .rv-pin, .rv-zone, .rv-panel { display: none !important; }
