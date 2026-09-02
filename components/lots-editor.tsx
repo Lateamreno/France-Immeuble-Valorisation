@@ -10,9 +10,10 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import {
-  addLot, ajouterTypologie, bailDuLot, deleteLot, duplicateLot, locataireDuLot,
+  addLocataire, addLot, ajouterTypologie, bailDuLot, deleteLot, duplicateLot, locataireDuLot,
   setLotTravaux, updateLots, type LotPatch,
 } from "@/lib/bo/actions";
+import { dateMatrice, lireMatrice, matriceCsv, rempli } from "@/lib/bo/matrice";
 import { ChampDate } from "@/components/champ-date";
 import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
@@ -275,6 +276,11 @@ type Row = {
   lot_rattache: string;
   Etat: string; Type_dpe: string; renov_year: string;
   commentaire: string;
+  /* Bail et locataire venus de la matrice d'import (#261). Ils attendent que le
+     lot existe en base pour s'y rattacher — un bail sans lot n'a nulle part où
+     aller. Vides pour un lot créé à l'écran. */
+  impBail?: Record<string, string>;
+  impLoc?: Record<string, string>;
 };
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -601,6 +607,39 @@ export function LotsEditor({ b }: { b: BienData }) {
         if (Number.isFinite(montant) && montant > 0) {
           await setLotTravaux(immeubleId, id, `lot ${r.numero || r.Type_lot || ""}`.trim(), montant, null, 0, objetTravaux(r));
         }
+        /* Le bail et le locataire venus de la matrice (#261) : maintenant que
+           le lot a une identité, ils peuvent s'y rattacher. */
+        if (r.impBail) {
+          const v = r.impBail;
+          const statut = ["en_cours", "impayes", "preavis", "expulsion"].includes(v.statut)
+            ? (v.statut as "en_cours" | "impayes" | "preavis" | "expulsion") : "en_cours";
+          await bailDuLot(immeubleId, id, {
+            Type_bail: r.Type_bail && r.Type_bail !== "Vide" ? r.Type_bail : null,
+            loyer_init: N(v.loyer_initial) ?? null,
+            depot_garantie: N(v.depot_garantie) ?? null,
+            date_start: dateMatrice(v.date_entree) || null,
+            indice_type: v.indice || null,
+            indice_init: N(v.indice_signature) ?? null,
+            indice_actuel: N(v.indice_actuel) ?? null,
+            statut,
+            commentaire: v.commentaire || null,
+          });
+        }
+        if (r.impLoc) {
+          const v = r.impLoc;
+          const pm = /^(oui|o|x|vrai|true|1)$/i.test(v.societe.trim());
+          await addLocataire(immeubleId, {
+            pm,
+            pm_nom: pm ? v.nom : undefined,
+            pp_civilite: pm ? undefined : v.civilite || undefined,
+            pp_prenom: pm ? undefined : v.prenom || undefined,
+            pp_nom: pm ? undefined : v.nom,
+            phone: v.telephone || undefined,
+            email: v.email || undefined,
+            lotIds: [id],
+            commentaire: v.commentaire || undefined,
+          });
+        }
       }
       if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r, rang) })));
       // Travaux des lots existants : seulement ceux dont le montant a bougé.
@@ -615,7 +654,11 @@ export function LotsEditor({ b }: { b: BienData }) {
         await setLotTravaux(immeubleId, r.id, `lot ${r.numero || r.Type_lot || ""}`.trim(), cible, dediee ? String(dediee._id) : null, autres, objetTravaux(r));
       }
       reordonne.current = false;
-      enregistre.current = rows.map((r) => ({ ...r, isNew: false, travaux: "", travaux_objet: "", travaux_urgence: "" }));
+      enregistre.current = rows.map((r) => ({
+        ...r, isNew: false, travaux: "", travaux_objet: "", travaux_urgence: "",
+        impBail: undefined, impLoc: undefined,
+      }));
+      setImporte(null);
       setDirty(new Set());
     });
 
@@ -695,31 +738,51 @@ export function LotsEditor({ b }: { b: BienData }) {
     URL.revokeObjectURL(url);
   };
 
+  /* La matrice vierge à remplir dans Excel (retour #261). Elle porte les mêmes
+     colonnes que l'import, plus celles du bail et du locataire : un immeuble de
+     cinquante lots se remplit au tableur, pas case par case à l'écran. */
+  const matrice = () => {
+    const url = URL.createObjectURL(new Blob([matriceCsv()], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `matrice-etat-locatif-${S(b.im.adresse_ville) || "immeuble"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /** Ce que l'import vient de créer, à annoncer avant que l'agent enregistre. */
+  const [importe, setImporte] = useState<{ lots: number; baux: number; locataires: number } | null>(null);
+
   const importer = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const txt = String(reader.result ?? "").replace(/^﻿/, "");
-      const lignes = txt.split(/\r?\n/).filter((l) => l.trim());
-      if (lignes.length < 2) return;
-      const entetes = lignes[0].split(";").map((h) => h.trim());
+      const lues = lireMatrice(String(reader.result ?? ""));
+      if (lues.length === 0) {
+        setImporte({ lots: 0, baux: 0, locataires: 0 });
+        return;
+      }
       const nouveaux: Row[] = [];
-      for (const l of lignes.slice(1, 201)) {
-        const vals = l.split(";");
-        const o = Object.fromEntries(entetes.map((h, i) => [h, (vals[i] ?? "").trim()]));
+      let baux = 0, locataires = 0;
+      for (const { lot: o, bail, locataire } of lues) {
         const id = `new_${Date.now()}_${nouveaux.length}`;
+        if (rempli(bail)) baux++;
+        if (locataire.nom.trim()) locataires++;
         nouveaux.push({
-          id, isNew: true, ordre: 0, travaux: o.travaux ?? "", travaux_objet: "", travaux_urgence: "",
-          batiment: o.batiment ?? "", etage: o.etage ?? "", numero: o.numero ?? "",
-          Destination: o.Destination ?? "Logement", Type_lot: o.Type_lot ?? "",
-          surface_carrez: o.surface_carrez ?? "", surface_sol: o.surface_sol ?? "",
-          Type_bail: o.Type_bail ?? "Vide", loyer: o.loyer ?? "", loyer_max: o.loyer_max ?? "",
+          id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
+          batiment: o.batiment, etage: o.etage, numero: o.numero,
+          Destination: o.Destination || "Logement", Type_lot: o.Type_lot,
+          surface_carrez: o.surface_carrez, surface_sol: o.surface_sol,
+          Type_bail: o.Type_bail || "Vide", loyer: o.loyer, loyer_max: o.loyer_max,
           lot_rattache: "",
-          Etat: o.Etat ?? "n.c.", Type_dpe: o.Type_dpe ?? "n.c.",
-          renov_year: o.renov_year ?? "", commentaire: o.commentaire ?? "",
+          Etat: o.Etat || "n.c.", Type_dpe: o.Type_dpe || "n.c.",
+          renov_year: o.renov_year, commentaire: o.commentaire,
+          impBail: rempli(bail) ? bail : undefined,
+          impLoc: locataire.nom.trim() ? locataire : undefined,
         });
       }
       setRows((rs) => [...rs, ...nouveaux]);
       setDirty((d) => { const n = new Set(d); nouveaux.forEach((r) => n.add(r.id)); return n; });
+      setImporte({ lots: nouveaux.length, baux, locataires });
     };
     reader.readAsText(file, "utf-8");
   };
@@ -1040,6 +1103,26 @@ export function LotsEditor({ b }: { b: BienData }) {
         )}
       </div>
 
+      {/* Ce que l'import a lu (#261). Un import muet est le pire des deux
+          mondes : ou bien il n'a rien lu et l'agent le découvre en cherchant
+          ses lots, ou bien il en a lu quinze de trop et il faut les défaire.
+          Le compte s'affiche AVANT l'enregistrement — rien n'est encore
+          écrit, « Annuler » suffit à tout reprendre. */}
+      {importe && (
+        <div className={`imp-avis${importe.lots === 0 ? " ko" : ""}`}>
+          {importe.lots === 0 ? (
+            <>Aucune ligne lue. Vérifiez que le fichier vient bien du bouton « Matrice » — une ligne
+            sans numéro de lot, sans surface et sans loyer est ignorée.</>
+          ) : (
+            <><b>{importe.lots}</b> lot{importe.lots > 1 ? "s" : ""} lu{importe.lots > 1 ? "s" : ""}
+            {importe.baux > 0 && <>, dont <b>{importe.baux}</b> avec un bail</>}
+            {importe.locataires > 0 && <> et <b>{importe.locataires}</b> avec un locataire</>}.
+            Relisez le tableau, puis enregistrez.</>
+          )}
+          <button type="button" onClick={() => setImporte(null)} aria-label="Fermer">✕</button>
+        </div>
+      )}
+
       {/* Barre d'outils sticky, libellés visibles, import/export */}
       <div className="ltools v2">
         <button className="ltb lbl" type="button" onClick={addRow}>
@@ -1054,6 +1137,13 @@ export function LotsEditor({ b }: { b: BienData }) {
         <span className="sp" style={{ flex: 1 }} />
         {/* Import et export au centre, comme au BO : la place de droite est
             celle d'Annuler et d'Enregistrer (#85). */}
+        {/* Retour #261 — la matrice se télécharge à côté d'Importer, parce que
+            c'est là qu'on la cherche : on vient pour importer, on découvre
+            qu'il faut un fichier au bon format. */}
+        <button className="ltb lbl gold" type="button" onClick={matrice}
+          title="Télécharger le tableau vierge à remplir (lots, baux et locataires)">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 9h16M9 9v11" /></svg> Matrice
+        </button>
         <label className="ltb lbl gold">
           <svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M4 20h16" /></svg> Importer
           <input type="file" accept=".csv,text/csv" style={{ display: "none" }}

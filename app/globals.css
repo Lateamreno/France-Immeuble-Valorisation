@@ -6183,3 +6183,19 @@ a.cfc-t:hover { text-decoration: underline; }
 }
 .occ-b:hover { color: var(--gold-bo); }
 .occ-b:hover .plus { border-color: var(--gold-bo); color: var(--gold-bo); }
+
+/* L'avis d'import de la matrice (retour #261) : ce que le fichier a livré,
+   annoncé avant l'enregistrement pour qu'un import de travers se reprenne
+   d'un clic sur Annuler. */
+.imp-avis {
+  display: flex; align-items: center; gap: 10px;
+  margin: 10px 0 0; padding: 9px 12px;
+  border: 1px solid #b7e2ae; border-radius: 6px;
+  background: #f2faf0; color: #2f5c25; font-size: 13px;
+}
+.imp-avis.ko { border-color: #e8c9a0; background: #fdf6ec; color: #8a5a12; }
+.imp-avis b { font-weight: 600; }
+.imp-avis button {
+  margin-left: auto; border: 0; background: none; cursor: pointer;
+  color: inherit; font-size: 15px; line-height: 1; padding: 2px 4px;
+}
