@@ -514,6 +514,94 @@ export async function deleteBail(immeubleId: string, bailId: string) {
   refresh(immeubleId);
 }
 
+/** Le profil que porte un locataire dans la base contacts (`Types`). */
+const PROFIL_LOCATAIRE = "Locataire";
+
+/** Ce qu'on sait d'un locataire quand vient le moment d'en faire un contact. */
+type IdentiteLocataire = {
+  pm?: boolean; pm_nom?: string | null;
+  pp_civilite?: string | null; pp_prenom?: string | null; pp_nom?: string | null;
+  phone?: string | null; email?: string | null;
+};
+
+/**
+ * La fiche contact d'un locataire, dès qu'on connaît son e-mail.
+ *
+ * MAV : « quand on remplit les infos e-mail, téléphone, etc., ça les crée en
+ * contact après, mais tant que ces infos sont pas remplies alors c'est pas
+ * besoin » ; puis « il faut que quand on rentre au moins l'e-mail, ça crée le
+ * contact avec la fonction locataire ».
+ *
+ * L'e-mail est le seuil, et pas le nom : un nom seul ne permet ni d'écrire, ni
+ * de rapprocher deux fiches, ni de rattacher un message reçu. Une adresse, si.
+ * C'est aussi elle qui sert de clé de rapprochement — un locataire déjà connu
+ * comme apporteur ou comme acquéreur ne doit pas se dédoubler (retour #248),
+ * il gagne simplement le profil « Locataire » en plus des siens.
+ *
+ * Sur un contact qui existe déjà, on ne COMPLÈTE que les cases vides. Un
+ * locataire est une source d'information faible : son nom saisi à la volée dans
+ * l'état locatif n'a aucune raison d'écraser une fiche renseignée à la main.
+ *
+ * RGPD (§8.3) : la fiche reste interne au BO. Rien de ce qui est écrit ici ne
+ * franchit l'API publique marketplace, où le locataire reste anonyme.
+ */
+async function contactDuLocataire(x: IdentiteLocataire): Promise<string | null> {
+  const email = (x.email ?? "").trim();
+  if (!email.includes("@") || !SB_KEY) return null;
+
+  const civilite = x.pm ? undefined : (x.pp_civilite ?? undefined) || undefined;
+  const prenom = x.pm ? undefined : (x.pp_prenom ?? undefined) || undefined;
+  const nom = x.pm ? (x.pm_nom ?? undefined) || undefined : (x.pp_nom ?? undefined) || undefined;
+  const phone = (x.phone ?? undefined) || undefined;
+  const now = new Date().toISOString();
+
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("data->>email", `ilike.${email.toLowerCase()}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  const dejaLa = res?.ok ? ((await res.json()) as { data: Record<string, unknown> }[])[0]?.data : undefined;
+
+  if (dejaLa) {
+    const texte = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const types = Array.isArray(dejaLa.Types) ? dejaLa.Types.map(String) : [];
+    const patch: Record<string, unknown> = {};
+    if (!types.includes(PROFIL_LOCATAIRE)) patch.Types = [...types, PROFIL_LOCATAIRE];
+    const combler = (cle: string, v?: string) => { if (v && !texte(dejaLa[cle])) patch[cle] = v; };
+    combler("Civilité", civilite);
+    combler("prénom", prenom);
+    combler("nom", nom);
+    combler("portable", phone);
+    if (x.pm) combler("entreprise_nom", nom);
+    if (Object.keys(patch).length === 0) return String(dejaLa._id);
+    patch["Modified Date"] = now;
+    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: String(dejaLa._id), p_patch: patch });
+    revalidatePath("/contacts");
+    revalidatePath(`/contact/${String(dejaLa._id)}`);
+    return String(dejaLa._id);
+  }
+
+  const id = newId();
+  await rpc("bo_insert_doc", {
+    p_table: "bo_contact",
+    p_id: id,
+    p_doc: cleanPatch({
+      "Civilité": civilite,
+      "prénom": prenom,
+      nom,
+      entreprise_nom: x.pm ? nom : undefined,
+      email,
+      portable: phone,
+      Types: [PROFIL_LOCATAIRE],
+      "Created Date": now,
+      "Modified Date": now,
+    }),
+  });
+  revalidatePath("/contacts");
+  return id;
+}
+
 /** Crée un locataire (réplique de la modale « Nouveau locataire »). */
 export async function addLocataire(
   immeubleId: string,
@@ -553,6 +641,7 @@ export async function addLocataire(
       "Modified Date": now,
     }),
   });
+  await contactDuLocataire(input);
   refresh(immeubleId);
   return id;
 }
@@ -598,6 +687,18 @@ export async function updateLocataire(
     "Modified Date": new Date().toISOString(),
   });
   await rpc("bo_patch_doc", { p_table: "bo_locataire", p_id: locataireId, p_patch: clean });
+  /* L'e-mail arrive rarement du premier coup : le nom se saisit à la volée
+     dans l'état locatif, l'adresse plus tard. La fiche contact se crée donc
+     aussi à la modification, pas seulement à la création. */
+  await contactDuLocataire({
+    pm,
+    pm_nom: nom,
+    pp_civilite: patch.pp_civilite !== undefined ? patch.pp_civilite : S2(avant?.["pp_civilité"]),
+    pp_prenom: prenom,
+    pp_nom: famille,
+    phone: patch.phone !== undefined ? patch.phone : S2(avant?.phone),
+    email: patch.email !== undefined ? patch.email : S2(avant?.email),
+  });
   refresh(immeubleId);
 }
 
