@@ -510,10 +510,20 @@ export async function addCharge(
 }
 
 /** Modifie une charge existante puis recalcule les totaux. */
+/* La nature et le commentaire se modifient depuis la même fenêtre que la
+   création (retour #257). `null` vide une case, comme pour les lots (#255) :
+   un montant effacé doit disparaître, pas revenir. */
 export async function updateCharge(
   immeubleId: string,
   chargeId: string,
-  patch: Partial<{ total_an: number; recup_an: number; non_recup_an: number; commentaire: string }>,
+  patch: Partial<{
+    Type_charge: string;
+    type_autre: string | null;
+    total_an: number | null;
+    recup_an: number | null;
+    non_recup_an: number | null;
+    commentaire: string | null;
+  }>,
 ) {
   const clean = cleanPatch({ ...patch, "Modified Date": new Date().toISOString() });
   await rpc("bo_patch_doc", { p_table: "bo_charge", p_id: chargeId, p_patch: clean });
