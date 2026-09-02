@@ -21,6 +21,7 @@ import {
 } from "@/lib/bo/actions";
 import { MOYENS } from "@/lib/bo/itineraire";
 import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
+import { analyseAuto } from "@/lib/bo/analyse";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -410,8 +411,10 @@ export function EstimationWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [agg.parDest, secteur]);
   const [refs, setRefs] = useMemServi("refs", refsServies);
+  /* Même précaution que pour les fondamentaux : deux cases corrigées dans le
+     même souffle doivent tenir toutes les deux. */
   const majRef = (dest: string, cle: "l" | "p" | "r", v: string) =>
-    setRefs({ ...refs, [dest]: { ...refs[dest], [cle]: v.replace(/[^\d.,]/g, "") } });
+    setRefs((r) => ({ ...r, [dest]: { ...r[dest], [cle]: v.replace(/[^\d.,]/g, "") } }));
 
   const glob = useMemo(() => {
     let sl = 0, sp = 0, st = 0;
@@ -468,9 +471,43 @@ export function EstimationWizard({
   const lm2Max = agg.carrez > 0 ? agg.loyersMaxAn / 12 / agg.carrez : 0;
 
   /* --- Analyse --- */
-  const [scores, setScores] = useMem<Record<string, number>>("scores", { bati: 3, emp: 4, lot: 4 });
+  /* Retour #273 : « pour les fondamentaux, si j'ai rien indiqué tu laisses
+     vierge et t'encadres en rouge pour que je remplisse moi-même ». Trois notes
+     posées d'office, c'est un avis que personne n'a donné — et le dossier
+     l'imprimait en toutes lettres (« bien situé ») comme s'il venait de
+     l'agent. Zéro veut dire « pas encore jugé ». */
+  const [scores, setScores] = useMem<Record<string, number>>("scores", { bati: 0, emp: 0, lot: 0 });
+  const fondamentauxOk = FONDAMENTAUX.every((f) => (scores[f.cle] ?? 0) > 0);
   const [cibles, setCibles] = useMem<string[]>("cibles", ["Investisseur"]);
-  const [analyse, setAnalyse] = useMem("analyse", "");
+  /**
+   * L'analyse, rédigée depuis les chiffres (retour #272).
+   *
+   * MAV a dicté le canevas ; `analyseAuto` l'applique. Le texte se recalcule
+   * tant que personne n'y a touché — c'est une valeur SERVIE, au même titre
+   * que le secteur ou les travaux : noter les fondamentaux ou corriger le prix
+   * doit le refaire, pas le laisser périmé. Dès qu'on écrit dedans, la
+   * mémoire garde la version de l'agent (voir `useMemoireServie`).
+   */
+  const analyseServie = useMemo(
+    () => analyseAuto({
+      phraseEmplacement: scores.emp > 0 ? FONDAMENTAUX[1].libelles[scores.emp - 1] : undefined,
+      phraseBati: scores.bati > 0 ? FONDAMENTAUX[0].libelles[scores.bati - 1] : undefined,
+      ecartLoyers: ecart(lm2Act, rLoyer),
+      dpeLogements: b.lots
+        .filter((l) => String(l.Destination ?? "") === "Logement")
+        .map((l) => S(l.Type_dpe)),
+      travaux: travauxTot,
+      travauxAPrevoir: b.lots.some((l) => String(l.Etat ?? "") === "Travaux")
+        || b.travaux.length > 0,
+      hai,
+      netVendeur: nv,
+      rendementPotentiel: haiTravaux > 0 ? (agg.loyersMaxAn / haiTravaux) * 100 : 0,
+      m2ApresTravaux: agg.carrez > 0 ? haiTravaux / agg.carrez : 0,
+      m2Decoupe: rPrix,
+    }),
+    [scores, lm2Act, rLoyer, rPrix, b.lots, b.travaux, travauxTot, hai, nv, haiTravaux, agg.carrez, agg.loyersMaxAn],
+  );
+  const [analyse, setAnalyse] = useMemServi("analyse", analyseServie);
   const [titre, setTitre] = useMem("titre", `Estimation ${S(im.adresse_ville)}`.trim());
 
   /* Ce qui a servi à fabriquer le PDF, en une empreinte.
@@ -499,7 +536,7 @@ export function EstimationWizard({
   const okCharges = chTf !== "";
   const okLocatif = agg.tot > 0 && agg.carrez > 0;
   const okSecteur = rLoyer > 0 && rPrix > 0 && rRenta > 0;
-  const okPrixAnalyse = hai > 0 && analyse.trim().length > 0;
+  const okPrixAnalyse = hai > 0 && analyse.trim().length > 0 && fondamentauxOk;
   /* Sur une reprise, les trois premières étapes sont derrière nous : elles
      s'affichent faites, pas en alerte sur des données de fiche qui ont pu
      bouger depuis (retour #98). */
@@ -1051,21 +1088,26 @@ export function EstimationWizard({
             <div className="est-sect">Fondamentaux</div>
             <div className="est-fonds">
               {FONDAMENTAUX.map((f) => (
-                <div className="est-fond" key={f.cle}>
+                <div className={`est-fond${(scores[f.cle] ?? 0) > 0 ? "" : " requis"}`} key={f.cle}>
                   <div className="h">
                     {f.label}
                     <span className="et">
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" className={n <= scores[f.cle] ? "on" : ""}
+                        <button key={n} type="button" className={n <= (scores[f.cle] ?? 0) ? "on" : ""}
                           title={f.libelles[n - 1]}
-                          onClick={() => setScores({ ...scores, [f.cle]: n })}>★</button>
+                          /* Forme fonctionnelle : `{ ...scores }` fige l'objet
+                             du rendu courant, si bien que noter les trois
+                             fondamentaux coup sur coup ne gardait que le
+                             dernier — les deux premiers repartaient de la même
+                             photo. Constaté au navigateur. */
+                          onClick={() => setScores((s2) => ({ ...s2, [f.cle]: n }))}>★</button>
                       ))}
                     </span>
                   </div>
-                  <div className="s">{f.libelles[scores[f.cle] - 1]}</div>
+                  <div className="s">{(scores[f.cle] ?? 0) > 0 ? f.libelles[scores[f.cle] - 1] : "à noter"}</div>
                 </div>
               ))}
-              <Ok />
+              <Etat ok={fondamentauxOk} />
             </div>
 
             <div className="est-sect">Cibles</div>
@@ -1104,6 +1146,11 @@ export function EstimationWizard({
               <Etat ok={analyse.trim().length > 0} />
             </div>
             <div className={`est-cpt${analyse.length > 900 ? " trop" : ""}`}>
+              {analyse.trim() !== analyseServie.trim() && (
+                <button type="button" className="est-reprendre" onClick={() => setAnalyse(analyseServie)}>
+                  Reprendre le texte rédigé
+                </button>
+              )}
               {analyse.length} / 900 caractères
               {analyse.length > 900 && " — au-delà, le texte risque de déborder de la page. Vérifiez le PDF avant d'envoyer."}
             </div>
