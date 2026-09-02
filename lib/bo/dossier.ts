@@ -116,13 +116,25 @@ export function construireDossier(
   const loyerM2Actuel = surfaceM2 > 0 ? revenusM2 / 12 / surfaceM2 : 0;
   const ecartLoyers = refLoyer > 0 ? Math.round((loyerM2Actuel / refLoyer - 1) * 100) : 0;
 
-  /* --- Facteur limitant : la méthode qui donne le prix le plus bas --- */
+  /* --- Facteur limitant : la méthode qui donne le prix le plus bas ---------
+     Retour #278 : « c'est pas normal que le prix au m² HAI et le prix au m²
+     après travaux soient les mêmes ». Ils l'étaient parce que la méthode « prix
+     au m² » recopiait le prix du secteur dans les deux colonnes.
+
+     MAV : « le prix au m² qu'il faut considérer en HAI sur la première ligne,
+     c'est celui qui affiche le prix au m² APRÈS TRAVAUX qui correspond au prix
+     au m² secteur ». Autrement dit, un acquéreur qui paie le prix du secteur
+     l'atteint travaux compris : c'est l'APRÈS-travaux qui vaut la référence, et
+     le prix de vente est donc ce que le marché supporte MOINS ce qu'il faudra
+     dépenser. Sans cette soustraction, on demandait au vendeur le prix du
+     secteur ET on laissait les travaux à l'acquéreur. */
   const parM2 = {
-    m2: refPrix,
+    m2: 0,
     m2Travaux: refPrix,
-    prix: Math.round((carrez * refPrix) / 1000) * 1000,
+    prix: Math.max(0, Math.round((carrez * refPrix - travaux) / 1000) * 1000),
     renta: 0,
   };
+  parM2.m2 = carrez > 0 ? parM2.prix / carrez : 0;
   parM2.renta = parM2.prix > 0 ? (loyers / parM2.prix) * 100 : 0;
   const parRenta = {
     prix: refRenta > 0 ? Math.round(loyers / (refRenta / 100) / 1000) * 1000 : 0,

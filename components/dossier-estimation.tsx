@@ -319,24 +319,28 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
         </div>
 
         <h2 className="dos-h"><Ic d={I.piece} /> Loyers du secteur en € HC/m²/mois <i>(sources : Leboncoin, Seloger…)</i></h2>
+        {/* Retour #277 : « on n'affiche pas les parkings et les caves ici, car
+            ça ne rentre pas dans le calcul des prix au m² ou du rendement ».
+            Six colonnes dont deux qui ne peuvent que dire « — » désignaient
+            un manque là où il n'y en a pas. */}
         <TableSecteur
-          lignes={d.lignes}
-          valeur={(l) => (l.refLoyer ? `${fr1(l.refLoyer)} €/${l.auLot ? "lot" : "m²"}` : "—")}
+          lignes={auM2}
+          valeur={(l) => (l.refLoyer ? `${fr1(l.refLoyer)} €/m²` : "—")}
           moyLabel="Loyer moyen"
           moy={`${fr1(d.ref.loyer)} €/m²/mois`}
         />
 
         <h2 className="dos-h"><Ic d={I.etiquette} /> Prix du secteur en €/m² <i>(source : notaires)</i></h2>
         <TableSecteur
-          lignes={d.lignes}
-          valeur={(l) => (l.refPrix ? `${group(l.refPrix)} €/${l.auLot ? "lot" : "m²"}` : "—")}
+          lignes={auM2}
+          valeur={(l) => (l.refPrix ? `${group(l.refPrix)} €/m²` : "—")}
           moyLabel="Prix moyen"
           moy={`${group(d.ref.prix)} €/m²`}
         />
 
         <h2 className="dos-h"><Ic d={I.pourcent} /> Rendement du secteur <i>(sources : Loyers du secteur et prix du secteur)</i></h2>
         <TableSecteur
-          lignes={d.lignes}
+          lignes={auM2}
           valeur={(l) => (l.refLoyer && l.refPrix ? `${fr1((l.refLoyer * 12 * 100) / l.refPrix)} %` : "—")}
           moyLabel="Rendement"
           moySous="loyer moy / prix moy"
@@ -353,19 +357,28 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
               </tr>
             </thead>
             <tbody>
+              {/* Retour #278 — l'or dit « c'est la référence de cette
+                  méthode », le rouge et le vert disent « voilà où cette
+                  méthode place l'immeuble par rapport au secteur ».
+
+                  Sur la ligne Prix au m², c'est le prix APRÈS TRAVAUX qui vaut
+                  le prix du secteur : lui et le prix de vente sont en or, et
+                  c'est le rendement qui se compare. Sur la ligne Rendement,
+                  l'inverse : le rendement et le prix sont en or, et ce sont
+                  les deux prix au m² qui se comparent. */}
               <tr className={lim === "m2" ? "" : "off"}>
-                <td className="g">Prix au m²</td>
-                <td className={cM2(parM2.m2)}>{group(parM2.m2)} €/m²</td>
-                <td className={cM2(parM2.m2Travaux)}>{group(parM2.m2Travaux)} €/m²</td>
+                <td className="g or">Prix au m²</td>
+                <td>{group(parM2.m2)} €/m²</td>
+                <td className="or">{group(parM2.m2Travaux)} €/m²</td>
                 <td className={cRenta(parM2.renta)}>{fr1(parM2.renta)} %</td>
-                <td className="p">{group(parM2.prix)} €</td>
+                <td className="p or">{group(parM2.prix)} €</td>
               </tr>
               <tr className={lim === "renta" ? "" : "off"}>
-                <td className="g">Rendement</td>
+                <td className="g or">Rendement</td>
                 <td className={cM2(parRenta.m2)}>{group(parRenta.m2)} €/m²</td>
                 <td className={cM2(parRenta.m2Travaux)}>{group(parRenta.m2Travaux)} €/m²</td>
-                <td className={cRenta(parRenta.renta)}>{fr1(parRenta.renta)} %</td>
-                <td className="p">{group(parRenta.prix)} €</td>
+                <td className="or">{fr1(parRenta.renta)} %</td>
+                <td className="p or">{group(parRenta.prix)} €</td>
               </tr>
             </tbody>
           </table>
@@ -427,13 +440,24 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
             <ColonneBilan titre={d.bilan.identiques ? "Au prix retenu" : "Actuel"}
               c={d.bilan.actuel} secteur={d.ref} />
             {!d.bilan.identiques && (
-              <ColonneBilan titre="Potentiel" c={d.bilan.potentiel} secteur={d.ref} />
+              <ColonneBilan titre="Potentiel*" c={d.bilan.potentiel} secteur={d.ref} />
             )}
           </div>
         </div>
         <p className="dos-note gris">
           *Honoraires d&apos;Agences Inclus soit {group(d.prix.nv)} € net vendeur.
         </p>
+        {/* Retour #279 — dire en clair ce que « potentiel » suppose. Un
+            propriétaire qui lit un rendement plus élevé que le sien a le droit
+            de savoir sur quoi il repose : tous les lots loués, et les travaux
+            comptés dans le prix. */}
+        {!d.bilan.identiques && (
+          <p className="dos-note gris">
+            *Le potentiel suppose l&apos;immeuble loué en entier. Pour le rendement et
+            le prix au m², on ajoute au prix de vente les travaux qui restent à
+            faire : c&apos;est ce que l&apos;acquéreur dépensera en tout.
+          </p>
+        )}
       </Page>
 
       {/* ------------------------------------------ 6. Dos */}

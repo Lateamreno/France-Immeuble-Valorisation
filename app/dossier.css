@@ -217,10 +217,14 @@ body:has(.dos.nu) .dos-page { margin: 0; box-shadow: none; }
 .dos-tb td { font-size: 11pt; text-align: center; padding: 2.5mm 2mm; background: #fff; }
 .dos-tb tbody tr:not(:last-child) td { border-bottom: .2mm solid #f0f0f0; }
 .dos-tb .tot td { font-weight: 700; border-top: .3mm solid #cfcfcf; }
+/* `.g` d'abord : c'est la couleur par défaut d'un libellé de ligne, et les
+   trois classes de sens qui suivent doivent pouvoir la remplacer. Déclarée
+   après, elle reprenait le dessus sur `.or` et le titre de la ligne retenue
+   restait noir alors qu'il devait être doré (retour #278). */
+.dos-tb .g { color: var(--dos-noir); }
 .dos-tb .rouge { color: var(--dos-rouge); font-weight: 700; }
 .dos-tb .vert { color: var(--dos-vert); font-weight: 700; }
 .dos-tb .or { color: var(--dos-or); font-weight: 700; }
-.dos-tb .g { color: var(--dos-noir); }
 .dos-tb .p { font-weight: 700; }
 .dos-tb tr.off td { color: #b0b0b0; }
 .dos-tb tr.off td.or, .dos-tb tr.off td.vert { color: var(--dos-or); }
