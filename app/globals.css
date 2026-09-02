@@ -5866,10 +5866,24 @@ a.cfc-t:hover { text-decoration: underline; }
 .dpe-b.dE { background: #f2a52c; } .dpe-b.dF { background: #e8722b; }
 .dpe-b.dG { background: #d62f2f; }
 .dpe-b.dvide { background: #e6e6e6; color: var(--gray-lt); }
+/* « Vierge » et « N.C. » sont des mots, pas des lettres : l'étiquette
+   s'élargit et allège sa graisse pour rester lisible (retour #252). */
+.dpe-b.mot { min-width: 0; padding: 0 9px 0 5px; font-size: 10px; font-weight: 600; letter-spacing: .1px; }
+/* Le G+ aggrave le G : même rouge, souligné d'un liseré plus sombre (#253). */
+.dpe-b.dGplus { background: #b81f1f; }
 /* Dans le tableau des lots, l'étiquette est le visage de la liste déroulante :
    le select passe dessus, transparent, et garde le clic. */
 .dpe-cell { position: relative; display: grid; place-items: center; }
 .dpe-cell select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+/* Case non renseignée : plus d'étiquette à masquer, la liste se montre donc
+   elle-même — sa flèche est ce qui dit qu'il y a quelque chose à choisir
+   (retour #252). */
+.dpe-cell.nu { min-height: 20px; }
+.dpe-cell.nu select {
+  position: static; opacity: 1;
+  width: 100%; height: 22px; border: 0; background: transparent;
+  font: inherit; color: var(--gray-lt); text-align: center;
+}
 
 /* #181 — la zone de dépôt permanente de l'onglet Photos. */
 .gph-zone {

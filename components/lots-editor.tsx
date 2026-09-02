@@ -868,11 +868,22 @@ export function LotsEditor({ b }: { b: BienData }) {
                     {/* #173 — l'étiquette de Plein Bail sert de visage à la
                         liste : le select passe dessus, transparent, et garde
                         le clic. */}
-                    <span className="dpe-cell">
+                    {/* Rien de saisi : la case reste vide, avec la seule
+                        flèche de la liste (retour #252). L'étiquette grise
+                        d'avant faisait croire à un DPE vierge, qui est une
+                        réponse, alors qu'il n'y avait pas de réponse. */}
+                    <span className={`dpe-cell${r.Type_dpe ? "" : " nu"}`}>
                       <BadgeDpe lettre={r.Type_dpe} />
                       <select value={r.Type_dpe} aria-label="DPE"
                         onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
-                        <option value="" />{[...new Set([r.Type_dpe, ...DPES])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+                        {/* La liste garde l'ordre du référentiel : la mettre
+                            en tête de la valeur choisie faisait remonter le
+                            G+ au-dessus du A au clic suivant (retour #253).
+                            Une valeur héritée qu'on ne connaît pas s'ajoute
+                            à la fin, pour ne pas la perdre. */}
+                        <option value="" />
+                        {DPES.map((o) => <option key={o}>{o}</option>)}
+                        {r.Type_dpe && !DPES.includes(r.Type_dpe) && <option>{r.Type_dpe}</option>}
                       </select>
                     </span>
                   </td>

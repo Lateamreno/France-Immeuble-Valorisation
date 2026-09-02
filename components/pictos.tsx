@@ -61,12 +61,32 @@ export function Picto({ nom, className = "sic2" }: { nom: string; className?: st
  * lettre. Même dessin dans le tableau des lots, dans l'annonce et dans le
  * dossier — c'est ce qui la rend lisible sans lire.
  */
+/**
+ * Retours #252 et #253 — trois cas que l'étiquette confondait.
+ *
+ * MAV : « le picto pour Vierge est le même que si on met rien […] je veux que
+ * quand y a rien tu mettes même pas le picto. Donc tu mettras toujours le
+ * picto en gris avec N.C. ou Vierge dans ces cas-là, et rien quand on n'a pas
+ * rempli. » Un DPE vierge est une information — le bien n'en a pas encore —
+ * quand une case vide n'en est pas une : les afficher pareil, c'est faire
+ * croire que tout est renseigné.
+ *
+ * Et le G+, qui n'est pas une lettre au sens de l'expression régulière,
+ * tombait dans le cas « inconnu » : cliquer dessus posait bien la valeur mais
+ * l'étiquette restait grise, d'où « le DPE ne se met pas sur le lot ». Il
+ * porte désormais le rouge du G, qu'il aggrave.
+ */
 export function BadgeDpe({ lettre, titre }: { lettre?: string | null; titre?: string }) {
   const l = String(lettre ?? "").trim().toUpperCase();
+  if (!l) return null;
   const connue = /^[A-G]$/.test(l);
+  if (connue || l === "G+") {
+    const cls = l === "G+" ? "dG dGplus" : `d${l}`;
+    return <span className={`dpe-b ${cls}`} title={titre ?? `DPE ${l}`}>{l}</span>;
+  }
+  /* Vierge et n.c. sont des réponses, pas des trous : gris, mais nommées. */
+  const mot = l === "N.C." || l === "NC" ? "N.C." : l === "VIERGE" ? "Vierge" : l;
   return (
-    <span className={`dpe-b ${connue ? `d${l}` : "dvide"}`} title={titre ?? (connue ? `DPE ${l}` : "DPE non communiqué")}>
-      {connue ? l : "—"}
-    </span>
+    <span className="dpe-b dvide mot" title={titre ?? `DPE ${mot}`}>{mot}</span>
   );
 }
