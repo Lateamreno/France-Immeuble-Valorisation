@@ -6159,3 +6159,27 @@ a.cfc-t:hover { text-decoration: underline; }
   font: inherit; font-size: 11.5px; color: var(--gold-bo); text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Retour #258 — la date qui se tape et qui se choisit. */
+.cdate { display: inline-flex; align-items: center; gap: 6px; }
+.cdate .min { width: 118px; }
+.cdate .min.ko { border-color: var(--red); color: var(--red); }
+.cdate-cal {
+  position: relative; display: inline-grid; place-items: center;
+  width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 4px;
+  background: #fff; cursor: pointer; color: var(--gray-lt);
+}
+.cdate-cal:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+.cdate-cal svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+/* Le champ natif ne sert qu'à ouvrir le calendrier : il couvre le picto,
+   invisible, et garde le clic. */
+.cdate-cal input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* Les deux cases d'occupation du tableau des lots : elles ouvrent la fenêtre,
+   donc elles sont des boutons — mais elles gardent l'allure d'une cellule. */
+.occ-b {
+  width: 100%; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-align: center;
+}
+.occ-b:hover { color: var(--gold-bo); }
+.occ-b:hover .plus { border-color: var(--gold-bo); color: var(--gold-bo); }

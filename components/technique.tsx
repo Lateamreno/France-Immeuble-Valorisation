@@ -3,7 +3,8 @@
 // État technique — sous-onglets Composants · Travaux (réplique BO).
 // Composants = cartes type/matériau/état ; travaux rattachés à des lots
 // OU à des composants du bâti, groupés par urgence.
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import { useBaseSaisie } from "@/lib/base-saisie";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros } from "@/lib/format";
@@ -225,17 +226,14 @@ function ComposantsTab({ b }: { b: BienData }) {
   const [lignes, setLignes] = useState<Record<string, Ligne>>(depart);
   const majLigne = (cle: string, v: Ligne) => setLignes((l) => ({ ...l, [cle]: v }));
 
-  const enBase = useRef("");
-  const courant = JSON.stringify({ annee, etat, lignes });
-  if (!enBase.current) enBase.current = courant;
-  const modifie = courant !== enBase.current;
+  const { avant: enBase, modifie, poser } = useBaseSaisie({ annee, etat, lignes });
 
   /* Un seul enregistrement pour tout l'onglet : le bâti et toutes les lignes
      qui ont bougé (retours #264, #265). Les lignes intactes ne sont pas
      réécrites — inutile de faire dater un composant qu'on n'a pas touché. */
   const enregistrer = () =>
     start(async () => {
-      const avant = JSON.parse(enBase.current) as { lignes: Record<string, Ligne> };
+      const avant = enBase();
       await updateTechnique(immeubleId, { year_constru: parse(annee), Etat: etat || undefined });
       for (const { cle, type, composant } of affichees) {
         const v = lignes[cle];
@@ -245,11 +243,11 @@ function ComposantsTab({ b }: { b: BienData }) {
         if (composant) await updateComposant(immeubleId, String(composant._id), patch);
         else if (v.materiau || v.etat) await addComposant(immeubleId, { Type_composant: type, ...patch });
       }
-      enBase.current = JSON.stringify({ annee, etat, lignes });
+      poser({ annee, etat, lignes });
     });
 
   const annuler = () => {
-    const a = JSON.parse(enBase.current) as { annee: string; etat: string; lignes: Record<string, Ligne> };
+    const a = enBase();
     setAnnee(a.annee);
     setEtat(a.etat);
     setLignes(a.lignes);
