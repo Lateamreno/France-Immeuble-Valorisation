@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAgentCourant } from "@/lib/bo/agent-courant";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
-import { createContact, createImmeuble } from "@/lib/bo/actions";
+import { contactParEmail, createContact, createImmeuble, type ContactTrouve } from "@/lib/bo/actions";
+import { DoublonContact } from "@/components/doublon-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
 
@@ -62,6 +63,8 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   const [vendeur, setVendeur] = useState(false);
   /* Par défaut l'agent aux commandes, pas le premier de la liste (#67). */
   const { slug: agent, choisir: setAgent } = useAgentCourant(agents);
+  /** Le contact déjà en base qui porte l'adresse saisie (retour #248). */
+  const [doublon, setDoublon] = useState<ContactTrouve | null>(null);
 
   /* Un contact sans adresse e-mail ne sert à rien : ni estimation, ni
      proposition, ni relance. Elle est donc exigée dès la création (#69). */
@@ -73,6 +76,13 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">Nouveau contact<button type="button" onClick={onClose}>✕</button></div>
         <div className="modal-b">
+          {doublon && (
+            <DoublonContact
+              existant={doublon}
+              onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
+              onChanger={() => setDoublon(null)}
+            />
+          )}
           <div className="mrow" style={{ alignItems: "center" }}>
             <select className="min" style={{ width: 110 }} value={civ} onChange={(e) => setCiv(e.target.value)}>
               <option>Monsieur</option><option>Madame</option>
@@ -84,7 +94,7 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
           <div className="mrow" style={{ marginTop: 6 }}>
             <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
               style={{ width: 200 }} placeholder="E-mail (obligatoire)" value={email}
-              onChange={(e) => setEmail(e.target.value)} />
+              onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
             <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
           </div>
           <span className="mlab">Projet</span>
@@ -106,6 +116,11 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
             title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
             onClick={() =>
               start(async () => {
+                /* Retour #248 : l'adresse est-elle déjà connue ? On demande
+                   avant d'écrire — un doublon créé se rattrape mal, les mails
+                   entrants s'y accrochent aussitôt. */
+                const dejaLa = await contactParEmail(email).catch(() => null);
+                if (dejaLa) { setDoublon(dejaLa); return; }
                 const id = await createContact({
                   "Civilité": civ, "prénom": prenom || undefined, nom,
                   email: email || undefined, portable: portable || undefined,

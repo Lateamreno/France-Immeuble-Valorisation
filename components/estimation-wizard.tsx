@@ -678,7 +678,11 @@ export function EstimationWizard({
     "",
     `Comme convenu, vous trouverez ci-joint l'estimation de votre immeuble sis ${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} à ${S(im.adresse_ville)}.`,
     "",
-    `Nous avons estimé l'immeuble à ${euros(haiMail)} HAI (${euros(nvMail)}) soit ${agg.carrez > 0 ? group(baseMail / agg.carrez) : "—"} €/m² et ${baseMail > 0 ? fr1((agg.loyersMaxAn / baseMail) * 100) : "—"} % de rendement brut après travaux et relocation.${travauxTot > 0 ? ` Pour les travaux nous sommes partis sur ${euros(travauxTot)}.` : ""}`,
+    /* Retour #280 : « pour le prix entre parenthèses, mets bien net vendeur
+       pour que le vendeur comprenne » — sans le mot, deux montants côte à côte
+       n'expliquent rien. Et « nous sommes partis sur » devient « nous avons
+       prévisionné », qui dit un chiffrage plutôt qu'un choix arbitraire. */
+    `Nous avons estimé l'immeuble à ${euros(haiMail)} HAI (${euros(nvMail)} net vendeur) soit ${agg.carrez > 0 ? group(baseMail / agg.carrez) : "—"} €/m² et ${baseMail > 0 ? fr1((agg.loyersMaxAn / baseMail) * 100) : "—"} % de rendement brut après travaux et relocation.${travauxTot > 0 ? ` Pour les travaux, nous avons prévisionné un montant de ${euros(travauxTot)}.` : ""}`,
     "",
     "Ce prix correspond-il à vos attentes ? Seriez-vous disponible demain pour en discuter ?",
     "",
@@ -692,7 +696,12 @@ export function EstimationWizard({
      Sur une estimation déjà partie, c'est le message RÉELLEMENT envoyé qu'on
      reprend, pas une régénération qui dirait autre chose. */
   const objet = objetSaisi ?? reprise?.objet ?? mailObjetAuto;
-  const corps = corpsSaisi ?? reprise?.corps ?? `${mailCorps}\n\n${b.agentInitials} — France Immeuble`;
+  /* Retour #280 — la signature porte le prénom et le nom de l'agent, puis son
+     téléphone, pas ses initiales : « MAV — France Immeuble » ne dit rien à un
+     propriétaire, et ne lui donne aucun moyen de rappeler. */
+  const signature = [b.agentNom || "France Immeuble", "France Immeuble", b.agentTel]
+    .filter(Boolean).join("\n");
+  const corps = corpsSaisi ?? reprise?.corps ?? `${mailCorps}\n\n${signature}`;
 
   return (
     <div className="est">

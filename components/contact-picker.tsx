@@ -7,7 +7,8 @@
 // personne contactée de la modale Suivi.
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { chercherContacts, createContact, type ContactTrouve } from "@/lib/bo/actions";
+import { chercherContacts, contactParEmail, createContact, type ContactTrouve } from "@/lib/bo/actions";
+import { DoublonContact } from "@/components/doublon-contact";
 
 export function ContactPicker({
   titre, libelleValider, valeurActuelle, onAnnuler, onValider,
@@ -26,6 +27,8 @@ export function ContactPicker({
   const [creation, setCreation] = useState(false);
   const [nouveau, setNouveau] = useState({ prenom: "", nom: "", email: "", tel: "" });
   const [err, setErr] = useState<string | null>(null);
+  /** Le contact déjà en base qui porte l'adresse saisie (retour #248). */
+  const [doublon, setDoublon] = useState<ContactTrouve | null>(null);
   const [pending, start] = useTransition();
   const champ = useRef<HTMLInputElement>(null);
 
@@ -50,6 +53,11 @@ export function ContactPicker({
     start(async () => {
       setErr(null);
       try {
+        /* Retour #248 : on regarde d'abord si l'adresse est déjà connue. La
+           question se pose AVANT l'écriture — un doublon créé se rattrape mal,
+           les mails s'y sont déjà accrochés. */
+        const dejaLa = await contactParEmail(nouveau.email).catch(() => null);
+        if (dejaLa) { setDoublon(dejaLa); return; }
         const id = await createContact({
           "prénom": nouveau.prenom.trim() || undefined,
           nom: nouveau.nom.trim() || undefined,
@@ -90,14 +98,20 @@ export function ContactPicker({
           </span>
         </div>
 
-        {creation ? (
+        {creation && doublon ? (
+          <DoublonContact
+            existant={doublon}
+            onReprendre={() => onValider(doublon)}
+            onChanger={() => setDoublon(null)}
+          />
+        ) : creation ? (
           <div className="cp-form">
             <input className="min" autoFocus placeholder="Prénom" value={nouveau.prenom}
               onChange={(e) => setNouveau({ ...nouveau, prenom: e.target.value })} />
             <input className="min" placeholder="Nom" value={nouveau.nom}
               onChange={(e) => setNouveau({ ...nouveau, nom: e.target.value })} />
             <input className="min" placeholder="E-mail" value={nouveau.email}
-              onChange={(e) => setNouveau({ ...nouveau, email: e.target.value })} />
+              onChange={(e) => { setDoublon(null); setNouveau({ ...nouveau, email: e.target.value }); }} />
             <input className="min" placeholder="Téléphone" value={nouveau.tel}
               onChange={(e) => setNouveau({ ...nouveau, tel: e.target.value })} />
           </div>

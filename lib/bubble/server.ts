@@ -30,6 +30,9 @@ const REVALIDATE = 120; // secondes de cache par requête
 
 export type Agent = {
   id: string; slug: string; name: string; initials: string; color?: string;
+  /** Le portable, mis en forme comme dans le BO (« 06.30.76.83.81 ») : c'est
+   *  lui que signe l'agent au bas d'un mail (retour #280). */
+  tel?: string;
   /** Un agent parti garde ses initiales et sa couleur : les fiches qu'il a
    *  suivies lui appartiennent toujours. Il ne doit simplement plus être
    *  proposé quand on choisit à qui attribuer quelque chose. */
@@ -52,6 +55,8 @@ export async function getAgents(): Promise<Agent[]> {
       slug: slugify(String(a["prénom"] ?? a.nom ?? a._id)),
       name: `${a["prénom"] ?? ""} ${a.nom ?? ""}`.trim(),
       initials: String(a.initiales ?? "FI"),
+      tel: typeof a["portable (TXT)"] === "string" ? (a["portable (TXT)"] as string)
+        : typeof a.portable === "string" ? (a.portable as string) : undefined,
       color: typeof a.color_main === "string" ? (a.color_main as string) : undefined,
       actif: a.activ !== false,
     }))
@@ -701,6 +706,10 @@ export type BienData = {
   statut: string;
   standby?: string;
   agentInitials: string;
+  /** Nom complet et portable de l'agent qui suit la fiche : la signature du
+   *  mail d'estimation les porte plutôt que des initiales (retour #280). */
+  agentNom?: string;
+  agentTel?: string;
   proprietaire?: Record<string, unknown>;
   autresBiens: { id: string; label: string; statut: string }[];
   suivis: {
@@ -811,6 +820,8 @@ export async function getBien(id: string): Promise<BienData | null> {
     statut: String(im.Statut ?? "").replace(/^\d+ - /, ""),
     standby: typeof im.standby_Statut === "string" ? im.standby_Statut : undefined,
     agentInitials: agentEntry?.initials ?? "FI",
+    agentNom: agentEntry?.name || undefined,
+    agentTel: agentEntry?.tel || undefined,
     proprietaire,
     autresBiens: autres
       .filter((a) => a._id !== id)
