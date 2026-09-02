@@ -510,10 +510,20 @@ export async function addCharge(
 }
 
 /** Modifie une charge existante puis recalcule les totaux. */
+/* La nature et le commentaire se modifient depuis la même fenêtre que la
+   création (retour #257). `null` vide une case, comme pour les lots (#255) :
+   un montant effacé doit disparaître, pas revenir. */
 export async function updateCharge(
   immeubleId: string,
   chargeId: string,
-  patch: Partial<{ total_an: number; recup_an: number; non_recup_an: number; commentaire: string }>,
+  patch: Partial<{
+    Type_charge: string;
+    type_autre: string | null;
+    total_an: number | null;
+    recup_an: number | null;
+    non_recup_an: number | null;
+    commentaire: string | null;
+  }>,
 ) {
   const clean = cleanPatch({ ...patch, "Modified Date": new Date().toISOString() });
   await rpc("bo_patch_doc", { p_table: "bo_charge", p_id: chargeId, p_patch: clean });
@@ -3471,8 +3481,13 @@ export async function setLotTravaux(
   montantCible: number,
   dedieeId: string | null,
   montantAutres: number,
+  /* Ce à quoi les travaux correspondent, demandé à la saisie (retour #254).
+     Sans lui, l'onglet Travaux n'affichait que « Travaux lot 6 » : un montant
+     sans objet, qu'il fallait rouvrir pour comprendre. */
+  objet?: { description?: string; urgence?: "Haute" | "Moyenne" | "Basse" },
 ) {
   const montantDediee = Math.max(0, montantCible - montantAutres);
+  const description = objet?.description?.trim() || `Travaux ${lotLabel}`;
   if (dedieeId) {
     if (montantDediee <= 0) {
       await rpc("bo_delete_doc", { p_table: "bo_travaux", p_id: dedieeId });
@@ -3480,7 +3495,14 @@ export async function setLotTravaux(
       await rpc("bo_patch_doc", {
         p_table: "bo_travaux",
         p_id: dedieeId,
-        p_patch: { montant: montantDediee, "Modified Date": new Date().toISOString() },
+        p_patch: cleanPatch({
+          montant: montantDediee,
+          /* On ne réécrit la description que si l'agent en a donné une : sinon
+             une simple correction de montant effacerait ce qu'il avait saisi. */
+          description: objet?.description?.trim() || undefined,
+          Urgence: objet?.urgence,
+          "Modified Date": new Date().toISOString(),
+        }),
       });
     }
   } else if (montantDediee > 0) {
@@ -3488,15 +3510,16 @@ export async function setLotTravaux(
     await rpc("bo_insert_doc", {
       p_table: "bo_travaux",
       p_id: newId(),
-      p_doc: {
+      p_doc: cleanPatch({
         IMMEUBLE: immeubleId,
         LOTs: [lotId],
-        description: `Travaux ${lotLabel}`,
+        description,
+        Urgence: objet?.urgence,
         montant: montantDediee,
         YN_devis: false,
         "Created Date": now,
         "Modified Date": now,
-      },
+      }),
     });
   }
   await rpc("bo_recompute_travaux", { p_id: immeubleId });

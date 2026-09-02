@@ -114,6 +114,32 @@ export const MATERIAUX: Record<string, string[]> = {
   "Assainissement": ["Tout à l'égout", "Fosse septique", "Micro-station", "Autre"],
 };
 
+/**
+ * Les matériaux ajoutés à la main vivent dans la même table que les typologies
+ * de lot (`bo_typologie`), sous une rubrique préfixée (retour #263).
+ *
+ * C'est le même besoin — une liste de libellés que l'agent enrichit, rangée
+ * par catégorie — et la table a exactement cette forme. Le préfixe garde les
+ * deux familles séparées : aucune destination de lot ne s'appelle
+ * « matériau:… ».
+ */
+export const RUBRIQUE_MATERIAU = (composant: string) => `matériau:${composant}`;
+
+/** Les matériaux proposés pour un composant, référentiel + ajouts des agents. */
+export function materiauxPour(
+  composant: string,
+  valeur?: string,
+  ajouts: { destination: string; label: string }[] = [],
+): string[] {
+  const rub = RUBRIQUE_MATERIAU(composant);
+  const perso = ajouts.filter((a) => a.destination === rub).map((a) => a.label);
+  const base = MATERIAUX[composant] ?? [];
+  /* « Autre » reste en dernier : c'est la porte de sortie, pas un choix. */
+  const sans = [...base.filter((m) => m !== "Autre"), ...perso];
+  const tout = valeur && !sans.includes(valeur) && valeur !== "Autre" ? [...sans, valeur] : sans;
+  return [...new Set(tout)].concat("Autre");
+}
+
 export const URGENCES = ["Haute", "Moyenne", "Basse"];
 
 /* --- Charges --- */

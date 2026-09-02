@@ -2803,6 +2803,31 @@ select.pr-in { cursor: pointer; }
 .chg-saisie .min { width: 86px; padding: 3px 7px; font-size: 12.5px; }
 .chg-saisie .tiret { padding: 0 2px; }
 
+/* Retour #257 — le libellé d'une charge ouvre sa fenêtre. Il garde l'allure
+   d'un titre : c'est le survol qui dit qu'il est cliquable, pas un bleu de
+   lien au milieu d'une liste de montants. */
+.chg-t {
+  align-self: flex-start; border: 0; background: none; padding: 0; cursor: pointer;
+  font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate);
+  text-align: left;
+}
+.chg-t:hover { color: var(--gold-bo); text-decoration: underline; text-underline-offset: 3px; }
+.chg-com { display: block; margin-top: 2px; font-size: 12px; color: var(--gray-lt); }
+
+/* Retour #256 — les deux montants de la fenêtre, chacun sous son libellé et
+   avec son unité collée. */
+.chg-mnt { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.chg-mnt label { display: flex; flex-direction: column; gap: 4px; }
+.chg-mnt label > span:first-child { font-size: 11.5px; color: var(--gray-lt); }
+.chg-mnt .u { display: inline-flex; align-items: center; gap: 5px; }
+.chg-mnt .u input {
+  width: 108px; padding: 6px 9px; font: inherit; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+}
+.chg-mnt .u i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
+.chg-nr { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--gray-lt); padding-bottom: 6px; }
+.chg-nr b { font-family: var(--font-title); font-size: 14px; color: var(--slate); }
+
 /* --- Composants du bâti (retour #91) ---
    Deux vignettes d'en-tête, rouges tant qu'elles sont vides, puis une ligne
    par composant, remplie sur place. */
