@@ -9,7 +9,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
-import { addLot, ajouterTypologie, deleteLot, duplicateLot, setLotTravaux, updateLots, type LotPatch } from "@/lib/bo/actions";
+import {
+  addLot, ajouterTypologie, bailDuLot, deleteLot, duplicateLot, locataireDuLot,
+  setLotTravaux, updateLots, type LotPatch,
+} from "@/lib/bo/actions";
+import { ChampDate } from "@/components/champ-date";
 import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
@@ -94,6 +98,85 @@ function CelluleTypologie({
         <button type="button" title="Revenir à la liste" onClick={() => setLibre(false)}>↺</button>
       </span>
       {msg && <span className="tmsg">{msg}</span>}
+    </div>
+  );
+}
+
+/**
+ * L'occupation d'un lot : sa date d'entrée et son locataire (retour #258).
+ *
+ * MAV : « quand je veux ajouter la date d'entrée et le nom du locataire, je
+ * peux pas. J'aimerais pouvoir rentrer la date sous forme de xx/xx/xxxx ou
+ * avec le calendrier — je veux les deux solutions dans la modale. Pour le
+ * locataire, je veux juste une petite zone de texte qui s'ouvre. »
+ *
+ * Les deux colonnes n'affichaient qu'un « + » décoratif. Elles ouvrent
+ * maintenant cette fenêtre, qui crée au besoin le bail ET le locataire du lot
+ * — sans demander de les rattacher, puisque le lot est déjà connu.
+ *
+ * Le nom saisi va dans le NOM DE FAMILLE, pas coupé au premier espace : « c'est
+ * le nom qui est rempli, et ça sera à l'agent de séparer le nom et le prénom
+ * dans la modale si jamais ». Deviner où couper « Jean-Pierre Le Test » se
+ * trompe une fois sur deux.
+ */
+function ModaleOccupation({ b, lotId, titre, onFermer }: {
+  b: BienData; lotId: string; titre: string; onFermer: () => void;
+}) {
+  const immeubleId = String(b.im._id);
+  const [pending, start] = useTransition();
+  const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
+  const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
+  const [entree, setEntree] = useState(
+    typeof bail?.date_start === "string" ? (bail.date_start as string).slice(0, 10) : "",
+  );
+  const [nom, setNom] = useState(String(loc?.formatted_name ?? ""));
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const enregistrer = () =>
+    start(async () => {
+      setErreur(null);
+      try {
+        if (entree || bail) await bailDuLot(immeubleId, lotId, { date_start: entree || null });
+        if (nom.trim() !== String(loc?.formatted_name ?? "").trim()) {
+          await locataireDuLot(immeubleId, lotId, nom);
+        }
+        onFermer();
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : String(e));
+      }
+    });
+
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Occupation du {titre.toLowerCase()}
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <span className="mlab">Date d&apos;entrée</span>
+          <ChampDate valeur={entree} onChange={setEntree} />
+          <span className="mlab">Locataire</span>
+          <input
+            className="min" style={{ width: "100%" }} value={nom}
+            placeholder="Nom du locataire"
+            onChange={(e) => setNom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }}
+          />
+          <p className="mhint">
+            Le nom va tel quel sur la fiche du locataire : l&apos;onglet Locataires
+            permet ensuite de séparer le prénom du nom, et d&apos;ajouter le
+            téléphone et l&apos;e-mail.
+          </p>
+          {erreur && <p className="mhint" style={{ color: "var(--red)" }}>{erreur}</p>}
+        </div>
+        <div className="modal-f">
+          <button className="kgo" type="button" disabled={pending}
+            style={pending ? { opacity: 0.5 } : undefined} onClick={enregistrer}>
+            <span className="ch">›</span> {pending ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -577,6 +660,8 @@ export function LotsEditor({ b }: { b: BienData }) {
 
   /** Le lot dont on demande l'objet des travaux (retour #254). */
   const [objetDe, setObjetDe] = useState<string | null>(null);
+  /** Le lot dont on saisit l'occupation — date d'entrée et locataire (#258). */
+  const [occupation, setOccupation] = useState<string | null>(null);
 
   /* Suppression (#86) : une vraie fenêtre qui récapitule les lots concernés,
      pas la boîte du navigateur. */
@@ -848,14 +933,33 @@ export function LotsEditor({ b }: { b: BienData }) {
                   </td>
                   {on("baux") && (
                     <>
-                      <td className="na">{(() => {
-                        const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
-                        return bail?.date_start ? new Date(String(bail.date_start)).toLocaleDateString("fr-FR") : <span className="plus">+</span>;
-                      })()}</td>
-                      <td className="na">{(() => {
-                        const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
-                        return loc ? String(loc.formatted_name ?? "") : <span className="plus">+</span>;
-                      })()}</td>
+                      {/* Retour #258 : « quand je veux ajouter la date d'entrée
+                          et le nom du locataire, je peux pas ». Les deux cases
+                          n'étaient que du texte — le « + » ne faisait rien.
+                          Elles ouvrent la même petite fenêtre, qui crée le bail
+                          et le locataire du lot s'ils n'existent pas encore. */}
+                      <td className="na">
+                        <button type="button" className="occ-b" title="Date d'entrée du locataire"
+                          onClick={() => setOccupation(r.id)}>
+                          {(() => {
+                            const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
+                            return bail?.date_start
+                              ? new Date(String(bail.date_start)).toLocaleDateString("fr-FR")
+                              : <span className="plus">+</span>;
+                          })()}
+                        </button>
+                      </td>
+                      <td className="na">
+                        <button type="button" className="occ-b" title="Locataire du lot"
+                          onClick={() => setOccupation(r.id)}>
+                          {(() => {
+                            const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
+                            return loc && String(loc.formatted_name ?? "").trim()
+                              ? String(loc.formatted_name)
+                              : <span className="plus">+</span>;
+                          })()}
+                        </button>
+                      </td>
                     </>
                   )}
                   <td className="na"><input className="lcell num" value={r.loyer} onChange={(e) => edit(r.id, "loyer", e.target.value)} /><i>€</i></td>
@@ -1012,6 +1116,17 @@ export function LotsEditor({ b }: { b: BienData }) {
               </div>
             </div>
           </div>
+        );
+      })()}
+
+      {occupation && (() => {
+        const r = rows.find((x) => x.id === occupation);
+        if (!r) return null;
+        return (
+          <ModaleOccupation
+            b={b} lotId={r.id} titre={libelleLot(r)}
+            onFermer={() => setOccupation(null)}
+          />
         );
       })()}
 

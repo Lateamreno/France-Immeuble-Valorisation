@@ -140,6 +140,16 @@ export function materiauxPour(
   return [...new Set(tout)].concat("Autre");
 }
 
+/**
+ * Les indices de révision d'un bail (retour #260).
+ *
+ * MAV : « on veut juste l'indice de signature (IRL, ILAT, ILC, ICC) ». Chacun
+ * régit une famille de baux — habitation pour l'IRL, activités tertiaires pour
+ * l'ILAT, commerces pour l'ILC, construction pour l'ICC — et se révise sur sa
+ * propre série : les confondre fausse le loyer révisé.
+ */
+export const INDICES_BAIL = ["IRL", "ILAT", "ILC", "ICC"];
+
 export const URGENCES = ["Haute", "Moyenne", "Basse"];
 
 /* --- Charges --- */

@@ -373,15 +373,22 @@ export async function addBail(
   input: {
     lotIds: string[];
     locataireIds: string[];
-    Type_bail?: string;
-    bailleur_pm: boolean;
-    loyer_init?: number;
-    date_start?: string; // yyyy-mm-dd
-    date_end?: string;
-    indice_init?: number;
-    indice_actuel?: number;
+    Type_bail?: string | null;
+    /* Retour #260 : « dans les conditions du bail on n'a pas besoin de savoir
+       si le bailleur est personne morale ». Le champ reste accepté pour les
+       baux déjà en base, il n'est plus demandé nulle part. */
+    bailleur_pm?: boolean;
+    loyer_init?: number | null;
+    /** Dépôt de garantie (retour #260). */
+    depot_garantie?: number | null;
+    date_start?: string | null; // yyyy-mm-dd
+    date_end?: string | null;
+    /** IRL, ILAT, ILC ou ICC — l'indice qui régit la révision (retour #260). */
+    indice_type?: string | null;
+    indice_init?: number | null;
+    indice_actuel?: number | null;
     statut: "en_cours" | "impayes" | "preavis" | "expulsion";
-    commentaire?: string;
+    commentaire?: string | null;
   },
 ) {
   const id = newId();
@@ -400,6 +407,8 @@ export async function addBail(
       Type_bail: input.Type_bail,
       bailleur_pm: input.bailleur_pm,
       loyer_init: input.loyer_init,
+      depot_garantie: input.depot_garantie,
+      indice_type: input.indice_type,
       indice_init: input.indice_init,
       indice_actuel: input.indice_actuel,
       loyer_revised,
@@ -416,6 +425,87 @@ export async function addBail(
   });
   refresh(immeubleId);
   return id;
+}
+
+/**
+ * Le bail d'un lot, créé s'il n'existe pas encore (retours #258, #260).
+ *
+ * MAV : « chaque bail devrait être créé automatiquement ici, au moins la
+ * ligne, et du coup pas besoin de sélectionner le lot ». Un lot loué A un
+ * bail : le faire créer à la main, en le rattachant à son lot dans une
+ * seconde fenêtre, c'est demander deux fois la même information. L'écran
+ * montre donc une ligne par lot, et c'est la première saisie qui la fait
+ * exister en base.
+ */
+export async function bailDuLot(
+  immeubleId: string,
+  lotId: string,
+  patch: BailPatch,
+): Promise<string> {
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("data->>IMMEUBLE", `eq.${immeubleId}`);
+  p.append("data->LOTs", `cs.["${lotId}"]`);
+  const res = SB_KEY
+    ? await fetch(`${SB_URL}/rest/v1/bo_bail?${p}`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+        cache: "no-store",
+      }).catch(() => null)
+    : null;
+  const rows = res?.ok ? ((await res.json()) as { data: Record<string, unknown> }[]) : [];
+  const existant = rows[0]?.data?._id;
+  if (existant) {
+    await updateBail(immeubleId, String(existant), patch);
+    return String(existant);
+  }
+  return addBail(immeubleId, {
+    lotIds: [lotId], locataireIds: [], statut: "en_cours", ...patch,
+  });
+}
+
+/** Ce qui se modifie sur un bail. `null` vide la case (voir `cleanPatch`). */
+export type BailPatch = Partial<{
+  Type_bail: string | null;
+  loyer_init: number | null;
+  depot_garantie: number | null;
+  date_start: string | null;
+  date_end: string | null;
+  indice_type: string | null;
+  indice_init: number | null;
+  indice_actuel: number | null;
+  statut: "en_cours" | "impayes" | "preavis" | "expulsion";
+  commentaire: string | null;
+}>;
+
+/** Modifie un bail existant. */
+export async function updateBail(immeubleId: string, bailId: string, patch: BailPatch) {
+  const { statut, date_start, date_end, ...reste } = patch;
+  const clean = cleanPatch({
+    ...reste,
+    date_start: date_start === null ? null : date_start ? new Date(date_start).toISOString() : undefined,
+    date_end: date_end === null ? null : date_end ? new Date(date_end).toISOString() : undefined,
+    ...(statut
+      ? {
+          activ: true,
+          impayes: statut === "impayes",
+          preavis: statut === "preavis",
+          expulsion: statut === "expulsion",
+        }
+      : null),
+    "Modified Date": new Date().toISOString(),
+  });
+  /* Le loyer révisé se déduit du loyer initial et des deux valeurs d'indice :
+     le laisser saisir à part, c'est laisser entrer une incohérence. On le
+     recalcule dès que l'un des trois bouge. */
+  if (patch.loyer_init !== undefined || patch.indice_init !== undefined || patch.indice_actuel !== undefined) {
+    const avant = await bqOne("bo_bail", bailId).catch(() => null);
+    const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+    const l = patch.loyer_init ?? n(avant?.loyer_init);
+    const i0 = patch.indice_init ?? n(avant?.indice_init);
+    const i1 = patch.indice_actuel ?? n(avant?.indice_actuel);
+    clean.loyer_revised = l && i0 && i1 && i0 > 0 ? Math.round((l * i1) / i0) : null;
+  }
+  await rpc("bo_patch_doc", { p_table: "bo_bail", p_id: bailId, p_patch: clean });
+  refresh(immeubleId);
 }
 
 /** Supprime un bail (récupérable dans bo_trash). */
@@ -465,6 +555,84 @@ export async function addLocataire(
   });
   refresh(immeubleId);
   return id;
+}
+
+/** Ce qui se modifie sur un locataire. */
+export type LocatairePatch = Partial<{
+  pm: boolean;
+  pm_nom: string | null;
+  pp_civilite: string | null;
+  pp_prenom: string | null;
+  pp_nom: string | null;
+  phone: string | null;
+  email: string | null;
+  lotIds: string[];
+  commentaire: string | null;
+}>;
+
+/** Modifie un locataire existant (retour #259 : la saisie se fait au tableau). */
+export async function updateLocataire(
+  immeubleId: string,
+  locataireId: string,
+  patch: LocatairePatch,
+) {
+  const avant = await bqOne("bo_locataire", locataireId).catch(() => null);
+  const S2 = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const pm = patch.pm ?? avant?.pm === true;
+  const nom = patch.pm_nom !== undefined ? patch.pm_nom : S2(avant?.pm_nom);
+  const prenom = patch.pp_prenom !== undefined ? patch.pp_prenom : S2(avant?.["pp_prénom"]);
+  const famille = patch.pp_nom !== undefined ? patch.pp_nom : S2(avant?.pp_nom);
+  const clean = cleanPatch({
+    pm: patch.pm,
+    pm_nom: patch.pm_nom,
+    "pp_civilité": patch.pp_civilite,
+    "pp_prénom": patch.pp_prenom,
+    pp_nom: patch.pp_nom,
+    phone: patch.phone,
+    email: patch.email,
+    LOTs: patch.lotIds,
+    commentaire: patch.commentaire,
+    /* Le nom affiché se recompose : sans ça, corriger un prénom laissait
+       l'ancien nom complet partout où il est repris. */
+    formatted_name: pm ? (nom ?? "") : [prenom, famille].filter(Boolean).join(" "),
+    "Modified Date": new Date().toISOString(),
+  });
+  await rpc("bo_patch_doc", { p_table: "bo_locataire", p_id: locataireId, p_patch: clean });
+  refresh(immeubleId);
+}
+
+/**
+ * Le locataire d'un lot, créé s'il n'existe pas encore (retours #258, #260).
+ *
+ * MAV : « quand le locataire est créé depuis l'état locatif directement,
+ * sachant que c'est qu'une ligne de texte, alors c'est le nom qui est rempli,
+ * et ça sera à l'agent de séparer le nom et le prénom dans la modale ». On ne
+ * devine donc pas où couper : le texte saisi va dans le nom de famille, et la
+ * fiche du locataire permet de le répartir ensuite.
+ */
+export async function locataireDuLot(
+  immeubleId: string,
+  lotId: string,
+  nom: string,
+): Promise<string | null> {
+  const propre = nom.trim();
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("data->>IMMEUBLE", `eq.${immeubleId}`);
+  p.append("data->LOTs", `cs.["${lotId}"]`);
+  const res = SB_KEY
+    ? await fetch(`${SB_URL}/rest/v1/bo_locataire?${p}`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+        cache: "no-store",
+      }).catch(() => null)
+    : null;
+  const rows = res?.ok ? ((await res.json()) as { data: Record<string, unknown> }[]) : [];
+  const existant = rows[0]?.data?._id;
+  if (existant) {
+    await updateLocataire(immeubleId, String(existant), { pp_nom: propre || null });
+    return String(existant);
+  }
+  if (!propre) return null;
+  return addLocataire(immeubleId, { pm: false, pp_nom: propre, lotIds: [lotId] });
 }
 
 /** Supprime un locataire (récupérable dans bo_trash). */
