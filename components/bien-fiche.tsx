@@ -32,7 +32,7 @@ import { MOTIFS_VENTE } from "@/lib/referentiels";
 import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
-import { copierTexte } from "@/components/copier";
+import { Copier, copierTexte } from "@/components/copier";
 import { PrixEcran } from "@/components/prix";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
 import type { OperationDecoupe } from "@/lib/bubble/server";
@@ -428,6 +428,12 @@ export function BienFiche({
                 <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
                 {s.label}
                 {s.key === "emplacement" && <MapsBtn b={b} />}
+                {/* Retour #274 : « une petite icône pour copier l'adresse du
+                    bien, à côté de l'icône de carte sur Emplacement, pour
+                    pouvoir tout le temps copier l'adresse sans avoir à ouvrir
+                    l'onglet ». Le rail est visible depuis toutes les sections :
+                    c'est le seul endroit qui remplit cette condition. */}
+                {s.key === "emplacement" && <CopieAdresse b={b} />}
                 <span className="right">{s.indicator}</span>
               </button>
               {sect === s.key && !plies.has(s.key) && SOUS_ONGLETS[s.key]?.map((o) => (
@@ -569,6 +575,39 @@ function BandeauAttente({ b }: { b: BienData }) {
 
 /** Icône Google Maps du rail (retour MAV #12) : ouvre l'immeuble dans une
  *  fenêtre, sans quitter la page en cours. */
+/**
+ * Copier l'adresse du bien, depuis le rail (retour #274).
+ *
+ * En `span`, pas en `button` : la ligne du rail est elle-même un bouton, et un
+ * bouton dans un bouton est du HTML invalide — le navigateur le sort du
+ * parent, ce qui casse l'hydratation (React #418, constaté au navigateur).
+ * `MapsBtn`, juste à côté, est un `span` pour exactement cette raison.
+ */
+function CopieAdresse({ b }: { b: BienData }) {
+  const [fait, setFait] = useState(false);
+  const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`
+    .replace(/\s+/g, " ").trim();
+  const copier = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    void copierTexte(adresse).then((ok) => {
+      setFait(ok);
+      if (ok) setTimeout(() => setFait(false), 1600);
+    });
+  };
+  return (
+    <span className={`smaps${fait ? " ok" : ""}`} role="button" tabIndex={0}
+      title={fait ? "Adresse copiée" : "Copier l'adresse du bien"}
+      onClick={copier}
+      onKeyDown={(e) => { if (e.key === "Enter") copier(e); }}>
+      <svg viewBox="0 0 24 24">
+        {fait
+          ? <path d="m5 12.5 4.5 4.5L19 7.5" />
+          : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>}
+      </svg>
+    </span>
+  );
+}
+
 function MapsBtn({ b }: { b: BienData }) {
   const [ouvert, setOuvert] = useState(false);
   const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
@@ -597,6 +636,9 @@ function MapsBtn({ b }: { b: BienData }) {
           <div className="modal lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">
               {adresse || b.ville}
+              {/* La même copie, là où l'adresse est sous les yeux (#274). */}
+              <Copier cls="cop" titre="Copier l'adresse" valeur={adresse || b.ville} />
+              <span style={{ flex: 1 }} />
               <button type="button" onClick={() => setOuvert(false)}>✕</button>
             </div>
             <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />

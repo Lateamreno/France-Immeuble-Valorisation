@@ -2935,6 +2935,46 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
   }));
 }
 
+/**
+ * Le contact qui porte déjà cette adresse e-mail (retour #248).
+ *
+ * MAV : « on ne devrait pas pouvoir créer un contact qui existe déjà : quand
+ * on donne une adresse e-mail qui existe déjà dans la base, il nous demande si
+ * on veut utiliser le contact en question ou en créer un nouveau avec une
+ * autre adresse. »
+ *
+ * Un doublon d'e-mail ne coûte pas qu'une ligne en trop : les mails reçus se
+ * rattachent à l'adresse, et deux fiches pour une adresse coupent l'historique
+ * en deux. La comparaison ignore la casse et les espaces — « Kanun78@ » et
+ * « kanun78@ » sont la même boîte.
+ */
+export async function contactParEmail(email: string): Promise<ContactTrouve | null> {
+  const propre = email.trim().toLowerCase();
+  if (!propre || !propre.includes("@") || !SB_KEY) return null;
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("data->>email", `ilike.${propre}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const rows = (await res.json()) as { data: Record<string, unknown> }[];
+  const c = rows[0]?.data;
+  if (!c) return null;
+  return {
+    id: String(c._id),
+    nom: `${c["prénom"] ?? ""} ${c.nom ?? ""}`.trim() || String(c.email ?? "Sans nom"),
+    type: Array.isArray(c.Types) ? String(c.Types[0] ?? "") : undefined,
+    tel: typeof c.portable_formatted === "string" ? c.portable_formatted
+      : typeof c.portable === "string" ? c.portable : undefined,
+    email: typeof c.email === "string" ? c.email : undefined,
+    prenom: typeof c["prénom"] === "string" ? c["prénom"] : undefined,
+    nomFamille: typeof c.nom === "string" ? c.nom : undefined,
+    civilite: typeof c["Civilité"] === "string" ? c["Civilité"] : undefined,
+    societe: typeof c.entreprise_nom === "string" ? c.entreprise_nom : undefined,
+  };
+}
+
 /* ---------- La fiche d'un contact, pour remplir un mandant (retour #133) ---------- */
 
 /** Ce qu'une fiche contact sait déjà dire d'un mandant. */

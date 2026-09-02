@@ -1179,6 +1179,11 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
       ].filter((l) => l.href)
     : ueLoyer
       ? [
+          /* Retour #268 : « mets le logo Un emplacement en haut à côté des
+             autres liens, mais laisse à côté des trucs à rentrer ». Les deux
+             ne servent pas au même moment — celui du haut ouvre le site avant
+             de saisir, celui d'à côté du champ répond à CE chiffre-là. */
+          { cle: "unemplacement", label: "Un emplacement", href: ueLoyer },
           { cle: "localcommercial", label: "LocalCommercial", href: lienLocalCommercial },
           { cle: "notaires", label: "Notaires", href: lienNotaires },
         ]
