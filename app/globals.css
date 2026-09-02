@@ -2141,6 +2141,12 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   font-family: var(--font-body); font-size: 13px; color: #8f969c;
 }
 .est-ch input[readonly] { cursor: default; }
+/* Le moyen de locomotion d'un point d'intérêt (retour #266) : une liste, dans
+   le même cadre que les cases voisines pour que la ligne reste une ligne. */
+.est-ch select {
+  width: 100%; border: 0; background: none; padding: 0; outline: none;
+  font-family: var(--font-body); font-size: 13px; color: var(--slate); cursor: pointer;
+}
 .est-ch i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
 .est-ch.edit { background: #fff; border-color: #d3d3d3; }
 .est-ch.edit input, .est-ch.edit textarea { color: var(--slate); }

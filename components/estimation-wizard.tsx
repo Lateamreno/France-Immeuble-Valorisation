@@ -6,7 +6,7 @@
 // Tout est servi par l'état locatif et la fiche secteur ; ce qui manque porte
 // un point d'exclamation rouge. Le prix est figé à la génération.
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { oublier, useMemoire } from "@/lib/memoire";
+import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
@@ -19,6 +19,7 @@ import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
   supprimerEstimation, updateEmplacement, type EstimationPayload,
 } from "@/lib/bo/actions";
+import { MOYENS } from "@/lib/bo/itineraire";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -95,6 +96,25 @@ function Champ({
   );
 }
 
+/**
+ * Le moyen de locomotion d'un point d'intérêt (retour #266).
+ *
+ * Il a la même allure qu'un `Champ` — même cadre, même libellé au-dessus —
+ * mais c'est une liste : les quatre moyens du référentiel, pas un de plus, pour
+ * que « à pied » s'écrive partout pareil et que l'itinéraire Google sache quoi
+ * en faire.
+ */
+function ChampMoyen({ valeur, onChange }: { valeur: string; onChange: (v: string) => void }) {
+  return (
+    <label className="est-ch edit" style={{ width: 145 }}>
+      <span>Moyen</span>
+      <select value={valeur || "à pied"} onChange={(e) => onChange(e.target.value)}>
+        {MOYENS.map((m) => <option key={m}>{m}</option>)}
+      </select>
+    </label>
+  );
+}
+
 /* Flèches de navigation du wizard (retour #124).
    Les chevrons circulaires « ↺ / ↻ » se lisaient comme un rechargement : on
    dessine une vraie flèche, qui ne dit qu'une chose — on avance, on recule. */
@@ -120,14 +140,16 @@ const Fleche = ({ arriere }: { arriere?: boolean }) => (
  * connaît les coordonnées du point retenu, on les envoie : elles ne se
  * discutent pas. Le nom ne sert plus que de repli.
  */
-const Itineraire = ({ depuis, vers, ville, titre, geo }: {
+const Itineraire = ({ depuis, vers, ville, titre, geo, moyen }: {
   depuis: string; vers: string; ville: string; titre: string;
   /** « lat,lon » du point retenu, quand la fiche le connaît. */
   geo?: string;
+  /** Le moyen de locomotion choisi sur la ligne (retour #266). */
+  moyen?: string;
 }) => (
   <a
     className="est-itin" title={titre} target="_blank" rel="noreferrer"
-    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depuis)}&destination=${encodeURIComponent(geo || `${vers} ${ville}`.trim())}&travelmode=walking`}
+    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(depuis)}&destination=${encodeURIComponent(geo || `${vers} ${ville}`.trim())}&travelmode=${MODE_GOOGLE[moyen ?? ""] ?? "walking"}`}
   >
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
@@ -135,6 +157,12 @@ const Itineraire = ({ depuis, vers, ville, titre, geo }: {
     </svg>
   </a>
 );
+
+/* Le moyen de locomotion, tel que Google le nomme (retour #266). */
+const MODE_GOOGLE: Record<string, string> = {
+  "à pied": "walking", "en voiture": "driving",
+  "en transport": "transit", "en transports": "transit", "à vélo": "bicycling",
+};
 
 const Ok = () => <span className="est-ok" title="Complet">✓</span>;
 const Ko = () => <span className="est-ko" title="Information manquante — allez la compléter sur la fiche">!</span>;
@@ -190,6 +218,9 @@ export function EstimationWizard({
      estimation écraserait la saisie d'une nouvelle en cours. */
   const NS = reprise ? `est:${immeubleId}:${reprise.id}:` : `est:${immeubleId}:`;
   const useMem = <T,>(cle: string, initial: T | (() => T)) => useMemoire<T>(NS + cle, initial);
+  /* Pour tout ce que la FICHE sert : la mémoire ne doit pas figer une valeur
+     calculée avant que la fiche soit remplie (retours #271, #276). */
+  const useMemServi = <T,>(cle: string, servi: T) => useMemoireServie<T>(NS + cle, servi);
 
   const [step, setStep] = useMem("step", reprise ? 4 : 0);
   const [pending, start] = useTransition();
@@ -230,16 +261,23 @@ export function EstimationWizard({
   const [perso, setPerso] = useMem("perso", false);
 
   /* --- Immeuble --- */
-  const [gareName, setGareName] = useMem("gareName", S(im.emp_gare_name));
-  const [gareTime, setGareTime] = useMem("gareTime", S(num(im.emp_gare_time)));
-  const [comName, setComName] = useMem("comName", S(im.emp_com_name));
-  const [comTime, setComTime] = useMem("comTime", S(num(im.emp_com_time)));
+  const [gareName, setGareName] = useMemServi("gareName", S(im.emp_gare_name));
+  const [gareTime, setGareTime] = useMemServi("gareTime", S(num(im.emp_gare_time)));
+  const [comName, setComName] = useMemServi("comName", S(im.emp_com_name));
+  const [comTime, setComTime] = useMemServi("comTime", S(num(im.emp_com_time)));
   /* Coordonnées du point retenu par l'onglet Emplacement (retour #186). Elles
      rendent l'itinéraire exact ; mais dès qu'on retape le nom à la main, elles
      désignent un autre lieu que celui écrit — on les oublie alors, et le lien
      repart sur le nom saisi. */
-  const [gareGeo, setGareGeo] = useMem("gareGeo", S(im.emp_gare_geo));
-  const [comGeo, setComGeo] = useMem("comGeo", S(im.emp_com_geo));
+  /* Retour #266 : « je peux rentrer les infos des points d'intérêt donc nom et
+     temps, mais je peux pas mettre le moyen de locomotion ». Une durée sans son
+     moyen ne veut rien dire — 7 minutes à pied et 7 minutes en voiture ne
+     décrivent pas le même quartier — et c'est aussi lui qui règle l'itinéraire
+     Google d'à côté. */
+  const [gareMoyen, setGareMoyen] = useMemServi("gareMoyen", S(im.emp_gare_moyen) || "à pied");
+  const [comMoyen, setComMoyen] = useMemServi("comMoyen", S(im.emp_com_moyen) || "à pied");
+  const [gareGeo, setGareGeo] = useMemServi("gareGeo", S(im.emp_gare_geo));
+  const [comGeo, setComGeo] = useMemServi("comGeo", S(im.emp_com_geo));
   /* Point de départ des itinéraires, et ville à accoler au nom du point
      d'intérêt : « Gare de Bordeaux » tout court trouve la mauvaise ville. */
   const adressePoi = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
@@ -249,6 +287,7 @@ export function EstimationWizard({
   const poiModifie =
     gareName !== S(im.emp_gare_name) || comName !== S(im.emp_com_name) ||
     gareTime !== S(num(im.emp_gare_time)) || comTime !== S(num(im.emp_com_time)) ||
+    gareMoyen !== (S(im.emp_gare_moyen) || "à pied") || comMoyen !== (S(im.emp_com_moyen) || "à pied") ||
     gareGeo !== S(im.emp_gare_geo) || comGeo !== S(im.emp_com_geo);
 
   /* Retaper le nom d'un point d'intérêt invalide ses coordonnées : elles
@@ -297,14 +336,14 @@ export function EstimationWizard({
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
   const chAut0 = b.charges.filter((c) => !String(c.Type_charge ?? "").startsWith("Taxe"))
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
-  const [chTf, setChTf] = useMem("chTf", chTf0 ? String(chTf0) : "");
-  const [chAutres, setChAutres] = useMem("chAutres", chAut0 ? String(chAut0) : "");
+  const [chTf, setChTf] = useMemServi("chTf", chTf0 ? String(chTf0) : "");
+  const [chAutres, setChAutres] = useMemServi("chAutres", chAut0 ? String(chAut0) : "");
   const tvxBati0 = b.travaux.filter((t) => Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
   const tvxLots0 = b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
-  const [tvxBati, setTvxBati] = useMem("tvxBati", tvxBati0 ? String(tvxBati0) : "");
-  const [tvxLots, setTvxLots] = useMem("tvxLots", tvxLots0 ? String(tvxLots0) : "");
+  const [tvxBati, setTvxBati] = useMemServi("tvxBati", tvxBati0 ? String(tvxBati0) : "");
+  const [tvxLots, setTvxLots] = useMemServi("tvxLots", tvxLots0 ? String(tvxLots0) : "");
 
   /* --- Agrégats lots, par destination comme le BO --- */
   const agg = useMemo(() => {
@@ -353,7 +392,7 @@ export function EstimationWizard({
      BO. Le bandeau « global » n'est pas saisi : c'est la moyenne pondérée par
      les surfaces, et le rendement global s'en déduit (loyer × 12 / prix). --- */
   const sect = secteur ?? {};
-  const [refs, setRefs] = useMem<Record<string, { l: string; p: string; r: string }>>("refs", () =>
+  const refsServies = useMemo(() =>
     Object.fromEntries(agg.parDest.map((d) => {
       const px = DEST_PREFIX[d.dest] ?? "autre";
       // Faute de référence propre à la destination, on part du global saisi
@@ -363,7 +402,10 @@ export function EstimationWizard({
         p: S(num(sect[`${px}_prix_retenu`]) ?? num(sect["0 - prix"])),
         r: S(num(sect[`${px}_renta_retenu`]) ?? num(sect["0 - renta _%"])),
       }];
-    })));
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agg.parDest, secteur]);
+  const [refs, setRefs] = useMemServi("refs", refsServies);
   const majRef = (dest: string, cle: "l" | "p" | "r", v: string) =>
     setRefs({ ...refs, [dest]: { ...refs[dest], [cle]: v.replace(/[^\d.,]/g, "") } });
 
@@ -586,8 +628,10 @@ export function EstimationWizard({
     void updateEmplacement(immeubleId, {
       emp_gare_name: gareName || undefined,
       emp_gare_time: parse(gareTime),
+      emp_gare_moyen: gareMoyen || undefined,
       emp_com_name: comName || undefined,
       emp_com_time: parse(comTime),
+      emp_com_moyen: comMoyen || undefined,
       // `null` efface vraiment : la chaîne vide, elle, serait écartée du patch
       // et la fiche garderait l'ancien point sous le nouveau nom.
       emp_gare_geo: gareGeo || null,
@@ -739,18 +783,20 @@ export function EstimationWizard({
             <div className="est-sect">Points d&apos;intérêt</div>
             <div className="est-l">
               <Itineraire depuis={adressePoi} vers={gareName || "gare"} ville={villePoi}
-                geo={gareGeo} titre="Itinéraire à pied vers les transports" />
+                geo={gareGeo} moyen={gareMoyen} titre={`Itinéraire ${gareMoyen} vers les transports`} />
               <Champ label="Nom des transports" valeur={gareName} editable onChange={majGareName} />
               <Champ label="Temps" valeur={gareTime ? `${gareTime} min` : ""} editable
                 onChange={(v) => setGareTime(v.replace(/[^\d]/g, ""))} largeur={110} />
+              <ChampMoyen valeur={gareMoyen} onChange={setGareMoyen} />
               <Etat ok={!!(gareName && gareTime)} />
             </div>
             <div className="est-l">
               <Itineraire depuis={adressePoi} vers={comName || "supermarché"} ville={villePoi}
-                geo={comGeo} titre="Itinéraire à pied vers les commerces" />
+                geo={comGeo} moyen={comMoyen} titre={`Itinéraire ${comMoyen} vers les commerces`} />
               <Champ label="Nom des commerces" valeur={comName} editable onChange={majComName} />
               <Champ label="Temps" valeur={comTime ? `${comTime} min` : ""} editable
                 onChange={(v) => setComTime(v.replace(/[^\d]/g, ""))} largeur={110} />
+              <ChampMoyen valeur={comMoyen} onChange={setComMoyen} />
               <Etat ok={!!(comName && comTime)} />
             </div>
             <p className="est-aide">
