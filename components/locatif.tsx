@@ -365,6 +365,9 @@ function LocatairesTab({ b }: { b: BienData }) {
         </div>
       )}
       <div style={{ fontSize: 11.5, color: "var(--gray-lt)", marginTop: 8 }}>
+        Un e-mail renseigné crée la fiche contact du locataire, avec le profil « Locataire » —
+        et se rattache à sa fiche si elle existe déjà.
+        <br />
         RGPD : les noms des locataires restent internes au BO, jamais exposés côté public.
       </div>
       <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} onAnnuler={annuler} />
