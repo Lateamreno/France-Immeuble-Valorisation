@@ -58,40 +58,42 @@ function VignetteBati({
   );
 }
 
-/** Une ligne de composant : matériau et état saisis sur place. */
+/**
+ * Une ligne de composant : matériau et état saisis sur place.
+ *
+ * Elle ne s'enregistre pas elle-même (retours #264 et #265). Chaque ligne
+ * portait sa propre barre d'enregistrement, et cette barre est collée en bas
+ * de l'écran : les cinq se superposaient au même endroit, seule la dernière du
+ * document — la Toiture — était visible et cliquable. D'où les deux symptômes
+ * signalés : on remplissait quatre composants, seul le dernier partait en
+ * base ; et modifier la Façade laissait la barre visible sur « Tout est
+ * enregistré », bouton gris, donc plus moyen d'enregistrer du tout.
+ *
+ * La saisie remonte donc à l'onglet, qui n'a qu'une barre et enregistre tout
+ * ce qui a bougé d'un seul geste — la règle de tous les autres écrans.
+ */
 function LigneComposant({
-  b, type, composant,
+  b, type, composant, valeur, onChange,
 }: {
   b: BienData; type: string; composant?: Record<string, unknown>;
+  valeur: Ligne;
+  onChange: (v: Ligne) => void;
 }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
-  const [materiau, setMateriau] = useState(S(composant?.["Type_matériau"]));
-  const [etat, setEtat] = useState(S(composant?.Etat));
-
-  const enBase = useRef("");
-  const courant = JSON.stringify({ materiau, etat });
-  if (!enBase.current) enBase.current = courant;
-  const modifie = courant !== enBase.current;
+  const { materiau, etat } = valeur;
+  const setMateriau = (v: string) => onChange({ ...valeur, materiau: v });
+  const setEtat = (v: string) => onChange({ ...valeur, etat: v });
 
   const tvx = b.travaux
     .filter((t) => composant && Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as string[]).includes(String(composant._id)))
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
 
-  const enregistrer = () =>
-    start(async () => {
-      const patch = { Type_materiau: materiau || undefined, Etat: etat || undefined };
-      if (composant) await updateComposant(immeubleId, String(composant._id), patch);
-      else await addComposant(immeubleId, { Type_composant: type, ...patch });
-      enBase.current = courant;
-    });
-
   const choix = MATERIAUX[type] ?? [];
   const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
 
   return (
-    <>
-      <div className="cmp">
+      <div className={`cmp${pending ? " att" : ""}`}>
         <span className="cmp-ic"><svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg></span>
         <span className="cmp-c">
           <b>
@@ -128,10 +130,11 @@ function LigneComposant({
           </button>
         )}
       </div>
-      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} />
-    </>
   );
 }
+
+/** L'état d'une ligne de composant pendant la saisie. */
+type Ligne = { materiau: string; etat: string };
 
 function ComposantsTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
@@ -139,15 +142,58 @@ function ComposantsTab({ b }: { b: BienData }) {
   const [annee, setAnnee] = useState(S(num(b.im.year_constru)));
   const [etat, setEtat] = useState(S(b.im.Etat));
 
-  const enBase = useRef("");
-  const courant = JSON.stringify({ annee, etat });
-  if (!enBase.current) enBase.current = courant;
-  const modifie = courant !== enBase.current;
-
   const parType = (t: string) => b.composants.find((c) => String(c.Type_composant ?? "") === t);
   const enPlus = b.composants.filter(
     (c) => !(COMPOSANTS_STANDARD as readonly string[]).includes(String(c.Type_composant ?? "")),
   );
+
+  /* Les lignes affichées, dans l'ordre de l'écran. Les quatre composants
+     permanents d'abord — ils existent à l'écran avant d'exister en base — puis
+     ceux qu'on a ajoutés. La clé distingue un composant enregistré (son id)
+     d'un permanent encore vide (`std:Toiture`), qui reste à créer. */
+  const affichees = [
+    ...COMPOSANTS_STANDARD.map((t) => ({ cle: parType(t) ? String(parType(t)!._id) : `std:${t}`, type: t, composant: parType(t) })),
+    ...enPlus.map((c) => ({ cle: String(c._id), type: S(c.Type_composant), composant: c })),
+  ];
+
+  const depart = () =>
+    Object.fromEntries(affichees.map(({ cle, composant }) => [
+      cle,
+      { materiau: S(composant?.["Type_matériau"]), etat: S(composant?.Etat) } as Ligne,
+    ]));
+
+  const [lignes, setLignes] = useState<Record<string, Ligne>>(depart);
+  const majLigne = (cle: string, v: Ligne) => setLignes((l) => ({ ...l, [cle]: v }));
+
+  const enBase = useRef("");
+  const courant = JSON.stringify({ annee, etat, lignes });
+  if (!enBase.current) enBase.current = courant;
+  const modifie = courant !== enBase.current;
+
+  /* Un seul enregistrement pour tout l'onglet : le bâti et toutes les lignes
+     qui ont bougé (retours #264, #265). Les lignes intactes ne sont pas
+     réécrites — inutile de faire dater un composant qu'on n'a pas touché. */
+  const enregistrer = () =>
+    start(async () => {
+      const avant = JSON.parse(enBase.current) as { lignes: Record<string, Ligne> };
+      await updateTechnique(immeubleId, { year_constru: parse(annee), Etat: etat || undefined });
+      for (const { cle, type, composant } of affichees) {
+        const v = lignes[cle];
+        const a = avant.lignes?.[cle];
+        if (!v || (a && a.materiau === v.materiau && a.etat === v.etat)) continue;
+        const patch = { Type_materiau: v.materiau || undefined, Etat: v.etat || undefined };
+        if (composant) await updateComposant(immeubleId, String(composant._id), patch);
+        else if (v.materiau || v.etat) await addComposant(immeubleId, { Type_composant: type, ...patch });
+      }
+      enBase.current = JSON.stringify({ annee, etat, lignes });
+    });
+
+  const annuler = () => {
+    const a = JSON.parse(enBase.current) as { annee: string; etat: string; lignes: Record<string, Ligne> };
+    setAnnee(a.annee);
+    setEtat(a.etat);
+    setLignes(a.lignes);
+  };
 
   return (
     <div style={pending ? { opacity: 0.6 } : undefined}>
@@ -175,22 +221,19 @@ function ComposantsTab({ b }: { b: BienData }) {
           }
         />
       </div>
+
+      {affichees.map(({ cle, type, composant }) => (
+        <LigneComposant
+          key={cle} b={b} type={type} composant={composant}
+          valeur={lignes[cle] ?? { materiau: "", etat: "" }}
+          onChange={(v) => majLigne(cle, v)}
+        />
+      ))}
+
       <BarreEnregistrer
         modifie={modifie} pending={pending}
-        onEnregistrer={() =>
-          start(async () => {
-            await updateTechnique(immeubleId, { year_constru: parse(annee), Etat: etat || undefined });
-            enBase.current = courant;
-          })
-        }
+        onEnregistrer={enregistrer} onAnnuler={annuler}
       />
-
-      {COMPOSANTS_STANDARD.map((t) => (
-        <LigneComposant key={t} b={b} type={t} composant={parType(t)} />
-      ))}
-      {enPlus.map((c) => (
-        <LigneComposant key={String(c._id)} b={b} type={S(c.Type_composant)} composant={c} />
-      ))}
     </div>
   );
 }

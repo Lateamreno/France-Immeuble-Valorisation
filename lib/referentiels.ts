@@ -6,6 +6,23 @@
 /* --- Lots --- */
 export const DESTINATIONS = ["Logement", "Commerce", "Bureau", "Logistique", "Cave", "Parking", "Annexe"];
 
+/**
+ * Les destinations qui se comptent en nombre de lots, jamais en surface
+ * (retours #250, #255, #270, #277).
+ *
+ * MAV : « ces lots ne comptent qu'en nombre de lots et pas en surface ». Une
+ * cave et une place de parking se vendent et se louent à l'unité — un prix au
+ * m² de parking ne veut rien dire, et les faire entrer dans la surface de
+ * l'immeuble fausse aussi bien le prix au m² que le rendement.
+ *
+ * Conséquences, partout où cette liste sert : pas de surface Carrez à saisir ;
+ * la surface au sol reste renseignable, pour mémoire, mais n'entre dans aucun
+ * total ; et ces lots sortent des calculs et des tableaux au m².
+ */
+export const DEST_AU_LOT = ["Cave", "Parking"];
+export const compteAuLot = (destination?: string | null) =>
+  DEST_AU_LOT.includes(String(destination ?? ""));
+
 export const TYPES_LOT = [
   // Logements
   "Studio", "Studio + ext", "T1", "T2", "T2 + ext", "T3", "T3 + ext", "T4", "T4 + ext",

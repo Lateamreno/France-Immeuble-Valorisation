@@ -18,7 +18,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { rafraichirFiche, uploadPhoto } from "@/lib/bo/actions";
 import {
-  DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
+  compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
 
@@ -143,7 +143,11 @@ function CarteLot({
           <span>Destination</span>
           <select
             value={r.Destination}
-            onChange={(e) => { onChange(r.id, "Destination", e.target.value); onChange(r.id, "Type_lot", ""); }}
+            onChange={(e) => {
+              onChange(r.id, "Destination", e.target.value);
+              onChange(r.id, "Type_lot", "");
+              if (compteAuLot(e.target.value)) onChange(r.id, "surface_carrez", "");
+            }}
           >
             <option value="">—</option>
             {DESTINATIONS.map((d) => <option key={d}>{d}</option>)}
@@ -156,13 +160,23 @@ function CarteLot({
             {types.map((t) => <option key={t}>{t}</option>)}
           </select>
         </label>
-        <label>
-          <span>Surface Carrez</span>
-          <span className="u">
-            <input inputMode="decimal" value={r.surface_carrez} onChange={(e) => onChange(r.id, "surface_carrez", e.target.value)} />
-            <i>m²</i>
-          </span>
-        </label>
+        {/* Une cave ou un parking se compte au lot : pas de Carrez à saisir,
+            et la place sert au loyer, qui est ce qu'on vient chercher là
+            (retour #250). */}
+        {compteAuLot(r.Destination) ? (
+          <label>
+            <span>Surface</span>
+            <span className="u sansm2">au lot</span>
+          </label>
+        ) : (
+          <label>
+            <span>Surface Carrez</span>
+            <span className="u">
+              <input inputMode="decimal" value={r.surface_carrez} onChange={(e) => onChange(r.id, "surface_carrez", e.target.value)} />
+              <i>m²</i>
+            </span>
+          </label>
+        )}
         <label>
           <span>Loyer HC</span>
           <span className="u">
@@ -256,7 +270,11 @@ export function LotPleinEcran({
           {DESTINATIONS.map((d) => (
             <button
               key={d} type="button" className={r.Destination === d ? "on" : undefined}
-              onClick={() => { onChange(r.id, "Destination", d); onChange(r.id, "Type_lot", ""); }}
+              onClick={() => {
+                onChange(r.id, "Destination", d);
+                onChange(r.id, "Type_lot", "");
+                if (compteAuLot(d)) onChange(r.id, "surface_carrez", "");
+              }}
             >{d}</button>
           ))}
         </div>
@@ -270,7 +288,9 @@ export function LotPleinEcran({
 
         <div className="lfs-sec">Surfaces</div>
         <div className="lfs-l2">
-          <Champ2 label="Carrez" suffixe="m²" valeur={r.surface_carrez} onChange={maj("surface_carrez")} />
+          {!compteAuLot(r.Destination) && (
+            <Champ2 label="Carrez" suffixe="m²" valeur={r.surface_carrez} onChange={maj("surface_carrez")} />
+          )}
           <Champ2 label="Au sol" suffixe="m²" valeur={r.surface_sol} onChange={maj("surface_sol")} />
         </div>
 

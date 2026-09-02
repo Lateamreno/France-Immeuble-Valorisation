@@ -283,28 +283,34 @@ export async function setStatut(immeubleId: string, statutNum: number) {
 
 /* ---------- Lots (État locatif) ---------- */
 
+/* `null` vide le champ, `undefined` le laisse tel quel : c'est la distinction
+   qui permet d'effacer une case (retour #255). Voir `cleanPatch`. */
 export type LotPatch = Partial<{
-  batiment: string;
-  etage: string | number;
-  numero: number;
-  Destination: string;
-  Type_lot: string;
-  surface_carrez: number;
-  surface_sol: number;
-  Type_bail: string;
+  batiment: string | null;
+  etage: string | number | null;
+  numero: number | null;
+  Destination: string | null;
+  Type_lot: string | null;
+  surface_carrez: number | null;
+  surface_sol: number | null;
+  Type_bail: string | null;
   /** #171 — le lot auquel celui-ci est loué, sous un loyer global unique.
    *  `null` le détache : c'est ce qu'on envoie dès que le bail change. */
   lot_rattache: string | null;
-  loyer: number;
-  loyer_max: number;
-  Etat: string;
-  Type_dpe: string;
-  renov_year: number;
-  commentaire: string;
+  loyer: number | null;
+  loyer_max: number | null;
+  Etat: string | null;
+  Type_dpe: string | null;
+  renov_year: number | null;
+  commentaire: string | null;
   /** Rang d'affichage du tableau des lots (#82). */
   ordre: number;
 }>;
 
+/* `undefined` et la chaîne vide veulent dire « je n'ai rien à dire sur ce
+   champ » : on ne les envoie pas. `null` veut dire « efface-le » et passe :
+   `bo_patch_doc` concatène le patch au document, une valeur nulle y écrase
+   donc l'ancienne. Sans cette nuance, aucune case ne pouvait être vidée. */
 const cleanPatch = (p: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== ""));
 
