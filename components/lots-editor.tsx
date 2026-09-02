@@ -14,7 +14,7 @@ import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
-  DESTINATIONS, ETATS_LOT as ETATS, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
+  compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
 
@@ -34,7 +34,10 @@ const IC_DEST: Record<string, React.ReactNode> = {
   Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
   Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
   Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
-  Cave: <><path d="M4 20V8l8-4 8 4v12z" /><path d="M9 20v-7h6v7" /></>,
+  /* Une voûte, pas un toit : la cave et l'entrepôt portaient le même dessin à
+     un détail près (retour #249). L'arc en berceau ne ressemble à rien
+     d'autre dans la colonne. */
+  Cave: <><path d="M4 20.5V12a8 8 0 0 1 16 0v8.5" /><path d="M8.5 20.5V12a3.5 3.5 0 0 1 7 0v8.5" /><path d="M2.5 20.5h19" /></>,
   Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
   Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
 };
@@ -422,17 +425,25 @@ export function LotsEditor({ b }: { b: BienData }) {
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
 
   const totaux = useMemo(() => {
-    const carrez = visibles.reduce((s, r) => s + (N(r.surface_carrez) ?? 0), 0);
-    const occ = visibles.filter((r) => (N(r.loyer) ?? 0) > 0);
+    /* Caves et parkings comptent en lots, pas en m² (retour #250) : les
+       additionner gonflerait la surface de l'immeuble et écraserait le loyer
+       au m², qu'on lit juste en dessous. */
+    const surfaces = visibles.filter((r) => !compteAuLot(r.Destination));
+    const carrez = surfaces.reduce((s, r) => s + (N(r.surface_carrez) ?? 0), 0);
+    const occ = surfaces.filter((r) => (N(r.loyer) ?? 0) > 0);
     const carrezOcc = occ.reduce((s, r) => s + (N(r.surface_carrez) ?? 0), 0);
+    /* Les revenus, eux, comptent tout : un loyer de cave est un loyer. Seul le
+       ratio au m² se limite aux lots qui ont une surface — sinon il rapporte
+       des loyers de parkings à une surface qui ne les contient pas. */
     const loyersAn = visibles.reduce((s, r) => s + (N(r.loyer) ?? 0), 0) * 12;
     const maxAn = visibles.reduce((s, r) => s + (N(r.loyer_max) ?? N(r.loyer) ?? 0), 0) * 12;
+    const loyersSurfaces = occ.reduce((s, r) => s + (N(r.loyer) ?? 0), 0);
     return {
       lots: visibles.length, carrez, loyersAn, maxAn,
       // Le « % » du bandeau du BO est l'occupation FINANCIÈRE :
       // loyers actuels / loyers potentiels (vérifié : 1 206 583 / 1 253 323 ≈ 97 %).
       occupation: maxAn > 0 ? Math.round((loyersAn / maxAn) * 100) : 0,
-      m2mois: carrezOcc > 0 ? loyersAn / 12 / carrezOcc : 0,
+      m2mois: carrezOcc > 0 ? loyersSurfaces / carrezOcc : 0,
     };
   }, [visibles]);
 
@@ -784,7 +795,15 @@ export function LotsEditor({ b }: { b: BienData }) {
                         : <i>—</i>}
                     </span>
                     <select className="lcell inv" value={r.Destination}
-                      onChange={(e) => { edit(r.id, "Destination", e.target.value); edit(r.id, "Type_lot", ""); }}>
+                      onChange={(e) => {
+                        edit(r.id, "Destination", e.target.value);
+                        edit(r.id, "Type_lot", "");
+                        /* Devenu cave ou parking, le lot n'a plus de Carrez :
+                           la case disparaît, sa valeur doit disparaître avec
+                           elle, sinon elle continue de peser dans le total
+                           sans que personne puisse la voir (retour #250). */
+                        if (compteAuLot(e.target.value)) edit(r.id, "surface_carrez", "");
+                      }}>
                       <option value="" />{DESTINATIONS.map((o) => <option key={o}>{o}</option>)}
                     </select>
                   </td>
@@ -792,7 +811,16 @@ export function LotsEditor({ b }: { b: BienData }) {
                     <CelluleTypologie valeur={r.Type_lot} destination={r.Destination}
                       ajouts={b.typologies} onChange={(v) => edit(r.id, "Type_lot", v)} />
                   </td>
-                  <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
+                  {/* Caves et parkings : pas de Carrez (retour #250). La case
+                      est barrée plutôt que masquée — une colonne qui disparaît
+                      d'une ligne sur l'autre désaligne la lecture. La surface
+                      au sol, elle, reste saisissable : elle renseigne sans
+                      entrer dans le total de l'immeuble. */}
+                  {compteAuLot(r.Destination) ? (
+                    <td className="na sansm2" title="Une cave ou un parking se compte au lot, pas au m²">—</td>
+                  ) : (
+                    <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
+                  )}
                   {on("sol") && <td className="na"><input className="lcell num" value={r.surface_sol} onChange={(e) => edit(r.id, "surface_sol", e.target.value)} /><i>m²</i></td>}
                   <td className="brd">
                     <CelluleBail

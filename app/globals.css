@@ -1141,6 +1141,10 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ltable.v2 td:last-child, .ltable.v2 th:last-child { width: 1%; }
 .ltable.v2 td.na { color: var(--gray-txt); font-size: 12.5px; }
 .ltable.v2 td.na i { font-style: normal; color: var(--gray-lt); margin-left: 2px; font-size: 11.5px; }
+/* Cave ou parking : la case Carrez n'est pas vide, elle est sans objet
+   (retour #250). Un tiret pâle, centré, se distingue d'une saisie oubliée. */
+.ltable.v2 td.na.sansm2 { text-align: center; color: var(--gray-lt); }
+.lmob-4 .u.sansm2 { color: var(--gray-lt); font-size: 12px; }
 .ltable.v2 .lcell.num { text-align: right; }
 .ltable.v2 .nc { color: var(--gray-lt); }
 .ltable.v2 .pc .pos { color: var(--green); font-weight: 700; }
