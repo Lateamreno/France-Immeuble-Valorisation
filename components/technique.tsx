@@ -20,7 +20,12 @@ const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", "
 const proxyFichier = (u: string) =>
   u.startsWith("storage:") ? `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}` : u;
 
-import { ETATS_BATI, MATERIAUX, TYPES_COMPOSANT, URGENCES as URGENCES_REF } from "@/lib/referentiels";
+import {
+  ajouterTypologie,
+} from "@/lib/bo/actions";
+import {
+  ETATS_BATI, materiauxPour, RUBRIQUE_MATERIAU, TYPES_COMPOSANT,
+} from "@/lib/referentiels";
 
 const ETATS_COMPOSANT = ETATS_BATI;
 const ETATS_GENERAL = ETATS_BATI;
@@ -59,6 +64,65 @@ function VignetteBati({
 }
 
 /**
+ * Le matériau d'un composant : la liste, et la saisie libre sur « Autre »
+ * (retour #263).
+ *
+ * MAV : « quand le type est Autre je veux pouvoir l'écrire moi-même et qu'on
+ * me propose si je veux l'ajouter à la liste ». Même geste que pour les
+ * typologies de lot (#22) : on écrit, et un bouton propose d'enregistrer le
+ * libellé pour les prochains immeubles. Sans ce bouton, la valeur reste sur ce
+ * composant-là et il faudra la retaper au dossier suivant.
+ */
+function ChoixMateriau({ composant, valeur, ajouts, onChange }: {
+  composant: string;
+  valeur: string;
+  ajouts: { destination: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  const liste = materiauxPour(composant, valeur, ajouts);
+  const connus = materiauxPour(composant, undefined, ajouts).filter((m) => m !== "Autre");
+  const [libre, setLibre] = useState(false);
+  const [texte, setTexte] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!libre) {
+    return (
+      <select className={`min${valeur ? "" : " requis"}`} value={valeur}
+        onChange={(e) => {
+          if (e.target.value === "Autre") { setLibre(true); setTexte(""); setMsg(null); }
+          else onChange(e.target.value);
+        }}>
+        <option value="">Matériau à préciser</option>
+        {liste.map((o) => <option key={o}>{o}</option>)}
+      </select>
+    );
+  }
+
+  const enregistrer = () =>
+    start(async () => {
+      const r = await ajouterTypologie(RUBRIQUE_MATERIAU(composant), texte, connus);
+      setMsg(r.ok ? `« ${texte.trim()} » ajouté aux matériaux ${composant}.` : r.message);
+      if (r.ok) { onChange(texte.trim()); setLibre(false); }
+    });
+
+  return (
+    <span className="tlibre">
+      <input className="min" autoFocus value={texte} placeholder="Matériau…"
+        onChange={(e) => { setTexte(e.target.value); setMsg(null); }}
+        onBlur={() => { if (texte.trim()) onChange(texte.trim()); }}
+        onKeyDown={(e) => { if (e.key === "Escape") setLibre(false); }} />
+      <span className="tacts">
+        <button type="button" title="Enregistrer ce matériau pour les prochains immeubles"
+          disabled={pending || texte.trim().length < 2} onClick={enregistrer}>+</button>
+        <button type="button" title="Revenir à la liste" onClick={() => setLibre(false)}>↺</button>
+      </span>
+      {msg && <span className="tmsg">{msg}</span>}
+    </span>
+  );
+}
+
+/**
  * Une ligne de composant : matériau et état saisis sur place.
  *
  * Elle ne s'enregistre pas elle-même (retours #264 et #265). Chaque ligne
@@ -89,7 +153,6 @@ function LigneComposant({
     .filter((t) => composant && Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as string[]).includes(String(composant._id)))
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
 
-  const choix = MATERIAUX[type] ?? [];
   const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
 
   return (
@@ -99,10 +162,7 @@ function LigneComposant({
           <b>
             {type}
             <span className="tiret">—</span>
-            <select className={`min${materiau ? "" : " requis"}`} value={materiau} onChange={(e) => setMateriau(e.target.value)}>
-              <option value="">Matériau à préciser</option>
-              {[...new Set([materiau, ...choix, "Autre"])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-            </select>
+            <ChoixMateriau composant={type} valeur={materiau} ajouts={b.typologies} onChange={setMateriau} />
           </b>
           <span className={`cmp-tvx${tvx > 0 ? " on" : ""}`}>
             <svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg>
@@ -209,7 +269,12 @@ function ComposantsTab({ b }: { b: BienData }) {
         <VignetteBati
           icone={<><path d="M4 20h16M6 20v-9l6-4 6 4v9" /><path d="M9 20v-5h6v5M8 6.5V4M12 5V3M16 6.5V4" /></>}
           libelle="Année de construction" vide={!annee}
-          enfants={<input className={`min${annee ? "" : " requis"}`} value={annee} onChange={(e) => setAnnee(e.target.value)} />}
+          /* Retour #262 : quatre chiffres, et rien que des chiffres. La case
+             acceptait « 19bb5000 », qui n'est pas une année et que le reste de
+             l'application lit ensuite comme un nombre. */
+          enfants={<input className={`min${annee ? "" : " requis"}`} value={annee}
+            inputMode="numeric" maxLength={4} placeholder="AAAA"
+            onChange={(e) => setAnnee(e.target.value.replace(/\D/g, "").slice(0, 4))} />}
         />
         <VignetteBati
           icone={<><path d="M3 12h4l2-5 3 10 2.5-7 1.5 2h5" /></>}
@@ -249,7 +314,9 @@ function AddComposantButton({ b }: { b: BienData }) {
   const [etat, setEtat] = useState("n.c.");
   const [renov, setRenov] = useState("");
   const [desc, setDesc] = useState("");
-  const mats = MATERIAUX[type] ?? ["Autre"];
+  /* La fenêtre de création propose les mêmes matériaux que la ligne, ajouts
+     des agents compris (retour #263). */
+  const mats = materiauxPour(type, mat, b.typologies);
 
   const submit = () =>
     start(async () => {

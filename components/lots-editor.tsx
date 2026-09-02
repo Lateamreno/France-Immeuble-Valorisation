@@ -179,6 +179,11 @@ type Row = {
   ordre: number;
   /** Travaux d'un lot pas encore enregistré (#84) : posés au moment du save. */
   travaux: string;
+  /* Ce à quoi les travaux du lot correspondent (retour #254). Vide tant que
+     l'agent n'a pas répondu ; on ne le lui demande qu'à la saisie d'un
+     montant, pas à l'ouverture de l'écran. */
+  travaux_objet: string;
+  travaux_urgence: string;
   batiment: string; etage: string; numero: string;
   Destination: string; Type_lot: string;
   surface_carrez: string; surface_sol: string;
@@ -223,6 +228,7 @@ function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
     id: String(l._id), isNew: false,
     ordre: typeof l.ordre === "number" ? (l.ordre as number) : i,
     travaux,
+    travaux_objet: "", travaux_urgence: "",
     batiment: S(l.batiment), etage: S(l.etage), numero: S(l.numero),
     Destination: S(l.Destination), Type_lot: S(l.Type_lot),
     surface_carrez: S(l.surface_carrez), surface_sol: S(l.surface_sol),
@@ -253,6 +259,12 @@ function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
  */
 const txt = (s: string) => (s.trim() === "" ? null : s);
 const nb = (s: string) => (s.trim() === "" ? null : N(s));
+
+/** Ce que la fenêtre du retour #254 a recueilli, prêt pour `setLotTravaux`. */
+const objetTravaux = (r: Row) => ({
+  description: r.travaux_objet.trim() || undefined,
+  urgence: (["Haute", "Moyenne", "Basse"] as const).find((u) => u === r.travaux_urgence),
+});
 
 /** `avecOrdre` n'est vrai qu'après un glisser-déposer : sans cela, éditer un
  *  seul lot lui donnerait un rang que les autres n'ont pas. */
@@ -305,12 +317,14 @@ const SEUIL_MOBILE = 640;
 const POIDS: Record<string, number> = {
   bat: 2.1, etg: 2.0, num: 2.1, dest: 2.3, type: 6.8, carrez: 5.2, sol: 5.5,
   bail: 5.2, entree: 4.6, locataire: 8.8, hc: 4.9, hcm2: 3.8, hcmax: 4.9,
-  hcmaxm2: 4.0, etat: 5.2, travaux: 6.1, dpe: 2.7, renov: 3.6,
+  /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
+     saisie débordait de sa case (retour #251). */
+  hcmaxm2: 4.0, etat: 5.2, travaux: 6.1, dpe: 2.7, renov: 5.4,
   commentaire: 17.3, photos: 2.9,
 };
 /* En vue compacte il reste moins de colonnes : les repères (étage, numéro,
    destination) peuvent respirer, sinon ils tronquent leur contenu. */
-const POIDS_COMPACT: Record<string, number> = { etg: 3.4, num: 3.4, dest: 3.2, renov: 4.2 };
+const POIDS_COMPACT: Record<string, number> = { etg: 3.4, num: 3.4, dest: 3.2, renov: 6.0 };
 
 const PLURIEL: Record<string, string> = {
   Logement: "Logements", Commerce: "Commerces", Bureau: "Bureaux",
@@ -482,7 +496,7 @@ export function LotsEditor({ b }: { b: BienData }) {
   const addRow = () => {
     const id = `new_${Date.now()}`;
     setRows((rs) => [...rs, {
-      id, isNew: true, ordre: rs.length, travaux: "",
+      id, isNew: true, ordre: rs.length, travaux: "", travaux_objet: "", travaux_urgence: "",
       batiment: "", etage: "", numero: nextNumero(),
       Destination: "Logement", Type_lot: "", surface_carrez: "", surface_sol: "",
       Type_bail: "Vide", loyer: "", loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
@@ -502,7 +516,7 @@ export function LotsEditor({ b }: { b: BienData }) {
         // être rattachés, on le fait maintenant (#84).
         const montant = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
         if (Number.isFinite(montant) && montant > 0) {
-          await setLotTravaux(immeubleId, id, `lot ${r.numero || r.Type_lot || ""}`.trim(), montant, null, 0);
+          await setLotTravaux(immeubleId, id, `lot ${r.numero || r.Type_lot || ""}`.trim(), montant, null, 0, objetTravaux(r));
         }
       }
       if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r, rang) })));
@@ -515,10 +529,10 @@ export function LotsEditor({ b }: { b: BienData }) {
         const lignes = b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id));
         const dediee = lignes.find((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).length === 1);
         const autres = avant - (typeof dediee?.montant === "number" ? (dediee.montant as number) : 0);
-        await setLotTravaux(immeubleId, r.id, `lot ${r.numero || r.Type_lot || ""}`.trim(), cible, dediee ? String(dediee._id) : null, autres);
+        await setLotTravaux(immeubleId, r.id, `lot ${r.numero || r.Type_lot || ""}`.trim(), cible, dediee ? String(dediee._id) : null, autres, objetTravaux(r));
       }
       reordonne.current = false;
-      enregistre.current = rows.map((r) => ({ ...r, isNew: false, travaux: "" }));
+      enregistre.current = rows.map((r) => ({ ...r, isNew: false, travaux: "", travaux_objet: "", travaux_urgence: "" }));
       setDirty(new Set());
     });
 
@@ -560,6 +574,9 @@ export function LotsEditor({ b }: { b: BienData }) {
       }
       setSel(new Set());
     });
+
+  /** Le lot dont on demande l'objet des travaux (retour #254). */
+  const [objetDe, setObjetDe] = useState<string | null>(null);
 
   /* Suppression (#86) : une vraie fenêtre qui récapitule les lots concernés,
      pas la boîte du navigateur. */
@@ -606,7 +623,7 @@ export function LotsEditor({ b }: { b: BienData }) {
         const o = Object.fromEntries(entetes.map((h, i) => [h, (vals[i] ?? "").trim()]));
         const id = `new_${Date.now()}_${nouveaux.length}`;
         nouveaux.push({
-          id, isNew: true, ordre: 0, travaux: o.travaux ?? "",
+          id, isNew: true, ordre: 0, travaux: o.travaux ?? "", travaux_objet: "", travaux_urgence: "",
           batiment: o.batiment ?? "", etage: o.etage ?? "", numero: o.numero ?? "",
           Destination: o.Destination ?? "Logement", Type_lot: o.Type_lot ?? "",
           surface_carrez: o.surface_carrez ?? "", surface_sol: o.surface_sol ?? "",
@@ -749,7 +766,7 @@ export function LotsEditor({ b }: { b: BienData }) {
               {on("baux") && <><th>Entrée</th><th>Locataire</th></>}
               <th>HC actuel</th>{on("m2") && <th>€/m²</th>}
               <th>HC max</th>{on("m2") && <th>€/m²</th>}
-              <th className="brd">Etat</th>{!compacte && <th>Travaux</th>}<th>DPE</th><th>Rénov.</th>
+              <th className="brd">Etat</th>{!compacte && <th>Travaux</th>}<th>DPE</th><th>Date réno.</th>
               {on("commentaire") && <th className="brd">Commentaire</th>}
               {on("photos") && <th className={on("commentaire") ? "" : "brd"}>Photos</th>}
             </tr>
@@ -853,9 +870,19 @@ export function LotsEditor({ b }: { b: BienData }) {
                   {!compacte && (
                     <td className="na">
                       <span className={parseFloat(r.travaux) > 0 ? "tvx" : undefined}>
+                        {/* Retour #254 : « quand on rentre des travaux ici je
+                            veux qu'on ait une modale qui s'ouvre rapidement
+                            pour demander à quoi ça correspond ». Elle s'ouvre
+                            en quittant la case, pas à chaque frappe, et
+                            seulement si le montant a bougé vers du positif. */}
                         <input
                           className="lcell num" value={r.travaux} placeholder="0"
                           onChange={(e) => edit(r.id, "travaux", e.target.value)}
+                          onBlur={() => {
+                            const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
+                            const avant = travauxDuLot.get(r.id) ?? 0;
+                            if (Number.isFinite(v) && v > 0 && v !== avant) setObjetDe(r.id);
+                          }}
                         />
                         <i>€</i>
                       </span>
@@ -887,7 +914,8 @@ export function LotsEditor({ b }: { b: BienData }) {
                       </select>
                     </span>
                   </td>
-                  <td className="na"><input className="lcell num" value={r.renov_year} onChange={(e) => edit(r.id, "renov_year", e.target.value)} /></td>
+                  <td className="na"><input className="lcell num" value={r.renov_year} inputMode="numeric" maxLength={4} placeholder="AAAA"
+                    onChange={(e) => edit(r.id, "renov_year", e.target.value.replace(/\D/g, "").slice(0, 4))} /></td>
                   {on("commentaire") && <td className="brd"><input className="lcell" value={r.commentaire} onChange={(e) => edit(r.id, "commentaire", e.target.value)} /></td>}
                   {on("photos") && (
                     <td className={`na${on("commentaire") ? "" : " brd"}`}>
@@ -939,6 +967,53 @@ export function LotsEditor({ b }: { b: BienData }) {
           <span className="ch">›</span> Enregistrer{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </button>
       </div>
+
+      {/* Retour #254 — le détail des travaux du lot, demandé au moment où on
+          saisit le montant : c'est le seul moment où l'agent l'a en tête. */}
+      {objetDe && (() => {
+        const r = rows.find((x) => x.id === objetDe);
+        if (!r) return null;
+        const fermer = () => setObjetDe(null);
+        return (
+          <div className="modal-ov" onClick={fermer}>
+            <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-h">
+                Travaux du {libelleLot(r).toLowerCase()}
+                <button type="button" onClick={fermer}>✕</button>
+              </div>
+              <div className="modal-b">
+                <p className="mhint">
+                  {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi"}
+                  correspondent-ils ? Ce que vous écrivez ici s&apos;affiche dans l&apos;onglet Travaux
+                  et sur le dossier, à la place de « Travaux lot {r.numero || "?"} ».
+                </p>
+                <span className="mlab">Objet des travaux</span>
+                <input
+                  className="min" autoFocus value={r.travaux_objet}
+                  placeholder="Réfection de la salle de bains, remise aux normes électriques…"
+                  onChange={(e) => edit(r.id, "travaux_objet", e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") fermer(); }}
+                />
+                <span className="mlab">Urgence</span>
+                <div className="mrow">
+                  {["Haute", "Moyenne", "Basse"].map((u) => (
+                    <button
+                      key={u} type="button"
+                      className={`mopt${r.travaux_urgence === u ? " on" : ""}`}
+                      onClick={() => edit(r.id, "travaux_urgence", r.travaux_urgence === u ? "" : u)}
+                    >{u}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-f">
+                <button className="kgo" type="button" onClick={fermer}>
+                  <span className="ch">›</span> C&apos;est noté
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {aSupprimer && (
         <div className="modal-ov" onClick={() => setASupprimer(false)}>

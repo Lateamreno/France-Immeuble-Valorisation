@@ -3481,8 +3481,13 @@ export async function setLotTravaux(
   montantCible: number,
   dedieeId: string | null,
   montantAutres: number,
+  /* Ce à quoi les travaux correspondent, demandé à la saisie (retour #254).
+     Sans lui, l'onglet Travaux n'affichait que « Travaux lot 6 » : un montant
+     sans objet, qu'il fallait rouvrir pour comprendre. */
+  objet?: { description?: string; urgence?: "Haute" | "Moyenne" | "Basse" },
 ) {
   const montantDediee = Math.max(0, montantCible - montantAutres);
+  const description = objet?.description?.trim() || `Travaux ${lotLabel}`;
   if (dedieeId) {
     if (montantDediee <= 0) {
       await rpc("bo_delete_doc", { p_table: "bo_travaux", p_id: dedieeId });
@@ -3490,7 +3495,14 @@ export async function setLotTravaux(
       await rpc("bo_patch_doc", {
         p_table: "bo_travaux",
         p_id: dedieeId,
-        p_patch: { montant: montantDediee, "Modified Date": new Date().toISOString() },
+        p_patch: cleanPatch({
+          montant: montantDediee,
+          /* On ne réécrit la description que si l'agent en a donné une : sinon
+             une simple correction de montant effacerait ce qu'il avait saisi. */
+          description: objet?.description?.trim() || undefined,
+          Urgence: objet?.urgence,
+          "Modified Date": new Date().toISOString(),
+        }),
       });
     }
   } else if (montantDediee > 0) {
@@ -3498,15 +3510,16 @@ export async function setLotTravaux(
     await rpc("bo_insert_doc", {
       p_table: "bo_travaux",
       p_id: newId(),
-      p_doc: {
+      p_doc: cleanPatch({
         IMMEUBLE: immeubleId,
         LOTs: [lotId],
-        description: `Travaux ${lotLabel}`,
+        description,
+        Urgence: objet?.urgence,
         montant: montantDediee,
         YN_devis: false,
         "Created Date": now,
         "Modified Date": now,
-      },
+      }),
     });
   }
   await rpc("bo_recompute_travaux", { p_id: immeubleId });
