@@ -235,28 +235,44 @@ function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
   };
 }
 
+/**
+ * Effacer une case doit effacer la donnée (retour #255).
+ *
+ * MAV : « quand je supprime une surface et que j'enregistre, ça me remet
+ * l'ancienne surface que j'avais renseignée ». Le patch écartait les chaînes
+ * vides — ce qui est juste à la création, où une case vide n'a rien à dire,
+ * mais faux à la modification : le champ ne partait plus du tout et la base
+ * gardait sa valeur d'avant. On envoie donc `null`, qui traverse le nettoyage
+ * et écrase pour de bon.
+ *
+ * Une saisie illisible (« abc » dans une case de nombre) reste écartée : elle
+ * ne dit ni une valeur ni un effacement, mieux vaut ne rien toucher.
+ */
+const txt = (s: string) => (s.trim() === "" ? null : s);
+const nb = (s: string) => (s.trim() === "" ? null : N(s));
+
 /** `avecOrdre` n'est vrai qu'après un glisser-déposer : sans cela, éditer un
  *  seul lot lui donnerait un rang que les autres n'ont pas. */
 function toPatch(r: Row, avecOrdre = false): LotPatch {
   return {
     ...(avecOrdre ? { ordre: r.ordre } : null),
-    batiment: r.batiment || undefined,
-    etage: r.etage || undefined,
-    numero: N(r.numero),
-    Destination: r.Destination || undefined,
-    Type_lot: r.Type_lot || undefined,
-    surface_carrez: N(r.surface_carrez),
-    surface_sol: N(r.surface_sol),
-    Type_bail: r.Type_bail || undefined,
+    batiment: txt(r.batiment),
+    etage: txt(r.etage),
+    numero: nb(r.numero),
+    Destination: txt(r.Destination),
+    Type_lot: txt(r.Type_lot),
+    surface_carrez: nb(r.surface_carrez),
+    surface_sol: nb(r.surface_sol),
+    Type_bail: txt(r.Type_bail),
     /* Le rattachement ne survit pas au type de bail : « dès qu'on change de
        type de bail ça détache le bien du lot » (#171). */
-    lot_rattache: r.Type_bail === RATTACHE ? r.lot_rattache || undefined : null,
-    loyer: N(r.loyer),
-    loyer_max: N(r.loyer_max),
-    Etat: r.Etat || undefined,
-    Type_dpe: r.Type_dpe || undefined,
-    renov_year: N(r.renov_year),
-    commentaire: r.commentaire || undefined,
+    lot_rattache: r.Type_bail === RATTACHE ? txt(r.lot_rattache) : null,
+    loyer: nb(r.loyer),
+    loyer_max: nb(r.loyer_max),
+    Etat: txt(r.Etat),
+    Type_dpe: txt(r.Type_dpe),
+    renov_year: nb(r.renov_year),
+    commentaire: txt(r.commentaire),
   };
 }
 
