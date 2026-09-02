@@ -2141,6 +2141,12 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   font-family: var(--font-body); font-size: 13px; color: #8f969c;
 }
 .est-ch input[readonly] { cursor: default; }
+/* Le moyen de locomotion d'un point d'intérêt (retour #266) : une liste, dans
+   le même cadre que les cases voisines pour que la ligne reste une ligne. */
+.est-ch select {
+  width: 100%; border: 0; background: none; padding: 0; outline: none;
+  font-family: var(--font-body); font-size: 13px; color: var(--slate); cursor: pointer;
+}
 .est-ch i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
 .est-ch.edit { background: #fff; border-color: #d3d3d3; }
 .est-ch.edit input, .est-ch.edit textarea { color: var(--slate); }
@@ -2694,6 +2700,8 @@ select.pr-in { cursor: pointer; }
    SeLoger, qui n'a rien à voir. */
 .mq.lc { background: #0b7285; }
 .mq.ue { background: #c2410c; }
+/* leboncoin, à sa couleur (retour #270). */
+.mq.lbc { background: #ff6e14; font-size: 8.5px; letter-spacing: .2px; }
 /* Le picto du champ devient le bouton du site qui donne ce chiffre-là. */
 .sf-lien { display: inline-grid; place-items: center; text-decoration: none; }
 .sf-lien:hover { opacity: .78; }
@@ -2718,6 +2726,10 @@ select.pr-in { cursor: pointer; }
 }
 .sf-box input::placeholder { color: #b9b9b9; }
 .sf-val { flex: 1; font-family: var(--font-body); font-size: 14.5px; color: var(--gray-txt); }
+.sf-aide {
+  display: block; margin-top: 4px; font-size: 11px; line-height: 1.35;
+  color: var(--gray-lt);
+}
 .sf-suf { flex: none; font-size: 13px; color: var(--gray-txt); }
 .sf.requis .sf-box { border-color: var(--red); background: #fff8f8; }
 .sf.requis .sf-lab { color: var(--red); background: #fff8f8; }

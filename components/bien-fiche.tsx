@@ -23,6 +23,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
+import { manquesDossier } from "@/lib/bo/completude";
 import { Facade } from "@/components/facade";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
@@ -219,19 +220,44 @@ export function BienFiche({
   };
   const majSous = (k: SectionKey) => (t: string) => setSous((p) => ({ ...p, [k]: t }));
   const im = b.im;
-  const ok = (k: string) => im[k] === true;
+
+  /**
+   * Les pastilles du rail viennent du MÊME moteur que « ce qui reste à
+   * saisir » (retour #267).
+   *
+   * MAV : « j'ai rentré les infos sur le propriétaire mais j'ai toujours
+   * l'alerte à côté de Propriétaire dans la sidebar ». Elles lisaient des
+   * booléens `ok_*` calculés par Bubble, que cette application n'écrit jamais :
+   * ils restaient donc faux quoi qu'on saisisse. Une pastille qui ne bouge pas
+   * n'est pas une alerte, c'est un décor — et pire, elle contredisait la liste
+   * des manques, qui elle disait juste.
+   */
+  const manques = useMemo(
+    () => manquesDossier({
+      im: b.im, lots: b.lots, parcelles: b.parcelles, photos: b.photos,
+      secteur: b.secteur, estimations: b.estimations,
+      charges: b.charges, composants: b.composants, proprietaire: b.proprietaire,
+    }),
+    [b.im, b.lots, b.parcelles, b.photos, b.secteur, b.estimations, b.charges, b.composants, b.proprietaire],
+  );
+  /* Les parcelles sont une rubrique d'Emplacement : leur manque doit allumer
+     la pastille d'Emplacement, pas une section qui n'existe pas au rail. */
+  const manque = (k: string) =>
+    manques.some((m) => m.section === k || m.section.startsWith(`${k}:`));
+  const pastille = (k: string) =>
+    manque(k) ? <span className="warn3" /> : <span className="okv">✓</span>;
 
   const sections: {
     key: SectionKey; label: string; icon: React.ReactNode;
     indicator?: React.ReactNode; sub?: boolean;
   }[] = [
     { key: "suivi", label: "Suivi", icon: I.suivi, indicator: <span className="ncount">{b.suivis.length}</span> },
-    { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: ok("ok_proprio") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: ok("ok_emplacement") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "locatif", label: "Etat locatif", icon: I.key, indicator: ok("ok_locatif") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "technique", label: "Etat technique", icon: I.tech, indicator: ok("ok_composants") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "prix", label: "Description et prix", icon: I.info, indicator: ok("ok_prix") && ok("ok_descriptif") ? <span className="okv">✓</span> : <span className="warn3" /> },
-    { key: "photos", label: "Photos", icon: I.cam, indicator: ok("ok_photos") ? <span className="okv">✓</span> : <span className="ncount">{b.photos.length}</span> },
+    { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: pastille("proprietaire") },
+    { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: pastille("emplacement") },
+    { key: "locatif", label: "Etat locatif", icon: I.key, indicator: pastille("locatif") },
+    { key: "technique", label: "Etat technique", icon: I.tech, indicator: pastille("technique") },
+    { key: "prix", label: "Description et prix", icon: I.info, indicator: pastille("prix") },
+    { key: "photos", label: "Photos", icon: I.cam, indicator: manque("photos") ? <span className="ncount">{b.photos.length}</span> : <span className="okv">✓</span> },
   ];
 
   const docSub: typeof sections = [
