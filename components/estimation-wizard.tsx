@@ -20,6 +20,7 @@ import {
   supprimerEstimation, updateEmplacement, type EstimationPayload,
 } from "@/lib/bo/actions";
 import { MOYENS } from "@/lib/bo/itineraire";
+import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -398,7 +399,10 @@ export function EstimationWizard({
       // Faute de référence propre à la destination, on part du global saisi
       // dans Emplacement — c'est ce que l'agent recopierait à la main.
       return [d.dest, {
-        l: S(num(sect[`${px}_loyer_retenu`]) ?? num(sect["0 - loyer_mois"])),
+        /* Retours #269, #270 : la case parle l'unité du marché — annuelle pour
+           les commerces, par lot pour les caves et les parkings. La base garde
+           un loyer mensuel, la conversion se fait ici et à la lecture. */
+        l: S(loyerAffiche(num(sect[`${px}_loyer_retenu`]) ?? num(sect["0 - loyer_mois"]), d.dest)),
         p: S(num(sect[`${px}_prix_retenu`]) ?? num(sect["0 - prix"])),
         r: S(num(sect[`${px}_renta_retenu`]) ?? num(sect["0 - renta _%"])),
       }];
@@ -414,7 +418,9 @@ export function EstimationWizard({
     for (const d of agg.parDest) {
       const r = refs[d.dest];
       if (!r || d.surface <= 0) continue;
-      const l = parse(r.l), p = parse(r.p);
+      /* Le loyer saisi peut être annuel (commerces) : on ramène tout au mois
+         avant de pondérer, sinon un commerce pèse douze fois trop (#269). */
+      const l = loyerStocke(parse(r.l), d.dest), p = parse(r.p);
       if (l === undefined && p === undefined) continue;
       st += d.surface; sl += (l ?? 0) * d.surface; sp += (p ?? 0) * d.surface;
     }
@@ -569,7 +575,7 @@ export function EstimationWizard({
             loyer: rLoyer || undefined, prix: rPrix || undefined, renta: rRenta || undefined,
             parDest: agg.parDest.map((d) => {
               const r = refs[d.dest] ?? { l: "", p: "", r: "" };
-              return { dest: d.dest, loyer: parse(r.l), prix: parse(r.p), renta: parse(r.r) };
+              return { dest: d.dest, loyer: loyerStocke(parse(r.l), d.dest), prix: parse(r.p), renta: parse(r.r) };
             }),
           },
           prix: { hai, honos_pct: pct },
@@ -899,9 +905,9 @@ export function EstimationWizard({
                       </button>
                     )}
                   />
-                  <Champ label="Loyer de référence" valeur={r.l ? `${r.l.replace(".", ",")} €/m²/mois` : ""} editable={perso}
+                  <Champ label="Loyer de référence" valeur={r.l ? `${r.l.replace(".", ",")} ${uniteSecteur(d.dest).loyerUnite}` : ""} editable={perso}
                     onChange={(v) => majRef(d.dest, "l", v)} />
-                  <Champ label="Prix de référence" valeur={r.p ? `${group(Number(r.p))} €/m²` : ""} editable={perso}
+                  <Champ label="Prix de référence" valeur={r.p ? `${group(Number(r.p))} ${uniteSecteur(d.dest).prixUnite}` : ""} editable={perso}
                     onChange={(v) => majRef(d.dest, "p", v)} />
                   <Champ label="Rendement de référence" valeur={r.r ? `${r.r.replace(".", ",")} %` : ""} editable={perso}
                     onChange={(v) => majRef(d.dest, "r", v)} />
@@ -980,7 +986,12 @@ export function EstimationWizard({
                       trop : les « max » disent la même chose décalée, et on
                       ne savait plus lequel viser. Restent les deux que MAV
                       regarde vraiment. */}
-                  {([["Rendement secteur", pRendement], ["Prix m² secteur", pM2]] as const)
+                  {/* Retour #275 : « sur la barrette, pour le rendement du
+                      secteur, il faut que ce soit le potentiel, pas l'actuel ».
+                      Un acquéreur capitalise ce que l'immeuble rapportera une
+                      fois reloué, pas ce qu'il rapporte aujourd'hui à moitié
+                      vide — c'est le prix qu'il propose. */}
+                  {([["Rendement secteur", pRendementMax], ["Prix m² secteur", pM2]] as const)
                     .filter(([, v]) => v > 0)
                     .map(([l, v], i) => (
                       <button key={l} type="button" className={`rep${i % 2 ? " bas" : ""}`}

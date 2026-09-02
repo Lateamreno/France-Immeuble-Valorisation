@@ -2700,6 +2700,8 @@ select.pr-in { cursor: pointer; }
    SeLoger, qui n'a rien à voir. */
 .mq.lc { background: #0b7285; }
 .mq.ue { background: #c2410c; }
+/* leboncoin, à sa couleur (retour #270). */
+.mq.lbc { background: #ff6e14; font-size: 8.5px; letter-spacing: .2px; }
 /* Le picto du champ devient le bouton du site qui donne ce chiffre-là. */
 .sf-lien { display: inline-grid; place-items: center; text-decoration: none; }
 .sf-lien:hover { opacity: .78; }
@@ -2724,6 +2726,10 @@ select.pr-in { cursor: pointer; }
 }
 .sf-box input::placeholder { color: #b9b9b9; }
 .sf-val { flex: 1; font-family: var(--font-body); font-size: 14.5px; color: var(--gray-txt); }
+.sf-aide {
+  display: block; margin-top: 4px; font-size: 11px; line-height: 1.35;
+  color: var(--gray-lt);
+}
 .sf-suf { flex: none; font-size: 13px; color: var(--gray-txt); }
 .sf.requis .sf-box { border-color: var(--red); background: #fff8f8; }
 .sf.requis .sf-lab { color: var(--red); background: #fff8f8; }

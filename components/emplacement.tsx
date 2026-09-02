@@ -17,6 +17,7 @@ import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
+import { annoncesLot, loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 import { slugVille, urlUnemplacement, type ValeurUE } from "@/lib/unemplacement";
 import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
@@ -905,26 +906,39 @@ function SecteurTab({ b }: { b: BienData }) {
       <div className="sect-vgs">
         {dests.map((d) => {
           const prefix = DEST_PREFIX[d] ?? "autre";
-          const surf = lots.filter((l) => String(l.Destination ?? "") === d).reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
+          const duType = lots.filter((l) => String(l.Destination ?? "") === d);
+          const surf = duType.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
           const loyer = num(sect[`${prefix}_loyer_retenu`]);
           const prix = num(sect[`${prefix}_prix_retenu`]);
           const renta = num(sect[`${prefix}_renta_retenu`]);
-          const loyerAnD = loyer !== undefined && surf > 0 ? loyer * surf * 12 : undefined;
+          /* Retours #269 et #270 : la vignette parle l'unité du marché. Une
+             cave ou une place se compte à l'unité — c'est le NOMBRE de lots
+             qui multiplie, pas une surface qu'ils n'ont pas ; un commerce se
+             cote au m² par an. Le stock, lui, reste mensuel. */
+          const u = uniteSecteur(d);
+          const quantite = u.parLot ? duType.length : surf;
+          const loyerAnD = loyer !== undefined && quantite > 0 ? loyer * quantite * 12 : undefined;
           return (
             <div key={d} className="sect-vg">
               <div className="sv-h">
                 <b>{PLURIELS[d] ?? `${d}s`}</b>
-                <span>{Math.round(surf).toLocaleString("fr-FR")} m² carrez</span>
+                <span>
+                  {u.parLot
+                    ? `${duType.length} ${duType.length > 1 ? `${u.lot}s` : u.lot}`
+                    : `${Math.round(surf).toLocaleString("fr-FR")} m² carrez`}
+                </span>
               </div>
               <div className="sv-l">
                 <svg viewBox="0 0 24 24"><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></svg>
-                {loyer !== undefined ? <b>{fr1(loyer)} <i>€/m²/mois</i></b> : <b className="nc">loyer n.c.</b>}
+                {loyer !== undefined
+                  ? <b>{fr1(loyerAffiche(loyer, d)!)} <i>{u.loyerUnite}</i></b>
+                  : <b className="nc">loyer n.c.</b>}
                 {loyerAnD !== undefined && <span className="chip">{Math.round(loyerAnD / 1000).toLocaleString("fr-FR")} k€/an</span>}
               </div>
               <div className="sv-l">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg>
-                {prix !== undefined ? <b>{Math.round(prix).toLocaleString("fr-FR")} <i>€/m²</i></b> : <b className="nc">prix n.c.</b>}
-                {prix !== undefined && surf > 0 && <span className="chip">{Math.round(prix * surf).toLocaleString("fr-FR")} €</span>}
+                {prix !== undefined ? <b>{Math.round(prix).toLocaleString("fr-FR")} <i>{u.prixUnite}</i></b> : <b className="nc">prix n.c.</b>}
+                {prix !== undefined && quantite > 0 && <span className="chip">{Math.round(prix * quantite).toLocaleString("fr-FR")} €</span>}
               </div>
               <div className="sv-l">
                 <svg viewBox="0 0 24 24"><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></svg>
@@ -956,6 +970,9 @@ const MARQUES: Record<string, React.ReactNode> = {
      LocalCommercial. Chaque site a désormais la sienne. */
   localcommercial: <span className="mq lc">LC</span>,
   unemplacement: <span className="mq ue">UE</span>,
+  /* Le marché des caves et des places ne se lit que dans les annonces
+     (retour #270) : leboncoin en publie le plus gros volume. */
+  leboncoin: <span className="mq lbc">lbc</span>,
   maps: (
     <svg className="mq-svg" viewBox="0 0 24 24">
       <path d="M12 22s7-7.1 7-12a7 7 0 1 0-14 0c0 4.9 7 12 7 12z" fill="#ea4335" stroke="none" />
@@ -989,9 +1006,12 @@ const nbSaisi = (t: string, decimales: number) => {
 /** Champ encadré de la modale du BO : picto à gauche, libellé posé sur le
  *  cadre, unité à droite. Rouge tant qu'il est vide. */
 function ChampSecteur({
-  icone, libelle, unite, valeur, onChange, decimales = 0, calcule, repere, aRemplacer, lien,
+  icone, libelle, unite, aide, valeur, onChange, decimales = 0, calcule, repere, aRemplacer, lien,
 }: {
   icone: React.ReactNode; libelle: string; unite?: string;
+  /** Pourquoi cette unité-là (retours #269, #270) : la convention du métier
+   *  se rappelle sous le champ, sinon on saisit un loyer annuel au mois. */
+  aide?: string;
   valeur: string; onChange?: (v: string) => void;
   decimales?: number;
   /** Champ déduit des autres : affiché, jamais saisi. */
@@ -1023,6 +1043,7 @@ function ChampSecteur({
           />
         )}
         {unite && <span className="sf-suf">{unite}</span>}
+        {aide && <span className="sf-aide">{aide}</span>}
         {repere && <span className="sf-rep">{repere}</span>}
       </span>
     </div>
@@ -1051,7 +1072,11 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
   const prefix = DEST_PREFIX[dest] ?? "autre";
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
-  const [loyer, setLoyer] = useState(S(num(sect[`${prefix}_loyer_retenu`])));
+  /* Retours #269 et #270 : chaque destination se cote dans SON unité. La base
+     garde un loyer mensuel ; on ne convertit qu'à l'entrée et à la sortie de
+     l'écran, pour que rien d'autre ne change en aval. */
+  const unite = uniteSecteur(dest);
+  const [loyer, setLoyer] = useState(S(loyerAffiche(num(sect[`${prefix}_loyer_retenu`]), dest)));
   const [prix, setPrix] = useState(S(num(sect[`${prefix}_prix_retenu`])));
   const [comment, setComment] = useState(S(sect[`${prefix}_commentaire`]));
 
@@ -1083,8 +1108,9 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
 
   /* Le rendement n'est pas une saisie : c'est le loyer annuel rapporté au
      prix. Le laisser à la main, c'est laisser entrer une incohérence. */
+  const loyerMensuel = loyerStocke(parse(loyer), dest);
   const renta =
-    parse(loyer) && parse(prix) ? String(Math.round((parse(loyer)! * 12 * 1000) / parse(prix)!) / 10) : "";
+    loyerMensuel && parse(prix) ? String(Math.round((loyerMensuel * 12 * 1000) / parse(prix)!) / 10) : "";
 
   const ville = S(b.im.adresse_ville);
   const cp = S(b.im.adresse_zipcode);
@@ -1143,7 +1169,15 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
   }, [open, ueLoyer, ue, dest, cp, ville, commune?.code]);
 
   const liens: { cle: string; label: string; href: string }[] =
-    ueLoyer
+    unite.parLot
+    ? [
+        // Les annonces de la commune, achat puis location : c'est le seul
+        // marché publié pour une cave ou une place (retour #270).
+        { ...annoncesLot(dest, { ville, cp }, "vente")[0], label: "leboncoin — ventes" },
+        { ...annoncesLot(dest, { ville, cp }, "location")[0], label: "leboncoin — locations" },
+        { ...annoncesLot(dest, { ville, cp }, "vente")[1], label: "SeLoger" },
+      ].filter((l) => l.href)
+    : ueLoyer
       ? [
           { cle: "localcommercial", label: "LocalCommercial", href: lienLocalCommercial },
           { cle: "notaires", label: "Notaires", href: lienNotaires },
@@ -1199,7 +1233,8 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
               <ChampSecteur
                 icone={<><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>}
                 libelle="Loyer du secteur"
-                unite={dest === "Commerce" ? "€/m²/mois (annuel ÷ 12)" : "€/m²/mois"}
+                unite={unite.loyerUnite}
+                aide={unite.loyerAide}
                 valeur={loyer}
                 onChange={(v) => { prerempli.current.loyer = false; setLoyer(v); }}
                 decimales={2}
@@ -1224,7 +1259,7 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
               />
               <ChampSecteur
                 icone={<><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>}
-                libelle="Prix du secteur" unite="€/m²"
+                libelle="Prix du secteur" unite={unite.prixUnite}
                 valeur={prix}
                 onChange={(v) => { prerempli.current.prix = false; setPrix(v); }}
                 lien={uePrix ? {
@@ -1266,7 +1301,7 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
                       immeubleId,
                       b.secteur ? String(b.secteur._id ?? "") || null : null,
                       dest,
-                      { loyer: parse(loyer), prix: parse(prix), renta: parse(renta), commentaire: comment || undefined },
+                      { loyer: loyerStocke(parse(loyer), dest), prix: parse(prix), renta: parse(renta), commentaire: comment || undefined },
                       poids,
                     );
                     setOpen(false);
