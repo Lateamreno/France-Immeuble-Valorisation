@@ -53,7 +53,7 @@ export function mailConfigure() {
  * (`smtp.sendgrid.net`, identifiant littéral `apikey`, mot de passe = la clé),
  * mais le code ne présume de rien, c'est du SMTP — avec sa propre adresse
  * d'expédition. Règle ferme : la poser sur un SOUS-DOMAINE dédié
- * (envois.france-immeuble.fr), et pas sur le domaine courant. Une campagne qui
+ * (agence.france-immeuble.fr), et pas sur le domaine courant. Une campagne qui
  * tourne mal n'entame alors rien de la messagerie de tous les jours.
  *
  * Ce que l'agent garde malgré tout : la réponse lui revient à LUI, par le
@@ -66,7 +66,7 @@ const MASSE = () => ({
   pass: process.env.MASSE_SMTP_PASS,
   from: process.env.MASSE_FROM,
   /* Le sous-domaine d'envoi. Posé, chaque agent expédie sous SON adresse —
-     r.voci@envois.france-immeuble.fr — au lieu d'une adresse de service
+     r.voci@agence.france-immeuble.fr — au lieu d'une adresse de service
      partagée. Une salve garde ainsi un visage, ce qui compte plus qu'on ne
      croit à l'ouverture.
 

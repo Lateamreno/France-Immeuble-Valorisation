@@ -244,7 +244,7 @@ d'acquéreurs, projets annexes.
 - Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
   mot de passe = la clé d'API). Variables `MASSE_SMTP_*`, puis `MASSE_DOMAINE`
   (une adresse par agent) ou `MASSE_FROM` (adresse de service unique).
-- Adresse d'expédition sur un **sous-domaine dédié** (`envois.france-immeuble.fr`),
+- Adresse d'expédition sur un **sous-domaine dédié** (`agence.france-immeuble.fr`),
   jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
   de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
   un nom de domaine proche de la marque et sans historique est le motif même du
@@ -252,9 +252,10 @@ d'acquéreurs, projets annexes.
   - Nom du sous-domaine : **neutre et durable**. `dossiers.` deviendrait faux le
     jour d'une salve « projets annexes » ; `communication.` est long (il s'affiche
     dans chaque expéditeur, tronqué sur mobile) et sonne publipostage.
-    `envois.` reste vrai quoi qu'on envoie.
+    `agence.` reste vrai quoi qu'on envoie — c'est le nom retenu et authentifié
+    chez SendGrid, il ne change plus.
   - **Une adresse par agent** sur ce sous-domaine, à sa convention habituelle :
-    `r.voci@envois.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
+    `r.voci@agence.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
     visage. Attention à deux illusions : ça ne cloisonne PAS la réputation entre
     agents — les messageries la calculent au niveau du domaine signataire, pas de
     l'adresse ; et chaque adresse doit **exister en renvoi** vers la vraie boîte
