@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { getContact, mailsDuContact } from "@/lib/bubble/server";
 import { ContactFiche } from "@/components/contact-fiche";
+import { compteDuContact } from "@/lib/bo/compte-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [d, echanges] = await Promise.all([
+  const [d, echanges, compte] = await Promise.all([
     getContact(id).catch(() => null),
     mailsDuContact(id).catch(() => []),
+    compteDuContact(id).catch(() => null),
   ]);
   if (!d) {
     return (
@@ -17,5 +19,15 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
       </div>
     );
   }
-  return <ContactFiche d={d} echanges={echanges} />;
+    /* Le secret ne quitte JAMAIS le serveur : on ne passe à l'écran que l'état
+     du compte, pas l'empreinte du mot de passe. */
+  return (
+    <ContactFiche
+      d={d} echanges={echanges}
+      compte={compte && {
+        actif: compte.actif, active_le: compte.active_le,
+        vu_le: compte.vu_le, connexions: compte.connexions,
+      }}
+    />
+  );
 }

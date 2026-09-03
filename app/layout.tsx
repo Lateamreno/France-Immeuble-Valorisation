@@ -36,12 +36,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  /* L'espace propriétaire ne s'adresse pas à un agent : ni rail, ni création
+  /* L'espace client ne s'adresse pas à un agent : ni rail, ni création
      rapide, ni revue des retours. Et on ne va pas non plus chercher les
      agents et les retours du BO pour une page que lit un vendeur — le chemin
      vient du middleware, qui existe pour ça. */
   const chemin = (await headers()).get("x-chemin") ?? "";
-  if (chemin.startsWith("/proprietaire")) {
+  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")) {
     return (
       <html lang="fr">
         <body className="hors-bo">{children}</body>

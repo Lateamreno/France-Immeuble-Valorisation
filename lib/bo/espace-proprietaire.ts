@@ -27,6 +27,7 @@
  */
 
 import "server-only";
+import { randomBytes } from "crypto";
 import { getBien } from "@/lib/bubble/server";
 import type { Espace, Piece, VueProprietaire } from "@/lib/bo/espace-modele";
 
@@ -102,6 +103,49 @@ export async function cheminDeLaPiece(jeton: string, pieceId: string): Promise<s
   }).catch(() => null);
   if (!res?.ok) return null;
   return ((await res.json()) as { chemin: string }[])[0]?.chemin ?? null;
+}
+
+/* ---------- Création ---------- */
+
+/**
+ * Crée l'espace d'un immeuble et rend son jeton, sans rien invalider.
+ *
+ * Séparé de l'action `ouvrirEspace` parce que le rendu d'une page peut avoir
+ * besoin de créer un espace — un client connecté qui ouvre son immeuble pour
+ * la première fois — et que `revalidatePath` est interdit pendant un rendu.
+ * L'action, elle, garde son invalidation : c'est un clic d'agent, pas un rendu.
+ */
+export async function creerEspace(input: {
+  immeubleId: string; estimationId?: string; contactId?: string; agent?: string;
+  /** Durée de vie du lien, en jours. */
+  jours?: number;
+}): Promise<string> {
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente");
+  const ecrire = (chemin: string, methode: "POST" | "PATCH", corps: unknown) =>
+    fetch(`${SB_URL}/rest/v1/${chemin}`, {
+      method: methode,
+      headers: { ...entetes(), "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(corps),
+    });
+
+  /* Un seul lien vivant par immeuble : rouvrir révoque le précédent, sinon un
+     lien transféré à un tiers resterait valable pour toujours. */
+  await ecrire(
+    `fi_espace_proprietaire?immeuble_id=eq.${encodeURIComponent(input.immeubleId)}&revoque=is.false`,
+    "PATCH", { revoque: true },
+  ).catch(() => undefined);
+
+  const jeton = randomBytes(32).toString("base64url");
+  const res = await ecrire("fi_espace_proprietaire", "POST", [{
+    jeton,
+    immeuble_id: input.immeubleId,
+    estimation_id: input.estimationId ?? null,
+    contact_id: input.contactId ?? null,
+    cree_par: input.agent ?? null,
+    expire_le: new Date(Date.now() + (input.jours ?? 120) * 86400_000).toISOString(),
+  }]);
+  if (!res.ok) throw new Error(`Création de l'espace : ${res.status}`);
+  return jeton;
 }
 
 /* ---------- La vue du propriétaire ---------- */

@@ -20,9 +20,9 @@
  * cesse d'écrire, il ne se contente pas de disparaître de l'écran.
  */
 
-import { randomBytes, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { lireEspace } from "@/lib/bo/espace-proprietaire";
+import { creerEspace, lireEspace } from "@/lib/bo/espace-proprietaire";
 import { CATEGORIES_PIECE, type Reponse } from "@/lib/bo/espace-modele";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -46,16 +46,6 @@ async function ecrire(chemin: string, methode: "POST" | "PATCH", corps: unknown)
   return res.json();
 }
 
-/**
- * Le jeton : 32 octets de hasard, en base64url — 43 caractères.
- *
- * MAV a choisi le lien sans mot de passe : pour un propriétaire de soixante-dix
- * ans, un code à saisir est une raison d'appeler l'agence plutôt que d'ouvrir
- * la page. Le lien porte donc seul la preuve d'accès, et il doit être
- * indevinable. 256 bits le sont ; un identifiant court ne l'est pas.
- */
-const nouveauJeton = () => randomBytes(32).toString("base64url");
-
 /** Durée de vie d'un lien, en jours. Le temps d'une décision de vente. */
 const DUREE_JOURS = 120;
 
@@ -72,22 +62,7 @@ export async function ouvrirEspace(
   immeubleId: string,
   input: { estimationId?: string; contactId?: string; agent?: string } = {},
 ): Promise<string> {
-  await ecrire(
-    `fi_espace_proprietaire?immeuble_id=eq.${encodeURIComponent(immeubleId)}&revoque=is.false`,
-    "PATCH",
-    { revoque: true },
-  ).catch(() => undefined);
-
-  const jeton = nouveauJeton();
-  const expire = new Date(Date.now() + DUREE_JOURS * 86400_000).toISOString();
-  await ecrire("fi_espace_proprietaire", "POST", [{
-    jeton,
-    immeuble_id: immeubleId,
-    estimation_id: input.estimationId ?? null,
-    contact_id: input.contactId ?? null,
-    cree_par: input.agent ?? null,
-    expire_le: expire,
-  }]);
+  const jeton = await creerEspace({ immeubleId, ...input, jours: DUREE_JOURS });
   revalidatePath(`/bien/${immeubleId}`);
   return jeton;
 }

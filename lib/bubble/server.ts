@@ -207,7 +207,7 @@ async function bq(
  * secondes sur le dashboard, alors que les quatre requêtes ne se dépendent
  * pas.
  */
-async function fetchAll(
+export async function fetchAll(
   type: string,
   constraints?: Constraint[],
   max = 2000,

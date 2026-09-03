@@ -2,8 +2,8 @@
  * Le seul rôle de ce fichier : dire à la mise en page racine sur quelle URL
  * elle se trouve.
  *
- * L'espace propriétaire (`/proprietaire/…`) est la première page du site qui ne
- * s'adresse pas à un agent : elle ne doit porter ni le rail, ni le bouton de
+ * L'espace client (`/espace/…`) et le lien propriétaire (`/proprietaire/…`) sont
+ * les premières pages du site qui ne s'adressent pas à un agent : elle ne doit porter ni le rail, ni le bouton de
  * création rapide, ni la revue des retours. Or `app/layout.tsx` est le seul
  * layout du projet et les monte pour tout le monde.
  *
