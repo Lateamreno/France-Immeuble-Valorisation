@@ -372,6 +372,135 @@ export function EspaceVendeur({
 /* Depuis le retour #310, l'écran du prix ne s'occupe plus du compte client :
    il est passé à l'onglet Propriétaire avec l'espace vendeur. Il garde
    `espace` parce qu'il en reprend le prix arrêté par le propriétaire. */
+
+/* ============ Retour #311 · rendre l'écran du prix lisible d'un coup ========
+   MAV : « tu peux faire des pictos et organiser les informations pour que ce
+   soit plus compréhensible, pareil pour le prix, les honos et tout. Limite tu
+   fais un petit résumé d'état locatif, genre Bureau x — x m² — x loyer, avec
+   une ligne par type sur deux colonnes, et le récap dans lequel on met tous
+   les loyers, les travaux, le prix au m² après travaux et la renta après
+   travaux vs actuel — limite remettre les deux grilles de la détermination de
+   prix de l'estimation. »
+
+   L'écran donnait le prix et les rendements, mais rien de ce dont ils
+   découlent : on descendait dans l'état locatif pour savoir ce qui compose
+   les loyers, et on refaisait de tête le prix au m² travaux compris. Deux
+   blocs comblent ça — ce que l'immeuble contient, et ce que ça donne. */
+
+/* Pictos de destination, les mêmes que l'état locatif et l'estimation. */
+const IC_DEST: Record<string, React.ReactNode> = {
+  Logement: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
+  Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+  Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
+  Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
+  Cave: <><path d="M4 20.5V12a8 8 0 0 1 16 0v8.5" /><path d="M8.5 20.5V12a3.5 3.5 0 0 1 7 0v8.5" /><path d="M2.5 20.5h19" /></>,
+  Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
+  Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
+};
+
+/** Les destinations qui se comptent au lot, jamais au m² (retours #249/#250). */
+const AU_LOT = new Set(["Cave", "Parking"]);
+
+/**
+ * Le résumé de l'état locatif, une ligne par destination, sur deux colonnes.
+ *
+ * « Bureau 3 lots — 120 m² — 2 400 €/mois » : de quoi comprendre d'où viennent
+ * les loyers sans quitter l'écran du prix. Les caves et les parkings
+ * n'affichent pas de surface — un prix au m² de parking ne veut rien dire.
+ */
+function ResumeLocatif({ b }: { b: BienData }) {
+  const lignes = useMemo(() => {
+    const par = new Map<string, { lots: number; occ: number; surface: number; loyer: number; max: number }>();
+    for (const l of b.lots) {
+      const d = S(l.Destination) || "Autre";
+      const e = par.get(d) ?? { lots: 0, occ: 0, surface: 0, loyer: 0, max: 0 };
+      e.lots++;
+      if ((num(l.loyer) ?? 0) > 0) e.occ++;
+      e.surface += num(l.surface_carrez) ?? 0;
+      e.loyer += num(l.loyer) ?? 0;
+      e.max += num(l.loyer_max) ?? num(l.loyer) ?? 0;
+      par.set(d, e);
+    }
+    return [...par.entries()]
+      .map(([dest, v]) => ({ dest, ...v }))
+      .sort((a, z) => z.loyer - a.loyer || z.lots - a.lots);
+  }, [b.lots]);
+
+  if (lignes.length === 0) return null;
+  return (
+    <>
+      <div className="fsub" style={{ marginTop: 18 }}>Ce que l&apos;immeuble contient</div>
+      <div className="px-loc">
+        {lignes.map((l) => (
+          <div className="px-loc-l" key={l.dest}>
+            <span className="px-loc-ic"><svg viewBox="0 0 24 24">{IC_DEST[l.dest] ?? IC_DEST.Annexe}</svg></span>
+            <b>{l.dest}</b>
+            <span className="px-loc-n">{l.lots} lot{l.lots > 1 ? "s" : ""}</span>
+            {!AU_LOT.has(l.dest) && l.surface > 0 && (
+              <span className="px-loc-n">{group(l.surface)} m²</span>
+            )}
+            <span className="sp" />
+            <span className={`px-loc-v${l.loyer > 0 ? "" : " vide"}`}>
+              {l.loyer > 0 ? `${group(l.loyer)} €/mois` : "libre"}
+            </span>
+            {l.occ < l.lots && (
+              <span className="px-loc-o" title={`${l.lots - l.occ} lot(s) sans loyer`}>
+                {l.occ}/{l.lots}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Le récapitulatif : les loyers, les travaux, le prix au m² avant et après
+ * travaux, et le rendement d'aujourd'hui face à celui d'après.
+ *
+ * Le prix au m² « après travaux » est celui que l'acquéreur calcule vraiment :
+ * il achète l'immeuble ET le chantier. L'afficher à côté du prix au m² brut
+ * évite de refaire l'addition de tête à chaque fois.
+ */
+function Recapitulatif({ hai, ctx }: { hai: number; ctx: ContexteRendement }) {
+  const r = rendements(hai, ctx);
+  const m2 = ctx.surface > 0 ? Math.round(hai / ctx.surface) : undefined;
+  const m2Travaux = ctx.surface > 0 ? Math.round((hai + ctx.travaux) / ctx.surface) : undefined;
+  const gain = r.actuel.brut !== undefined && r.potentiel.brut !== undefined
+    ? Math.round((r.potentiel.brut - r.actuel.brut) * 10) / 10
+    : undefined;
+
+  const ligne = (label: string, valeur: string, aide?: string) => (
+    <div className="px-recap-l" key={label}>
+      <span>{label}</span>
+      <b>{valeur}</b>
+      {aide && <i>{aide}</i>}
+    </div>
+  );
+
+  return (
+    <>
+      <div className="fsub" style={{ marginTop: 18 }}>Récapitulatif</div>
+      <div className="px-recap">
+        {ligne("Loyers encaissés", `${group(ctx.loyers)} €/an`,
+          ctx.loyers > 0 ? `${group(Math.round(ctx.loyers / 12))} €/mois` : undefined)}
+        {ligne("Loyers au potentiel", `${group(ctx.loyersMax)} €/an`,
+          ctx.loyersMax > ctx.loyers ? `+ ${group(ctx.loyersMax - ctx.loyers)} € à aller chercher` : "tout est au marché")}
+        {ligne("Charges non récupérables", `${group(ctx.charges)} €/an`)}
+        {ligne("Travaux à prévoir", ctx.travaux > 0 ? `${group(ctx.travaux)} €` : "aucun")}
+        {ligne("Prix au m²", m2 !== undefined ? `${group(m2)} €/m²` : "n.c.")}
+        {ligne("Prix au m² travaux compris", m2Travaux !== undefined ? `${group(m2Travaux)} €/m²` : "n.c.",
+          ctx.travaux > 0 && m2 !== undefined && m2Travaux !== undefined
+            ? `+ ${group(m2Travaux - m2)} €/m²` : undefined)}
+        {ligne("Rendement brut actuel", r.actuel.brut !== undefined ? `${fr1(r.actuel.brut)} %` : "n.c.")}
+        {ligne("Rendement brut après travaux", r.potentiel.brut !== undefined ? `${fr1(r.potentiel.brut)} %` : "n.c.",
+          gain !== undefined ? `${gain >= 0 ? "+" : ""}${fr1(gain)} pt` : undefined)}
+      </div>
+    </>
+  );
+}
+
 export function PrixEcran({ b, espace }: {
   b: BienData; espace?: Espace | null;
 }) {
@@ -494,10 +623,14 @@ export function PrixEcran({ b, espace }: {
         </p>
       )}
 
+      {/* Les deux grilles de l'estimation, que MAV voulait retrouver ici. */}
       <div className="pxt-row">
         <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
         <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
       </div>
+
+      <ResumeLocatif b={b} />
+      <Recapitulatif hai={hai} ctx={ctx} />
 
       <div className="fsub" style={{ marginTop: 18 }}>Marge de négociation</div>
       <div className="px-cards">
