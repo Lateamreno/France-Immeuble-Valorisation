@@ -6199,3 +6199,181 @@ a.cfc-t:hover { text-decoration: underline; }
   margin-left: auto; border: 0; background: none; cursor: pointer;
   color: inherit; font-size: 15px; line-height: 1; padding: 2px 4px;
 }
+
+/* ============================================================
+   Espace propriétaire (tâche #56)
+   La seule page du site qui s'adresse à un vendeur, pas à un agent.
+   Elle ne réutilise aucune classe du BO à dessein : le jour où le rail
+   change de gris, cette page n'a pas à bouger.
+   ============================================================ */
+
+body.hors-bo {
+  margin: 0;
+  background: #f6f5f3;
+  color: #1c1b19;
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ep-wrap { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; }
+
+.ep-hd { padding: 10px 0 22px; }
+.ep-marque { font-size: 11.5px; letter-spacing: 0.16em; color: #8a7c55; font-weight: 600; }
+.ep-hd h1 { margin: 6px 0 2px; font-size: 27px; line-height: 1.2; font-weight: 600; }
+.ep-sous { margin: 0; color: #6b6862; font-size: 14px; }
+
+.ep-bloc {
+  background: #fff; border: 1px solid #e6e3dd; border-radius: 12px;
+  padding: 20px 20px 22px; margin-bottom: 18px;
+}
+.ep-bloc h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+.ep-intro { margin: 0 0 16px; color: #56534d; font-size: 14px; }
+.ep-fine { margin: 14px 0 0; color: #8b8781; font-size: 12.5px; line-height: 1.5; }
+
+/* --- le prix --- */
+.ep-lab { display: block; font-size: 13px; color: #6b6862; margin: 0 0 6px; }
+.ep-saisie {
+  display: flex; align-items: baseline; gap: 8px;
+  border: 1px solid #d8d4cc; border-radius: 10px; background: #fbfaf8;
+  padding: 10px 14px; max-width: 320px;
+}
+.ep-saisie input {
+  border: 0; background: none; outline: none; width: 100%;
+  font-size: 30px; font-weight: 600; letter-spacing: -0.01em; color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.ep-saisie span { font-size: 21px; color: #8b8781; }
+.ep-molette { width: 100%; max-width: 420px; margin: 16px 0 4px; accent-color: #8a7c55; }
+.ep-hai { margin: 8px 0 0; font-size: 14px; color: #56534d; }
+.ep-ecart {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 8px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.ep-ecart.haut { background: #fdf4e8; border: 1px solid #eed9b4; color: #7a5312; }
+.ep-ecart.bas { background: #f0f7ee; border: 1px solid #cfe4c7; color: #38602c; }
+.ep-zone {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  border: 1px solid #d8d4cc; border-radius: 10px; padding: 10px 12px;
+  font: inherit; background: #fbfaf8; color: inherit;
+}
+.ep-prix { margin-bottom: 18px; }
+
+.ep-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.ep-go {
+  border: 0; border-radius: 9px; padding: 12px 20px; cursor: pointer;
+  background: #2f6b34; color: #fff; font-size: 15px; font-weight: 600;
+}
+.ep-go:disabled { background: #cfccc6; cursor: default; }
+.ep-avis { font-size: 13.5px; }
+.ep-avis.ok { color: #2f6b34; }
+.ep-avis.ko { color: #a5341f; }
+.ep-rappel { margin: 10px 0 0; font-size: 13.5px; color: #6b6862; }
+
+/* --- les pièces --- */
+.ep-pieces { list-style: none; margin: 0; padding: 0; }
+.ep-pieces li {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  padding: 13px 0; border-top: 1px solid #eeebe5;
+}
+.ep-pieces li:first-child { border-top: 0; }
+.ep-pt { flex: 1 1 210px; min-width: 190px; }
+.ep-pt b { display: block; font-size: 14.5px; font-weight: 600; }
+.ep-pt i { display: block; font-style: normal; font-size: 12.5px; color: #8b8781; margin-top: 2px; }
+.ep-pieces li.fait .ep-pt b::before { content: "✓ "; color: #2f6b34; }
+.ep-pf { flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ep-fich {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+  background: #f4f2ee; border-radius: 7px; padding: 5px 8px; font-size: 13px;
+}
+.ep-fich a { color: #1c1b19; text-decoration: underline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-fich em { font-style: normal; color: #8b8781; font-size: 12px; }
+.ep-fich button { border: 0; background: none; cursor: pointer; color: #8b8781; font-size: 13px; padding: 0 2px; }
+.ep-fich button:hover { color: #a5341f; }
+.ep-depot {
+  display: inline-block; cursor: pointer; font-size: 13.5px; font-weight: 500;
+  color: #6d5f38; border: 1px dashed #cdc3a6; border-radius: 8px;
+  padding: 8px 13px; background: #fdfcf9;
+}
+.ep-depot:hover { background: #faf7ef; }
+.ep-depot input { display: none; }
+
+/* --- l'avancement --- */
+.ep-frise { list-style: none; margin: 0; padding: 0; }
+.ep-frise li { position: relative; padding: 0 0 20px 28px; color: #9c9891; }
+.ep-frise li::before {
+  content: ""; position: absolute; left: 6px; top: 16px; bottom: -2px; width: 2px; background: #e6e3dd;
+}
+.ep-frise li:last-child::before { display: none; }
+.ep-pt-rond {
+  position: absolute; left: 0; top: 4px; width: 14px; height: 14px;
+  border-radius: 50%; border: 2px solid #ddd9d1; background: #fff;
+}
+.ep-frise li b { display: block; font-size: 14.5px; font-weight: 600; }
+.ep-frise li i { display: block; font-style: normal; font-size: 13px; margin-top: 1px; }
+.ep-frise li em { display: block; font-style: normal; font-size: 12.5px; color: #8b8781; margin-top: 3px; }
+.ep-frise li.passe { color: #56534d; }
+.ep-frise li.passe .ep-pt-rond { background: #2f6b34; border-color: #2f6b34; }
+.ep-frise li.passe::before { background: #bcd4b6; }
+.ep-frise li.ici { color: #1c1b19; }
+.ep-frise li.ici .ep-pt-rond { border-color: #8a7c55; background: #8a7c55; box-shadow: 0 0 0 4px #ece5d3; }
+.ep-frise li.ici b { color: #6d5f38; }
+
+.ep-chiffres { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.ep-chiffres span {
+  background: #f4f2ee; border-radius: 8px; padding: 8px 12px; font-size: 13.5px; color: #56534d;
+}
+.ep-chiffres b { font-size: 15px; color: #1c1b19; }
+.ep-chiffres .ep-offre { background: #f0f7ee; color: #2f6b34; font-weight: 500; }
+
+/* --- pied et pages fermées --- */
+.ep-pied { padding: 6px 2px; color: #6b6862; font-size: 13.5px; }
+.ep-pied p { margin: 0 0 6px; }
+.ep-sig { color: #8b8781; font-size: 13px; }
+.ep-fermee {
+  background: #fff; border: 1px solid #e6e3dd; border-radius: 12px;
+  padding: 34px 26px; margin-top: 40px; text-align: center;
+}
+.ep-fermee h1 { margin: 0 0 10px; font-size: 21px; font-weight: 600; }
+.ep-fermee p { margin: 0 0 8px; color: #56534d; }
+
+@media (max-width: 560px) {
+  .ep-wrap { padding: 18px 14px 44px; }
+  .ep-hd h1 { font-size: 22px; }
+  .ep-saisie input { font-size: 25px; }
+  .ep-bloc { padding: 16px 15px 18px; }
+}
+
+/* L'espace vendeur vu de l'écran Prix (tâche #56). Discret tant que le
+   propriétaire n'a rien dit ; doré et net dès qu'il a arrêté un prix — c'est
+   une décision qui attend l'agent, elle doit se voir en entrant sur l'écran. */
+.espv {
+  border: 1px solid var(--line, #e3e0da); border-radius: 8px;
+  background: #fbfaf8; padding: 11px 13px; margin-bottom: 16px;
+}
+.espv.repondu { border-color: #d9c48a; background: #fdfaf1; }
+.espv-hd { display: flex; align-items: center; gap: 9px; }
+.espv-hd svg { width: 17px; height: 17px; fill: none; stroke: #8a7c55; stroke-width: 1.6; }
+.espv-hd b { font-size: 13.5px; font-weight: 600; }
+.espv-b {
+  border: 1px solid var(--line, #e3e0da); background: #fff; border-radius: 6px;
+  padding: 5px 10px; font-size: 12.5px; cursor: pointer; color: inherit;
+}
+.espv-b:hover { background: #f3f1ec; }
+.espv-b.go { background: #2f6b34; border-color: #2f6b34; color: #fff; }
+.espv-b.go:hover { background: #275a2b; }
+.espv-b.ko:hover { color: #a5341f; border-color: #e0bdb4; }
+.espv-b:disabled { opacity: 0.55; cursor: default; }
+.espv-lien { font-size: 12.5px; color: #6d5f38; text-decoration: underline; }
+.espv-txt { margin: 8px 0 0; font-size: 12.5px; color: var(--gray-lt, #8b8781); line-height: 1.5; }
+.espv-prix {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid #ece5d3;
+}
+.espv-lab { display: block; font-size: 11.5px; color: var(--gray-lt, #8b8781); }
+.espv-prix b { font-size: 19px; font-weight: 600; }
+.espv-prix em { font-style: normal; font-size: 12.5px; color: var(--gray-lt, #8b8781); margin-left: 8px; }
+.espv-prix > div { flex: 1 1 auto; }
+.espv-mot {
+  margin: 8px 0 0; font-size: 12.5px; color: #56534d; font-style: italic;
+  border-left: 2px solid #ddd4b8; padding-left: 9px;
+}

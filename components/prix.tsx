@@ -12,6 +12,8 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
+import { marquerPrixRepris, ouvrirEspace, revoquerEspace } from "@/lib/bo/espace-actions";
+import type { Espace } from "@/lib/bo/espace-modele";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -129,16 +131,21 @@ function TableauRendement({
 /* ---------- Fenêtre « Nouveau prix » (#94) ---------- */
 
 function ModalePrix({
-  b, ctx, refs, depart, tauxHonos, onFermer,
+  b, ctx, refs, depart, tauxHonos, propose, motifDepart, onFermer, onEnregistre,
 }: {
   b: BienData; ctx: ContexteRendement;
   refs: { loyer?: number; prix?: number; renta?: number };
   depart: number; tauxHonos: number;
+  /** Prix HAI proposé d'emblée — le prix arrêté par le propriétaire (#56). */
+  propose?: number;
+  motifDepart?: string;
   onFermer: () => void;
+  /** Appelé après un enregistrement réussi, pour clore le prix du vendeur. */
+  onEnregistre?: () => void;
 }) {
   const [pending, start] = useTransition();
-  const [hai, setHai] = useState(depart);
-  const [motif, setMotif] = useState(MOTIFS_PRIX[0]);
+  const [hai, setHai] = useState(propose ?? depart);
+  const [motif, setMotif] = useState(motifDepart ?? MOTIFS_PRIX[0]);
   const [remarque, setRemarque] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -179,6 +186,7 @@ function ModalePrix({
                 setErreur(null);
                 try {
                   await enregistrerPrix(String(b.im._id), { hai, honosTtc: honos, motif, remarque: remarque || undefined });
+                  onEnregistre?.();
                   onFermer();
                 } catch (e) {
                   setErreur(e instanceof Error ? e.message : "enregistrement impossible");
@@ -193,13 +201,117 @@ function ModalePrix({
   );
 }
 
+/* ---------- L'espace vendeur, côté agent (tâche #56) ---------- */
+
+/**
+ * Le lien ouvert au propriétaire, et ce qu'il en a fait.
+ *
+ * Deux choses au même endroit, parce qu'elles se répondent : le lien qu'on lui
+ * envoie, et le prix qu'il en rapporte. Le prix arrive EN ATTENTE — MAV l'a
+ * tranché : rien n'entre tout seul dans la fiche, même doctrine que les envois
+ * d'e-mails. « Reprendre ce prix » ouvre la fenêtre « Nouveau prix » déjà
+ * remplie, avec le motif « Prix souhaité par le vendeur » : le prix passe par
+ * le chemin habituel, avec son historique, pas par une porte dérobée.
+ */
+function EspaceVendeur({
+  immeubleId, espace, tauxHonos, proprietaireEmail, onReprendre,
+}: {
+  immeubleId: string;
+  espace?: Espace | null;
+  tauxHonos: number;
+  proprietaireEmail?: string;
+  onReprendre: (nv: number) => void;
+}) {
+  const [pending, start] = useTransition();
+  const [jeton, setJeton] = useState(espace && !espace.revoque ? espace.jeton : null);
+  const [copie, setCopie] = useState(false);
+
+  const url = jeton ? `${typeof window === "undefined" ? "" : window.location.origin}/proprietaire/${jeton}` : "";
+  const prix = espace?.prix_nv ?? undefined;
+  const aRepondu = prix !== undefined && !espace?.prix_repris;
+
+  const copier = () => {
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopie(true);
+      setTimeout(() => setCopie(false), 2200);
+    }).catch(() => undefined);
+  };
+
+  return (
+    <div className={`espv${aRepondu ? " repondu" : ""}`}>
+      <div className="espv-hd">
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M4 10.5 12 4l8 6.5V20H4z" /><path d="M9.5 20v-5.5h5V20" />
+        </svg>
+        <b>Espace vendeur</b>
+        <span className="sp" style={{ flex: 1 }} />
+        {jeton ? (
+          <>
+            <a className="espv-lien" href={url} target="_blank" rel="noreferrer">Ouvrir</a>
+            <button type="button" className="espv-b" onClick={copier}>{copie ? "Lien copié ✓" : "Copier le lien"}</button>
+            <button type="button" className="espv-b ko" disabled={pending}
+              onClick={() => start(async () => { await revoquerEspace(immeubleId, jeton); setJeton(null); })}>
+              Fermer l&apos;accès
+            </button>
+          </>
+        ) : (
+          <button type="button" className="espv-b go" disabled={pending}
+            onClick={() => start(async () => { setJeton(await ouvrirEspace(immeubleId)); })}>
+            {pending ? "Ouverture…" : "Ouvrir un espace vendeur"}
+          </button>
+        )}
+      </div>
+
+      {!jeton && (
+        <p className="espv-txt">
+          Un lien secret à envoyer au propriétaire{proprietaireEmail ? ` (${proprietaireEmail})` : ""} : il y
+          arrête son prix, dépose ses pièces — elles arrivent au coffre de l&apos;immeuble — et suit
+          l&apos;avancement. Aucune donnée de locataire ni d&apos;acquéreur ne s&apos;y affiche.
+        </p>
+      )}
+
+      {jeton && !prix && (
+        <p className="espv-txt">
+          {espace?.ouvert_le
+            ? `Lien ouvert ${espace.visites} fois, la dernière le ${dateFr(espace.derniere_visite)}. Le propriétaire n'a pas encore arrêté son prix.`
+            : "Lien créé, jamais ouvert. Envoyez-le au propriétaire — il est valable quatre mois."}
+        </p>
+      )}
+
+      {prix !== undefined && (
+        <div className="espv-prix">
+          <div>
+            <span className="espv-lab">
+              {espace?.prix_repris ? "Prix repris du propriétaire" : "Le propriétaire a arrêté son prix"}
+              {espace?.prix_le ? ` · ${dateFr(espace.prix_le)}` : ""}
+            </span>
+            <b>{euros(prix)} net vendeur</b>
+            <em>soit {euros(Math.round(prix * (1 + tauxHonos / 100)))} HAI</em>
+          </div>
+          {aRepondu && (
+            <button type="button" className="espv-b go" onClick={() => onReprendre(prix)}>
+              Reprendre ce prix
+            </button>
+          )}
+        </div>
+      )}
+      {espace?.prix_mot && (
+        <p className="espv-mot">« {espace.prix_mot} »</p>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Écran ---------- */
 
-export function PrixEcran({ b }: { b: BienData }) {
+export function PrixEcran({ b, espace }: { b: BienData; espace?: Espace | null }) {
   const im = b.im;
   const immeubleId = String(im._id);
   const [pending, start] = useTransition();
   const [modale, setModale] = useState(false);
+  /* Le prix du propriétaire, quand l'agent choisit de le reprendre : il
+     ouvre la fenêtre « Nouveau prix » déjà remplie, avec le bon motif. */
+  const [duVendeur, setDuVendeur] = useState<number | null>(null);
 
   /* Contexte de calcul : les mêmes entrées que l'estimation. */
   const ctx: ContexteRendement = useMemo(() => {
@@ -271,6 +383,12 @@ export function PrixEcran({ b }: { b: BienData }) {
           <span className="fchip"><b>{euros(nvEnBase)}</b> net vendeur</span>
         </div>
       </div>
+
+      <EspaceVendeur
+        immeubleId={immeubleId} espace={espace} tauxHonos={tauxHonos}
+        proprietaireEmail={typeof b.proprietaire?.email === "string" ? b.proprietaire.email : undefined}
+        onReprendre={(nvVoulu) => { setDuVendeur(Math.round(nvVoulu * (1 + tauxHonos / 100))); setModale(true); }}
+      />
 
       <div className="px-hd">
         <div className="fsub">Prix actuel</div>
@@ -367,8 +485,16 @@ export function PrixEcran({ b }: { b: BienData }) {
       )}
 
       {modale && (
-        <ModalePrix b={b} ctx={ctx} refs={refs} depart={prixEnBase} tauxHonos={tauxHonos}
-          onFermer={() => setModale(false)} />
+        <ModalePrix
+          b={b} ctx={ctx} refs={refs} depart={prixEnBase} tauxHonos={tauxHonos}
+          propose={duVendeur ?? undefined}
+          motifDepart={duVendeur !== null ? "Prix souhaité par le vendeur" : undefined}
+          onFermer={() => { setModale(false); setDuVendeur(null); }}
+          onEnregistre={() => {
+            if (duVendeur !== null && espace) void marquerPrixRepris(immeubleId, espace.jeton);
+            setDuVendeur(null);
+          }}
+        />
       )}
     </div>
   );

@@ -19,6 +19,7 @@ import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
   supprimerEstimation, updateEmplacement, type EstimationPayload,
 } from "@/lib/bo/actions";
+import { ouvrirEspace } from "@/lib/bo/espace-actions";
 import { MOYENS } from "@/lib/bo/itineraire";
 import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 import { analyseAuto } from "@/lib/bo/analyse";
@@ -258,6 +259,8 @@ export function EstimationWizard({
   const [dossierJoint, setDossierJoint] = useMem("dossierJoint", true);
   const [pjDocs, setPjDocs] = useMem<string[]>("pjDocs", []);
   const [pjFichiers, setPjFichiers] = useState<File[]>([]);
+  /** Ouverture en cours de l'espace vendeur (tâche #56). */
+  const [espaceEnCours, setEspaceEnCours] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
   const [perso, setPerso] = useMem("perso", false);
@@ -1362,6 +1365,26 @@ export function EstimationWizard({
             </label>
             <div className="est-l">
               <Copier valeur={corps} titre="Copier le message" petit>Copier le message</Copier>
+              {/* L'espace vendeur (tâche #56). Un bouton, pas une case cochée
+                  d'avance : le lien n'existe qu'à partir du moment où l'agent
+                  décide de l'ouvrir, et il voit le paragraphe s'ajouter au
+                  message — il peut le réécrire comme le reste. */}
+              <button type="button" className="fadd" disabled={espaceEnCours || corps.includes("/proprietaire/")}
+                onClick={() => {
+                  setEspaceEnCours(true);
+                  ouvrirEspace(immeubleId, { estimationId: estId ?? undefined })
+                    .then((jeton) => {
+                      const url = `${window.location.origin}/proprietaire/${jeton}`;
+                      setCorpsSaisi(
+                        `${corps}\n\nPour aller plus vite, je vous ai ouvert un espace personnel : vous pouvez y indiquer vous-même le prix que vous souhaitez percevoir et y déposer vos documents (titre de propriété, baux, diagnostics, taxe foncière).\n${url}\nCe lien vous est personnel.`,
+                      );
+                    })
+                    .finally(() => setEspaceEnCours(false));
+                }}>
+                {espaceEnCours ? "Ouverture…"
+                  : corps.includes("/proprietaire/") ? "Espace vendeur joint ✓"
+                  : "+ Joindre l'espace vendeur"}
+              </button>
             </div>
             <div className="est-note">
               {envoiActif

@@ -13,6 +13,7 @@ import {
 import { EstimationWizard, type RepriseEstimation } from "@/components/estimation-wizard";
 import { EstimationEnLecture } from "@/components/estimation-lecture";
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
+import type { Espace } from "@/lib/bo/espace-modele";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -131,7 +132,7 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 export function BienFiche({
-  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir, cleEcran,
+  b, contenu, contenuLabel, contenuIcone, operation, secteur, espace, envoiActif, ouvrir, cleEcran,
 }: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
@@ -146,6 +147,8 @@ export function BienFiche({
   /** Prix du secteur : le wizard d'estimation s'en sert, la fiche les porte
    *  donc en permanence pour pouvoir le monter sans changer de page (#125). */
   secteur?: Record<string, unknown> | null;
+  /** L'espace propriétaire ouvert sur ce bien, s'il y en a un. */
+  espace?: Espace | null;
   /** Vrai quand la boîte d'envoi est configurée. */
   envoiActif?: boolean;
   /** Estimation à ouvrir d'emblée (accès direct par l'URL). */
@@ -325,7 +328,7 @@ export function BienFiche({
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-              {sect === "prix" && <PrixSection b={b} />}
+              {sect === "prix" && <PrixSection b={b} espace={espace} />}
               {sect === "photos" && <PhotosSection b={b} />}
               {sect === "estimations" && (
                 <EstimationsSection
@@ -927,7 +930,7 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
   );
 }
 
-function PrixSection({ b }: { b: BienData }) {
+function PrixSection({ b, espace }: { b: BienData; espace?: Espace | null }) {
   return (
     <>
       <SectTitle icon={I.info} title="Description et prix" />
@@ -938,7 +941,7 @@ function PrixSection({ b }: { b: BienData }) {
       <div className="fh2">Descriptif</div>
       <DescriptifForm b={b} />
       <div style={{ marginTop: 20 }}>
-        <PrixEcran b={b} />
+        <PrixEcran b={b} espace={espace} />
       </div>
     </>
   );
