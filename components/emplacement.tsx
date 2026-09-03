@@ -567,7 +567,14 @@ function ParcellesTab({ b }: { b: BienData }) {
   const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
   const lat = num(geo?.lat);
   const lon = num(geo?.lng);
-  const adresse = `${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
+  /* Retour #293 — « dans le presse-papier j'ai que la rue et la ville, j'ai
+     pas le numéro avec, c'est relou ». Le numéro manquait bel et bien ici,
+     alors que le reste de l'écran le colle. Sans lui, le cadastre et le
+     Géoportail rendent toute la rue : il faut retrouver le bâtiment à l'œil. */
+  const adresse = [
+    [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" "),
+    S(im.adresse_zipcode), S(im.adresse_ville),
+  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   const idu = b.parcelles.map((p) => S(p.idu)).find((x) => x);
   const lienCadastre =
     lat !== undefined && lon !== undefined

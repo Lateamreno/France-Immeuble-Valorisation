@@ -104,9 +104,16 @@ export function annoncesLot(
   return [
     {
       cle: "leboncoin", label: "leboncoin",
+      /* Retour #281 — le mot-clé seul ne suffisait pas : la page s'ouvrait sur
+         523 annonces « Maison à vendre et vente appartement "parking" », et il
+         fallait cocher le type à la main à chaque fois. `real_estate_type=4`
+         est le « Parking » du filtre Type de bien, et c'est la seule case du
+         menu où atterrissent aussi les caves — leboncoin n'en a pas d'autre.
+         Le mot-clé reste, c'est lui qui distingue une cave d'une place. */
       href: `https://www.leboncoin.fr/recherche?category=${quoi === "location" ? "10" : "9"}`
         + `&text=${encodeURIComponent(mot)}`
-        + `&locations=${encodeURIComponent(cp ? `${ville}_${cp}` : ville)}`,
+        + `&locations=${encodeURIComponent(cp ? `${ville}_${cp}` : ville)}`
+        + "&real_estate_type=4",
     },
     {
       cle: "seloger", label: "SeLoger",

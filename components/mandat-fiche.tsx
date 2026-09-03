@@ -48,6 +48,32 @@ const parse = (s: string) => {
 };
 const dateInput = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : "");
 
+/**
+ * L'écart entre deux dates, relu comme la durée qu'on avait saisie (#297).
+ *
+ * La base ne garde que la date d'échéance. Trois mois pleins doivent se
+ * réafficher « 3 mois » et non « 92 jours » : c'est la même période, mais pas
+ * le même mot, et c'est celui du contrat qui compte. On ne bascule en mois que
+ * lorsque la date tombe pile sur un quantième — sinon la conversion mentirait
+ * d'un jour ou deux.
+ */
+function dureeDepuis(
+  debut: unknown, echeance: unknown,
+): { n: string; unite: "jours" | "mois" } {
+  const d0 = dateInput(debut);
+  const d1 = dateInput(echeance);
+  if (!d0 || !d1) return { n: "3", unite: "mois" };
+  const a = new Date(d0);
+  const b = new Date(d1);
+  for (const mois of [1, 2, 3]) {
+    const t = new Date(a);
+    t.setMonth(t.getMonth() + mois);
+    if (t.toISOString().slice(0, 10) === d1) return { n: String(mois), unite: "mois" };
+  }
+  const jours = Math.round((b.getTime() - a.getTime()) / 86400000);
+  return jours > 0 ? { n: String(jours), unite: "jours" } : { n: "3", unite: "mois" };
+}
+
 const TABS = ["Mandants", "Objet", "Prix", "Conditions", "Envoi"] as const;
 type Tab = (typeof TABS)[number];
 
@@ -415,14 +441,51 @@ function CarteMandant({
   const [cache, setCache] = useState<{ id: string; liste: Societe[] } | null>(null);
   const societesConnues =
     morale && x.contactId && cache?.id === x.contactId ? cache.liste : [];
+
+  /**
+   * Ce que la fiche du contact dit AUJOURD'HUI (retours #287 et #289).
+   *
+   * MAV : « ici j'ai inscrit la civilité du client mais ça ne l'a pas mis dans
+   * le mandat, et en plus c'est grisé donc je ne peux pas modifier dans le
+   * mandat » ; et « pour les pièces justificatives […] j'aimerais que cela
+   * soit également enregistré dans la fiche contact de telle façon qu'on ne
+   * nous la redemande pas lorsqu'on remplit à nouveau ».
+   *
+   * L'identité n'était recopiée qu'au moment du rattachement manuel. Deux trous
+   * en découlaient : la première ligne, qui adopte le propriétaire de la fiche
+   * toute seule, n'a jamais eu ce moment-là ; et une civilité ajoutée APRÈS
+   * n'atteignait jamais le mandat. Comme ces cases sont en lecture seule — leur
+   * vérité est sur la fiche contact — elles doivent être SERVIES, pas copiées.
+   *
+   * Les pièces suivent la même règle quand le mandat n'en a pas : une carte
+   * d'identité déjà au coffre ne se redemande pas.
+   */
+  const contactId = x.contactId;
   useEffect(() => {
-    if (!morale || !x.contactId) return;
+    if (!contactId) return;
     let vivant = true;
-    mandantDepuisContact(x.contactId)
-      .then((f) => { if (vivant) setCache({ id: x.contactId!, liste: f?.societes ?? [] }); })
+    mandantDepuisContact(contactId)
+      .then((f) => {
+        if (!vivant || !f) return;
+        setCache({ id: contactId, liste: f.societes ?? [] });
+        const p: Partial<Mandant> = {};
+        if (f.civilite && f.civilite !== x.qualite) p.qualite = f.civilite;
+        if (f.prenom && f.prenom !== x.prenom) p.prenom = f.prenom;
+        if (f.nom && f.nom !== x.nom) p.nom = f.nom;
+        if (!x.email && f.email) p.email = f.email;
+        if (!x.cni && f.cni) p.cni = f.cni;
+        if (!x.kbis && f.kbis) p.kbis = f.kbis;
+        /* Ne rien appeler quand rien ne change : `onMaj` remonte dans l'état du
+           parent, et une mise à jour inconditionnelle relancerait ce même effet
+           en boucle. */
+        if (Object.keys(p).length) onMaj(p);
+      })
       .catch(() => undefined);
     return () => { vivant = false; };
-  }, [morale, x.contactId]);
+    /* Volontairement calé sur le seul contact : c'est lui qui change la
+       réponse. Relire à chaque frappe rejouerait la requête pour rien. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId]);
 
   return (
     <div className="mdt-md">
@@ -638,6 +701,21 @@ function CarteMandant({
             <Champ label="Raison sociale" large>
               <input className="mi maj" value={x.societe?.nom ?? ""} disabled={locked}
                 onChange={(e) => onMaj({ societe: { ...x.societe, nom: e.target.value || undefined } })} />
+              {/* Retour #290 — « quand on trouve la société en question, ce
+                  serait bien que tu nous mettes un lien à côté de telle façon
+                  qu'on puisse ouvrir Pappers sur la page de la société
+                  concernée. Ça nous permettra d'avoir les infos sur le
+                  capital. » Le SIREN ouvre la fiche exacte ; à défaut on lance
+                  la recherche sur la raison sociale, ce qui reste un clic de
+                  moins que de retaper le nom. */}
+              {(x.societe?.siren || x.societe?.nom) && (
+                <a className="mdt-lien" target="_blank" rel="noreferrer"
+                  href={x.societe?.siren
+                    ? `https://www.pappers.fr/entreprise/${x.societe.siren.replace(/\D/g, "")}`
+                    : `https://www.pappers.fr/recherche?q=${encodeURIComponent(x.societe!.nom!)}`}>
+                  Ouvrir sur Pappers ↗
+                </a>
+              )}
             </Champ>
             <Champ label="SIREN">
               <input className="mi" value={x.societe?.siren ?? ""} disabled={locked} inputMode="numeric"
@@ -659,6 +737,59 @@ function CarteMandant({
                 onChoisir={(a) => onMaj({ societe: { ...x.societe, siege: a.label } })} />
             </Champ>
           </div>
+
+          {/* Retour #292 — « il se peut qu'une société soit représentée par une
+              société elle-même représentée par une personne physique, c'est le
+              cas des holdings ; il faudrait donc pouvoir intégrer ce cas de
+              figure. » On ne l'ouvre qu'à la demande : la grande majorité des
+              mandats n'a pas d'étage intermédiaire, et quatre cases de plus
+              par défaut se rempliraient de travers. */}
+          <label className="mdt-holding">
+            <input type="checkbox" disabled={locked} checked={!!x.representante}
+              onChange={(e) => onMaj({ representante: e.target.checked ? {} : undefined })} />
+            <span>
+              <b>Cette société est représentée par une autre société</b>
+              <i>
+                Le cas des holdings : la personne physique désignée plus haut représente alors
+                la société ci-dessous, qui représente elle-même la mandante. Le mandat écrit la
+                chaîne complète.
+              </i>
+            </span>
+          </label>
+          {x.representante && (
+            <div className="mdt-grid">
+              <Champ label="Société représentante" large>
+                <input className="mi maj" value={x.representante.nom ?? ""} disabled={locked}
+                  onChange={(e) => onMaj({ representante: { ...x.representante, nom: e.target.value || undefined } })} />
+                {(x.representante.siren || x.representante.nom) && (
+                  <a className="mdt-lien" target="_blank" rel="noreferrer"
+                    href={x.representante.siren
+                      ? `https://www.pappers.fr/entreprise/${x.representante.siren.replace(/\D/g, "")}`
+                      : `https://www.pappers.fr/recherche?q=${encodeURIComponent(x.representante.nom!)}`}>
+                    Ouvrir sur Pappers ↗
+                  </a>
+                )}
+              </Champ>
+              <Champ label="SIREN">
+                <input className="mi" value={x.representante.siren ?? ""} disabled={locked} inputMode="numeric"
+                  onChange={(e) => onMaj({ representante: { ...x.representante, siren: e.target.value || undefined } })} />
+              </Champ>
+              <Champ label="RCS">
+                <input className="mi" value={x.representante.rcs ?? ""} disabled={locked}
+                  onChange={(e) => onMaj({ representante: { ...x.representante, rcs: e.target.value || undefined } })} />
+              </Champ>
+              <Champ label="Capital (€)">
+                <input className="mi" value={x.representante.capital ?? ""} disabled={locked} inputMode="numeric"
+                  onChange={(e) => onMaj({ representante: { ...x.representante, capital: parse(e.target.value) } })} />
+              </Champ>
+              <Champ label="Siège social" large>
+                <AdresseInput classe="mi" valeur={x.representante.siege ?? ""} disabled={locked}
+                  placeholder="N°, rue, code postal, ville"
+                  onSaisie={(v) => onMaj({ representante: { ...x.representante, siege: v || undefined } })}
+                  onChoisir={(a) => onMaj({ representante: { ...x.representante, siege: a.label } })} />
+              </Champ>
+            </div>
+          )}
         </>
       )}
 
@@ -1270,18 +1401,44 @@ function OngletConditions({
   const [exclu, setExclu] = useState(S(m.Type_exclu) || "Simple");
   const [dExclu, setDExclu] = useState(S(num(m["durée_exclu_jours"]) ?? 90));
   const [irrevoc, setIrrevoc] = useState(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
-  const [revoc, setRevoc] = useState(dateInput(m.date_revoc_exclu));
+  /* Retour #297 — « L'exclusivité révocable à compter du : mieux vaut écrire
+     durée de l'exclusivité, et donner l'option d'écrire un nombre de jours
+     (max 90) et un nombre de mois (max 3). »
+     On saisissait une DATE là où on raisonne en durée : personne ne négocie
+     « jusqu'au 3 décembre », on négocie « trois mois ». La base garde la date
+     — c'est elle que le mandat imprime et qui fait foi — mais elle se calcule
+     désormais depuis la prise d'effet. Au chargement, on refait le chemin
+     inverse : des mois pleins s'affichent en mois, le reste en jours. */
+  const revoc0 = dureeDepuis(m.date_effet, m.date_revoc_exclu);
+  const [revocN, setRevocN] = useState(revoc0.n);
+  const [revocU, setRevocU] = useState<"jours" | "mois">(revoc0.unite);
   const [web, setWeb] = useState(publicationWeb(m));
-  const { modifie, valider } = useModifie(JSON.stringify([debut, duree, exclu, dExclu, irrevoc, revoc, web]));
+  const { modifie, valider } = useModifie(
+    JSON.stringify([debut, duree, exclu, dExclu, irrevoc, revocN, revocU, web]),
+  );
   const annuler = () => {
     setDebut(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
     setDuree(S(num(m["durée_tot_month"]) ?? 12));
     setExclu(S(m.Type_exclu) || "Simple");
     setDExclu(S(num(m["durée_exclu_jours"]) ?? 90));
     setIrrevoc(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
-    setRevoc(dateInput(m.date_revoc_exclu));
+    setRevocN(revoc0.n);
+    setRevocU(revoc0.unite);
     setWeb(publicationWeb(m));
   };
+
+  /* La date que la base stocke, refaite depuis la durée saisie. Le plafond
+     n'est pas cosmétique : au-delà de trois mois, l'exclusivité irrévocable
+     n'est plus opposable au mandant. */
+  const revocDate = (() => {
+    const n = parse(revocN);
+    if (!debut || !n) return undefined;
+    const plafond = revocU === "mois" ? 3 : 90;
+    const d = new Date(debut);
+    if (revocU === "mois") d.setMonth(d.getMonth() + Math.min(n, plafond));
+    else d.setDate(d.getDate() + Math.min(n, plafond));
+    return d;
+  })();
 
   const fin = (() => {
     const d0 = parse(duree);
@@ -1299,7 +1456,7 @@ function OngletConditions({
         Type_exclu: exclu,
         "durée_exclu_jours": exclu === "Semi-exclusif" ? parse(dExclu) : undefined,
         // La date de révocation de la seule exclusivité ne vaut qu'en exclusif.
-        date_revoc_exclu: exclu === "Exclusif" && revoc ? new Date(revoc).toISOString() : undefined,
+        date_revoc_exclu: exclu === "Exclusif" && revocDate ? revocDate.toISOString() : undefined,
         "durée_irrevoc_days": parse(irrevoc),
         publication_web_yn: web,
       });
@@ -1352,12 +1509,25 @@ function OngletConditions({
         {exclu === "Exclusif" && (
           /* Retour #195 : en exclusif l'exclusivité court sur toute la durée du
              mandat, mais le mandant peut la lever seule — par courriel ou
-             recommandé — à compter de cette date, sans mettre fin au mandat,
-             qui se poursuit alors en mandat simple. Trois mois par défaut,
-             plafond légal de l'irrévocabilité. */
-          <Champ label="Exclusivité révocable à compter du">
-            <input className="mi" type="date" value={revoc} disabled={locked}
-              onChange={(e) => setRevoc(e.target.value)} />
+             recommandé — au terme de cette période, sans mettre fin au mandat,
+             qui se poursuit alors en mandat simple.
+             Retour #297 : cette période se saisit en durée, jours ou mois, et
+             non plus en date. Le plafond est celui de la loi. */
+          <Champ label="Durée de l'exclusivité">
+            <span className="mdt-duo">
+              <input className="mi" value={revocN} disabled={locked} inputMode="numeric"
+                onChange={(e) => setRevocN(e.target.value.replace(/[^\d]/g, ""))} />
+              <select className="mi" value={revocU} disabled={locked}
+                onChange={(e) => setRevocU(e.target.value as "jours" | "mois")}>
+                <option value="jours">jours</option>
+                <option value="mois">mois</option>
+              </select>
+            </span>
+            <i className="mdt-aide">
+              Période pendant laquelle l&apos;exclusivité ne peut pas être révoquée —
+              {revocU === "mois" ? " 3 mois maximum." : " 90 jours maximum."}
+              {revocDate && ` Révocable à compter du ${revocDate.toLocaleDateString("fr-FR")}.`}
+            </i>
           </Champ>
         )}
         <Champ label="Fin du mandat">
@@ -1411,6 +1581,8 @@ function OngletEnvoi({
      qu'un contrôle Hoguet regarde. */
   const sansNumero = !S(m.numero);
   const pret = trous.length === 0 && !sansNumero;
+  /** Le numéro compte comme un manque : c'en est un (retour #298). */
+  const manques = trous.length + (sansNumero ? 1 : 0);
   const envoye = S(m.date_last_envoi);
   const signe = !!S(m.date_signature);
   const destinataires = mandants.map((x) => x.email).filter(Boolean) as string[];
@@ -1431,16 +1603,30 @@ function OngletEnvoi({
       />
 
       {/* --- Étape 0 : le contrôle des pièces --- */}
+      {/* Retour #298 — « là il y a écrit que 0 éléments sont manquants, mais il
+          manque le numéro à attribuer ; je veux que tu me mettes le bouton
+          Attribuer un numéro et que tu dises qu'il faut attribuer un numéro
+          pour avancer. » Le numéro bloquait bel et bien la génération, mais il
+          était compté à part : l'encadré rouge annonçait « 0 élément
+          manquant », ce qui est la seule chose qu'on ne peut pas corriger en
+          la lisant. Il rejoint donc la liste, avec son bouton dessus — c'est
+          le seul manque dont le remède est ici et pas dans un autre onglet. */}
       <div className={`mdt-etape${pret ? " ok" : " ko"}`}>
         <span className="n">1</span>
         <div className="c">
-          <b>{pret ? "Dossier complet" : `${trous.length} élément${trous.length > 1 ? "s" : ""} manquant${trous.length > 1 ? "s" : ""}`}</b>
+          <b>{pret ? "Dossier complet" : `${manques} élément${manques > 1 ? "s" : ""} manquant${manques > 1 ? "s" : ""}`}</b>
           {pret ? (
             <span>Toutes les pièces obligatoires sont au dossier et les données de rédaction sont saisies.</span>
           ) : (
             <>
               <span>Le mandat ne peut pas être généré tant que ces éléments manquent :</span>
               <ul className="mdt-trous">
+                {sansNumero && (
+                  <li>
+                    Numéro au registre des mandats
+                    <ReserveBtn mandatId={mandatId} immeubleId={immeubleId} discret />
+                  </li>
+                )}
                 {trous.map((t) => (
                   <li key={t.cle}>
                     {t.label}
@@ -1494,17 +1680,29 @@ function OngletEnvoi({
           {destinataires.length === 0 && (
             <span className="er">Aucune adresse e-mail sur les mandants — renseignez-les depuis leur fiche contact.</span>
           )}
+          {/* Retour #300 — « change le bouton et écris Marquer comme envoyé par
+              Docusign, et mets-moi un lien Docusign à côté (si tu peux me mettre
+              directement sur la page créer une enveloppe c'est top). »
+              Le bouton disait « Envoyer par Docusign » alors qu'il ne fait que
+              journaliser : le connecteur n'est pas ouvert, rien ne part. Un
+              bouton qui promet un envoi qu'il ne fait pas est pire que pas de
+              bouton — on croit le mandat parti. Il dit maintenant ce qu'il
+              fait, et le lien à côté ouvre la page où l'envoi se fait vraiment. */}
           <div className="mdt-btns">
+            <a className="mdt-btn" href="https://apps.docusign.com/send/sending"
+              target="_blank" rel="noreferrer">
+              Ouvrir Docusign — créer une enveloppe ↗
+            </a>
             <button className="mdt-go" type="button" disabled={!pdf || pending}
               onClick={() => start(async () => { await envoyerMandatSignature(mandatId, immeubleId, destinataires); setMsg("Envoi journalisé."); })}>
-              <span className="ch">›</span> Envoyer par Docusign
+              <span className="ch">›</span> Marquer comme envoyé par Docusign
             </button>
           </div>
           {envoye && <span className="okmsg">Dernier envoi le {dmy(m.date_last_envoi)}{destinataires.length ? ` à ${destinataires.join(", ")}` : ""}.</span>}
           <span className="mdt-hint">
-            Le connecteur Docusign n&apos;est pas encore ouvert sur cet environnement : l&apos;app prépare le dossier
-            et journalise l&apos;envoi, la mise à la signature se fait depuis Docusign. Le retour de signature se
-            constate ci-dessous.
+            Le connecteur Docusign n&apos;est pas encore ouvert sur cet environnement : téléchargez le PDF,
+            créez l&apos;enveloppe depuis Docusign, puis revenez marquer l&apos;envoi ici — c&apos;est ce
+            marquage qui date le dossier. Le retour de signature se constate ci-dessous.
           </span>
         </div>
       </div>
@@ -1561,13 +1759,18 @@ function Titre({ titre, aide }: { titre: string; aide: string }) {
   );
 }
 
-function ReserveBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: string }) {
+function ReserveBtn({ mandatId, immeubleId, discret }: {
+  mandatId: string; immeubleId: string;
+  /** Version en ligne, pour la liste des manques (#298) : même action, mais
+   *  au format des autres renvois plutôt qu'un gros bouton vert au milieu. */
+  discret?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   return (
     <>
-      <button className="mdt-go" type="button" onClick={() => setOpen(true)}>
-        <span className="ch">›</span> Attribuer un numéro
+      <button className={discret ? "" : "mdt-go"} type="button" onClick={() => setOpen(true)}>
+        {discret ? "→ Attribuer un numéro" : <><span className="ch">›</span> Attribuer un numéro</>}
       </button>
       {open && (
         <div className="modal-ov">

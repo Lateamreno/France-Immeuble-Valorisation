@@ -40,6 +40,20 @@ export type Mandant = {
   /** Sa qualité dans CE mandat : gérant, indivisaire, usufruitier… */
   fonction?: string;
   societe?: Societe;
+  /**
+   * La société qui représente la société mandante (retour #292).
+   *
+   * MAV : « il se peut qu'une société soit représentée par une société
+   * elle-même représentée par une personne physique, c'est le cas des
+   * holdings ; il faudrait donc pouvoir intégrer ce cas de figure. »
+   *
+   * Sans elle, le mandat écrivait « SCI X, représentée par M. Untel, gérant »
+   * alors qu'Untel ne gère pas la SCI mais la holding qui la gère. La chaîne
+   * de représentation était fausse, et c'est exactement ce qu'un notaire
+   * vérifie avant l'acte. Quand elle est renseignée, la personne physique
+   * représente CETTE société-là, pas la mandante.
+   */
+  representante?: Societe;
   /** Pièces déposées : URL de lecture. */
   cni?: string;
   kbis?: string;
@@ -94,6 +108,7 @@ export function lireMandants(m: Record<string, unknown>): Mandant[] {
       personne: x.personne === "morale" ? "morale" : "physique",
       fonction: S(x.fonction),
       societe: (x.societe as Societe | undefined) ?? undefined,
+      representante: (x.representante as Societe | undefined) ?? undefined,
       cni: S(x.cni),
       kbis: S(x.kbis),
     }));
