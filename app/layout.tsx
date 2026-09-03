@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { Rail } from "@/components/rail";
 import { Burger } from "@/components/burger";
@@ -35,6 +36,19 @@ export const viewport: Viewport = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  /* L'espace propriétaire ne s'adresse pas à un agent : ni rail, ni création
+     rapide, ni revue des retours. Et on ne va pas non plus chercher les
+     agents et les retours du BO pour une page que lit un vendeur — le chemin
+     vient du middleware, qui existe pour ça. */
+  const chemin = (await headers()).get("x-chemin") ?? "";
+  if (chemin.startsWith("/proprietaire")) {
+    return (
+      <html lang="fr">
+        <body className="hors-bo">{children}</body>
+      </html>
+    );
+  }
+
   return (
     <html lang="fr">
       <body>

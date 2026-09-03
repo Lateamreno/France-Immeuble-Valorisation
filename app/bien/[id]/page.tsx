@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BienFiche } from "@/components/bien-fiche";
 import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
 import { envoiPossible } from "@/lib/bo/mail";
+import { espaceDuBien } from "@/lib/bo/espace-proprietaire";
 
 export const dynamic = "force-dynamic";
 // L'estimation se fait maintenant depuis la fiche : la fabrication du dossier
@@ -26,9 +27,15 @@ export default async function BienPage({
   // L'opération de découpe, s'il y en a une : elle ajoute une section au rail.
   // Le prix du secteur voyage avec la fiche : l'estimation s'ouvre DANS la
   // page, il faut donc qu'il soit déjà là quand on clique (retour #125).
-  const [operation, secteur] = data
-    ? await Promise.all([getOperation(id).catch(() => null), getPrixSecteur(id).catch(() => null)])
-    : [null, null];
+  const [operation, secteur, espace] = data
+    ? await Promise.all([
+        getOperation(id).catch(() => null),
+        getPrixSecteur(id).catch(() => null),
+        // L'espace propriétaire ouvert sur ce bien : l'écran Prix y lit le
+        // montant que le vendeur a arrêté, et le rail l'état du lien.
+        espaceDuBien(id).catch(() => null),
+      ])
+    : [null, null, null];
 
   if (!data) {
     return (
@@ -46,6 +53,7 @@ export default async function BienPage({
   }
 
   return (
-    <BienFiche b={data} operation={operation} secteur={secteur} envoiActif={await envoiPossible()} />
+    <BienFiche b={data} operation={operation} secteur={secteur} espace={espace}
+      envoiActif={await envoiPossible()} />
   );
 }
