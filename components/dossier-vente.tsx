@@ -9,6 +9,7 @@ import type { DossierVente } from "@/lib/bo/dossier-vente";
 import { group } from "@/lib/format";
 import { MENTIONS } from "@/lib/bo/textes-cible";
 import { BadgeDpe } from "@/components/pictos";
+import { PhotoDossier } from "@/components/photo-dossier";
 
 const fr1 = (x?: number) => (x === undefined ? "n.c." : x.toFixed(1).replace(".", ","));
 const eur = (x?: number) => (x === undefined ? "n.c." : `${group(x)} €`);
@@ -203,20 +204,14 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         <Page titre="Photos" picto={I.photo} pied={pied} enfants={
           <div className="dv-ph-grid">
             {/* Huit photos par planche : au-delà, une seconde page. */}
-            {d.photos.slice(0, 8).map((u, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={u} alt="" />
-            ))}
+            {d.photos.slice(0, 8).map((u, i) => <PhotoDossier key={i} src={u} />)}
           </div>
         } />
       )}
       {d.photos.length > 8 && (
         <Page titre="Photos" picto={I.photo} pied={pied} enfants={
           <div className="dv-ph-grid">
-            {d.photos.slice(8, 16).map((u, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={u} alt="" />
-            ))}
+            {d.photos.slice(8, 16).map((u, i) => <PhotoDossier key={i} src={u} />)}
           </div>
         } />
       )}

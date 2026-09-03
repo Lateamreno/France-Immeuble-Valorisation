@@ -158,21 +158,25 @@
   display: grid; grid-template-columns: 1fr 1fr; gap: 3mm;
   margin: 0 8mm;
 }
-/* Retour #322 — « pour les photos en portrait, tu laisses le cadre dans les
-   mêmes proportions en 16/9, t'affiches la photo en pleine hauteur avec des
-   bandes noires de chaque côté pour que ce soit normé en terme de hauteur. »
+/* Retour #322 — le cadre (95,5 mm × 52 mm sur la planche, soit du 16/9) ne
+   bouge pas d'une vignette à l'autre ; ce qui change, c'est la façon d'y
+   entrer.
 
-   Le cadre (95,5 mm × 52 mm sur la planche, soit du 16/9) ne bouge donc pas :
-   c'est la photo qui s'y inscrit en entier. `cover` recadrait au centre — sur
-   une photo verticale, il n'en restait qu'une tranche de mur. `contain` sur
-   fond noir garde la hauteur commune à toutes les vignettes et ne coupe plus
-   rien ; les photos moins larges que le cadre reçoivent une bande de chaque
-   côté, ce qui, sur un dossier au fond sombre, se lit comme une intention. */
+   Paysage : `cover`. MAV — « pour les photos paysages je préfère qu'elles
+   soient sans bandes noires en haut comme en bas, donc au besoin les
+   zoomer/centrer. » Une photo d'immeuble prise à l'horizontale supporte très
+   bien d'être rognée sur les côtés ; une bande noire, non.
+
+   Portrait : `contain` sur fond noir — « y a que les portraits qui ont des
+   bandes noires. » Là, `cover` ne laissait qu'une tranche de mur au milieu de
+   la façade. La classe est posée par components/photo-dossier.tsx, qui mesure
+   l'image une fois chargée : rien, côté serveur, ne connaît son orientation. */
 .dv-ph-grid img {
-  width: 100%; height: 52mm; object-fit: contain; display: block;
-  background: #000;
+  width: 100%; height: 52mm; object-fit: cover; object-position: center;
+  display: block; background: #000;
   border-radius: 1.5mm; border: .3mm solid var(--dv-or);
 }
+.dv-ph-grid img.portrait { object-fit: contain; }
 .dv-vide-bloc {
   margin: 20mm 8mm; padding: 12mm; text-align: center;
   background: var(--dv-carte); border-radius: 2mm; color: var(--dv-gris); font-size: 11pt;
