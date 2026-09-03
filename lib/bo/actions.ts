@@ -191,6 +191,72 @@ export async function transfererImmeuble(
   refresh(immeubleId);
 }
 
+/**
+ * Change le propriétaire d'un immeuble (retour #288).
+ *
+ * MAV : « il faudrait un bouton pour changer le propriétaire d'un immeuble.
+ * Peut-être qu'on pourrait mettre une modale pour dire pourquoi (immeuble vendu
+ * à, donc ça nous fait un historique) […] Je te demande ce bouton car quand
+ * j'ai changé le client dans le mandat, donc le mandant, le propriétaire n'a
+ * pas changé ici, ce qui aurait pourtant dû être fait. »
+ *
+ * Deux choses en une, et les deux comptent :
+ *
+ * — **Le lien change des deux côtés.** L'immeuble pointe vers son nouveau
+ *   propriétaire, ET la fiche du nouveau propriétaire liste l'immeuble. Ne
+ *   faire que la première moitié laisserait l'onglet « Immeubles » du client
+ *   vide alors qu'il en possède un : c'est ce genre d'écart qui fait qu'on
+ *   rappelle l'ancien vendeur.
+ * — **Le changement laisse une trace.** Un immeuble qui change de mains sans
+ *   rien dire efface une vente. Le suivi horodaté garde qui possédait quoi,
+ *   quand, et pourquoi ça a bougé — c'est l'historique que MAV demande.
+ *
+ * L'ancien propriétaire n'est PAS délié de sa fiche : il a réellement possédé
+ * ce bien, et c'est cette histoire-là qui vaut au fichier. Seul le lien
+ * « propriétaire actuel » se déplace.
+ */
+export async function changerProprietaire(input: {
+  immeubleId: string;
+  nouveauId: string;
+  /** Le nom, pour l'écrire en toutes lettres dans le suivi. */
+  nouveauNom: string;
+  ancienId?: string | null;
+  ancienNom?: string;
+  motif: string;
+  agentId?: string;
+}) {
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: input.immeubleId,
+    p_patch: { PROPRIETAIRE: input.nouveauId, "Modified Date": now },
+  });
+  await rpc("bo_append_ref", {
+    p_table: "bo_contact",
+    p_id: input.nouveauId,
+    p_key: "IMMEUBLEs",
+    p_value: input.immeubleId,
+  });
+  const depuis = input.ancienNom?.trim() ? ` (auparavant ${input.ancienNom.trim()})` : "";
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: newId(),
+    p_doc: {
+      Type: "Manuel",
+      AGENT: input.agentId ?? null,
+      CONTACT: input.nouveauId,
+      IMMEUBLEs: [input.immeubleId],
+      Canals: [],
+      notes: `Changement de propriétaire — ${input.motif} : ${input.nouveauNom}${depuis}.`,
+      date_start: now,
+      "Created Date": now,
+      "Modified Date": now,
+      Statut: "Traité",
+    },
+  });
+  refresh(input.immeubleId);
+}
+
 /** Renvoie le dossier à l'étape précédente du pipeline. */
 export async function reculerStatut(immeubleId: string, statutActuel: number) {
   const cible = Math.max(1, statutActuel - 1);
@@ -900,6 +966,32 @@ export async function reporterCadastre(
     if (p && cle(String(p.ref_cadastre ?? "")) === cle(propre)) return;
   }
   await addParcelle(immeubleId, { ref_cadastre: propre, superficie: surface });
+}
+
+/**
+ * Corrige une parcelle déjà au dossier (retour #295).
+ *
+ * MAV : « quand je clique sur ajouter les parcelles trouvées, il faut quand
+ * même que je puisse ajouter la longueur de façade, si tu ne peux pas trouver
+ * l'info toi-même, et que je puisse ajouter aussi d'autres parcelles. »
+ *
+ * Le cadastre donne la référence et la superficie ; la façade, il ne la donne
+ * pas — elle se mesure sur le plan. Une parcelle ajoutée automatiquement
+ * n'était plus modifiable qu'en la supprimant pour la resaisir, ce qui faisait
+ * perdre la superficie officielle au passage.
+ */
+export async function updateParcelle(
+  immeubleId: string,
+  parcelleId: string,
+  patch: { ref_cadastre?: string; superficie?: number | null; facade?: number | null },
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_parcelle",
+    p_id: parcelleId,
+    p_patch: cleanPatch({ ...patch, "Modified Date": new Date().toISOString() }),
+  });
+  await syncTerrain(immeubleId);
+  refresh(immeubleId);
 }
 
 /** Retire une parcelle (corbeille + retrait du tableau PARCELLEs). */
@@ -2799,6 +2891,8 @@ export type MandantEnregistre = {
   personne: "physique" | "morale";
   fonction?: string;
   societe?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+  /** La société qui représente la société mandante — les holdings (#292). */
+  representante?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
   cni?: string;
   kbis?: string;
 };
@@ -2867,6 +2961,11 @@ export async function deposerPieceMandat(
           p_id: contactId,
           p_patch: {
             [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
+            /* Retour #289 — « pour le Kbis, ce serait bien d'écrire la date à
+               laquelle on a déposé le document aussi. » Un Kbis vaut trois
+               mois : sans sa date, on ne peut pas savoir s'il est encore
+               recevable, et on le redemande par précaution à chaque fois. */
+            [cle === "cni" ? "cni_depose_le" : "entreprise_kbis_depose_le"]: new Date().toISOString(),
             "Modified Date": new Date().toISOString(),
           },
         });
@@ -2894,6 +2993,30 @@ export async function deposerPieceMandat(
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/**
+ * Retire une pièce justificative de la fiche d'un contact (retour #289).
+ *
+ * MAV : « il me faudrait également un bouton pour supprimer ou remplacer les
+ * documents en question. » Remplacer existait — c'est le même dépôt. Retirer,
+ * non : une carte d'identité périmée ou déposée sur la mauvaise fiche restait
+ * là, et le dossier se croyait complet.
+ *
+ * Le fichier lui-même n'est pas effacé du coffre : il reste au dossier de
+ * l'immeuble, où il a été journalisé. On ne défait que le rattachement.
+ */
+export async function retirerPieceContact(contactId: string, cle: "cni" | "kbis") {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_contact",
+    p_id: contactId,
+    p_patch: {
+      [cle === "cni" ? "cni" : "entreprise_kbis"]: null,
+      [cle === "cni" ? "cni_depose_le" : "entreprise_kbis_depose_le"]: null,
+      "Modified Date": new Date().toISOString(),
+    },
+  });
+  revalidatePath(`/contact/${contactId}`);
 }
 
 /** Fabrique le PDF du mandat depuis sa page imprimable et le range au coffre. */
@@ -3261,6 +3384,17 @@ export type MandantDepuisContact = {
   };
   /** Toutes celles que la fiche connaît (retour #200), la principale d'abord. */
   societes?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string }[];
+  /* Retour #287 — « pour les pièces justificatives d'une société ou d'un
+     mandant (notamment la CNI), j'aimerais que cela soit également enregistré
+     dans la fiche contact du client, de telle façon qu'on ne nous la redemande
+     pas lorsqu'on remplit à nouveau. » Le dépôt les écrivait bien sur la fiche
+     contact ; c'est la relecture qui manquait — le mandat suivant repartait
+     d'un dossier vide et redemandait une carte d'identité déjà au coffre. */
+  cni?: string;
+  kbis?: string;
+  /** Quand la pièce a été déposée — le Kbis a une péremption (#289). */
+  cniLe?: string;
+  kbisLe?: string;
 };
 
 /** Une adresse Bubble est `{address, lat, lng}` — on n'en garde que le libellé. */
@@ -3321,6 +3455,10 @@ export async function mandantDepuisContact(id: string): Promise<MandantDepuisCon
        la fiche a collectionnées, la principale d'abord pour qu'un contact à une
        seule société se comporte exactement comme avant. */
     societes: societesDuContact(c),
+    cni: S3(c.cni),
+    kbis: S3(c.entreprise_kbis),
+    cniLe: S3(c.cni_depose_le)?.slice(0, 10),
+    kbisLe: S3(c.entreprise_kbis_depose_le)?.slice(0, 10),
   };
 }
 

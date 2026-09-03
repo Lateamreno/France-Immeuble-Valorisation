@@ -83,6 +83,15 @@ export const MOTIFS_ARCHIVAGE = [
   "Pas un immeuble", "Mauvaises coordonnées", "Doublon", "Autre",
 ];
 
+/* Retour #288 — pourquoi un immeuble change de mains. La liste est ouverte
+   (le champ est un `datalist`) : elle propose les cas courants sans interdire
+   celui qu'on n'avait pas prévu. « Erreur de saisie » y figure exprès, pour
+   qu'une correction ne se relise pas plus tard comme une vente. */
+export const MOTIFS_CHANGEMENT_PROPRIETAIRE = [
+  "Immeuble vendu", "Succession", "Donation", "Apport en société",
+  "Indivision réorganisée", "Erreur de saisie", "Autre",
+];
+
 export const TENSIONS_LOCATIVES = ["Très faible", "Faible", "Modérée", "Forte", "Très forte", "n.c."];
 
 export const TYPES_ZONE_PLU = [

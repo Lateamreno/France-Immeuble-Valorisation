@@ -511,6 +511,22 @@ export function EstimationWizard({
     [scores, lm2Act, rLoyer, rPrix, b.lots, b.travaux, travauxTot, hai, nv, haiTravaux, agg.carrez, agg.loyersMaxAn],
   );
   const [analyse, setAnalyse] = useMemServi("analyse", analyseServie);
+  /**
+   * Le prix qu'avait l'immeuble la dernière fois qu'on a touché au texte
+   * (retour #283).
+   *
+   * MAV : « le texte, si on le modifie et qu'on modifie ensuite le prix, je
+   * veux qu'il s'entoure en rouge pour qu'on fasse bien attention qu'il y a eu
+   * un changement. » Tant que personne n'écrit dedans, le texte se refait tout
+   * seul et suit le prix : aucun risque. Dès qu'on y met la main, il se fige —
+   * et un prix corrigé après coup laisse dans le dossier une phrase qui annonce
+   * l'ancien montant. C'est ce décalage-là qu'on montre, pas la simple
+   * modification.
+   */
+  const [haiDuTexte, setHaiDuTexte] = useMem<number | null>("haiDuTexte", null);
+  const ecrireAnalyse = (t: string) => { setAnalyse(t); setHaiDuTexte(hai); };
+  const textePerime = haiDuTexte !== null && haiDuTexte !== hai
+    && analyse.trim() !== analyseServie.trim();
   const [titre, setTitre] = useMem("titre", `Estimation ${S(im.adresse_ville)}`.trim());
 
   /* Ce qui a servi à fabriquer le PDF, en une empreinte.
@@ -970,7 +986,65 @@ export function EstimationWizard({
 
         {step === 2 && (
           <>
-            <div className="est-h">Prix</div>
+            {/* Retour #283 — « je veux que les fondamentaux et les cibles
+                soient avant la détermination du prix, de telle façon que le
+                prix soit juste au-dessus du texte ». C'est l'ordre du
+                raisonnement : on juge l'immeuble, on dit à qui on le vend,
+                ALORS on pose un prix — et le texte qui le justifie tombe
+                immédiatement sous le chiffre qu'il justifie. Avant, le prix
+                était en haut et l'avis en bas, séparés par deux écrans de
+                comparatifs : on relisait la phrase sans avoir le montant sous
+                les yeux. */}
+            <div className="est-h">Fondamentaux</div>
+            <div className="est-sect">Fondamentaux</div>
+            <div className="est-fonds">
+              {FONDAMENTAUX.map((f) => (
+                <div className={`est-fond${(scores[f.cle] ?? 0) > 0 ? "" : " requis"}`} key={f.cle}>
+                  <div className="h">
+                    {f.label}
+                    <span className="et">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button key={n} type="button" className={n <= (scores[f.cle] ?? 0) ? "on" : ""}
+                          title={f.libelles[n - 1]}
+                          /* Forme fonctionnelle : `{ ...scores }` fige l'objet
+                             du rendu courant, si bien que noter les trois
+                             fondamentaux coup sur coup ne gardait que le
+                             dernier — les deux premiers repartaient de la même
+                             photo. Constaté au navigateur. */
+                          onClick={() => setScores((s2) => ({ ...s2, [f.cle]: n }))}>★</button>
+                      ))}
+                    </span>
+                  </div>
+                  <div className="s">{(scores[f.cle] ?? 0) > 0 ? f.libelles[scores[f.cle] - 1] : "à noter"}</div>
+                </div>
+              ))}
+              <Etat ok={fondamentauxOk} />
+            </div>
+
+            <div className="est-sect">Cibles</div>
+            <div className="est-cibles">
+              <div className="g">
+                {CIBLES_EST.map((c) => (
+                  <button key={c.valeur} type="button"
+                    className={`est-cible${cibles.includes(c.valeur) ? " on" : ""}`}
+                    onClick={() => setCibles(cibles.includes(c.valeur) ? cibles.filter((x) => x !== c.valeur) : [...cibles, c.valeur])}>
+                    <svg viewBox="0 0 24 24">{c.picto}</svg>
+                    {c.label}
+                    <i />
+                  </button>
+                ))}
+              </div>
+              <Etat ok={cibles.length > 0} />
+            </div>
+
+            <div className="est-sect">Loyers pratiqués par rapport au secteur</div>
+            <div className="est-loyers">
+              <div><span>Loyers actuels</span><b className={ecart(lm2Act, rLoyer) >= 0 ? "v" : "r"}>{ecart(lm2Act, rLoyer) >= 0 ? "+" : ""}{ecart(lm2Act, rLoyer)} %</b></div>
+              <div><span>Loyers potentiels</span><b className={ecart(lm2Max, rLoyer) >= 0 ? "v" : "r"}>{ecart(lm2Max, rLoyer) >= 0 ? "+" : ""}{ecart(lm2Max, rLoyer)} %</b></div>
+              <span className="est-tiret">—</span>
+            </div>
+
+            <div className="est-h" style={{ marginTop: 20 }}>Prix</div>
             <div className="est-sect">Selon le secteur</div>
             <div className="est-meths">
               {([
@@ -1051,6 +1125,19 @@ export function EstimationWizard({
                       </button>
                     ))}
                 </div>
+                {/* Retour #284 — « mets le prix qu'on sélectionne aussi en
+                    dessous de la barre de sélection, en gros, pour bien voir
+                    ce qu'on fait en termes de prix ». On tire le curseur en
+                    regardant le curseur ; le montant, lui, était trois lignes
+                    plus haut dans une case de formulaire. Le voici sous la
+                    main, avec sa décomposition en petit — c'est le net vendeur
+                    que le propriétaire retient, et les honoraires expliquent
+                    l'écart. */}
+                <div className="pxbar-val">
+                  <b>{euros(hai) ?? "—"}</b>
+                  <span>HAI</span>
+                  <em>{group(nv)} € net vendeur · {group(honos)} € d&apos;honoraires ({honosPct} %)</em>
+                </div>
               </div>
             )}
 
@@ -1087,70 +1174,28 @@ export function EstimationWizard({
               })}
             </div>
 
-            <div className="est-h" style={{ marginTop: 20 }}>Analyse</div>
-            <div className="est-sect">Fondamentaux</div>
-            <div className="est-fonds">
-              {FONDAMENTAUX.map((f) => (
-                <div className={`est-fond${(scores[f.cle] ?? 0) > 0 ? "" : " requis"}`} key={f.cle}>
-                  <div className="h">
-                    {f.label}
-                    <span className="et">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" className={n <= (scores[f.cle] ?? 0) ? "on" : ""}
-                          title={f.libelles[n - 1]}
-                          /* Forme fonctionnelle : `{ ...scores }` fige l'objet
-                             du rendu courant, si bien que noter les trois
-                             fondamentaux coup sur coup ne gardait que le
-                             dernier — les deux premiers repartaient de la même
-                             photo. Constaté au navigateur. */
-                          onClick={() => setScores((s2) => ({ ...s2, [f.cle]: n }))}>★</button>
-                      ))}
-                    </span>
-                  </div>
-                  <div className="s">{(scores[f.cle] ?? 0) > 0 ? f.libelles[scores[f.cle] - 1] : "à noter"}</div>
-                </div>
-              ))}
-              <Etat ok={fondamentauxOk} />
-            </div>
-
-            <div className="est-sect">Cibles</div>
-            <div className="est-cibles">
-              <div className="g">
-                {CIBLES_EST.map((c) => (
-                  <button key={c.valeur} type="button"
-                    className={`est-cible${cibles.includes(c.valeur) ? " on" : ""}`}
-                    onClick={() => setCibles(cibles.includes(c.valeur) ? cibles.filter((x) => x !== c.valeur) : [...cibles, c.valeur])}>
-                    <svg viewBox="0 0 24 24">{c.picto}</svg>
-                    {c.label}
-                    <i />
-                  </button>
-                ))}
-              </div>
-              <Etat ok={cibles.length > 0} />
-            </div>
-
-            <div className="est-sect">Loyers pratiqués par rapport au secteur</div>
-            <div className="est-loyers">
-              <div><span>Loyers actuels</span><b className={ecart(lm2Act, rLoyer) >= 0 ? "v" : "r"}>{ecart(lm2Act, rLoyer) >= 0 ? "+" : ""}{ecart(lm2Act, rLoyer)} %</b></div>
-              <div><span>Loyers potentiels</span><b className={ecart(lm2Max, rLoyer) >= 0 ? "v" : "r"}>{ecart(lm2Max, rLoyer) >= 0 ? "+" : ""}{ecart(lm2Max, rLoyer)} %</b></div>
-              <span className="est-tiret">—</span>
-            </div>
-
             <div className="est-sect">Analyse</div>
             <div className="est-l" style={{ alignItems: "flex-start" }}>
-              <label className="est-ch txt edit" style={{ flex: 1 }}>
+              <label className={`est-ch txt edit${textePerime ? " perime" : ""}`} style={{ flex: 1 }}>
                 <span>Analyse</span>
                 {/* Pas de `maxLength` : couper la phrase de quelqu'un au
                     900ᵉ caractère est la pire façon de le prévenir. On compte,
                     on avertit, et c'est le PDF relu qui tranche (retour #146). */}
-                <textarea rows={8} value={analyse} onChange={(e) => setAnalyse(e.target.value)}
+                <textarea rows={8} value={analyse} onChange={(e) => ecrireAnalyse(e.target.value)}
                   placeholder="Analyse du bien, références comparables, justification du prix…" />
               </label>
               <Etat ok={analyse.trim().length > 0} />
             </div>
+            {textePerime && (
+              <div className="est-perime">
+                Le prix a changé depuis que vous avez écrit ce texte — il annonce
+                encore {euros(haiDuTexte ?? 0)}. Relisez-le, ou reprenez la rédaction automatique.
+              </div>
+            )}
             <div className={`est-cpt${analyse.length > 900 ? " trop" : ""}`}>
               {analyse.trim() !== analyseServie.trim() && (
-                <button type="button" className="est-reprendre" onClick={() => setAnalyse(analyseServie)}>
+                <button type="button" className="est-reprendre"
+                  onClick={() => { setAnalyse(analyseServie); setHaiDuTexte(null); }}>
                   Reprendre le texte rédigé
                 </button>
               )}

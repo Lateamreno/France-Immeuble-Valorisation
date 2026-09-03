@@ -77,21 +77,38 @@ function phraseLoyers(b: SourceAnalyse): string | undefined {
   return `Les loyers sont ${e} % au-dessus du marché, ce qui devrait nous permettre de nous positionner au plus haut en termes de prix au m².`;
 }
 
+/** Combien de logements sont sous D — le seuil qui déclenche les interdictions. */
+function logementsSousD(b: SourceAnalyse): number {
+  const connus = b.dpeLogements.map((d) => d.trim().toUpperCase()).filter((d) => d && d !== "N.C." && d !== "VIERGE");
+  return connus.filter((d) => MAUVAIS_DPE.has(d)).length;
+}
+
 /** Les DPE des logements — et eux seuls : un commerce ne se loue pas au DPE. */
 function phraseDpe(b: SourceAnalyse): string | undefined {
   const connus = b.dpeLogements.map((d) => d.trim().toUpperCase()).filter((d) => d && d !== "N.C." && d !== "VIERGE");
   if (connus.length === 0) return undefined;
-  const mauvais = connus.filter((d) => MAUVAIS_DPE.has(d)).length;
+  const mauvais = logementsSousD(b);
   if (mauvais === 0) return "Les DPE des logements sont bons.";
   return mauvais === 1
     ? "Un logement a un DPE inférieur à D."
     : `${mauvais} logements ont des DPE inférieurs à D.`;
 }
 
-/** Les travaux : chiffrés, ou à négocier faute de chiffrage. */
+/**
+ * Les travaux : chiffrés, ou à négocier faute de chiffrage.
+ *
+ * Retour #282 — « s'il n'y a aucun logement en plus de D, alors il ne faut pas
+ * dire dans le texte automatique, s'il y a des travaux, que cela sert à sortir
+ * des interdictions de louer. » La phrase précédente le disait de tout
+ * immeuble, y compris quand elle venait de certifier deux lignes plus haut que
+ * les DPE étaient bons : le texte se contredisait sous les yeux du
+ * propriétaire. Le motif ne s'écrit donc que là où il existe — un logement au
+ * moins sous D.
+ */
 function phraseTravaux(b: SourceAnalyse): string | undefined {
   if (b.travaux > 0) {
-    return `${eur(b.travaux)} de travaux sont prévisionnés, notamment pour sortir des interdictions de louer.`;
+    const motif = logementsSousD(b) > 0 ? ", notamment pour sortir des interdictions de louer" : "";
+    return `${eur(b.travaux)} de travaux sont prévisionnés${motif}.`;
   }
   if (b.travauxAPrevoir) {
     return "Les travaux ne sont pas encore chiffrés : une négociation à hauteur de leur montant est à prévoir.";

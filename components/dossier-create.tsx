@@ -8,6 +8,7 @@ import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { apercuPdfDossier, createDossier, genererPdfDossier } from "@/lib/bo/actions";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
+import { descriptifAVerifier } from "@/lib/bo/descriptif";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -119,13 +120,26 @@ export function AddDossierButton({ b }: { b: BienData }) {
     charges: b.charges, composants: b.composants, proprietaire: b.proprietaire,
   }));
 
+  /* Retour #302 — « dès que je change un truc dans l'état locatif, les charges
+     ou autre (en général sur la fiche bien) qui aurait modifié le descriptif
+     automatique, il faut que tu m'empêches de générer un nouveau dossier et
+     que tu me dises de régénérer le texte en fonction du dossier actuel. »
+     Le signalement existait déjà, mais seulement comme un bandeau sur l'onglet
+     Descriptif : rien n'empêchait de tirer un dossier de vingt pages dont la
+     première page raconte l'immeuble d'avant. C'est le pire cas — le document
+     part chez l'acquéreur et se contredit lui-même page après page. */
+  const descPerime = descriptifAVerifier({ im: b.im, lots: b.lots, parcelles: b.parcelles });
+  const bloque = manquants.length > 0 || descPerime;
+
   return (
     <>
       <button
         className="fbtn" type="button" style={{ margin: "0 auto 14px", display: "flex" }}
-        disabled={manquants.length > 0}
+        disabled={bloque}
         title={manquants.length > 0
           ? `Il manque ${manquants.length} information${manquants.length > 1 ? "s" : ""} : ${manquants.map((x) => x.titre).join(" · ")}`
+          : descPerime
+          ? "Le descriptif ne correspond plus à la fiche : reprenez-le avant de générer."
           : undefined}
         onClick={() => { setAttribuee(null); setCreatedId(null); setStep(0); setOpen(true); }}>
         + Nouveau dossier
@@ -136,6 +150,16 @@ export function AddDossierButton({ b }: { b: BienData }) {
         <p className="dos-bloque">
           Le dossier ne peut pas être généré tant que ces points ne sont pas réglés —
           voyez les lignes en rouge ci-dessus : <b>{manquants.map((x) => x.titre).join(" · ")}</b>
+        </p>
+      )}
+      {descPerime && manquants.length === 0 && (
+        <p className="dos-bloque">
+          La fiche a changé depuis que le descriptif a été écrit : le dossier raconterait
+          l&apos;immeuble d&apos;avant. <b>Reprenez le texte</b> — Description et prix ›
+          Descriptif — puis revenez générer.{" "}
+          <Link className="dos-lien" href={`/bien/${immeubleId}?ecran=prix&sous=descriptif`}>
+            → Aller au descriptif
+          </Link>
         </p>
       )}
       {open && (

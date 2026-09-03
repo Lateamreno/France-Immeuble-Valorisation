@@ -40,6 +40,20 @@ export type Mandant = {
   /** Sa qualité dans CE mandat : gérant, indivisaire, usufruitier… */
   fonction?: string;
   societe?: Societe;
+  /**
+   * La société qui représente la société mandante (retour #292).
+   *
+   * MAV : « il se peut qu'une société soit représentée par une société
+   * elle-même représentée par une personne physique, c'est le cas des
+   * holdings ; il faudrait donc pouvoir intégrer ce cas de figure. »
+   *
+   * Sans elle, le mandat écrivait « SCI X, représentée par M. Untel, gérant »
+   * alors qu'Untel ne gère pas la SCI mais la holding qui la gère. La chaîne
+   * de représentation était fausse, et c'est exactement ce qu'un notaire
+   * vérifie avant l'acte. Quand elle est renseignée, la personne physique
+   * représente CETTE société-là, pas la mandante.
+   */
+  representante?: Societe;
   /** Pièces déposées : URL de lecture. */
   cni?: string;
   kbis?: string;
@@ -94,6 +108,7 @@ export function lireMandants(m: Record<string, unknown>): Mandant[] {
       personne: x.personne === "morale" ? "morale" : "physique",
       fonction: S(x.fonction),
       societe: (x.societe as Societe | undefined) ?? undefined,
+      representante: (x.representante as Societe | undefined) ?? undefined,
       cni: S(x.cni),
       kbis: S(x.kbis),
     }));
@@ -308,9 +323,15 @@ export function descriptifLegal(
         ? `L'immeuble est vendu occupé : l'ensemble des lots est loué${bail}.${loyer}`
         : `L'immeuble est vendu partiellement occupé : ${pluriel(s.occupes, "lot")} ${s.occupes > 1 ? "sont loués" : "est loué"}${bail} et ${pluriel(s.libres, "lot")} ${s.libres > 1 ? "sont libres" : "est libre"} de toute occupation.${loyer}`,
     );
-    phrases.push(
-      "Le mandant déclare que les baux en cours seront transmis à l'acquéreur et qu'aucun congé, ni aucune procédure, n'est en cours à la date des présentes, sauf mention contraire portée ci-dessus.",
-    );
+    /* Retour #301 — MAV a fait retirer la déclaration sur les baux (« le
+       mandant déclare que les baux en cours seront transmis à l'acquéreur et
+       qu'aucun congé, ni aucune procédure, n'est en cours… »). Elle n'a rien à
+       faire dans un DESCRIPTIF : c'est un engagement du vendeur, pas une
+       description du bien. Elle se retrouvait recopiée telle quelle dans
+       l'annonce et dans le dossier envoyé aux acquéreurs, où elle faisait
+       promettre au mandant, hors de tout contrat, quelque chose qu'il n'avait
+       pas relu. Les obligations du mandant restent où elles sont opposables :
+       dans les articles du mandat. */
   }
 
   return phrases.join("\n\n");

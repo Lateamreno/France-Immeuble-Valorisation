@@ -4,12 +4,15 @@ import { useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import { dmy, euros, keur } from "@/lib/format";
 import {
-  chargerAcheteurs, ouvrirEstimation, reactiver, setApporteur, setPropositionStatut,
-  supprimerEstimation, updateBien, updateContact,
+  addSuivi, changerProprietaire, chargerAcheteurs, ouvrirEstimation, reactiver,
+  setApporteur, setPropositionStatut, setStatut, supprimerEstimation, updateBien,
+  updateContact,
 } from "@/lib/bo/actions";
+import { ModaleMoyenContact } from "@/components/dashboard-modales";
 import { EstimationWizard, type RepriseEstimation } from "@/components/estimation-wizard";
 import { EstimationEnLecture } from "@/components/estimation-lecture";
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
@@ -26,10 +29,11 @@ import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
 import { Facade } from "@/components/facade";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
-import { MOTIFS_VENTE } from "@/lib/referentiels";
+import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
 import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
@@ -112,10 +116,17 @@ const I = {
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
  *  section ouvre directement ses sous-menus, sans perdre les onglets
  *  horizontaux du contenu. */
+/* Retour #303 — l'ordre du BO : le prix d'abord, le descriptif ensuite. */
+const ONGLETS_PRIX = [
+  { key: "prix", label: "Prix" },
+  { key: "descriptif", label: "Descriptif" },
+] as const;
+
 const SOUS_ONGLETS: Partial<Record<SectionKey, readonly { key: string; label: string }[]>> = {
   emplacement: ONGLETS_EMPLACEMENT,
   locatif: ONGLETS_LOCATIF,
   technique: ONGLETS_TECHNIQUE,
+  prix: ONGLETS_PRIX,
 };
 
 /* Tous les sous-onglets confondus : de quoi vérifier qu'un `?sous=` venu de
@@ -363,7 +374,10 @@ export function BienFiche({
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-              {sect === "prix" && <PrixSection b={b} espace={espace} compteActif={compteActif} />}
+              {sect === "prix" && (
+                <PrixSection b={b} espace={espace} compteActif={compteActif}
+                  tab={sous.prix} onTab={majSous("prix")} />
+              )}
               {sect === "photos" && <PhotosSection b={b} />}
               {sect === "estimations" && (
                 <EstimationsSection
@@ -548,7 +562,7 @@ export function BienFiche({
             <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>
           </button>
           <span className="sp" />
-          <ReactiverBtn immeubleId={String(im._id)} />
+          <ActionRail b={b} />
         </div>
       </aside>
     </div>
@@ -812,6 +826,90 @@ function ApporteurCard({ b }: { b: BienData }) {
 /** Propriétaire — mise en page reprise du BO (retour MAV #34) : cadre doré
  *  avec le nom en pastille, vignettes Profil / Motif de la vente, puis
  *  l'identité (entreprise, téléphone, e-mail) en cases copiables. */
+/**
+ * Le bouton qui fait changer un immeuble de mains (retour #288).
+ *
+ * En deux temps, et c'est voulu : on choisit d'abord la personne, puis on dit
+ * pourquoi. Le motif n'est pas de la paperasse — c'est lui qui, relu dans six
+ * mois, distingue « vendu à » d'une correction de saisie, et c'est la seule
+ * chose que l'historique gardera de ce clic.
+ */
+function ChangerProprietaire({ b }: { b: BienData }) {
+  const [picker, setPicker] = useState(false);
+  const [cible, setCible] = useState<{ id: string; nom: string } | null>(null);
+  const [motif, setMotif] = useState<string>(MOTIFS_CHANGEMENT_PROPRIETAIRE[0]);
+  const [pending, start] = useTransition();
+  const c = b.proprietaire;
+  const ancienNom = c ? `${String(c["prénom"] ?? "")} ${String(c.nom ?? "")}`.trim() : "";
+
+  return (
+    <>
+      <button type="button" className="pr-chg" onClick={() => setPicker(true)}
+        title="Rattacher cet immeuble à un autre propriétaire">
+        <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
+        Changer de propriétaire
+      </button>
+
+      {picker && (
+        <ContactPicker
+          titre="Nouveau propriétaire de l'immeuble"
+          libelleValider="Choisir ce propriétaire"
+          valeurActuelle={ancienNom || undefined}
+          onAnnuler={() => setPicker(false)}
+          onValider={(ct) => { setPicker(false); setCible({ id: ct.id, nom: ct.nom }); }}
+        />
+      )}
+
+      {cible && createPortal(
+        <div className="modal-ov">
+          <div className="modal att" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="mod-x" title="Fermer" aria-label="Fermer"
+              onClick={() => setCible(null)}>✕</button>
+            <div className="tr-head">
+              <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
+              Changer de propriétaire
+            </div>
+            <div className="tr-body">
+              <div className="att-bien">
+                {ancienNom ? <><span>{ancienNom} →</span> <b>{cible.nom}</b></> : <b>{cible.nom}</b>}
+              </div>
+              <label className="att-ch">
+                <span>Motif</span>
+                <input list="chg-motifs" value={motif} onChange={(e) => setMotif(e.target.value)} />
+                <datalist id="chg-motifs">
+                  {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </label>
+              <p className="att-note">
+                Le motif reste au dossier : c&apos;est lui qui, relu dans six mois, dit
+                si l&apos;immeuble a été vendu ou si l&apos;on a simplement corrigé une saisie.
+                L&apos;ancien propriétaire garde ce bien dans son historique.
+              </p>
+            </div>
+            <div className="tr-foot">
+              <button type="button" className="vf-annuler" onClick={() => setCible(null)}>Annuler</button>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="vf-go" disabled={pending || !motif.trim()}
+                onClick={() => start(async () => {
+                  await changerProprietaire({
+                    immeubleId: String(b.im._id),
+                    nouveauId: cible.id, nouveauNom: cible.nom,
+                    ancienId: c ? String(c._id) : null, ancienNom,
+                    motif: motif.trim(),
+                  });
+                  setCible(null);
+                })}>
+                <span className="ch">›</span> {pending ? "Enregistrement…" : "Changer le propriétaire"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 function ProprioSection({ b }: { b: BienData }) {
   const c = b.proprietaire;
   const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -856,6 +954,7 @@ function ProprioSection({ b }: { b: BienData }) {
         ) : (
           <span className="pr-chip off">Aucun propriétaire lié</span>
         )}
+        <ChangerProprietaire b={b} />
       </div>
 
       <div className="pr-duo">
@@ -965,38 +1064,122 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
   );
 }
 
-function PrixSection({ b, espace, compteActif }: {
+/**
+ * Description et prix, en deux onglets (retour #303).
+ *
+ * MAV : « pour Descriptif et Prix, c'est en deux onglets sur le BO actuel, je
+ * veux que tu fasses de même. » Ce sont deux travaux distincts — on fixe un
+ * prix, ou on rédige une annonce — et les tenir sur un seul écran obligeait à
+ * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
+ * sous-entrées, comme pour l'emplacement ou l'état locatif.
+ */
+function PrixSection({ b, espace, compteActif, tab, onTab }: {
   b: BienData; espace?: Espace | null; compteActif?: boolean;
+  tab?: string; onTab?: (t: string) => void;
 }) {
+  const courant = tab ?? ONGLETS_PRIX[0].key;
   return (
     <>
       <SectTitle icon={I.info} title="Description et prix" />
-      {/* Retour #232 : « la section descriptif, mets-la au-dessus de
-          l'historique des prix pour qu'on puisse le voir plus facilement. »
-          C'est le texte qui part au vendeur et à l'acquéreur : il passe devant
-          l'historique, qui est une archive. */}
-      <div className="fh2">Descriptif</div>
-      <DescriptifForm b={b} />
-      <div style={{ marginTop: 20 }}>
-        <PrixEcran b={b} espace={espace} compteActif={compteActif} />
+      <div className="fsub-nav">
+        {ONGLETS_PRIX.map((o) => (
+          <button key={o.key} type="button" className={courant === o.key ? "on" : undefined}
+            onClick={() => onTab?.(o.key)}>
+            {o.label}
+          </button>
+        ))}
       </div>
+      {courant === "descriptif" ? (
+        <DescriptifForm b={b} />
+      ) : (
+        <PrixEcran b={b} espace={espace} compteActif={compteActif} />
+      )}
     </>
   );
 }
 
-function ReactiverBtn({ immeubleId }: { immeubleId: string }) {
+/**
+ * L'action qui fait avancer le dossier, au pied du rail (retour #285).
+ *
+ * MAV : « en bas à droite de la sidebar il y a écrit Réactiver, mais ce bouton
+ * n'est fait que pour les biens qui sont actuellement en attente. Par ailleurs,
+ * une fois réactivé le cas échéant, il faut pouvoir cliquer sur le bouton OK
+ * pour vendre afin de pouvoir passer à la suite. »
+ *
+ * Le bouton était en dur : il proposait de réactiver un dossier qui tournait
+ * déjà, et une fois le dossier réveillé il proposait de le réactiver encore.
+ * Il porte maintenant la MÊME action que la carte du dashboard — un dossier ne
+ * doit pas avancer différemment selon l'écran d'où on le regarde.
+ */
+function ActionRail({ b }: { b: BienData }) {
+  const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const [moyen, setMoyen] = useState(false);
+  const router = useRouter();
+
+  const enAttente = !!b.standby && b.standby !== "Traité";
+  const st = (() => {
+    const n = parseInt(String(b.im.Statut ?? "").split(" ")[0], 10) || 0;
+    /* Même règle qu'au dashboard : un bien estimé est au moins « à
+       transformer », quel que soit le statut resté en base. */
+    const estime = typeof b.im.prix_hai_estim === "number" || !!b.im.date_last_est
+      || b.estimations.length > 0;
+    return estime && n > 0 && n < 3 ? 3 : n;
+  })();
+
+  const suite: { label: string; next: number } | null =
+    st === 1 ? { label: "Contacté", next: 2 }
+    : st === 2 ? { label: "Estimer", next: 3 }
+    : st === 3 ? { label: "OK pour vendre", next: 4 }
+    : st === 7 || st === 8 ? { label: "Programmer le compromis", next: 9 }
+    : null;
+
+  /* Rien à proposer : mieux vaut un pied de rail vide qu'un bouton qui ment.
+     C'est le cas des dossiers commercialisés, sous compromis ou vendus, dont
+     l'étape suivante se joue ailleurs (offre, acte). */
+  if (!enAttente && !suite) return null;
+
+  const cliquer = () => {
+    if (pending) return;
+    if (enAttente) { start(async () => { await reactiver(immeubleId); }); return; }
+    /* « Contacté » demande d'abord PAR QUEL MOYEN, comme au dashboard : c'est
+       cette réponse qui alimente les statistiques par canal. */
+    if (suite!.next === 2) { setMoyen(true); return; }
+    start(async () => { await setStatut(immeubleId, suite!.next); });
+  };
+
   return (
-    <button
-      className="kgo green"
-      type="button"
-      disabled={pending}
-      style={pending ? { opacity: 0.5 } : undefined}
-      onClick={() => start(async () => { await reactiver(immeubleId); })}
-    >
-      <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
-      Réactiver
-    </button>
+    <>
+      <button
+        className="kgo green" type="button" disabled={pending}
+        style={pending ? { opacity: 0.5 } : undefined}
+        onClick={cliquer}
+      >
+        {enAttente ? (
+          <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
+        ) : (
+          <svg viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-10" /></svg>
+        )}
+        {enAttente ? "Réactiver" : suite!.label}
+      </button>
+      {moyen && (
+        <ModaleMoyenContact
+          onAnnuler={() => setMoyen(false)}
+          onConfirmer={(m) => {
+            setMoyen(false);
+            start(async () => {
+              await addSuivi({
+                immeubleId, agentId: "",
+                contactId: b.proprietaire ? String(b.proprietaire._id) : undefined,
+                canaux: [m], notes: "",
+              });
+              await setStatut(immeubleId, 2);
+              router.push(`/bien/${immeubleId}?ecran=locatif`);
+            });
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -1090,6 +1273,16 @@ function DescriptifForm({ b }: { b: BienData }) {
       await updateBien(String(b.im._id), { descriptif: valeur, descriptif_auto: auto });
     });
 
+  /* Retour #303 — « l'enregistrement, tu le fais pas en dessous du cadre de
+     texte mais bien sur la barre sticky en bas. Par contre laisse bien le
+     "reprendre le texte automatique" sous la barre du texte. »
+     Le gros bouton vert sous le champ était le seul de la fiche à ne pas être
+     dans la barre collée : on le cherchait après avoir fait défiler la page,
+     et on quittait l'onglet sans enregistrer. Le retour au texte automatique,
+     lui, appartient au champ — c'est une action SUR le texte, pas sur la
+     fiche. */
+  const modifie = txt !== (enregistre || auto);
+
   return (
     <div className="frow" style={{ display: "block" }}>
       {aVerifier && (
@@ -1100,7 +1293,7 @@ function DescriptifForm({ b }: { b: BienData }) {
       )}
       <textarea
         className="min"
-        rows={8}
+        rows={12}
         style={{ width: "100%", fontSize: 13 }}
         value={txt}
         onChange={(e) => { setTxt(e.target.value); setALaMain(true); }}
@@ -1114,20 +1307,20 @@ function DescriptifForm({ b }: { b: BienData }) {
         </span>
         {txt.trim() !== auto.trim() && (
           <button type="button" className="fadd"
-            onClick={() => { setTxt(auto); setALaMain(false); }}>
+            onClick={() => { setTxt(auto); setALaMain(true); }}>
             Reprendre le texte automatique
           </button>
         )}
-        <button
-          className="kgo"
-          type="button"
-          disabled={pending}
-          style={pending ? { opacity: 0.5 } : undefined}
-          onClick={() => sauver(txt)}
-        >
-          <span className="ch">›</span> Enregistrer
-        </button>
       </div>
+      <BarreEnregistrer
+        modifie={modifie} pending={pending}
+        onEnregistrer={() => sauver(txt)}
+        onAnnuler={() => { setTxt(enregistre || auto); setALaMain(!!enregistre.trim()); }}
+      >
+        {modifie
+          ? "Ce texte part au vendeur, dans le dossier et dans l'annonce — modifications non enregistrées"
+          : "Ce texte part au vendeur, dans le dossier et dans l'annonce"}
+      </BarreEnregistrer>
     </div>
   );
 }

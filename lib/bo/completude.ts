@@ -29,7 +29,7 @@
  */
 
 import { estFacadeRue } from "./facade";
-import { MOTIFS_VENTE, PROFILS_CONTACT, TENSIONS_LOCATIVES } from "@/lib/referentiels";
+import { compteAuLot, MOTIFS_VENTE, PROFILS_CONTACT, TENSIONS_LOCATIVES } from "@/lib/referentiels";
 import { MOYENS, POINTS, itineraireGoogle, libelleItineraire } from "@/lib/bo/itineraire";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -66,6 +66,22 @@ export type ChampManquant = {
   valeur?: string;
   /** Où trouver la réponse (retour #204). */
   lien?: LienSource;
+  /**
+   * Une seconde case, à droite de la première (retour #304).
+   *
+   * MAV : « pour les distances tu n'as pas compris. Le premier, c'est le texte
+   * qui correspond à la destination, avec le lien à côté pour aller vérifier.
+   * Mais à droite c'est la durée, et à la place du lien tu mets juste le choix
+   * déroulant comme dans Emplacement pour dire si c'est à pied, en voiture… et
+   * ça remplit donc Emplacement comme si on avait rempli là-bas. »
+   *
+   * Une durée sans son moyen ne veut rien dire — sept minutes à pied et sept
+   * minutes en voiture ne décrivent pas le même quartier. Les deux se
+   * saisissent donc ensemble, sur la même ligne, et non sur deux lignes dont
+   * l'une pouvait rester vide. Le lien d'itinéraire n'a rien à faire là : il
+   * est déjà sur la ligne du nom, juste au-dessus, et il y répond une fois.
+   */
+  compagnon?: { cle: string; options: string[]; valeur?: string };
 };
 
 export type Manque = {
@@ -253,8 +269,21 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
       label: libelleItineraire(moyen),
     };
     if (!S(im[`emp_${p.cle}_name`])) emp.push({ cle: `emp_${p.cle}_name`, label: `${p.court} — le plus proche`, lien });
-    if (N(im[`emp_${p.cle}_time`]) === undefined) emp.push({ cle: `emp_${p.cle}_time`, label: `${p.court} — durée`, unite: "min", lien });
-    if (!S(im[`emp_${p.cle}_moyen`])) emp.push({ cle: `emp_${p.cle}_moyen`, label: `${p.court} — à pied ou en voiture`, options: [...MOYENS] });
+    /* Retour #304 — la durée et le moyen tiennent sur une seule ligne, la
+       seconde case remplaçant le lien. La ligne apparaît dès que l'un des deux
+       manque : corriger un moyen sans pouvoir relire la durée qu'il qualifie
+       n'aurait aucun sens. */
+    if (N(im[`emp_${p.cle}_time`]) === undefined || !S(im[`emp_${p.cle}_moyen`])) {
+      emp.push({
+        cle: `emp_${p.cle}_time`, label: `${p.court} — durée`, unite: "min",
+        valeur: S(N(im[`emp_${p.cle}_time`])),
+        compagnon: {
+          cle: `emp_${p.cle}_moyen`,
+          options: [...MOYENS],
+          valeur: S(im[`emp_${p.cle}_moyen`]),
+        },
+      });
+    }
   }
   if (!S(im.emp_tension_locative)) {
     emp.push({
@@ -316,7 +345,17 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
       detail: "Le dossier décrit les lots un par un : sans eux, il n'a rien à dire.",
     });
   } else {
-    const sansSurface = b.lots.filter((l) => N(l.surface_carrez) === undefined).length;
+    /* Retour #305 — « ici tu indiques que l'état locatif est incomplet et
+       qu'il manque des surfaces, mais ce sont des parkings et des caves qui
+       n'ont du coup pas de surface. »
+       Exact : une cave et une place se comptent au lot et non au m² (#250), et
+       l'écran leur BARRE d'ailleurs la case Carrez. Les compter comme des
+       manques revenait à réclamer une information que l'application elle-même
+       refuse de saisir — une alerte qu'on ne peut pas éteindre est pire
+       qu'aucune alerte : on apprend à ne plus les lire. */
+    const sansSurface = b.lots.filter(
+      (l) => !compteAuLot(S(l.Destination)) && N(l.surface_carrez) === undefined,
+    ).length;
     if (sansSurface > 0) {
       out.push({
         cle: "surfaces", titre: "L'état locatif semble incomplet", bloquant: false,

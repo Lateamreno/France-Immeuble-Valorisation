@@ -512,6 +512,29 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
     label: "Irrévocabilité", classe: "b-irr", largeur: lIrr,
     duree: irrevoc.court, echeance: dateCourte(finIrrevoc), dehors: lIrr < DEHORS,
   });
+  /* Retour #299 — « dans le mandat exclusif il manque la barre correspondant à
+     la date à laquelle l'exclusivité peut être révoquée. Il faut juste rajouter
+     une ligne de plus, de la même couleur que l'irrévocabilité, à la suite de
+     l'irrévocabilité, indiquant Irrévocabilité de l'exclusivité. »
+     La frise disait « Exclusivité : 12 mois » sans dire à partir de quand elle
+     pouvait être levée — le lecteur en déduisait qu'elle tenait un an, ce que
+     l'article 4 dément trois lignes plus bas. */
+  if (regime === "exclusif") {
+    const jRevoc = Math.max(
+      0, Math.round((revocExclu.getTime() - signature.getTime()) / 86400000),
+    );
+    const lRevoc = Math.min(100, Math.round(jRevoc / totalJours * 10000) / 100);
+    frise.push({
+      label: "Irrévocabilité de l'exclusivité", classe: "b-irr", largeur: lRevoc,
+      duree: dureeJours(jRevoc).court, echeance: dateCourte(revocExclu),
+      dehors: lRevoc < DEHORS,
+    });
+  }
+  /* « Mettre peut-être toujours la durée la plus longue avant l'autre pour que
+     ce soit esthétique » (#299) : les barres descendent en escalier, la plus
+     longue d'abord. Le tri est stable, donc à durée égale l'ordre de
+     construction — mandat, exclusivité, irrévocabilités — est conservé. */
+  frise.sort((a, b) => b.largeur - a.largeur);
   const friseLead = regime === "simple"
     ? `Les périodes ci-dessous courent à compter de la signature, le ${dateLongue(signature)}.`
     : regime === "exclusif"
@@ -589,15 +612,31 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
       const so = x.societe ?? {};
       const nom = req(S(so.nom), trous, `la raison sociale du mandant ${i + 1}`);
       const rep = [S(x.qualite), S(x.prenom), S(x.nom)].filter(Boolean).join(" ");
+      /* Retour #292 — la chaîne de représentation d'une holding. La personne
+         physique représente alors la société INTERMÉDIAIRE, qui représente la
+         mandante ; l'écrire à plat (« SCI X représentée par M. Untel ») donne
+         un pouvoir à quelqu'un qui ne l'a pas au regard des statuts. */
+      const mere = x.representante;
+      const repLigne = mere?.nom
+        ? [
+            mere.nom,
+            mere.capital ? `société au capital de ${eur(mere.capital)}` : "",
+            [S(mere.siren), S(mere.rcs) && `RCS ${S(mere.rcs)}`].filter(Boolean).join(" — "),
+            S(mere.siege) && `dont le siège est ${S(mere.siege)}`,
+            rep ? `elle-même représentée par ${rep}, ${fonction}` : "elle-même représentée par son représentant légal",
+          ].filter(Boolean).join(", ")
+        : rep ? `${rep}, ${fonction}` : A_COMPLETER;
       return {
         rang, role: "Personne morale", nom,
         lignes: [
           { k: "Capital", v: so.capital ? `Société au capital de ${eur(so.capital)}` : A_COMPLETER },
           { k: "SIREN / RCS", v: [S(so.siren), S(so.rcs) && `RCS ${S(so.rcs)}`].filter(Boolean).join(" — ") || A_COMPLETER },
           { k: "Siège social", v: req(S(so.siege), trous, `le siège du mandant ${i + 1}`) },
-          { k: "Représentée par", v: rep ? `${rep}, ${fonction}` : A_COMPLETER },
+          { k: "Représentée par", v: repLigne },
         ],
-        qualiteSignature: rep ? `Représentée par ${rep}, ${fonction}` : "Représentée par son représentant légal",
+        qualiteSignature: mere?.nom
+          ? `Représentée par ${mere.nom}${rep ? `, elle-même représentée par ${rep}, ${fonction}` : ""}`
+          : rep ? `Représentée par ${rep}, ${fonction}` : "Représentée par son représentant légal",
       };
     }
     const nom = [S(x.qualite), S(x.prenom), S(x.nom)].filter(Boolean).join(" ");

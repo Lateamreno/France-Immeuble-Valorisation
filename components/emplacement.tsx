@@ -10,8 +10,9 @@ import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
-  updateEmplacement, uploadPhotoParcelle, type EmplacementPatch,
+  updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
 } from "@/lib/bo/actions";
+import { oublier, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
@@ -534,17 +535,26 @@ function ParcellesTab({ b }: { b: BienData }) {
   const [ref, setRef] = useState("");
   const [sup, setSup] = useState("");
   const [fac, setFac] = useState("");
-  const [zone, setZone] = useState(S(im.plu_zone));
-  const [typeZone, setTypeZone] = useState(S(im.plu_Type_zone));
-  const [hauteur, setHauteur] = useState(S(num(im.plu_hauteur)));
-  const [emprise, setEmprise] = useState(S(num(im.plu_emprise)));
+  /* Retour #294 — « quand j'ai ajouté la photo alors que je n'avais pas encore
+     enregistré les zone, type de zone, hauteur et emprise, ça m'a retiré ce
+     que j'avais mis ; il ne faut pas. »
+     Le dépôt du plan écrit sur l'immeuble, la fiche se rafraîchit, et l'onglet
+     — qui porte une clé calculée sur la date de modification — se remonte
+     complètement : la saisie en cours partait avec. La mémoire d'écran survit
+     à ce remontage, et le témoin de `useMemoireServie` fait la part des
+     choses : tant que personne n'a touché à une case, c'est la fiche qui la
+     remplit ; dès qu'on écrit dedans, c'est la saisie qui prime. */
+  const cleMem = `plu:${immeubleId}:`;
+  const [zone, setZone] = useMemoireServie(`${cleMem}zone`, S(im.plu_zone));
+  const [typeZone, setTypeZone] = useMemoireServie(`${cleMem}type`, S(im.plu_Type_zone));
+  const [hauteur, setHauteur] = useMemoireServie(`${cleMem}hauteur`, S(num(im.plu_hauteur)));
+  const [emprise, setEmprise] = useMemoireServie(`${cleMem}emprise`, S(num(im.plu_emprise)));
 
-  /* Même règle que le bloc Ville : la barre n'apparaît qu'en cas d'écart
-     avec ce qui est enregistré. */
-  const pluEnBase = useRef<string>("");
-  const pluCourant = JSON.stringify({ zone, typeZone, hauteur, emprise });
-  if (!pluEnBase.current) pluEnBase.current = pluCourant;
-  const pluModifie = pluCourant !== pluEnBase.current;
+  const pluServi = JSON.stringify([
+    S(im.plu_zone), S(im.plu_Type_zone), S(num(im.plu_hauteur)), S(num(im.plu_emprise)),
+  ]);
+  const pluCourant = JSON.stringify([zone, typeZone, hauteur, emprise]);
+  const pluModifie = pluCourant !== pluServi;
 
   const savePlu = () =>
     start(async () => {
@@ -552,7 +562,9 @@ function ParcellesTab({ b }: { b: BienData }) {
         plu_zone: zone || undefined, plu_Type_zone: typeZone || undefined,
         plu_hauteur: parse(hauteur), plu_emprise: parse(emprise),
       });
-      pluEnBase.current = pluCourant;
+      /* La mémoire d'écran a fait son office : une fois enregistré, on la
+         vide pour que la fiche redevienne la seule source. */
+      for (const k of ["zone", "type", "hauteur", "emprise"]) oublier(`${cleMem}${k}`);
     });
 
   /* Encadré or : la surface et la façade du terrain, somme des parcelles.
@@ -562,12 +574,19 @@ function ParcellesTab({ b }: { b: BienData }) {
   const surface = totalP("superficie") || num(im.ter_surface);
   const facade = totalP("facade") || num(im.ter_facade);
 
-  /* Les trois liens ouvrent directement le bien : le point d'adresse est déjà
+  /* Les liens ouvrent directement le bien : le point d'adresse est déjà
      géocodé, on s'en sert pour centrer le cadastre et le Géoportail (#80). */
   const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
   const lat = num(geo?.lat);
   const lon = num(geo?.lng);
-  const adresse = `${S(im.adresse_rue)} ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`.trim();
+  /* Retour #293 — « dans le presse-papier j'ai que la rue et la ville, j'ai
+     pas le numéro avec, c'est relou ». Le numéro manquait bel et bien ici,
+     alors que le reste de l'écran le colle. Sans lui, le cadastre et le
+     Géoportail rendent toute la rue : il faut retrouver le bâtiment à l'œil. */
+  const adresse = [
+    [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" "),
+    S(im.adresse_zipcode), S(im.adresse_ville),
+  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   const idu = b.parcelles.map((p) => S(p.idu)).find((x) => x);
   const lienCadastre =
     lat !== undefined && lon !== undefined
@@ -581,6 +600,22 @@ function ParcellesTab({ b }: { b: BienData }) {
   const lienGoogle = adresse
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`
     : gLink("cadastre parcelle", b);
+  /* Retour #295 — « si t'as un lien vers le simulateur du cadastre qui me mène
+     directement vers la page où on peut mesurer les façades et prendre les
+     captures c'est top aussi ; mais c'est des fenêtres qui s'autoferment. »
+     C'est exactement ça : l'adresse qu'il a relevée porte un `CSRF_TOKEN` lié à
+     sa session du moment. Recopiée telle quelle, elle ne rouvre rien — le site
+     renvoie sur son accueil. Les deux points d'entrée qui, eux, marchent
+     toujours sont la recherche par adresse et la recherche par parcelle ;
+     l'adresse et la référence partent au presse-papiers en même temps. */
+  const lienCadastreParcelle = "https://www.cadastre.gouv.fr/scpc/rechercherParRefFiscale.do";
+  /* Le PLU d'une commune, servi par le Géoportail de l'urbanisme. Il n'existe
+     pas d'adresse qui rende la zone en clair : on ouvre la carte au bon
+     endroit, la zone se lit dessus. */
+  const lienGpu =
+    lat !== undefined && lon !== undefined
+      ? `https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${lon}&lat=${lat}&zoom=18`
+      : "https://www.geoportail-urbanisme.gouv.fr/map/";
 
   /* Le cadastre IGN sait quelle parcelle contient ce point : on propose, et
      c'est l'agent qui ajoute (même doctrine que les points d'intérêt). */
@@ -608,10 +643,20 @@ function ParcellesTab({ b }: { b: BienData }) {
   };
   const dejaLa = (r: string) => b.parcelles.some((p) => cle(S(p.ref_cadastre)) === cle(r));
 
+  const sansParcelle = b.parcelles.length === 0;
+
   return (
     <>
-      <div className="fsub">Parcelles</div>
-
+      {/* Retour #295 — « reprends donc exactement la présentation du BO (en
+          laissant les 3 liens d'accès rapide que t'as mis en haut, c'est top).
+          Donc l'encadré TERRAIN que t'as déjà mis est bien. Ensuite un encadré
+          parcelle avec le titre au-dessus, qui est rouge tant qu'on n'a pas
+          rempli […] À droite de l'encadré parcelle y'a l'encadré plan de
+          parcelle qui reste rouge tant qu'il n'y a pas ce qu'il faut de
+          rempli. »
+          Le titre porte donc ses liens à droite, l'encadré parcelle et le plan
+          se répondent sur une même ligne, et chacun rougit tant qu'il manque —
+          ce sont les deux pièces qui bloquent le dossier. */}
       <div className="terr">
         <div className="terr-t">
           <svg viewBox="0 0 24 24"><path d="M3 20V8l9-4 9 4v12z" /><path d="M3 20h18M9 20v-6h6v6" /></svg>
@@ -624,15 +669,17 @@ function ParcellesTab({ b }: { b: BienData }) {
           <span className={`fchip${facade === undefined ? " off" : ""}`}>
             Façade <b>{facade !== undefined ? `${fr1(facade)} m` : "—"}</b>
           </span>
-          <span className={`fchip${b.parcelles.length === 0 ? " off" : ""}`}>
+          <span className={`fchip${sansParcelle ? " off" : ""}`}>
             {b.parcelles.length > 1 ? "Parcelles" : "Parcelle"} <b>{b.parcelles.length}</b>
           </span>
         </div>
       </div>
 
-      {/* #175 — chacun de ces trois sites demande l'adresse dans son propre
-          champ de recherche : on la met au presse-papiers en partant. */}
-      <div className="mrow" style={{ marginBottom: 8 }}>
+      <div className="fsub-l">
+        <span className="fsub">Parcelles</span>
+        <span className="sp" style={{ flex: 1 }} />
+        {/* #175 — chacun de ces sites demande l'adresse dans son propre champ
+            de recherche : on la met au presse-papiers en partant. */}
         <a className="mopt" href={lienCadastre} target="_blank" rel="noreferrer"
           onClick={() => copierTexte(adresse)}>Cadastre ↗</a>
         {/* #176 — le cadastre officiel, celui dont MAV a l'habitude. Son
@@ -640,16 +687,27 @@ function ParcellesTab({ b }: { b: BienData }) {
             POST) : le lien ouvre la recherche, l'adresse est déjà copiée. */}
         <a className="mopt" href="https://www.cadastre.gouv.fr/scpc/rechercherPlan.do"
           target="_blank" rel="noreferrer" onClick={() => copierTexte(adresse)}>cadastre.gouv ↗</a>
-        <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer"
-          onClick={() => copierTexte(adresse)}>Géoportail ↗</a>
-        <a className="mopt" href={lienGoogle} target="_blank" rel="noreferrer"
-          onClick={() => copierTexte(adresse)}>Google ↗</a>
-        {lat !== undefined && lon !== undefined && (
-          <button type="button" className="mopt" disabled={rechCadastre} onClick={chercherParcelles}>
-            {rechCadastre ? "Recherche…" : "Retrouver les parcelles"}
-          </button>
-        )}
+        <a className="mopt" href={lienCadastreParcelle} target="_blank" rel="noreferrer"
+          title="Recherche par référence cadastrale — la référence part au presse-papiers"
+          onClick={() => copierTexte(b.parcelles.map((p) => S(p.ref_cadastre)).find((x) => x) || adresse)}>
+          par parcelle ↗
+        </a>
       </div>
+
+      {/* Retour #295 — « écris plutôt Remplir automatiquement les parcelles, et
+          mets le bouton en évidence pour qu'on soit tenté de cliquer direct. »
+          Il fait gagner la saisie entière : il mérite mieux qu'une option
+          grise au bout d'une rangée de liens. */}
+      {lat !== undefined && lon !== undefined && (
+        <button type="button" className="terr-auto" disabled={rechCadastre}
+          onClick={chercherParcelles}>
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
+            <circle cx="12" cy="12" r="3.4" />
+          </svg>
+          {rechCadastre ? "Recherche au cadastre…" : "Remplir automatiquement les parcelles"}
+        </button>
+      )}
 
       {proposees !== null && (
         <div className="terr-prop">
@@ -676,50 +734,182 @@ function ParcellesTab({ b }: { b: BienData }) {
                   </button>
                 ))}
               </div>
+              <p className="terr-prop-n">
+                Le cadastre ne publie pas la longueur de façade : elle se mesure sur le plan et
+                se saisit ci-dessous, parcelle par parcelle.
+              </p>
             </>
           )}
         </div>
       )}
 
-      {b.parcelles.map((p) => (
-        <div key={String(p._id)} className="chrow">
-          <span className="t">Parcelle {S(p.ref_cadastre)}</span>
-          {num(p.superficie) !== undefined && <span className="c">{p.superficie as number} m²</span>}
-          {num(p.facade) !== undefined && <span className="c">façade {p.facade as number} m</span>}
-          <span className="sp" style={{ flex: 1 }} />
-          <button className="xdel" type="button" title="Retirer la parcelle"
-            onClick={() => {
-              if (!confirm("Retirer cette parcelle ?")) return;
-              start(() => deleteParcelle(immeubleId, String(p._id)));
-            }}>✕</button>
+      <div className="terr-duo">
+        <div className={`terr-box${sansParcelle ? " manque" : ""}`}>
+          {b.parcelles.map((p) => (
+            <LigneParcelle key={String(p._id)} immeubleId={immeubleId} p={p} />
+          ))}
+          {/* Le cadre de saisie reste ouvert en permanence : c'est lui que MAV
+              décrit (« la possibilité d'ajouter une parcelle qui rouvre le même
+              cadre quand il y en a plusieurs »). */}
+          <div className="terr-saisie">
+            <span className="ic">
+              <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 12h7v7h-7zM4 12h7v7H4z" /></svg>
+            </span>
+            <div className="ch">
+              <label>Parcelle
+                <input className="min" value={ref} placeholder="ex. 000 SX 148"
+                  onChange={(e) => setRef(e.target.value)} />
+              </label>
+              <label>Façade
+                <input className="min" value={fac} placeholder="m" inputMode="decimal"
+                  onChange={(e) => setFac(e.target.value)} />
+              </label>
+              <label>Superficie
+                <input className="min" value={sup} placeholder="m²" inputMode="decimal"
+                  onChange={(e) => setSup(e.target.value)} />
+              </label>
+            </div>
+          </div>
+          <button
+            className="terr-add" type="button" disabled={pending || !ref.trim()}
+            onClick={() =>
+              start(async () => {
+                await addParcelle(immeubleId, {
+                  ref_cadastre: ref.trim(), superficie: parse(sup), facade: parse(fac),
+                });
+                setRef(""); setSup(""); setFac("");
+              })
+            }
+          >+ Ajouter une parcelle</button>
         </div>
-      ))}
-      <div className="mrow" style={{ alignItems: "center", marginTop: 6 }}>
-        <input className="min" style={{ width: 110 }} placeholder="Réf. (ex. H25)" value={ref} onChange={(e) => setRef(e.target.value)} />
-        <input className="min" style={{ width: 100 }} placeholder="Superficie m²" value={sup} onChange={(e) => setSup(e.target.value)} />
-        <input className="min" style={{ width: 90 }} placeholder="Façade m" value={fac} onChange={(e) => setFac(e.target.value)} />
-        <button
-          className="fadd" type="button" disabled={pending || !ref.trim()}
-          onClick={() =>
-            start(async () => {
-              await addParcelle(immeubleId, { ref_cadastre: ref.trim(), superficie: parse(sup), facade: parse(fac) });
-              setRef(""); setSup(""); setFac("");
-            })
-          }
-        >+ Ajouter une parcelle</button>
+
+        {/* Un seul enfant de grille : `PhotoParcelle` rend un fragment, et ses
+            deux éléments — le titre puis l'image — seraient tombés dans deux
+            cases distinctes, le titre à droite et l'image sous la parcelle. */}
+        <div className="terr-col">
+          <PhotoParcelle immeubleId={immeubleId} source={S(im.ter_parcelle_img)} />
+        </div>
       </div>
 
-      <PhotoParcelle immeubleId={immeubleId} source={S(im.ter_parcelle_img)} />
+      <div className="fsub-l" style={{ marginTop: 18 }}>
+        <span className="fsub">Plan Local d&apos;Urbanisme (PLU)</span>
+        <span className="sp" style={{ flex: 1 }} />
+        {/* Retour #295 — « pour le plan d'urbanisme je veux aussi que tu fasses
+            le petit encadré avec le titre au-dessus et les liens qui permettent
+            d'aller sur Géoportail pré-rempli. Après pareil, si t'as un site qui
+            extrait le PLU selon une adresse, c'est top. »
+            Le Géoportail de l'urbanisme est le service officiel : il centre sur
+            le point et affiche le zonage de la commune. Aucun service ne rend
+            la zone, la hauteur et l'emprise en texte — ces trois valeurs sortent
+            du règlement, qui est un PDF par commune. On ouvre donc la carte à
+            la bonne parcelle, et les quatre cases restent à recopier. */}
+        <a className="mopt" href={lienGpu} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Géoportail Urbanisme ↗</a>
+        <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Géoportail ↗</a>
+        <a className="mopt" href={lienGoogle} target="_blank" rel="noreferrer"
+          onClick={() => copierTexte(adresse)}>Google ↗</a>
+      </div>
 
-      <div className="fsub" style={{ marginTop: 18 }}>Plan Local d&apos;Urbanisme (PLU)</div>
-      <div className="mrow" style={{ alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}>Zone <input className="min" style={{ width: 90 }} value={zone} onChange={(e) => setZone(e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Type de zone <input className="min" style={{ width: 150 }} value={typeZone} onChange={(e) => setTypeZone(e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Hauteur max (m) <input className="min" style={{ width: 70 }} value={hauteur} onChange={(e) => setHauteur(e.target.value)} /></label>
-        <label style={{ fontSize: 12 }}>Emprise max (%) <input className="min" style={{ width: 70 }} value={emprise} onChange={(e) => setEmprise(e.target.value)} /></label>
+      <div className="terr-box plu">
+        <label className={zone ? "" : "manque"}>
+          <span className="k">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="12" r="3" /></svg>
+            Zone
+          </span>
+          <input className="min" value={zone} onChange={(e) => setZone(e.target.value)} />
+        </label>
+        <label className={typeZone ? "" : "manque"}>
+          <span className="k">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" /><path d="M12 11v5.5M12 8h.01" /></svg>
+            Type de zone
+          </span>
+          <input className="min" value={typeZone} onChange={(e) => setTypeZone(e.target.value)} />
+        </label>
+        <label className={hauteur ? "" : "manque"}>
+          <span className="k">
+            <svg viewBox="0 0 24 24"><path d="M12 20V4M8 8l4-4 4 4M8 16l4 4 4-4" /></svg>
+            Hauteur max
+          </span>
+          <input className="min" value={hauteur} inputMode="decimal"
+            onChange={(e) => setHauteur(e.target.value)} />
+          <i>m</i>
+        </label>
+        <label className={emprise ? "" : "manque"}>
+          <span className="k">
+            <svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" /></svg>
+            Emprise max
+          </span>
+          <input className="min" value={emprise} inputMode="decimal"
+            onChange={(e) => setEmprise(e.target.value)} />
+          <i>%</i>
+        </label>
       </div>
       <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} />
     </>
+  );
+}
+
+/**
+ * Une parcelle déjà au dossier, corrigeable sur place (retour #295).
+ *
+ * MAV : « quand je clique sur ajouter les parcelles trouvées, il faut quand
+ * même que je puisse ajouter la longueur de façade. » Le cadastre donne la
+ * référence et la superficie, jamais la façade : elle se mesure sur le plan.
+ * La ligne était en lecture seule — il fallait supprimer la parcelle et la
+ * ressaisir, en perdant au passage la superficie officielle.
+ */
+function LigneParcelle({ immeubleId, p }: {
+  immeubleId: string; p: Record<string, unknown>;
+}) {
+  const id = String(p._id);
+  const [pending, start] = useTransition();
+  const [refP, setRefP] = useState(S(p.ref_cadastre));
+  const [supP, setSupP] = useState(S(num(p.superficie)));
+  const [facP, setFacP] = useState(S(num(p.facade)));
+
+  /* Les valeurs suivent la fiche tant que personne ne tape par-dessus : c'est
+     ce qui fait qu'une superficie corrigée ailleurs arrive ici. */
+  const servi = JSON.stringify([S(p.ref_cadastre), S(num(p.superficie)), S(num(p.facade))]);
+  const [vu, setVu] = useState(servi);
+  if (vu !== servi) {
+    setVu(servi);
+    setRefP(S(p.ref_cadastre)); setSupP(S(num(p.superficie))); setFacP(S(num(p.facade)));
+  }
+
+  const enregistrer = () => {
+    if (JSON.stringify([refP, supP, facP]) === servi) return;
+    start(() => updateParcelle(immeubleId, id, {
+      ref_cadastre: refP.trim() || undefined,
+      superficie: parse(supP) ?? null,
+      facade: parse(facP) ?? null,
+    }));
+  };
+
+  return (
+    <div className={`terr-saisie${pending ? " off" : ""}`}>
+      <span className="ic">
+        <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 12h7v7h-7zM4 12h7v7H4z" /></svg>
+      </span>
+      <div className="ch">
+        <label>Parcelle
+          <input className="min" value={refP} onChange={(e) => setRefP(e.target.value)} onBlur={enregistrer} />
+        </label>
+        <label>Façade
+          <input className="min" value={facP} placeholder="m" inputMode="decimal"
+            onChange={(e) => setFacP(e.target.value)} onBlur={enregistrer} />
+        </label>
+        <label>Superficie
+          <input className="min" value={supP} placeholder="m²" inputMode="decimal"
+            onChange={(e) => setSupP(e.target.value)} onBlur={enregistrer} />
+        </label>
+      </div>
+      <button className="xdel" type="button" title="Retirer la parcelle"
+        onClick={() => {
+          if (!confirm("Retirer cette parcelle ?")) return;
+          start(() => deleteParcelle(immeubleId, id));
+        }}>✕</button>
+    </div>
   );
 }
 
@@ -747,7 +937,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
 
   return (
     <>
-      <div className="fsub" style={{ marginTop: 18 }}>Plan de la parcelle</div>
+      <div className="fsub">Plan de la parcelle</div>
       {erreur && <p className="carte-err">{erreur}</p>}
       {url ? (
         <div className="terr-photo">

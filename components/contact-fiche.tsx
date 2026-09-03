@@ -15,7 +15,7 @@ import type { ContactData, FilMail, RechercheCard } from "@/lib/bubble/server";
 import { dmy } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
-import { archiverContact, noterProposition, updateContact } from "@/lib/bo/actions";
+import { archiverContact, noterProposition, retirerPieceContact, updateContact } from "@/lib/bo/actions";
 import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
   CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
@@ -69,8 +69,26 @@ const fusionnerSociete = (liste: Soc[], s: Soc): Soc[] => {
   return out;
 };
 
-/** Les pièces jointes Bubble sont privées : elles passent par notre proxy. */
-const fichier = (u: unknown) => (S(u) ? `/api/photo?u=${encodeURIComponent(S(u))}` : undefined);
+/**
+ * L'adresse à laquelle on ouvre une pièce jointe.
+ *
+ * Retour #289 — « quand je clique pour voir la CNI et le Kbis je n'y arrive
+ * pas, je tombe sur une page noire. » Le relais était appelé sur une valeur
+ * qui était DÉJÀ une adresse de relais : les pièces déposées depuis le mandat
+ * sont rangées au coffre et enregistrées sous la forme `/api/photo?s=…`, et on
+ * les réempaquetait en `?u=/api/photo?s=…`. Le relais lisait alors un chemin
+ * relatif là où il attend une adresse absolue, et répondait « bad url ».
+ * Trois cas, donc : ce qui est déjà servi par nous s'ouvre tel quel, ce qui
+ * désigne le coffre passe par `?s=`, le reste (les fichiers Bubble, privés)
+ * par `?u=`.
+ */
+const fichier = (u: unknown) => {
+  const s = S(u);
+  if (!s) return undefined;
+  if (s.startsWith("/")) return s;
+  if (s.startsWith("storage:")) return `/api/photo?s=${encodeURIComponent(s.slice("storage:".length))}`;
+  return `/api/photo?u=${encodeURIComponent(s)}`;
+};
 const nomFichier = (u: unknown) => {
   const s = S(u);
   if (!s) return "";
@@ -457,7 +475,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
                   <input value={adresse} onChange={(e) => setAdresse(e.target.value)} />
                 </Ligne>
                 <Ligne label="Carte d'identité">
-                  <PieceJointe url={c.cni} />
+                  <PieceJointe url={c.cni} contactId={id} cle="cni" depose={c.cni_depose_le} />
                 </Ligne>
               </Bloc>
 
@@ -476,7 +494,8 @@ export function ContactFiche({ d, echanges = [], compte }: {
                   <input value={siege} onChange={(e) => setSiege(e.target.value)} />
                 </Ligne>
                 <Ligne label="K-bis">
-                  <PieceJointe url={c.entreprise_kbis} />
+                  <PieceJointe url={c.entreprise_kbis} contactId={id} cle="kbis"
+                    depose={c.entreprise_kbis_depose_le} />
                 </Ligne>
                 {autresSocietes.length > 0 && (
                   <Ligne label="Autres sociétés">
@@ -803,14 +822,53 @@ function Radio({ label, valeur, set }: { label: string; valeur: boolean; set: (v
 }
 
 /** Pièce jointe Bubble : un clic l'ouvre, elle passe par notre proxy. */
-function PieceJointe({ url }: { url: unknown }) {
+/**
+ * Une pièce du dossier client (retour #289).
+ *
+ * MAV : « quand je clique pour voir la CNI et le Kbis je n'y arrive pas […] il
+ * me faudrait également un bouton pour supprimer ou remplacer les documents en
+ * question. Pour le Kbis ce serait bien d'écrire la date à laquelle on a
+ * déposé le document aussi. »
+ *
+ * La date n'est pas un détail sur un Kbis : il vaut trois mois. Passé ce
+ * délai, la ligne le dit — c'est ce qui évite de partir chez le notaire avec
+ * une pièce refusée.
+ */
+function PieceJointe({ url, contactId, cle, depose }: {
+  url: unknown;
+  contactId?: string;
+  cle?: "cni" | "kbis";
+  /** Date de dépôt, telle qu'enregistrée. */
+  depose?: unknown;
+}) {
+  const [pending, start] = useTransition();
   const href = fichier(url);
+  const le = S(depose).slice(0, 10);
+  const perime = cle === "kbis" && le
+    ? Date.now() - new Date(le).getTime() > 92 * 86400000
+    : false;
+
   if (!href) return <span className="cfx-pj vide">Aucun fichier</span>;
   return (
-    <a className="cfx-pj" href={href} target="_blank" rel="noreferrer">
-      <svg viewBox="0 0 24 24"><path d="M20 11.5 12.6 19a4.5 4.5 0 0 1-6.4-6.4l7.6-7.6a3 3 0 0 1 4.3 4.3l-7.5 7.5a1.5 1.5 0 0 1-2.2-2.1l6.9-6.9" /></svg>
-      {nomFichier(url)}
-    </a>
+    <span className="cfx-pj-l">
+      <a className="cfx-pj" href={href} target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24"><path d="M20 11.5 12.6 19a4.5 4.5 0 0 1-6.4-6.4l7.6-7.6a3 3 0 0 1 4.3 4.3l-7.5 7.5a1.5 1.5 0 0 1-2.2-2.1l6.9-6.9" /></svg>
+        {nomFichier(url)}
+      </a>
+      {le && (
+        <i className={`cfx-pj-d${perime ? " ko" : ""}`}>
+          déposé le {le.split("-").reverse().join("/")}
+          {perime && " — plus de 3 mois, à renouveler"}
+        </i>
+      )}
+      {contactId && cle && (
+        <button type="button" className="cfx-pj-x" disabled={pending}
+          title="Retirer cette pièce de la fiche"
+          onClick={() => start(() => retirerPieceContact(contactId, cle))}>
+          {pending ? "…" : "Retirer"}
+        </button>
+      )}
+    </span>
   );
 }
 
