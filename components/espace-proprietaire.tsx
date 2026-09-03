@@ -1,33 +1,33 @@
 "use client";
 
 /**
- * L'espace vendeur, vu par le propriétaire.
+ * L'immeuble du vendeur, vu par lui.
  *
- * Le seul écran du produit qui ne s'adresse pas à un professionnel. Trois
- * conséquences, tenues d'un bout à l'autre :
+ * Un des deux seuls écrans du produit qui ne s'adressent pas à un
+ * professionnel. Trois partis pris, tenus d'un bout à l'autre :
  *
- * - **Aucun jargon.** Pas de « HAI », pas de « net vendeur » sans sa
- *   traduction, pas de « lot » quand « appartement » suffit. Un vendeur n'a
- *   pas à apprendre notre vocabulaire pour dire son prix.
+ * - **Aucun jargon.** Pas de « HAI » sans sa traduction, pas de « lot » quand
+ *   « appartement » suffirait. Un vendeur n'a pas à apprendre notre
+ *   vocabulaire pour dire son prix.
  * - **Aucune case obligatoire.** Il peut poser son prix et repartir, ou
- *   déposer une pièce sans rien décider. Une page qui exige tout n'obtient rien.
- * - **Une action par bloc.** Le prix, les pièces, l'avancement : trois choses,
- *   trois blocs, et rien à chercher.
+ *   déposer une pièce sans rien décider.
+ * - **Une action par bloc.** Le prix, les pièces, l'avancement.
  *
- * Le montant est libre — MAV l'a tranché. On lui montre notre estimation juste
- * au-dessus, et l'écart en clair s'il s'en éloigne : informer vaut mieux
+ * Le montant est libre — arbitrage de MAV. On lui montre notre estimation
+ * juste au-dessus et l'écart en clair s'il s'en éloigne : informer vaut mieux
  * qu'empêcher, et un prix qu'on refuse de saisir devient un appel téléphonique.
  */
 
 import { useState, useTransition } from "react";
-import { deposerPiece, poserPrix, retirerPiece } from "@/lib/bo/espace-actions";
-import { JALONS, PIECES_DEMANDEES, type Piece, type Reponse, type VueProprietaire } from "@/lib/bo/espace-modele";
+import { deposerPiece } from "@/lib/bo/espace-depot";
+import { poserPrix, retirerPiece } from "@/lib/bo/espace-client-actions";
+import { JALONS, PIECES_DEMANDEES, type Reponse } from "@/lib/bo/espace-modele";
+import type { BienVendeur, PieceClient } from "@/lib/bo/espace-anon";
 
 const euros = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 const dateFr = (v: string) =>
   new Date(v).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 
-/** « 1 250 000 » depuis n'importe quelle frappe : espaces, points, virgules. */
 const lireMontant = (s: string) => {
   const n = parseFloat(s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : undefined;
@@ -37,38 +37,43 @@ const ecrireMontant = (s: string) => {
   return c ? Number(c).toLocaleString("fr-FR") : "";
 };
 
-export function EspaceProprietaire({
-  jeton, vue, pieces, prixPose, motPose,
-}: {
-  jeton: string;
-  vue: VueProprietaire;
-  pieces: Piece[];
-  prixPose?: number;
-  motPose?: string;
+function jalonDuStatut(statut: string): number {
+  const n = parseInt(statut, 10);
+  if (!Number.isFinite(n)) return 0;
+  if (n >= 10) return 5;
+  if (n >= 8) return 4;
+  if (n === 7) return 3;
+  if (n >= 5) return 2;
+  if (n >= 4) return 1;
+  return 0;
+}
+
+export function EspaceProprietaire({ immeubleId, bien, pieces }: {
+  immeubleId: string;
+  bien: BienVendeur | null;
+  pieces: PieceClient[];
 }) {
   return (
     <main className="ep-wrap">
       <header className="ep-hd">
         <span className="ep-marque">FRANCE IMMEUBLE</span>
-        <h1>{vue.adresse || "Votre immeuble"}</h1>
+        <h1>{bien?.adresse || "Votre immeuble"}</h1>
         <p className="ep-sous">
-          {vue.ville}
-          {vue.nbLots > 0 && ` · ${vue.nbLots} lot${vue.nbLots > 1 ? "s" : ""}`}
-          {vue.surface ? ` · ${vue.surface.toLocaleString("fr-FR")} m²` : ""}
+          {bien?.ville}
+          {bien && bien.nbLots > 0 ? ` · ${bien.nbLots} lot${bien.nbLots > 1 ? "s" : ""}` : ""}
+          {bien?.surface ? ` · ${Math.round(bien.surface).toLocaleString("fr-FR")} m²` : ""}
         </p>
       </header>
 
-      <BlocPrix jeton={jeton} vue={vue} prixPose={prixPose} motPose={motPose} />
-      <BlocPieces jeton={jeton} pieces={pieces} />
-      <BlocAvancement vue={vue} />
+      <BlocPrix immeubleId={immeubleId} bien={bien} />
+      <BlocPieces immeubleId={immeubleId} pieces={pieces} />
+      <BlocAvancement bien={bien} />
 
       <footer className="ep-pied">
-        <p>
-          {vue.agentNom ? <>Votre conseiller : <b>{vue.agentNom}</b>{vue.agentTel ? ` · ${vue.agentTel}` : ""}</> : "France Immeuble · 01.72.87.52.22"}
-        </p>
+        <p>France Immeuble · 01.72.87.52.22</p>
         <p className="ep-fine">
-          Cette page vous est personnelle. Ne la transférez qu&apos;aux personnes que vous
-          souhaitez associer à la vente.
+          Les informations de cette page vous sont réservées. Elles ne comportent aucune
+          donnée nominative concernant les occupants de l&apos;immeuble.
         </p>
       </footer>
     </main>
@@ -77,19 +82,20 @@ export function EspaceProprietaire({
 
 /* ---------- Le prix ---------- */
 
-function BlocPrix({ jeton, vue, prixPose, motPose }: {
-  jeton: string; vue: VueProprietaire; prixPose?: number; motPose?: string;
-}) {
+function BlocPrix({ immeubleId, bien }: { immeubleId: string; bien: BienVendeur | null }) {
   const [pending, start] = useTransition();
-  const depart = prixPose ?? vue.estimationNv;
-  const [texte, setTexte] = useState(depart ? depart.toLocaleString("fr-FR") : "");
-  const [mot, setMot] = useState(motPose ?? "");
+  const ref = bien?.prixNv ?? undefined;
+  const taux = bien?.prixNv && bien?.honos && bien.prixNv > 0
+    ? Math.round((bien.honos / bien.prixNv) * 1000) / 10 : 5;
+
+  const depart = bien?.prixDemande ?? ref;
+  const [texte, setTexte] = useState(depart != null ? depart.toLocaleString("fr-FR") : "");
+  const [mot, setMot] = useState(bien?.motDemande ?? "");
   const [avis, setAvis] = useState<Reponse | null>(null);
-  const [envoye, setEnvoye] = useState(prixPose !== undefined);
+  const [envoye, setEnvoye] = useState(bien?.prixDemande != null);
 
   const nv = lireMontant(texte);
-  const hai = nv ? Math.round(nv * (1 + vue.tauxHonos / 100)) : undefined;
-  const ref = vue.estimationNv;
+  const hai = nv ? Math.round(nv * (1 + taux / 100)) : undefined;
   const ecart = nv && ref && ref > 0 ? Math.round(((nv - ref) / ref) * 100) : undefined;
 
   /* La molette n'est pas une borne : elle sert à approcher vite, la case
@@ -97,22 +103,14 @@ function BlocPrix({ jeton, vue, prixPose, motPose }: {
   const bas = ref ? Math.round(ref * 0.7) : 0;
   const haut = ref ? Math.round(ref * 1.3) : 0;
 
-  const envoyer = () => {
-    if (!nv) { setAvis({ ok: false, message: "Indiquez un montant." }); return; }
-    start(async () => {
-      const r = await poserPrix(jeton, nv, mot);
-      setAvis(r);
-      if (r.ok) setEnvoye(true);
-    });
-  };
-
   return (
     <section className="ep-bloc">
       <h2>Le prix que vous souhaitez</h2>
       {ref !== undefined && (
         <p className="ep-intro">
           Nous avons estimé votre immeuble à <b>{euros(ref)}</b>{" "}pour vous, honoraires
-          d&apos;agence en sus{vue.estimationHai ? <> — soit {euros(vue.estimationHai)} affichés à la vente</> : null}.
+          d&apos;agence en sus
+          {bien?.prixAffiche ? <> — soit {euros(bien.prixAffiche)} affichés à la vente</> : null}.
           À vous de dire le montant que vous voulez percevoir.
         </p>
       )}
@@ -120,20 +118,16 @@ function BlocPrix({ jeton, vue, prixPose, motPose }: {
       <div className="ep-prix">
         <label className="ep-lab" htmlFor="ep-montant">Ce que vous voulez percevoir</label>
         <div className="ep-saisie">
-          <input
-            id="ep-montant" inputMode="numeric" value={texte}
+          <input id="ep-montant" inputMode="numeric" value={texte}
             onChange={(e) => { setTexte(ecrireMontant(e.target.value)); setAvis(null); }}
-            placeholder="0"
-          />
+            placeholder="0" />
           <span>€</span>
         </div>
         {ref !== undefined && (
-          <input
-            className="ep-molette" type="range" min={bas} max={haut} step={5000}
+          <input className="ep-molette" type="range" min={bas} max={haut} step={5000}
             value={Math.min(haut, Math.max(bas, nv ?? ref))}
             onChange={(e) => { setTexte(Number(e.target.value).toLocaleString("fr-FR")); setAvis(null); }}
-            aria-label="Faire varier le montant"
-          />
+            aria-label="Faire varier le montant" />
         )}
         {hai !== undefined && (
           <p className="ep-hai">
@@ -150,22 +144,25 @@ function BlocPrix({ jeton, vue, prixPose, motPose }: {
       </div>
 
       <label className="ep-lab" htmlFor="ep-mot">Un mot à votre conseiller (facultatif)</label>
-      <textarea
-        id="ep-mot" className="ep-zone" rows={3} value={mot}
+      <textarea id="ep-mot" className="ep-zone" rows={3} value={mot}
         onChange={(e) => setMot(e.target.value)}
-        placeholder="Une contrainte de calendrier, un point à discuter…"
-      />
+        placeholder="Une contrainte de calendrier, un point à discuter…" />
 
       <div className="ep-actions">
-        <button className="ep-go" type="button" onClick={envoyer} disabled={pending || !nv}>
+        <button className="ep-go" type="button" disabled={pending || !nv}
+          onClick={() => start(async () => {
+            const r = await poserPrix(immeubleId, nv!, mot);
+            setAvis(r);
+            if (r.ok) setEnvoye(true);
+          })}>
           {envoye ? "Mettre à jour mon prix" : "Valider mon prix"}
         </button>
         {avis && <span className={`ep-avis${avis.ok ? " ok" : " ko"}`}>{avis.message}</span>}
       </div>
-      {envoye && !avis && (
+      {envoye && !avis && bien?.prixDemande != null && (
         <p className="ep-rappel">
-          Vous nous avez indiqué {prixPose ? euros(prixPose) : ""}. Vous pouvez le modifier
-          tant que le mandat n&apos;est pas signé.
+          Vous nous avez indiqué {euros(bien.prixDemande)}. Vous pouvez le modifier tant
+          que le mandat n&apos;est pas signé.
         </p>
       )}
     </section>
@@ -174,18 +171,9 @@ function BlocPrix({ jeton, vue, prixPose, motPose }: {
 
 /* ---------- Les pièces ---------- */
 
-function BlocPieces({ jeton, pieces }: { jeton: string; pieces: Piece[] }) {
+function BlocPieces({ immeubleId, pieces }: { immeubleId: string; pieces: PieceClient[] }) {
   const [pending, start] = useTransition();
   const [avis, setAvis] = useState<Reponse | null>(null);
-
-  const deposer = (categorie: string, file: File) =>
-    start(async () => {
-      const fd = new FormData();
-      fd.set("file", file);
-      setAvis(await deposerPiece(jeton, categorie, fd));
-    });
-
-  const parCategorie = (cle: string) => pieces.filter((p) => p.categorie === cle);
 
   return (
     <section className="ep-bloc">
@@ -198,26 +186,27 @@ function BlocPieces({ jeton, pieces }: { jeton: string; pieces: Piece[] }) {
 
       <ul className="ep-pieces">
         {PIECES_DEMANDEES.map((p) => {
-          const dedans = parCategorie(p.cle);
+          const dedans = pieces.filter((f) => f.categorie === p.cle);
           return (
             <li key={p.cle} className={dedans.length ? "fait" : ""}>
-              <div className="ep-pt">
-                <b>{p.label}</b>
-                <i>{p.aide}</i>
-              </div>
+              <div className="ep-pt"><b>{p.label}</b><i>{p.aide}</i></div>
               <div className="ep-pf">
                 {dedans.map((f) => (
                   <span className="ep-fich" key={f.id}>
-                    <a href={`/proprietaire/${jeton}/piece/${f.id}`} target="_blank" rel="noreferrer">{f.nom}</a>
+                    <a href={`/espace/piece/${f.id}`} target="_blank" rel="noreferrer">{f.nom}</a>
                     <em>{f.taille_ko ? `${Math.round(f.taille_ko)} Ko` : ""}</em>
                     <button type="button" title="Retirer"
-                      onClick={() => start(async () => { setAvis(await retirerPiece(jeton, f.id)); })}>✕</button>
+                      onClick={() => start(async () => { setAvis(await retirerPiece(f.id, immeubleId)); })}>✕</button>
                   </span>
                 ))}
                 <label className="ep-depot">
                   <input type="file" onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) deposer(p.cle, f);
+                    if (f) start(async () => {
+                      const fd = new FormData();
+                      fd.set("file", f);
+                      setAvis(await deposerPiece(immeubleId, p.cle, fd));
+                    });
                     e.target.value = "";
                   }} />
                   {dedans.length ? "Ajouter un autre fichier" : "Déposer un fichier"}
@@ -239,30 +228,31 @@ function BlocPieces({ jeton, pieces }: { jeton: string; pieces: Piece[] }) {
 
 /* ---------- L'avancement ---------- */
 
-function BlocAvancement({ vue }: { vue: VueProprietaire }) {
+function BlocAvancement({ bien }: { bien: BienVendeur | null }) {
+  const jalon = jalonDuStatut(bien?.statut ?? "");
   return (
     <section className="ep-bloc">
       <h2>Où en est la vente</h2>
       <ol className="ep-frise">
         {JALONS.map((j, i) => (
-          <li key={j.cle} className={i < vue.jalon ? "passe" : i === vue.jalon ? "ici" : ""}>
+          <li key={j.cle} className={i < jalon ? "passe" : i === jalon ? "ici" : ""}>
             <span className="ep-pt-rond" aria-hidden />
             <b>{j.label}</b>
             <i>{j.detail}</i>
-            {j.cle === "mandat" && vue.mandatSigneLe && <em>Signé le {dateFr(vue.mandatSigneLe)}</em>}
+            {j.cle === "mandat" && bien?.mandatSigneLe && <em>Signé le {dateFr(bien.mandatSigneLe)}</em>}
           </li>
         ))}
       </ol>
 
-      {(vue.acquereursContactes > 0 || vue.visitesEffectuees > 0 || vue.offreEnCours) && (
+      {bien && (bien.acquereurs > 0 || bien.visites > 0 || bien.offreEnCours) && (
         <div className="ep-chiffres">
-          {vue.acquereursContactes > 0 && (
-            <span><b>{vue.acquereursContactes.toLocaleString("fr-FR")}</b> acquéreurs sollicités</span>
+          {bien.acquereurs > 0 && (
+            <span><b>{bien.acquereurs.toLocaleString("fr-FR")}</b> acquéreurs sollicités</span>
           )}
-          {vue.visitesEffectuees > 0 && (
-            <span><b>{vue.visitesEffectuees}</b> visite{vue.visitesEffectuees > 1 ? "s" : ""} effectuée{vue.visitesEffectuees > 1 ? "s" : ""}</span>
+          {bien.visites > 0 && (
+            <span><b>{bien.visites}</b> visite{bien.visites > 1 ? "s" : ""} effectuée{bien.visites > 1 ? "s" : ""}</span>
           )}
-          {vue.offreEnCours && <span className="ep-offre">Une offre est en cours d&apos;examen</span>}
+          {bien.offreEnCours && <span className="ep-offre">Une offre est en cours d&apos;examen</span>}
         </div>
       )}
       <p className="ep-fine">

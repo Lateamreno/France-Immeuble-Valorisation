@@ -3,6 +3,7 @@ import { BienFiche } from "@/components/bien-fiche";
 import { getBien, getOperation, getPrixSecteur } from "@/lib/bubble/server";
 import { envoiPossible } from "@/lib/bo/mail";
 import { espaceDuBien } from "@/lib/bo/espace-proprietaire";
+import { compteDuContact } from "@/lib/bo/comptes-bo";
 
 export const dynamic = "force-dynamic";
 // L'estimation se fait maintenant depuis la fiche : la fabrication du dossier
@@ -37,6 +38,11 @@ export default async function BienPage({
       ])
     : [null, null, null];
 
+  /* L'état de l'espace client du propriétaire : le bloc du bien doit savoir
+     s'il faut proposer « Ouvrir » ou « Renvoyer un lien ». */
+  const proprioId = typeof data?.proprietaire?._id === "string" ? data.proprietaire._id : null;
+  const compte = proprioId ? await compteDuContact(proprioId).catch(() => null) : null;
+
   if (!data) {
     return (
       <div className="wrap">
@@ -54,6 +60,7 @@ export default async function BienPage({
 
   return (
     <BienFiche b={data} operation={operation} secteur={secteur} espace={espace}
+      compteActif={!!compte?.actif}
       envoiActif={await envoiPossible()} />
   );
 }

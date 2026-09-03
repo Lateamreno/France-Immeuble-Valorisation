@@ -6,51 +6,48 @@
  * MAV a choisi que l'acquéreur puisse répondre en ligne. C'est ce qui rend
  * l'espace utile plutôt que décoratif : sans bouton, il faut décrocher son
  * téléphone, et la moitié des gens ne le fait pas — leur silence ne dit alors
- * ni oui, ni non, et la relance part à l'aveugle.
+ * ni oui ni non, et la relance part à l'aveugle.
  *
- * Trois réponses seulement, parce qu'un acquéreur en a trois : ça
- * m'intéresse, je veux le voir, ce n'est pas pour moi. La troisième ferme la
- * proposition dans le BO tout de suite — c'est un fait, pas un arbitrage. Les
- * deux autres n'avancent rien : elles alertent l'agent, à qui il revient de
- * rappeler.
+ * Trois réponses seulement, parce qu'un acquéreur en a trois : ça m'intéresse,
+ * je veux le voir, ce n'est pas pour moi. La troisième ferme la proposition
+ * dans le BO tout de suite — c'est un fait, pas un arbitrage. Les deux autres
+ * n'avancent rien : elles alertent l'agent, à qui il revient de rappeler.
  */
 
 import { useState, useTransition } from "react";
-import { repondreProposition, type ChoixAcquereur } from "@/lib/bo/compte-actions";
-import type { Reponse, VueProprietaire } from "@/lib/bo/espace-modele";
+import { repondreProposition } from "@/lib/bo/espace-client-actions";
+import type { BienPropose } from "@/lib/bo/espace-anon";
+import type { Reponse } from "@/lib/bo/espace-modele";
+
+type Choix = "interesse" | "visite" | "pas_interesse";
 
 const euros = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 
-const CHOIX: { cle: ChoixAcquereur; label: string; aide: string }[] = [
+const CHOIX: { cle: Choix; label: string; aide: string }[] = [
   { cle: "interesse", label: "Ce bien m'intéresse", aide: "Votre conseiller vous rappelle pour en parler." },
   { cle: "visite", label: "Je veux le visiter", aide: "Nous vous proposons des créneaux." },
   { cle: "pas_interesse", label: "Ce n'est pas pour moi", aide: "Nous ne vous le représenterons pas." },
 ];
 
-export function BienProposeEcran({
-  propositionId, vue, photos, dossier, rendement, reponse,
-}: {
-  propositionId: string;
-  vue: VueProprietaire;
-  photos: string[];
-  dossier: boolean;
-  rendement?: number;
-  reponse?: ChoixAcquereur;
-}) {
+export function BienProposeEcran({ bien }: { bien: BienPropose }) {
   const [pending, start] = useTransition();
-  const [choix, setChoix] = useState<ChoixAcquereur | null>(reponse ?? null);
+  const [choix, setChoix] = useState<Choix | null>(bien.reponse ?? null);
   const [mot, setMot] = useState("");
   const [avis, setAvis] = useState<Reponse | null>(null);
+
+  const renta = bien.prixAffiche && bien.loyers
+    ? Math.round((bien.loyers / bien.prixAffiche) * 1000) / 10 : undefined;
+  const photos = (bien.photos ?? []).filter(Boolean).slice(0, 12);
 
   return (
     <main className="ep-wrap">
       <header className="ep-hd">
         <span className="ep-marque">FRANCE IMMEUBLE</span>
-        <h1>{vue.adresse || "Immeuble de rapport"}</h1>
+        <h1>{bien.adresse || "Immeuble de rapport"}</h1>
         <p className="ep-sous">
-          {vue.ville}
-          {vue.nbLots > 0 && ` · ${vue.nbLots} lot${vue.nbLots > 1 ? "s" : ""}`}
-          {vue.surface ? ` · ${vue.surface.toLocaleString("fr-FR")} m²` : ""}
+          {bien.ville}
+          {bien.nbLots > 0 && ` · ${bien.nbLots} lot${bien.nbLots > 1 ? "s" : ""}`}
+          {bien.surface ? ` · ${Math.round(bien.surface).toLocaleString("fr-FR")} m²` : ""}
         </p>
       </header>
 
@@ -66,20 +63,17 @@ export function BienProposeEcran({
       <section className="ep-bloc">
         <h2>Les chiffres</h2>
         <div className="ep-chiffres">
-          {vue.estimationHai !== undefined && (
-            <span><b>{euros(vue.estimationHai)}</b> prix de vente</span>
-          )}
-          {rendement !== undefined && (
-            <span><b>{rendement.toLocaleString("fr-FR")} %</b> de rendement brut</span>
-          )}
-          {vue.surface !== undefined && vue.estimationHai !== undefined && vue.surface > 0 && (
-            <span><b>{Math.round(vue.estimationHai / vue.surface).toLocaleString("fr-FR")} €</b> le m²</span>
-          )}
-          {vue.nbLots > 0 && <span><b>{vue.nbLots}</b> lots</span>}
+          {bien.prixAffiche != null && <span><b>{euros(bien.prixAffiche)}</b> prix de vente</span>}
+          {renta !== undefined && <span><b>{renta.toLocaleString("fr-FR")} %</b> de rendement brut</span>}
+          {bien.surface && bien.prixAffiche
+            ? <span><b>{Math.round(bien.prixAffiche / bien.surface).toLocaleString("fr-FR")} €</b> le m²</span>
+            : null}
+          {bien.nbLots > 0 && <span><b>{bien.nbLots}</b> lots</span>}
         </div>
-        {dossier && (
+        {bien.descriptif && <p className="ep-intro" style={{ marginTop: 12 }}>{bien.descriptif}</p>}
+        {bien.dossier && (
           <p style={{ marginTop: 12 }}>
-            <a className="ep-lien" href={`/espace/propose/${propositionId}/dossier`} target="_blank" rel="noreferrer">
+            <a className="ep-lien" href={`/espace/propose/${bien.id}/dossier`} target="_blank" rel="noreferrer">
               Télécharger le dossier complet (PDF)
             </a>
           </p>
@@ -114,20 +108,16 @@ export function BienProposeEcran({
         <div className="ep-actions">
           <button className="ep-go" type="button" disabled={pending || !choix}
             onClick={() => start(async () => {
-              setAvis(await repondreProposition(propositionId, choix!, mot));
+              setAvis(await repondreProposition(bien.id, choix!, mot));
             })}>
-            {pending ? "…" : reponse ? "Modifier ma réponse" : "Envoyer ma réponse"}
+            {pending ? "…" : bien.reponse ? "Modifier ma réponse" : "Envoyer ma réponse"}
           </button>
           {avis && <span className={`ep-avis${avis.ok ? " ok" : " ko"}`}>{avis.message}</span>}
         </div>
       </section>
 
       <footer className="ep-pied">
-        <p>
-          {vue.agentNom
-            ? <>Votre conseiller : <b>{vue.agentNom}</b>{vue.agentTel ? ` · ${vue.agentTel}` : ""}</>
-            : "France Immeuble · 01.72.87.52.22"}
-        </p>
+        <p>France Immeuble · 01.72.87.52.22</p>
       </footer>
     </main>
   );

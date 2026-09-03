@@ -1,81 +1,52 @@
 /**
- * L'espace propriétaire — la page.
+ * Le lien secret sans mot de passe.
  *
- * Servie sans authentification : le jeton de l'URL EST la preuve d'accès. Elle
- * ne reçoit donc jamais d'identifiant d'immeuble de l'extérieur — elle le
- * déduit du jeton, côté serveur, à chaque ouverture.
+ * MAV a voulu le garder pour le propriétaire qui refuse de créer un mot de
+ * passe. Le piège aurait été de lui laisser son ancien chemin, servi par la
+ * clé de service : on aurait cloisonné une porte et laissé l'autre grande
+ * ouverte.
  *
- * `noindex` : un lien secret qui se retrouve dans un moteur de recherche n'est
- * plus secret. L'en-tête `robots` le dit, et le middleware la garde hors du
- * décor du back-office.
+ * Le lien s'échange donc contre une session ordinaire, courte (deux heures),
+ * et la personne atterrit sur l'écran de son immeuble — le même que celle qui
+ * s'est connectée. Un seul mécanisme d'accès dans toute l'application ; le
+ * lien n'est qu'une façon de s'y présenter.
  */
 
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { EspaceProprietaire } from "@/components/espace-proprietaire";
-import { lireEspace, piecesDeposees, vueProprietaire } from "@/lib/bo/espace-proprietaire";
-import { noterVisite } from "@/lib/bo/espace-actions";
+import { COOKIE_SESSION, sessionParLien } from "@/lib/bo/espace-anon";
 
 export const metadata: Metadata = {
   title: "Votre espace vendeur — France Immeuble",
   robots: { index: false, follow: false, nocache: true },
 };
 
-/** Rien n'est mis en cache : un lien coupé doit l'être tout de suite. */
 export const dynamic = "force-dynamic";
-
-function Fermee({ titre, texte }: { titre: string; texte: string }) {
-  return (
-    <main className="ep-wrap">
-      <div className="ep-fermee">
-        <h1>{titre}</h1>
-        <p>{texte}</p>
-        <p className="ep-sig">France Immeuble · 01.72.87.52.22</p>
-      </div>
-    </main>
-  );
-}
 
 export default async function Page({ params }: { params: Promise<{ jeton: string }> }) {
   const { jeton } = await params;
-  const espace = await lireEspace(jeton);
+  const session = await sessionParLien(jeton);
 
-  if (espace === "revoque") {
-    return <Fermee
-      titre="Ce lien a été fermé"
-      texte="Votre conseiller a clos cet accès. Contactez-le pour en recevoir un nouveau." />;
-  }
-  if (espace === "expire") {
-    return <Fermee
-      titre="Ce lien a expiré"
-      texte="Par sécurité, un espace vendeur ne reste ouvert que quelques mois. Votre conseiller peut vous en rouvrir un." />;
-  }
-  if (espace === "inconnu") {
-    return <Fermee
-      titre="Lien introuvable"
-      texte="Vérifiez que vous avez bien copié l'adresse complète reçue par e-mail." />;
-  }
-
-  const [vue, pieces] = await Promise.all([
-    vueProprietaire(espace.immeuble_id),
-    piecesDeposees(jeton),
-  ]);
-  if (!vue) {
-    return <Fermee
-      titre="Espace momentanément indisponible"
-      texte="Réessayez dans quelques minutes, ou appelez votre conseiller." />;
+  if (!session) {
+    return (
+      <main className="ep-wrap etroit">
+        <div className="ep-fermee">
+          <h1>Ce lien n&apos;est plus valable</h1>
+          <p>
+            Il a peut-être été fermé par votre conseiller, ou il a expiré. Appelez-nous et
+            nous vous en ouvrons un nouveau — ou mieux, un espace avec mot de passe, où
+            vous retrouverez tout quand vous voudrez.
+          </p>
+          <p className="ep-sig">France Immeuble · 01.72.87.52.22</p>
+        </div>
+      </main>
+    );
   }
 
-  /* La visite se note après coup : elle ne doit pas retarder l'affichage, ni
-     empêcher la page de s'ouvrir si l'écriture échoue. */
-  void noterVisite(jeton);
-
-  return (
-    <EspaceProprietaire
-      jeton={jeton}
-      vue={vue}
-      pieces={pieces}
-      prixPose={espace.prix_nv ?? undefined}
-      motPose={espace.prix_mot ?? undefined}
-    />
-  );
+  (await cookies()).set(COOKIE_SESSION, session, {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+    path: "/", maxAge: 2 * 3600,
+  });
+  redirect("/espace");
 }

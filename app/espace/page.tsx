@@ -1,14 +1,14 @@
 /**
  * L'espace client — la porte d'entrée.
  *
- * Connecté, on tombe sur son accueil ; sinon, sur le formulaire. Pas de page
- * d'inscription : les comptes s'ouvrent depuis le back-office, c'est la même
- * doctrine que les envois d'e-mails — l'agence décide qui entre.
+ * Toutes les lectures passent par la clé publique et les fonctions `ec_*` :
+ * cette page ne peut pas lire une table, même par accident.
  */
 
 import type { Metadata } from "next";
-import { clientConnecte } from "@/lib/bo/compte-client";
-import { mesImmeubles, mesPropositions, mesRecherches } from "@/lib/bo/espace-client";
+import {
+  biensEnLigne, jetonSession, mesImmeubles, mesPropositions, mesRecherches, moi,
+} from "@/lib/bo/espace-anon";
 import { Connexion } from "@/components/espace-connexion";
 import { AccueilClient } from "@/components/espace-accueil";
 
@@ -20,13 +20,15 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const compte = await clientConnecte();
-  if (!compte) return <Connexion />;
+  const jeton = await jetonSession();
+  const compte = jeton ? await moi() : null;
+  if (!jeton || !compte) return <Connexion />;
 
-  const [immeubles, recherches, propositions] = await Promise.all([
-    mesImmeubles(compte.contact_id),
-    mesRecherches(compte.contact_id),
-    mesPropositions(compte.contact_id, compte.id),
+  const [immeubles, recherches, propositions, enLigne] = await Promise.all([
+    mesImmeubles(jeton),
+    mesRecherches(jeton),
+    mesPropositions(jeton),
+    biensEnLigne(jeton),
   ]);
 
   return (
@@ -35,6 +37,7 @@ export default async function Page() {
       immeubles={immeubles}
       recherches={recherches}
       propositions={propositions}
+      enLigne={enLigne}
     />
   );
 }
