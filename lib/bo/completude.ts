@@ -29,7 +29,9 @@
  */
 
 import { estFacadeRue } from "./facade";
-import { compteAuLot, MOTIFS_VENTE, PROFILS_CONTACT, TENSIONS_LOCATIVES } from "@/lib/referentiels";
+import {
+  compteAuLot, ETATS_BATI, MOTIFS_VENTE, PROFILS_CONTACT, TENSIONS_LOCATIVES,
+} from "@/lib/referentiels";
 import { MOYENS, POINTS, itineraireGoogle, libelleItineraire } from "@/lib/bo/itineraire";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -406,17 +408,58 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
      toutes lettres — le pire des deux mondes. */
   const composants = b.composants ?? [];
   const sansMateriau = composants.filter((c) => !S(c["Type_matériau"]).trim()).length;
+  const sansEtat = composants.filter((c) => !S(c.Etat).trim()).length;
+  /* Retour #313 — « là tu m'as encore permis de faire le dossier alors que les
+     informations sur la partie technique de l'immeuble ne sont pas remplies,
+     on devrait pas pouvoir. »
+     La règle vérifiait deux choses : qu'il existe au moins un composant, et
+     que ceux qui existent ont un matériau. Elle ne réclamait ni les QUATRE
+     composants que l'écran présente d'office — chauffage, façade, fenêtres,
+     toiture, ceux que la page technique du dossier imprime ligne par ligne —
+     ni leur état, ni l'état général du bâti, ni le nombre d'étages. Le dossier
+     sortait donc avec des cellules vides sur la page que l'acquéreur lit pour
+     juger des travaux. La règle est simple et elle vaut partout : ce que le
+     document imprime, la fiche doit l'avoir. */
+  const STANDARD = ["Chauffage", "Façade", "Fenêtres", "Toiture"];
+  const presents = new Set(composants.map((c) => S(c.Type_composant).trim()));
+  const absents = STANDARD.filter((t) => !presents.has(t));
   if (composants.length === 0) {
     out.push({
       cle: "materiaux", titre: "L'état constructif n'est pas renseigné", bloquant: true,
       section: "technique", champs: [],
       detail: "Le dossier décrit le bâti composant par composant : toiture, façade, menuiseries…",
     });
-  } else if (sansMateriau > 0) {
+  } else if (absents.length > 0) {
     out.push({
-      cle: "materiaux", titre: "Des composants n'ont pas de matériau", bloquant: true,
+      cle: "materiaux", titre: "L'état constructif est incomplet", bloquant: true,
       section: "technique", champs: [],
-      detail: `${sansMateriau} composant${sansMateriau > 1 ? "s" : ""} sur ${composants.length}. Le dossier décrit le bâti composant par composant.`,
+      detail: `${absents.join(", ")} : ${absents.length > 1 ? "ces composants sortiraient vides" : "ce composant sortirait vide"} sur la page technique du dossier.`,
+    });
+  } else if (sansMateriau > 0 || sansEtat > 0) {
+    const quoi = [
+      sansMateriau > 0 ? `${sansMateriau} sans matériau` : "",
+      sansEtat > 0 ? `${sansEtat} sans état` : "",
+    ].filter(Boolean).join(", ");
+    out.push({
+      cle: "materiaux", titre: "Des composants sont incomplets", bloquant: true,
+      section: "technique", champs: [],
+      detail: `${quoi}, sur ${composants.length}. Le dossier imprime le matériau ET l'état de chacun.`,
+    });
+  }
+  /* L'état général du bâti et le nombre d'étages : deux cases de la page
+     technique, deux trous qui passaient inaperçus. */
+  const techImm: ChampManquant[] = [];
+  if (!S(im.Etat).trim()) {
+    techImm.push({ cle: "Etat", label: "État général du bâti", options: [...ETATS_BATI] });
+  }
+  if (N(im.nb_etage) === undefined) {
+    techImm.push({ cle: "nb_etage", label: "Nombre d'étages" });
+  }
+  if (techImm.length) {
+    out.push({
+      cle: "bati", titre: "Le bâti n'est pas décrit", bloquant: true,
+      section: "technique", champs: techImm,
+      detail: "La page technique du dossier les imprime en tête : une case vide s'y voit tout de suite.",
     });
   }
 

@@ -256,7 +256,7 @@ export function construireDossierVente(
        repliés l'un sur l'autre en une seule colonne sans en-tête : le lecteur
        voyait deux colonnes muettes. */
     travauxListe: b.travaux.map((t) => ({
-      objet: S(t.Type_travaux) || "Travaux",
+      objet: objetTravaux(t, b) || S(t.Type_travaux) || "Travaux",
       description: S(t.description) || S(t.commentaire),
       urgence: S(t.Urgence),
       montant: N(t.montant),
@@ -310,15 +310,57 @@ export function construireDossierVente(
       profil: S(b.proprietaire?.profil) || S(im.profil_vendeur),
       motif: S(im.Motif_vente),
     },
+    /* Retour #320 — « là on n'a pas mis ce qu'il y a pourtant écrit dans la
+       fiche du bien, c'est-à-dire condition de financement acceptée et de
+       permis refusé. »
+       Le dossier lisait `condition_financement` et `condition_pc`, deux champs
+       hérités de Bubble que l'écran du prix n'écrit pas : il enregistre des
+       bascules, `prix_financement` et `prix_permis`. Le dossier annonçait donc
+       « n.c. » sur deux conditions que la fiche affichait en clair. On lit
+       maintenant les bascules, avec les anciens champs texte en secours pour
+       les fiches d'avant. */
     conditions: {
-      financement: S(im.condition_financement),
-      permis: S(im.condition_pc),
+      /* Les valeurs par défaut sont celles de l'écran du prix — financements
+         acceptés, permis refusés tant que personne n'a basculé l'interrupteur.
+         Les reprendre ici est la seule façon que le dossier dise ce que l'agent
+         a sous les yeux : sinon il imprimerait « n.c. » là où l'écran affiche
+         « Acceptés », ce qui est le reproche exact du #320. */
+      financement: S(im.condition_financement)
+        || (im.prix_financement === false ? "Refusés" : "Acceptés"),
+      permis: S(im.condition_pc)
+        || (im.prix_permis === true ? "Acceptés" : "Refusés"),
     },
     /* Retour #232 : le descriptif est rédigé par la fiche tant que personne
        n'y a touché. Le dossier n'a donc plus de page blanche à cet endroit,
        même sur un immeuble dont on vient de saisir l'état locatif. */
     avis: descriptifRetenu({ im, lots, parcelles: b.parcelles }),
   };
+}
+
+/** Retour #316 : « sur tous les travaux il y a écrit travaux. Dans cette
+ *  colonne le mieux c'est de dire à quel lot les travaux correspondent. Genre
+ *  lot 6, Toiture etc… »
+ *
+ *  `Type_travaux` est vide sur presque toutes les lignes du BO — d'où la
+ *  colonne muette. Ce à quoi les travaux se rattachent, en revanche, est
+ *  toujours saisi : des lots (`LOTs`) ou des composants du bâti
+ *  (`COMPOSANTs`). C'est la même règle que l'onglet Travaux de la fiche, pour
+ *  que le dossier ne raconte pas autre chose que l'écran. */
+function objetTravaux(t: Record<string, unknown>, b: BienData): string {
+  const lots = Array.isArray(t.LOTs) ? (t.LOTs as string[]) : [];
+  const noms = lots
+    .map((id) => b.lots.find((l) => String(l._id) === id))
+    .filter(Boolean)
+    .map((l) => `Lot ${S(l!.numero) || "?"}`);
+  const comps = Array.isArray(t.COMPOSANTs) ? (t.COMPOSANTs as string[]) : [];
+  const parties = comps
+    .map((id) => b.composants.find((c) => String(c._id) === id))
+    .filter(Boolean)
+    .map((c) => S(c!.Type_composant))
+    .filter(Boolean);
+  /* Lots ET composants quand les deux sont là : « Lot 6, Toiture » est
+     exactement l'exemple donné par MAV. */
+  return [...noms, ...parties].join(", ");
 }
 
 /** Date d'entrée du bail en cours sur ce lot, au format « 01/24 ». */

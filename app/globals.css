@@ -6638,3 +6638,8 @@ body.hors-bo {
   font-size: 13px; color: var(--gray-lt);
 }
 .topbar .search .in .raz:hover { color: var(--red); }
+
+/* Retour #317 — la pastille DPE du dossier imprimé : mêmes couleurs que
+   l'état locatif, à l'échelle du tableau. */
+.dv-tab .dv-dpe { line-height: 1; }
+.dv-tab .dv-dpe .dpe-b { display: inline-flex; min-width: 17px; height: 15px; font-size: 9.5px; }

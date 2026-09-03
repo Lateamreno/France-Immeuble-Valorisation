@@ -8,6 +8,7 @@
 import type { DossierVente } from "@/lib/bo/dossier-vente";
 import { group } from "@/lib/format";
 import { MENTIONS } from "@/lib/bo/textes-cible";
+import { BadgeDpe } from "@/components/pictos";
 
 const fr1 = (x?: number) => (x === undefined ? "n.c." : x.toFixed(1).replace(".", ","));
 const eur = (x?: number) => (x === undefined ? "n.c." : `${group(x)} €`);
@@ -191,19 +192,24 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
       </section>
 
       {/* ---------------------------------------------------- 2. Photos */}
-      <Page titre="Photos" picto={I.photo} pied={pied} enfants={
-        d.photos.length === 0
-          ? <div className="dv-vide-bloc">Aucune photo n&apos;est encore rattachée à ce bien.</div>
-          : (
-            <div className="dv-ph-grid">
-              {/* Huit photos par planche : au-delà, une seconde page. */}
-              {d.photos.slice(0, 8).map((u, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={u} alt="" />
-              ))}
-            </div>
-          )
-      } />
+      {/* Retour #312 — « dans le dossier, quand aucune photo n'est dans le
+          bien, tu ne mets pas la page photo, tu passes immédiatement à celle
+          d'après. »
+          Une page qui annonce « aucune photo » ne renseigne personne : elle
+          dit au lecteur que le dossier est incomplet, sur le document même
+          qu'on lui envoie pour le convaincre. Mieux vaut ne pas l'imprimer —
+          la liste des manques, côté BO, dit déjà ce qu'il faut déposer. */}
+      {d.photos.length > 0 && (
+        <Page titre="Photos" picto={I.photo} pied={pied} enfants={
+          <div className="dv-ph-grid">
+            {/* Huit photos par planche : au-delà, une seconde page. */}
+            {d.photos.slice(0, 8).map((u, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={u} alt="" />
+            ))}
+          </div>
+        } />
+      )}
       {d.photos.length > 8 && (
         <Page titre="Photos" picto={I.photo} pied={pied} enfants={
           <div className="dv-ph-grid">
@@ -341,12 +347,25 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
       {/* ---------------------------------------------- 5. État locatif */}
       <Page titre="Etat locatif" picto={I.cle} pied={pied} enfants={<>
+        {/* Retour #318 — « quand on n'a pas les dates d'entrée ni le type de
+            bail, le mieux c'est de ne pas mettre la ou les colonnes. »
+            Une colonne de « n.c. » sur toute sa hauteur ne dit rien du bien :
+            elle dit que le dossier est incomplet, et elle prend la place que
+            les colonnes chiffrées réclament. Chacune ne s'imprime donc que si
+            au moins un lot la renseigne. */}
+        {(() => {
+          const colBail = d.lots.some((l) => nc(l.bail) !== "n.c.");
+          const colEntree = d.lots.some((l) => !!l.entree);
+          const nbCols = 8 + (colBail ? 1 : 0) + (colEntree ? 1 : 0);
+          return (
         <table className="dv-tab lots">
           <thead>
             <tr>
               <th>n°</th><th>Type de lot</th><th className="c">Carrez</th><th className="c">Au sol</th>
-              <th className="c">DPE</th><th className="c">Etat</th><th className="c">Bail</th>
-              <th className="c">Entrée</th><th className="r">HC/mois</th><th className="r">Potentiel*</th>
+              <th className="c">DPE</th><th className="c">Etat</th>
+              {colBail && <th className="c">Bail</th>}
+              {colEntree && <th className="c">Entrée</th>}
+              <th className="r">HC/mois</th><th className="r">Potentiel*</th>
             </tr>
           </thead>
           <tbody>
@@ -359,16 +378,25 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
                 <td><span className="dv-lot"><Ic d={IC_DEST[l.dest] ?? I.maison} cls="dv-ic mini" />{l.type}</span></td>
                 <td className="c">{l.carrez !== undefined ? <>{group(l.carrez)} <i>m²</i></> : "n.a."}</td>
                 <td className="c">{l.sol !== undefined ? <>{group(l.sol)} <i>m²</i></> : "n.a."}</td>
-                <td className="c gris">{nc(l.dpe)}</td>
+                {/* Retour #317 — « dans la colonne DPE du dossier, ce serait
+                    bien de remettre les mêmes pictos que dans l'état
+                    locatif. » Une lettre en gris se lit comme une donnée
+                    quelconque ; la pastille colorée se voit en survolant la
+                    page, et c'est ce que l'acquéreur cherche en premier. */}
+                <td className="c dv-dpe">
+                  {l.dpe ? <BadgeDpe lettre={l.dpe} /> : <span className="gris">n.c.</span>}
+                </td>
                 <td className={`c${/rénov|renov|neuf/i.test(l.etat) ? " vert" : ""}`}>{nc(l.etat)}</td>
-                <td className={`c${/^vide$/i.test(l.bail) ? " rouge" : ""}`}>{nc(l.bail)}</td>
-                <td className="c gris">{l.entree || "n.c."}</td>
+                {colBail && (
+                  <td className={`c${/^vide$/i.test(l.bail) ? " rouge" : ""}`}>{nc(l.bail)}</td>
+                )}
+                {colEntree && <td className="c gris">{l.entree || "n.c."}</td>}
                 <td className="r">{l.loyer !== undefined ? `${group(l.loyer)} €` : "0 €"}</td>
                 <td className="r or">{group(l.potentiel)} <i>€/an</i></td>
               </tr>
             ))}
             {d.lots.length === 0 && (
-              <tr><td colSpan={10} className="gris">L&apos;état locatif est vide.</td></tr>
+              <tr><td colSpan={nbCols} className="gris">L&apos;état locatif est vide.</td></tr>
             )}
           </tbody>
           <tfoot>
@@ -376,12 +404,14 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               <td colSpan={2} />
               <td className="c">{group(d.total.carrez)} <i>m²</i></td>
               <td className="c">{group(d.total.sol)} <i>m²</i></td>
-              <td colSpan={4} />
+              <td colSpan={2 + (colBail ? 1 : 0) + (colEntree ? 1 : 0)} />
               <td className="r">{group(d.total.loyerMois)} €</td>
               <td className="r or">{group(d.total.potentiel)} <i>€/an</i></td>
             </tr>
           </tfoot>
         </table>
+          );
+        })()}
         <p className="dv-note">
           * Potentiel calculé à partir des loyers du secteur, de l&apos;encadrement des loyers et
           des indices de révision.
@@ -497,13 +527,19 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tbody>
         </table>
 
+        {/* Retour #319 — « je pense que c'est un peu long, les descriptions,
+            et ça peut faire bugger le truc. Est-ce qu'on ne ferait pas tout
+            tenir sur une à trois lignes max ? Genre revenu brut = Loyer
+            HC / Prix HAI, Net = Revenu brut - Charges non récup sur Prix HAI,
+            Net AEM = Revenu brut - Charges sur prix HAI + notaire. Le
+            potentiel reprend la même base de calcul mais considère les revenus
+            de l'immeuble loués à 100 % et le montant des travaux à prévoir. »
+            Six lignes pour trois rendements disaient deux fois la même chose :
+            la seule différence entre actuel et potentiel est la base, et elle
+            se dit une fois pour les trois. Ses formules, dans ses mots. */}
         <div className="dv-formules">
-          <p>Rendement brut actuel = Revenus actuels / Prix honoraires inclus</p>
-          <p>Rendement brut potentiel = Revenus potentiels / (Prix honoraires inclus + travaux)</p>
-          <p>Rendement net actuel = (Revenus actuels - Charges) / Prix honoraires inclus</p>
-          <p>Rendement net potentiel = (Revenus potentiels - Charges) / (Prix honoraires inclus + travaux)</p>
-          <p>Rendement acte en main actuel = (Revenus actuels - Charges) / Prix acte en main</p>
-          <p>Rendement acte en main potentiel = (Revenus potentiels - Charges) / Coût total après travaux</p>
+          <p>Brut = Loyers HC / Prix HAI &nbsp;·&nbsp; Net = (Loyers HC − charges non récupérables) / Prix HAI &nbsp;·&nbsp; Net acte en main = (Loyers HC − charges non récupérables) / (Prix HAI + frais de notaire)</p>
+          <p>Le potentiel reprend les mêmes formules, sur les loyers de l&apos;immeuble loué à 100 % et un prix majoré des travaux à prévoir.</p>
         </div>
       </>} />
 
