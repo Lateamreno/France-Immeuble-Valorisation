@@ -16,19 +16,13 @@ import { dmy } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
 import { archiverContact, noterProposition, updateContact } from "@/lib/bo/actions";
-import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/compte-actions";
+import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
   CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
   SOURCES_CONTACT as SOURCES,
 } from "@/lib/referentiels";
 
-/** Ce que la fiche sait de l'espace client, sans jamais toucher au secret. */
-export type CompteVu = {
-  actif: boolean;
-  active_le: string | null;
-  vu_le: string | null;
-  connexions: number;
-};
+import type { CompteVu } from "@/lib/bo/comptes-bo";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 

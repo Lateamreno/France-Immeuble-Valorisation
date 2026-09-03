@@ -13,7 +13,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { connexion, motDePasseOublie } from "@/lib/bo/compte-actions";
+import { connexion, motDePasseOublie } from "@/lib/bo/espace-client-actions";
 import type { Reponse } from "@/lib/bo/espace-modele";
 
 export function Connexion() {

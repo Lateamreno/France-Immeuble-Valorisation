@@ -2,16 +2,14 @@
  * Un bien qu'on a proposé à l'acquéreur.
  *
  * L'adresse porte l'identifiant de la PROPOSITION, pas celui de l'immeuble :
- * c'est la proposition qui prouve qu'on lui a bien envoyé ce bien. Chercher
- * par immeuble laisserait consulter n'importe quel dossier en devinant une
- * adresse d'URL.
+ * c'est la proposition qui prouve qu'on lui a envoyé ce bien, et c'est la base
+ * qui le vérifie.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { clientConnecte } from "@/lib/bo/compte-client";
+import { bienPropose, jetonSession, moi } from "@/lib/bo/espace-anon";
 import { Connexion } from "@/components/espace-connexion";
-import { bienPropose, mesPropositions } from "@/lib/bo/espace-client";
 import { BienProposeEcran } from "@/components/espace-propose";
 
 export const metadata: Metadata = {
@@ -23,11 +21,12 @@ export const dynamic = "force-dynamic";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const compte = await clientConnecte();
-  if (!compte) return <Connexion />;
+  const jeton = await jetonSession();
+  const compte = jeton ? await moi() : null;
+  if (!jeton || !compte) return <Connexion />;
 
-  const detail = await bienPropose(id, compte.contact_id);
-  if (!detail) {
+  const bien = await bienPropose(jeton, id);
+  if (!bien) {
     return (
       <main className="ep-wrap etroit">
         <div className="ep-fermee">
@@ -39,22 +38,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  /* La réponse déjà donnée, s'il y en a une : on la relit dans la liste plutôt
-     que d'ouvrir une seconde requête pour une seule ligne. */
-  const toutes = await mesPropositions(compte.contact_id, compte.id);
-  const ligne = toutes.find((p) => p.id === id);
-
   return (
     <>
       <div className="ep-retour"><Link href="/espace">← Votre espace</Link></div>
-      <BienProposeEcran
-        propositionId={id}
-        vue={detail.vue}
-        photos={detail.photos}
-        dossier={!!detail.cheminDossier}
-        rendement={ligne?.rendement}
-        reponse={ligne?.reponse}
-      />
+      <BienProposeEcran bien={bien} />
     </>
   );
 }

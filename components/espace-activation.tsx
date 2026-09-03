@@ -13,7 +13,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { poserMotDePasse } from "@/lib/bo/compte-actions";
+import { poserMotDePasse } from "@/lib/bo/espace-client-actions";
 import type { Reponse } from "@/lib/bo/espace-modele";
 
 export function PoserMotDePasse({ jeton, usage }: {

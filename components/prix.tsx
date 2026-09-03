@@ -13,6 +13,7 @@ import { euros, group } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
 import { marquerPrixRepris, ouvrirEspace, revoquerEspace } from "@/lib/bo/espace-actions";
+import { ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import type { Espace } from "@/lib/bo/espace-modele";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
@@ -214,17 +215,29 @@ function ModalePrix({
  * le chemin habituel, avec son historique, pas par une porte dérobée.
  */
 function EspaceVendeur({
-  immeubleId, espace, tauxHonos, proprietaireEmail, onReprendre,
+  immeubleId, espace, tauxHonos, proprietaireId, proprietaireEmail, compteActif, onReprendre,
 }: {
   immeubleId: string;
   espace?: Espace | null;
   tauxHonos: number;
+  /** La fiche contact du propriétaire : c'est elle qui porte le compte. */
+  proprietaireId?: string;
   proprietaireEmail?: string;
+  compteActif?: boolean;
   onReprendre: (nv: number) => void;
 }) {
   const [pending, start] = useTransition();
   const [jeton, setJeton] = useState(espace && !espace.revoque ? espace.jeton : null);
   const [copie, setCopie] = useState(false);
+  /* L'espace CLIENT (compte + mot de passe), ouvert depuis le bien : MAV le
+     demande ici parce que c'est ici qu'on parle du propriétaire, pas dans sa
+     fiche contact. Le compte reste rattaché à la fiche — une personne, un
+     compte — mais on n'a plus à y aller pour l'ouvrir. */
+  const [lienCompte, setLienCompte] = useState<string | null>(null);
+  const [copieCompte, setCopieCompte] = useState(false);
+  const [erreurCompte, setErreurCompte] = useState<string | null>(null);
+  const urlCompte = lienCompte
+    ? `${typeof window === "undefined" ? "" : window.location.origin}${lienCompte}` : "";
 
   const url = jeton ? `${typeof window === "undefined" ? "" : window.location.origin}/proprietaire/${jeton}` : "";
   const prix = espace?.prix_nv ?? undefined;
@@ -298,13 +311,48 @@ function EspaceVendeur({
       {espace?.prix_mot && (
         <p className="espv-mot">« {espace.prix_mot} »</p>
       )}
+
+      {/* L'espace client, avec mot de passe : celui sur lequel le propriétaire
+          revient. Le lien secret ci-dessus reste pour qui refuse d'en créer un. */}
+      {proprietaireId && (
+        <div className="espv-cli">
+          <span className="espv-lab">
+            Espace client (avec mot de passe) —
+            {compteActif ? " ouvert" : " pas encore ouvert"}
+            {proprietaireEmail ? ` · ${proprietaireEmail}` : ""}
+          </span>
+          <button type="button" className="espv-b" disabled={pending || !proprietaireEmail}
+            onClick={() => start(async () => {
+              setErreurCompte(null);
+              const r = await ouvrirCompteClient(proprietaireId, proprietaireEmail ?? "");
+              if (r.ok) setLienCompte(r.lien); else setErreurCompte(r.message);
+            })}>
+            {pending ? "…" : compteActif ? "Renvoyer un lien d'accès" : "Ouvrir l'espace client"}
+          </button>
+          {erreurCompte && <p className="espv-txt" style={{ color: "#a5341f" }}>{erreurCompte}</p>}
+          {lienCompte && (
+            <p className="espv-txt">
+              <code style={{ fontSize: 12, wordBreak: "break-all" }}>{urlCompte}</code>{" "}
+              <button type="button" className="espv-b" onClick={() => {
+                navigator.clipboard?.writeText(urlCompte).then(() => {
+                  setCopieCompte(true);
+                  setTimeout(() => setCopieCompte(false), 2200);
+                }).catch(() => undefined);
+              }}>{copieCompte ? "Copié ✓" : "Copier"}</button>
+              <br />Valable 7 jours, une seule fois. Il y retrouvera ses immeubles et ses recherches.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ---------- Écran ---------- */
 
-export function PrixEcran({ b, espace }: { b: BienData; espace?: Espace | null }) {
+export function PrixEcran({ b, espace, compteActif }: {
+  b: BienData; espace?: Espace | null; compteActif?: boolean;
+}) {
   const im = b.im;
   const immeubleId = String(im._id);
   const [pending, start] = useTransition();
@@ -386,7 +434,9 @@ export function PrixEcran({ b, espace }: { b: BienData; espace?: Espace | null }
 
       <EspaceVendeur
         immeubleId={immeubleId} espace={espace} tauxHonos={tauxHonos}
+        proprietaireId={typeof b.proprietaire?._id === "string" ? b.proprietaire._id : undefined}
         proprietaireEmail={typeof b.proprietaire?.email === "string" ? b.proprietaire.email : undefined}
+        compteActif={compteActif}
         onReprendre={(nvVoulu) => { setDuVendeur(Math.round(nvVoulu * (1 + tauxHonos / 100))); setModale(true); }}
       />
 

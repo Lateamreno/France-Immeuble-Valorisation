@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getContact, mailsDuContact } from "@/lib/bubble/server";
 import { ContactFiche } from "@/components/contact-fiche";
-import { compteDuContact } from "@/lib/bo/compte-client";
+import { compteDuContact } from "@/lib/bo/comptes-bo";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +24,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
   return (
     <ContactFiche
       d={d} echanges={echanges}
-      compte={compte && {
-        actif: compte.actif, active_le: compte.active_le,
-        vu_le: compte.vu_le, connexions: compte.connexions,
-      }}
+      compte={compte}
     />
   );
 }
