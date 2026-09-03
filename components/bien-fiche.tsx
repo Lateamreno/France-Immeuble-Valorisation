@@ -38,7 +38,7 @@ import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { Copier, copierTexte } from "@/components/copier";
-import { PrixEcran } from "@/components/prix";
+import { EspaceVendeur, PrixEcran } from "@/components/prix";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
 import type { OperationDecoupe } from "@/lib/bubble/server";
 import { PHASES, phase as phaseDe } from "@/lib/decoupe";
@@ -370,12 +370,14 @@ export function BienFiche({
           {sect !== "encours" && (
             <>
               {sect === "suivi" && <SuiviSection b={b} />}
-              {sect === "proprietaire" && <ProprioSection b={b} />}
+              {sect === "proprietaire" && (
+                <ProprioSection b={b} espace={espace} compteActif={compteActif} />
+              )}
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
               {sect === "prix" && (
-                <PrixSection b={b} espace={espace} compteActif={compteActif}
+                <PrixSection b={b} espace={espace}
                   tab={sous.prix} onTab={majSous("prix")} />
               )}
               {sect === "photos" && <PhotosSection b={b} />}
@@ -838,6 +840,8 @@ function ChangerProprietaire({ b }: { b: BienData }) {
   const [picker, setPicker] = useState(false);
   const [cible, setCible] = useState<{ id: string; nom: string } | null>(null);
   const [motif, setMotif] = useState<string>(MOTIFS_CHANGEMENT_PROPRIETAIRE[0]);
+  /** « Autre » : le motif se tape à la main (#309). */
+  const [autre, setAutre] = useState(false);
   const [pending, start] = useTransition();
   const c = b.proprietaire;
   const ancienNom = c ? `${String(c["prénom"] ?? "")} ${String(c.nom ?? "")}`.trim() : "";
@@ -873,13 +877,33 @@ function ChangerProprietaire({ b }: { b: BienData }) {
               <div className="att-bien">
                 {ancienNom ? <><span>{ancienNom} →</span> <b>{cible.nom}</b></> : <b>{cible.nom}</b>}
               </div>
+              {/* Retour #309 — « là j'ai qu'une option pour le changement de
+                  propriétaire ; en l'occurrence je veux qu'il y ait aussi une
+                  option Autre dans laquelle je peux indiquer ce que je veux à
+                  la main. »
+                  Le champ était DÉJÀ libre — un `input` avec sa liste de
+                  suggestions — mais rien ne le disait : une case préremplie
+                  « Immeuble vendu » se lit comme un choix imposé, et la liste
+                  ne s'ouvrait qu'en devinant qu'elle existait. Un menu montre
+                  les motifs, et « Autre » ouvre franchement la saisie. */}
               <label className="att-ch">
                 <span>Motif</span>
-                <input list="chg-motifs" value={motif} onChange={(e) => setMotif(e.target.value)} />
-                <datalist id="chg-motifs">
-                  {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m} value={m} />)}
-                </datalist>
+                <select value={autre ? "Autre" : motif}
+                  onChange={(e) => {
+                    if (e.target.value === "Autre") { setAutre(true); setMotif(""); }
+                    else { setAutre(false); setMotif(e.target.value); }
+                  }}>
+                  {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m}>{m}</option>)}
+                  <option value="Autre">Autre — à préciser</option>
+                </select>
               </label>
+              {autre && (
+                <label className="att-ch">
+                  <span>Précisez</span>
+                  <input autoFocus value={motif} placeholder="Ce que vous voulez inscrire au dossier"
+                    onChange={(e) => setMotif(e.target.value)} />
+                </label>
+              )}
               <p className="att-note">
                 Le motif reste au dossier : c&apos;est lui qui, relu dans six mois, dit
                 si l&apos;immeuble a été vendu ou si l&apos;on a simplement corrigé une saisie.
@@ -910,7 +934,14 @@ function ChangerProprietaire({ b }: { b: BienData }) {
   );
 }
 
-function ProprioSection({ b }: { b: BienData }) {
+function ProprioSection({ b, espace, compteActif }: {
+  b: BienData; espace?: Espace | null; compteActif?: boolean;
+}) {
+  /* Le taux d'honoraires du bien : l'espace vendeur s'en sert pour dire ce que
+     le prix net du propriétaire donne en HAI. */
+  const honosEnBase = typeof b.im.honos_ht === "number" ? b.im.honos_ht as number : 0;
+  const nvEnBase = typeof b.im.prix_nv === "number" ? b.im.prix_nv as number : 0;
+  const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
   const c = b.proprietaire;
   const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   const nomComplet = c ? `${S2(c["prénom"]) ?? ""} ${S2(c.nom) ?? ""}`.trim() : "";
@@ -1006,7 +1037,18 @@ function ProprioSection({ b }: { b: BienData }) {
         </>
       )}
 
-      <div className="fh2">Immeubles appartenant au même propriétaire</div>
+      {/* Retour #310 — « je veux que l'espace vendeur soit dans l'onglet
+          propriétaire. » Il parle de la personne, pas du prix : son accès, son
+          compte, l'adresse à laquelle on lui envoie le lien. */}
+      <div className="fh2">Espace vendeur</div>
+      <EspaceVendeur
+        immeubleId={String(b.im._id)} espace={espace} tauxHonos={tauxHonos}
+        proprietaireId={c ? String(c._id) : undefined}
+        proprietaireEmail={mail}
+        compteActif={compteActif}
+      />
+
+      <div className="fh2" style={{ marginTop: 20 }}>Immeubles appartenant au même propriétaire</div>
       {b.autresBiens.length === 0 && <div className="fempty">Aucun autre immeuble.</div>}
       {b.autresBiens.map((a) => (
         <a href={`/bien/${a.id}`} key={a.id}>
@@ -1073,8 +1115,8 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
  * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
  * sous-entrées, comme pour l'emplacement ou l'état locatif.
  */
-function PrixSection({ b, espace, compteActif, tab, onTab }: {
-  b: BienData; espace?: Espace | null; compteActif?: boolean;
+function PrixSection({ b, espace, tab, onTab }: {
+  b: BienData; espace?: Espace | null;
   tab?: string; onTab?: (t: string) => void;
 }) {
   const courant = tab ?? ONGLETS_PRIX[0].key;
@@ -1092,7 +1134,7 @@ function PrixSection({ b, espace, compteActif, tab, onTab }: {
       {courant === "descriptif" ? (
         <DescriptifForm b={b} />
       ) : (
-        <PrixEcran b={b} espace={espace} compteActif={compteActif} />
+        <PrixEcran b={b} espace={espace} />
       )}
     </>
   );
@@ -1300,10 +1342,15 @@ function DescriptifForm({ b }: { b: BienData }) {
         placeholder="Descriptif de l'immeuble…"
       />
       <div className="dsc-pied">
+        {/* Retour #315 — « mets plutôt : texte généré automatiquement, si vous
+            le modifiez à la main il ne suivra plus les changements de la
+            fiche. » L'ancienne formule ne se lisait qu'APRÈS avoir modifié le
+            texte : elle constatait au lieu de prévenir. Dite d'avance, elle
+            fait choisir en connaissance de cause. */}
         <span className="fine">
           {aLaMain
-            ? "Texte écrit à la main — il ne suivra plus les changements de la fiche."
-            : "Texte rédigé depuis l'état locatif et l'emplacement."}
+            ? "Texte modifié à la main : il ne suit plus les changements de la fiche."
+            : "Texte généré automatiquement depuis l'état locatif et l'emplacement — si vous le modifiez à la main, il ne suivra plus les changements de la fiche."}
         </span>
         {txt.trim() !== auto.trim() && (
           <button type="button" className="fadd"

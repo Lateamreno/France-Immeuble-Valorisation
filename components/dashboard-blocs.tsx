@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -430,10 +430,72 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
   );
 }
 
-export function DashboardBlocs({ blocs, mock, agents }: { blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[] }) {
+/**
+ * Le dashboard filtré par la recherche de la barre haute (retour #306).
+ *
+ * MAV : « quand je fais une recherche, je veux juste que ça cache tous les
+ * immeubles qui ne correspondent pas à la recherche, que ce soit par nom de
+ * proprio, par ville ou par adresse. Je t'ai mis ce à quoi ça ressemble. »
+ *
+ * La barre partait sur un écran de résultats à part : on perdait les colonnes,
+ * donc l'étape où chaque dossier se trouve — et c'est justement ce qu'on
+ * cherche en tapant un nom. Les colonnes restent ; seules les cartes qui ne
+ * correspondent pas disparaissent, et les compteurs suivent.
+ *
+ * Mot à mot : « voci nanterre » trouve la carte de Nanterre de M. Voci, dans
+ * l'ordre qu'on veut. Chaque mot doit se retrouver quelque part — ville,
+ * adresse, contact — ce qui évite les faux positifs d'une recherche « ou ».
+ */
+function correspond(c: KCard, mots: string[]): boolean {
+  if (mots.length === 0) return true;
+  const foin = [
+    c.ville, c.adresse, c.contact, c.objet,
+    c.contactInfo?.nom, c.contactInfo?.email, c.contactInfo?.tel,
+  ]
+    .filter(Boolean).join(" ")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return mots.every((m) => foin.includes(m));
+}
+
+const decouper = (q: string) =>
+  q.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .split(/\s+/).map((x) => x.trim()).filter(Boolean);
+
+export function DashboardBlocs({ blocs, mock, agents, recherche = "" }: {
+  blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[];
+  /** Ce qui est tapé dans la barre haute (#306). */
+  recherche?: string;
+}) {
+  const mots = useMemo(() => decouper(recherche), [recherche]);
+
+  const vus = useMemo(() => {
+    if (mots.length === 0) return blocs;
+    return blocs.map((b) => {
+      const cols = b.cols.map((c) => {
+        const cards = c.cards.filter((x) => correspond(x, mots));
+        return { ...c, cards, count: cards.length };
+      }) as KBloc["cols"];
+      const total = cols.reduce((s, c) => s + c.cards.length, 0);
+      /* Les pastilles du bandeau comptent ce que l'écran montre, pas ce qu'il
+         montrerait sans filtre : un « 45 » à côté de deux cartes visibles
+         ferait douter du filtre. */
+      return { ...b, cols, nsq: total, nred: Math.min(b.nred, total), openDefault: total > 0 };
+    });
+  }, [blocs, mots]);
+
+  const trouves = vus.reduce((s, b) => s + b.cols.reduce((t, c) => t + c.cards.length, 0), 0);
+
   return (
     <div className="wrap">
-      {blocs.map((b) => (
+      {mots.length > 0 && (
+        <div className="dash-filtre">
+          {trouves === 0
+            ? <>Aucun immeuble ne correspond à <b>{recherche}</b>.</>
+            : <>{trouves} immeuble{trouves > 1 ? "s" : ""} {trouves > 1 ? "correspondent" : "correspond"} à <b>{recherche}</b> — les autres sont masqués.</>}
+          <Link className="dash-filtre-x" href="/">✕ Tout afficher</Link>
+        </div>
+      )}
+      {vus.map((b) => (
         <Bloc key={b.key} b={b} mock={mock} agents={agents} />
       ))}
     </div>

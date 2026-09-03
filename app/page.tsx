@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string; vue?: string }>;
+  searchParams: Promise<{ agent?: string; vue?: string; q?: string }>;
 }) {
-  const { agent = "marc-antoine", vue } = await searchParams;
+  const { agent = "marc-antoine", vue, q = "" } = await searchParams;
   const onglet = vue === "attente" ? "attente" : "cours";
   const agentList = await getAgents().catch(() => []);
   const actifs = agentList.filter((a) => a.actif);
@@ -40,11 +40,13 @@ export default async function DashboardPage({
   return (
     <>
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
-        agent={agentName} agentSlug={slug} agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0] }))} />
+        agent={agentName} agentSlug={slug} recherche={q}
+        agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0] }))} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}
-      <DashboardBlocs blocs={blocs} mock={!!liveError} agents={agentList.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))} />
+      <DashboardBlocs blocs={blocs} mock={!!liveError} recherche={q}
+        agents={agentList.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))} />
     </>
   );
 }

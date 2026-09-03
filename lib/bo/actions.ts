@@ -231,10 +231,16 @@ export async function changerProprietaire(input: {
     p_id: input.immeubleId,
     p_patch: { PROPRIETAIRE: input.nouveauId, "Modified Date": now },
   });
+  /* Piège de casse hérité de Bubble, et il coûte cher (retour #307) : sur un
+     CONTACT la liste s'appelle `IMMEUBLES` en capitales, alors que sur un
+     mandat, un suivi ou une offre elle s'écrit `IMMEUBLEs`. Écrire la seconde
+     graphie sur un contact crée un champ parallèle que rien ne lit : la fiche
+     annonçait « 0 immeuble » pour un propriétaire qui en avait un, et sa
+     vignette au mandat aussi. */
   await rpc("bo_append_ref", {
     p_table: "bo_contact",
     p_id: input.nouveauId,
-    p_key: "IMMEUBLEs",
+    p_key: "IMMEUBLES",
     p_value: input.immeubleId,
   });
   const depuis = input.ancienNom?.trim() ? ` (auparavant ${input.ancienNom.trim()})` : "";
@@ -2788,6 +2794,40 @@ export async function majMandants(
 
   await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: plat });
   await Promise.all(mandants.map((x) => renvoyerSurLeContact(x)));
+
+  /* Retour #308 — « dans le mandat j'ai changé de propriétaire, je suis passé à
+     Aaron VOCI, mais dans l'onglet Propriétaire il y a toujours écrit que c'est
+     Jean Pierre le test le propriétaire. C'est pas normal, ça devrait changer
+     automatiquement. »
+     Il a raison : celui qui signe le mandat de vente EST le propriétaire du
+     bien — c'est même ce que le mandat atteste. Laisser les deux se
+     contredire, c'est écrire à l'ancien vendeur et fonder un dossier sur un
+     nom que le document démentira.
+     On ne descend le lien que depuis le PREMIER mandant, et seulement quand la
+     fiche désigne quelqu'un d'autre : une indivision a plusieurs mandants pour
+     un seul propriétaire de référence, et rien ne justifierait de choisir le
+     deuxième. Le changement laisse la même trace horodatée que le bouton de la
+     fiche (#288) — un immeuble ne change pas de mains en silence. */
+  const premier = mandants[0];
+  if (immeubleId && premier?.contactId) {
+    const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+    const actuel = typeof im?.PROPRIETAIRE === "string" ? im.PROPRIETAIRE : "";
+    if (im && actuel !== premier.contactId) {
+      const ancien = actuel ? await bqOne("bo_contact", actuel).catch(() => null) : null;
+      await changerProprietaire({
+        immeubleId,
+        nouveauId: premier.contactId,
+        nouveauNom: [premier.prenom, premier.nom].filter(Boolean).join(" ")
+          || premier.societe?.nom || "le mandant",
+        ancienId: actuel || null,
+        ancienNom: ancien
+          ? `${String(ancien["prénom"] ?? "")} ${String(ancien.nom ?? "")}`.trim()
+          : undefined,
+        motif: "Mandant du mandat de vente",
+      });
+    }
+  }
+
   rafraichirMandat(mandatId, immeubleId);
 }
 

@@ -210,7 +210,15 @@ export function ContactFiche({ d, echanges = [], compte }: {
   /* --- Champs modifiables --- */
   const [prenom, setPrenom] = useState(S(c["prénom"]));
   const [nom, setNom] = useState(S(c.nom));
-  const [civ, setCiv] = useState(S(c["Civilité"]) || "Monsieur");
+  /* Retour #307 — « je comprends pas pourquoi, ici j'ai mis Monsieur dans la
+     fiche contact, et ça n'apparaît pas dans le mandat. »
+     La case ne portait pas de valeur vide : elle AFFICHAIT « Monsieur » alors
+     que la base n'avait rien. Il n'y avait donc rien à enregistrer — la barre
+     restait grise — et le mandat, qui lit la base, ne trouvait rien. L'écran
+     mentait par défaut. Il montre maintenant le vide quand la fiche est vide,
+     en rouge comme les autres champs à renseigner : on voit qu'il faut le
+     remplir, et le remplir déclenche l'enregistrement. */
+  const [civ, setCiv] = useState(S(c["Civilité"]));
   const [email, setEmail] = useState(S(c.email));
   const [portable, setPortable] = useState(S(c.portable));
   const [fixe, setFixe] = useState(S(c.fixe));
@@ -268,7 +276,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
   const save = () =>
     start(() =>
       updateContact(id, {
-        "Civilité": civ, "prénom": prenom || undefined, nom: nom || undefined,
+        "Civilité": civ || undefined, "prénom": prenom || undefined, nom: nom || undefined,
         email: email || undefined, portable: portable || undefined, fixe: fixe || undefined,
         acheteur, vendeur, interagence, Types: types, Note: note || undefined,
         date_naissance: naissance || undefined,
@@ -460,7 +468,9 @@ export function ContactFiche({ d, echanges = [], compte }: {
 
               <Bloc titre="Informations" picto="info">
                 <Ligne label="Civilité">
-                  <select className="court" value={civ} onChange={(e) => setCiv(e.target.value)}>
+                  <select className={`court${civ ? "" : " requis"}`} value={civ}
+                    onChange={(e) => setCiv(e.target.value)}>
+                    <option value="">À renseigner</option>
                     {CIVILITES.map((v) => <option key={v}>{v}</option>)}
                   </select>
                 </Ligne>

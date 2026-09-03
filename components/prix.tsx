@@ -8,6 +8,7 @@
 // baisse. Rien n'est enregistré tant qu'on n'a pas validé.
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useDepartUrl } from "@/lib/etat-url";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
@@ -214,7 +215,20 @@ function ModalePrix({
  * remplie, avec le motif « Prix souhaité par le vendeur » : le prix passe par
  * le chemin habituel, avec son historique, pas par une porte dérobée.
  */
-function EspaceVendeur({
+/**
+ * Retour #310 — « je veux que l'espace vendeur soit dans l'onglet propriétaire. »
+ *
+ * C'est sa place : il ne parle pas du prix mais de la PERSONNE — son accès,
+ * son compte, son adresse e-mail, les pièces qu'elle dépose. Il occupait le
+ * haut de « Description et prix », où l'on vient pour fixer un prix, et
+ * repoussait le prix sous la ligne de flottaison.
+ *
+ * Il reprend le prix arrêté par le propriétaire, ce qui se fait dans l'autre
+ * onglet : quand `onReprendre` n'est pas fourni — c'est le cas depuis l'onglet
+ * Propriétaire — le bouton devient un renvoi vers l'écran du prix, qui sait le
+ * reprendre.
+ */
+export function EspaceVendeur({
   immeubleId, espace, tauxHonos, proprietaireId, proprietaireEmail, compteActif, onReprendre,
 }: {
   immeubleId: string;
@@ -224,7 +238,8 @@ function EspaceVendeur({
   proprietaireId?: string;
   proprietaireEmail?: string;
   compteActif?: boolean;
-  onReprendre: (nv: number) => void;
+  /** Absent depuis l'onglet Propriétaire : la reprise se fait sur le prix. */
+  onReprendre?: (nv: number) => void;
 }) {
   const [pending, start] = useTransition();
   const [jeton, setJeton] = useState(espace && !espace.revoque ? espace.jeton : null);
@@ -301,11 +316,15 @@ function EspaceVendeur({
             <b>{euros(prix)} net vendeur</b>
             <em>soit {euros(Math.round(prix * (1 + tauxHonos / 100)))} HAI</em>
           </div>
-          {aRepondu && (
+          {aRepondu && (onReprendre ? (
             <button type="button" className="espv-b go" onClick={() => onReprendre(prix)}>
               Reprendre ce prix
             </button>
-          )}
+          ) : (
+            <Link className="espv-b go" href={`/bien/${immeubleId}?ecran=prix&reprendre=1`}>
+              Reprendre ce prix →
+            </Link>
+          ))}
         </div>
       )}
       {espace?.prix_mot && (
@@ -350,8 +369,11 @@ function EspaceVendeur({
 
 /* ---------- Écran ---------- */
 
-export function PrixEcran({ b, espace, compteActif }: {
-  b: BienData; espace?: Espace | null; compteActif?: boolean;
+/* Depuis le retour #310, l'écran du prix ne s'occupe plus du compte client :
+   il est passé à l'onglet Propriétaire avec l'espace vendeur. Il garde
+   `espace` parce qu'il en reprend le prix arrêté par le propriétaire. */
+export function PrixEcran({ b, espace }: {
+  b: BienData; espace?: Espace | null;
 }) {
   const im = b.im;
   const immeubleId = String(im._id);
@@ -360,6 +382,12 @@ export function PrixEcran({ b, espace, compteActif }: {
   /* Le prix du propriétaire, quand l'agent choisit de le reprendre : il
      ouvre la fenêtre « Nouveau prix » déjà remplie, avec le bon motif. */
   const [duVendeur, setDuVendeur] = useState<number | null>(null);
+  /* Retour #310 — l'espace vendeur vit maintenant dans l'onglet Propriétaire ;
+     son bouton « Reprendre ce prix » renvoie donc ici, avec `?reprendre=1`.
+     On ouvre alors la fenêtre « Nouveau prix » déjà remplie du prix arrêté par
+     le propriétaire, exactement comme le bouton le faisait sur place. */
+  const demandeReprise = useDepartUrl<string>("reprendre", "");
+  const [repriseVue, setRepriseVue] = useState(false);
 
   /* Contexte de calcul : les mêmes entrées que l'estimation. */
   const ctx: ContexteRendement = useMemo(() => {
@@ -389,6 +417,19 @@ export function PrixEcran({ b, espace, compteActif }: {
   const honosEnBase = num(im.prix_honos_ttc) ?? num(dernier?.in_honos_ttc) ?? 0;
   const nvEnBase = Math.max(0, prixEnBase - honosEnBase);
   const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
+
+  /* On n'ouvre la fenêtre qu'une fois, et seulement s'il y a bien un prix de
+     propriétaire à reprendre : ajuster l'état pendant le rendu est la façon
+     prévue de réagir à une demande venue de l'adresse, et un effet ferait
+     apparaître l'écran du prix avant la fenêtre. */
+  const prixVendeur = espace?.prix_nv;
+  if (demandeReprise === "1" && !repriseVue) {
+    setRepriseVue(true);
+    if (prixVendeur !== undefined && prixVendeur !== null && !espace?.prix_repris) {
+      setDuVendeur(Math.round(prixVendeur * (1 + tauxHonos / 100)));
+      setModale(true);
+    }
+  }
 
   /* Le prix de la molette ne touche à rien : il sert à voir. */
   const [hai, setHai] = useState(prixEnBase);
@@ -431,14 +472,6 @@ export function PrixEcran({ b, espace, compteActif }: {
           <span className="fchip"><b>{euros(nvEnBase)}</b> net vendeur</span>
         </div>
       </div>
-
-      <EspaceVendeur
-        immeubleId={immeubleId} espace={espace} tauxHonos={tauxHonos}
-        proprietaireId={typeof b.proprietaire?._id === "string" ? b.proprietaire._id : undefined}
-        proprietaireEmail={typeof b.proprietaire?.email === "string" ? b.proprietaire.email : undefined}
-        compteActif={compteActif}
-        onReprendre={(nvVoulu) => { setDuVendeur(Math.round(nvVoulu * (1 + tauxHonos / 100))); setModale(true); }}
-      />
 
       <div className="px-hd">
         <div className="fsub">Prix actuel</div>
