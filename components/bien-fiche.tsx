@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
@@ -37,6 +37,7 @@ import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels
 import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
+import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { Copier, copierTexte } from "@/components/copier";
 import { EspaceVendeur, PrixEcran } from "@/components/prix";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
@@ -50,6 +51,10 @@ type SectionKey =
   | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
   | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs" | "diffusion"
   | "acheteurs" | "notes" | "decoupe"
+  /* Retour #327 — les cinq sous-menus du BO sous « Acheteurs ». Ils étaient
+     repliés en deux onglets maison ; MAV en a envoyé les dix captures et
+     demandé qu'on les reproduise trait pour trait. */
+  | "commercialisations" | "propositions" | "visites" | "offres"
   /* Écran greffé sur la fiche (l'estimation, le mandat) : il reste monté
      pendant qu'on visite les autres sections, pour ne rien perdre de la
      saisie (#96, #125). */
@@ -61,6 +66,7 @@ const SECTIONS: readonly SectionKey[] = [
   "suivi", "proprietaire", "emplacement", "locatif", "technique", "prix",
   "photos", "estimations", "mandats", "dossiers", "tous-docs", "diffusion",
   "acheteurs", "notes", "decoupe", "encours",
+  "commercialisations", "propositions", "visites", "offres",
 ];
 
 /**
@@ -110,6 +116,12 @@ const I = {
   maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
   decoupe: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></>,
   sablier: <><path d="M7 3h10M7 21h10" /><path d="M8 3v3.5c0 2 4 3.3 4 5.5s-4 3.5-4 5.5V21M16 3v3.5c0 2-4 3.3-4 5.5s4 3.5 4 5.5V21" /></>,
+  /* Retour #327 — les trois pictos des sous-menus Acheteurs, repris du BO :
+     l'avion en papier des propositions, la voiture des visites, le marteau de
+     commissaire-priseur des offres. */
+  avion: <><path d="M20.5 3.5 3.5 10.2l6 2.3 2.3 6z" /><path d="M20.5 3.5 9.5 12.5" /></>,
+  voiture: <><path d="M4.5 13.5 6.4 8.6A2 2 0 0 1 8.3 7.3h7.4a2 2 0 0 1 1.9 1.3l1.9 4.9" /><rect x="3" y="13.2" width="18" height="4.6" rx="1.4" /><circle cx="7" cy="19.4" r="1.3" /><circle cx="17" cy="19.4" r="1.3" /></>,
+  marteau: <><path d="m11 4 6.5 6.5-2.2 2.2L8.8 6.2z" /><path d="m9.4 11.4 3.2 3.2-6.1 6.1-3.2-3.2z" /><path d="M15 15.5h6" /></>,
   antenne: <><circle cx="12" cy="12" r="2.4" /><path d="M7.8 7.8a5.9 5.9 0 0 0 0 8.4M16.2 7.8a5.9 5.9 0 0 1 0 8.4M4.6 4.6a10.4 10.4 0 0 0 0 14.8M19.4 4.6a10.4 10.4 0 0 1 0 14.8" /></>,
 };
 
@@ -420,6 +432,12 @@ export function BienFiche({
                 <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
               )}
               {sect === "acheteurs" && <AcheteursSection b={b} />}
+              {sect === "commercialisations" && (
+                <EcranCommercialisations b={b} onCommercialiser={() => setSect("acheteurs")} />
+              )}
+              {sect === "propositions" && <EcranPropositions b={b} />}
+              {sect === "visites" && <EcranVisites b={b} />}
+              {sect === "offres" && <EcranOffres b={b} />}
               {sect === "notes" && <NotesSection b={b} />}
             </>
           )}
@@ -539,11 +557,19 @@ export function BienFiche({
               )}
             </span>
           </button>
-          <button type="button" className={`srow2${sect === "acheteurs" ? " on" : ""}`} onClick={() => setSect("acheteurs")}>
+          {/* Retour #327 — « dans le menu Acheteurs on a de nombreux sous-menus.
+              Je te mets les captures correspondantes et tu reproduis trait pour
+              trait. » Le BO en a cinq, rangés sous un intitulé qui ne s'ouvre
+              pas lui-même — exactement comme Documents juste au-dessus. Le
+              premier, « Acheteurs », porte le matching ; les quatre autres sont
+              les étapes qui en découlent. Les « + » ouvrent les mêmes modales
+              que la barre du bas (#333 à #335) : on programme une visite d'ici
+              sans quitter le bien. */}
+          <div className="srow2" style={{ cursor: "default" }}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
             Acheteurs
-            <span className="right"><span className="ncount">{b.propositions.total}</span></span>
-          </button>
+          </div>
+          <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />
           <button type="button" className={`srow2${sect === "notes" ? " on" : ""}`} onClick={() => setSect("notes")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
             Notes
@@ -1708,44 +1734,264 @@ function NotesSection({ b }: { b: BienData }) {
   );
 }
 
-function AcheteursSection({ b }: { b: BienData }) {
-  // Sous-onglets du BO : le matching et les campagnes vivent à côté du
-  // pipeline (propositions, visites, offres).
-  const [onglet, setOnglet] = useState<"acquereurs" | "pipeline">("acquereurs");
-  const [ach, setAch] = useState<AcheteursData | null>(null);
-  const [chargement, setChargement] = useState(false);
+/* ============ Retour #327 · le menu Acheteurs et ses cinq écrans ============
+   MAV : « si tu regardes bien, là, dans le menu Acheteurs on a de nombreux
+   sous-menus. Je te mets les captures correspondantes et tu reproduis trait
+   pour trait. »
 
-  const charger = () => {
-    if (ach || chargement) return;
-    setChargement(true);
-    chargerAcheteurs(String(b.im._id)).then((d) => { setAch(d); setChargement(false); });
-  };
+   Le BO range sous « Acheteurs » cinq entrées qui sont les cinq étapes d'une
+   commercialisation : on cherche les acquéreurs, on lance la campagne, on suit
+   les propositions, on programme les visites, on reçoit les offres. Chaque
+   entrée ouvre un écran bâti pareil — un titre encadré au centre, ses
+   compteurs, un bouton d'action dessous, puis les cartes.
+
+   Notre version repliait tout cela en deux onglets maison. Le pli n'était pas
+   qu'esthétique : « Propositions, visites et offres » mettait sur une même
+   page trois listes qui ne se lisent pas au même moment de la vie du bien. */
+
+const TITRE_ACHETEURS: Record<string, { titre: string; icon: React.ReactNode }> = {
+  acheteurs: { titre: "Acheteurs", icon: I.users },
+  commercialisations: { titre: "Commercialisations", icon: I.antenne },
+  propositions: { titre: "Propositions", icon: I.avion },
+  visites: { titre: "Visites", icon: I.voiture },
+  offres: { titre: "Offres", icon: I.marteau },
+};
+
+/** L'en-tête encadré du BO : picto, titre, et ses compteurs juste dessous. */
+function TitreAcheteurs({ cle, badges }: { cle: string; badges?: React.ReactNode }) {
+  const t = TITRE_ACHETEURS[cle];
+  return (
+    <div className="acx-titre">
+      <span className="acx-titre-h">
+        <svg viewBox="0 0 24 24">{t.icon}</svg>
+        {t.titre}
+      </span>
+      {badges && <span className="acx-titre-b">{badges}</span>}
+    </div>
+  );
+}
+
+/** Les cinq entrées du rail, avec leurs mentions et leurs « + ». */
+function SousMenuAcheteurs({
+  b, sect, setSect,
+}: {
+  b: BienData;
+  sect: SectionKey;
+  setSect: (s: SectionKey) => void;
+}) {
+  const [ajout, setAjout] = useState<"proposition" | "visite" | "offre" | null>(null);
+  const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
+  const confirmees = b.visites.filter((v) => String(v.Statut ?? "") === "Confirmée").length;
+  const aTraiter = b.offres.filter((o) => ["En cours", "Contre offre"].includes(String(o.Statut ?? ""))).length;
+
+  const ligne = (
+    cle: SectionKey, label: string, icon: React.ReactNode,
+    mention: React.ReactNode, plus: (() => void) | undefined, n: number | null,
+  ) => (
+    <button type="button" className={`srow2 sub acx-sub${sect === cle ? " on" : ""}`}
+      onClick={() => setSect(cle)}>
+      <span className="sic2"><svg viewBox="0 0 24 24">{icon}</svg></span>
+      {label}
+      <span className="right">
+        {mention}
+        {plus && (
+          <span className="acx-plus" role="button" tabIndex={0}
+            title={`Ajouter : ${label.toLowerCase()}`}
+            onClick={(e) => { e.stopPropagation(); plus(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); plus(); } }}>+</span>
+        )}
+        {n !== null && <span className="ncount">{n}</span>}
+      </span>
+    </button>
+  );
 
   return (
     <>
-      <SectTitle icon={I.users} title="Acheteurs" chips={<><span className="fchip">{b.propositions.total} propositions</span><span className="fchip">{b.visites.length} visites</span><span className="fchip">{b.offres.length} offres</span></>} />
+      {ligne("acheteurs", "Acheteurs", I.users, null, undefined, b.propositions.total)}
+      {/* Les campagnes vivent dans le vivier acquéreurs, chargé à la demande :
+         le rail ne peut pas les compter sans le charger pour chaque fiche. On
+         n'affiche donc pas de compteur ici plutôt qu'un zéro qui mentirait. */}
+      {ligne("commercialisations", "Commercialisations", I.antenne, null, undefined, null)}
+      {ligne("propositions", "Propositions", I.avion, null,
+        () => setAjout("proposition"), b.propositions.total)}
+      {ligne("visites", "Visites", I.voiture,
+        confirmees > 0 ? <span className="acx-mention">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : null,
+        () => setAjout("visite"), b.visites.length)}
+      {ligne("offres", "Offres", I.marteau,
+        aTraiter > 0 ? <span className="acx-mention rouge">{aTraiter} à traiter</span> : null,
+        () => setAjout("offre"), b.offres.length)}
 
-      <div className="fsub-nav">
-        <button type="button" className={onglet === "acquereurs" ? "on" : ""}
-          onClick={() => { setOnglet("acquereurs"); charger(); }}>Matching et commercialisation</button>
-        <button type="button" className={onglet === "pipeline" ? "on" : ""} onClick={() => setOnglet("pipeline")}>
-          Propositions, visites et offres
-        </button>
-      </div>
+      {ajout === "proposition" && <ModaleProposition bien={bien} onFermer={() => setAjout(null)} />}
+      {ajout === "visite" && <ModaleVisite bien={bien} onFermer={() => setAjout(null)} />}
+      {ajout === "offre" && <ModaleOffre bien={bien} onFermer={() => setAjout(null)} />}
+    </>
+  );
+}
 
-      {onglet === "acquereurs" && (
-        <>
-          {!ach && !chargement && (
-            <div className="fempty">
-              <button className="fadd" type="button" onClick={charger}>Charger le vivier acquéreurs</button>
+/**
+ * Le vivier acquéreurs, chargé à l'ouverture de l'écran.
+ *
+ * 1 900 recherches et leurs contacts : hors de question de les charger avec
+ * chaque fiche. Deux des cinq écrans en ont besoin, ils partagent donc ce
+ * crochet — et l'état ne se pose que dans les rappels de la promesse, jamais
+ * pendant l'effet lui-même.
+ */
+function useVivier(immeubleId: string) {
+  const [ach, setAch] = useState<AcheteursData | null>(null);
+  const [erreur, setErreur] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    chargerAcheteurs(immeubleId)
+      .then((d) => { if (vivant) setAch(d); })
+      .catch(() => { if (vivant) setErreur(true); });
+    return () => { vivant = false; };
+  }, [immeubleId]);
+  return { ach, erreur, chargement: !ach && !erreur };
+}
+
+/** Écran 1 — le matching et son historique. */
+function AcheteursSection({ b }: { b: BienData }) {
+  const { ach, erreur, chargement } = useVivier(String(b.im._id));
+  return (
+    <>
+      <TitreAcheteurs cle="acheteurs" />
+      {chargement && <div className="fempty">Chargement du vivier acquéreurs…</div>}
+      {erreur && <div className="fempty">Le vivier acquéreurs n&apos;a pas pu être chargé.</div>}
+      {ach && <Acheteurs b={b} d={ach} />}
+    </>
+  );
+}
+
+/** Écran 2 — les campagnes déjà lancées. */
+function EcranCommercialisations({ b, onCommercialiser }: {
+  b: BienData;
+  onCommercialiser: () => void;
+}) {
+  const { ach, erreur, chargement } = useVivier(String(b.im._id));
+  const rows = ach?.commercialisations ?? [];
+  return (
+    <>
+      <TitreAcheteurs cle="commercialisations" />
+      {/* Une commercialisation part d'un matching : c'est lui qui désigne à qui
+          on écrit. Le bouton renvoie donc là où le geste commence, plutôt que
+          d'ouvrir un formulaire qui redemanderait tout. */}
+      <button className="acx-add" type="button" onClick={onCommercialiser}>
+        + Commercialiser
+      </button>
+      {chargement && <div className="fempty">Chargement des commercialisations…</div>}
+      {erreur && <div className="fempty">Les commercialisations n&apos;ont pas pu être chargées.</div>}
+      {ach && rows.length === 0 && <div className="fempty">Aucune commercialisation lancée sur cet immeuble.</div>}
+      {rows.map((c) => {
+        const props = Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0;
+        return (
+          <div key={String(c._id)} className="acx-comm">
+            <span className="acx-comm-pic"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
+            <div className="acx-comm-c">
+              <div className="acx-comm-t">Commercialisation du {dmy(c["Created Date"])}</div>
+              <div className="acx-comm-p">
+                {typeof c.DOSSIER === "string" && c.DOSSIER && <span className="fchip">Dossier</span>}
+                {typeof c.MANDAT === "string" && c.MANDAT && <span className="fchip">Mandat</span>}
+                {typeof c.wetransfer_link === "string" && c.wetransfer_link && (
+                  <a className="fchip" href={c.wetransfer_link as string} target="_blank" rel="noreferrer">Lien du dossier</a>
+                )}
+              </div>
             </div>
-          )}
-          {chargement && <div className="fempty">Chargement du vivier acquéreurs…</div>}
-          {ach && <Acheteurs b={b} d={ach} />}
-        </>
-      )}
+            <div className="acx-comm-r">
+              <div>{props} proposition{props > 1 ? "s" : ""}</div>
+              <div className={c.prop_sent === true ? "vert" : "orange"}>
+                {c.prop_sent === true ? "E-mails envoyés" : "E-mails à envoyer"}
+              </div>
+              <div className={c.prop_sms_sent === true ? "vert" : "orange"}>
+                {c.prop_sms_sent === true ? "SMS envoyés" : "SMS à envoyer"}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
-      {onglet === "pipeline" && <Pipeline b={b} />}
+/** Écran 3 — les propositions du bien. */
+function EcranPropositions({ b }: { b: BienData }) {
+  const [ajout, setAjout] = useState(false);
+  const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
+  const ouvertes = b.propositions.rows.filter((p) => !String(p.Statut ?? "").startsWith("Refus")).length;
+  const traitees = b.propositions.rows.length - ouvertes;
+  return (
+    <>
+      <TitreAcheteurs cle="propositions" badges={
+        <>
+          <span className="acx-b rouge">{ouvertes} à traiter</span>
+          <span className="acx-b vert">{traitees} traitées</span>
+        </>
+      } />
+      <button className="acx-add" type="button" onClick={() => setAjout(true)}>
+        + Créer une nouvelle proposition
+      </button>
+      {b.propositions.rows.map((p) => (
+        <Row key={p._id as string}>
+          <div className="grow">
+            <div className="t">Proposition du {dmy(p.date_envoi ?? p["Created Date"])}</div>
+            <div className="s">
+              {String(p.mail_adresse ?? "—")} · {String(p.Source_proposition ?? "")}
+              {p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}
+            </div>
+          </div>
+          <PropositionActions b={b} p={p} />
+          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
+      {ajout && <ModaleProposition bien={bien} onFermer={() => setAjout(false)} />}
+    </>
+  );
+}
+
+/** Écran 4 — les visites. */
+function EcranVisites({ b }: { b: BienData }) {
+  const confirmees = b.visites.filter((v) => String(v.Statut ?? "") === "Confirmée").length;
+  return (
+    <>
+      <TitreAcheteurs cle="visites" badges={
+        confirmees > 0 ? <span className="acx-b vert">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : undefined
+      } />
+      <div className="acx-add-zone"><AddVisiteButton b={b} /></div>
+      {b.visites.map((v) => (
+        <Row key={v._id as string}>
+          <div className="grow">
+            <div className="t">Visite du {dmy(v.date)}{v.visiteur_nom ? ` — ${String(v.visiteur_nom)}` : ""}</div>
+            <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
+          </div>
+          <VisiteActions b={b} v={v} />
+          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
+    </>
+  );
+}
+
+/** Écran 5 — les offres. */
+function EcranOffres({ b }: { b: BienData }) {
+  const aTraiter = b.offres.filter((o) => ["En cours", "Contre offre"].includes(String(o.Statut ?? ""))).length;
+  return (
+    <>
+      <TitreAcheteurs cle="offres" badges={
+        aTraiter > 0 ? <span className="acx-b rouge">{aTraiter} à traiter</span> : undefined
+      } />
+      <div className="acx-add-zone"><AddOffreButton b={b} /></div>
+      {b.offres.map((o) => (
+        <Row key={o._id as string}>
+          <div className="grow">
+            <div className="t">Offre du {dmy(o.date)}{o.acheteur_nom ? ` — ${String(o.acheteur_nom)}` : ""}</div>
+            <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
+          </div>
+          <OffreActions b={b} o={o} />
+          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}
     </>
   );
 }

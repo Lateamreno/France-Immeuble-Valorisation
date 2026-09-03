@@ -4959,6 +4959,61 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .apr-motifs b { font-size: 12.5px; color: var(--slate); }
 .apr-fait { font-size: 12px; color: var(--green); font-weight: 600; }
 
+/* ====== Menu Acheteurs et ses cinq écrans, repris du BO (retour #327) ======
+   Un titre encadré au centre, ses compteurs dessous, le bouton d'action, puis
+   les cartes. C'est la même charpente sur les cinq écrans : on sait où on est
+   sans lire. */
+.acx-titre {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  margin: 4px auto 14px; padding: 13px 34px; width: max-content;
+  border: 1px solid var(--or, #c9a227); border-radius: 6px; background: #fff;
+}
+.acx-titre-h {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--font-title); font-size: 19px; font-weight: 600; color: #8a6d1f;
+}
+.acx-titre-h svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.acx-titre-b { display: inline-flex; gap: 7px; }
+.acx-b { padding: 2px 9px; border-radius: 3px; font-size: 11.5px; font-weight: 600; border: 1px solid; }
+.acx-b.rouge { color: #b3261e; border-color: #e6b3b3; background: #fdf5f5; }
+.acx-b.vert { color: #1f6b33; border-color: #bfe0c8; background: #f3fbf5; }
+
+.acx-add, .acx-add-zone {
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px; width: max-content;
+}
+.acx-add {
+  gap: 6px; padding: 8px 16px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--border); background: #fbfcfd; color: var(--slate);
+  font-size: 13px; font-weight: 600;
+}
+.acx-add:hover { border-color: var(--green); color: var(--green); }
+
+/* Les cinq lignes du rail : mention, « + » et compteur alignés à droite. */
+.acx-sub .right { display: inline-flex; align-items: center; gap: 6px; }
+.acx-mention { font-size: 11px; color: #8a6d1f; white-space: nowrap; }
+.acx-mention.rouge { color: #b3261e; }
+.acx-plus {
+  display: inline-grid; place-items: center; width: 17px; height: 17px;
+  border-radius: 3px; background: var(--or, #e8b923); color: #3c3517;
+  font-size: 13px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.acx-plus:hover { filter: brightness(1.08); }
+
+/* Cartes de commercialisation. */
+.acx-comm {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+  padding: 10px 13px; border: 1px solid var(--border); border-radius: 5px; background: #fff;
+}
+.acx-comm-pic { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 4px; background: var(--slate-2, #eef1f4); }
+.acx-comm-pic svg { width: 18px; height: 18px; fill: none; stroke: var(--slate); stroke-width: 1.6; }
+.acx-comm-c { flex: 1; min-width: 0; }
+.acx-comm-t { font-size: 13px; font-weight: 600; color: #8a6d1f; }
+.acx-comm-p { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.acx-comm-r { flex: none; text-align: right; font-size: 11.5px; color: var(--gray-lt); line-height: 1.7; }
+.acx-comm-r .vert { color: var(--green); font-weight: 600; }
+.acx-comm-r .orange { color: #8a5300; font-weight: 600; }
+
 /* ---- Modales de la barre d'actions rapides (retours #333 à #336) ---- */
 .arp-biens { display: flex; flex-direction: column; gap: 5px; max-height: 38vh; overflow-y: auto; margin-top: 8px; }
 .arp-bien {
