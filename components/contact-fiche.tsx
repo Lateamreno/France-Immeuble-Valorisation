@@ -23,6 +23,13 @@ import {
 } from "@/lib/referentiels";
 
 import type { CompteVu } from "@/lib/bo/comptes-bo";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
+
+/* Les onglets que l'adresse a le droit de rouvrir — dans l'ordre de la barre. */
+const ONGLETS: readonly string[] = [
+  "infos", "immeubles", "recherches", "mandats", "propositions",
+  "questions", "visites", "offres", "suivis", "echanges",
+];
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
@@ -173,7 +180,11 @@ export function ContactFiche({ d, echanges = [], compte }: {
 }) {
   const c = d.c;
   const id = String(c._id);
-  const [tab, setTab] = useState("infos");
+  /* L'onglet ouvert vit dans l'adresse : c'est ce qui fait qu'on revient sur
+     « Propositions » et pas sur « Informations » (voir lib/etat-url.ts). */
+  const departTab = useDepartUrl("onglet", "infos", ONGLETS);
+  const [tab, setTab] = useState(departTab);
+  useMemoireUrl("onglet", tab, "infos");
   const [pending, start] = useTransition();
   const [detail, setDetail] = useState<RechercheCard | null>(null);
   const [suppression, setSuppression] = useState(false);

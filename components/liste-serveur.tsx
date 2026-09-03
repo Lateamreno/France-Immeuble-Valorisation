@@ -40,7 +40,12 @@ export function ListeServeur({
       if (v === "" || v === undefined) p.delete(k);
       else p.set(k, String(v));
     }
-    start(() => router.push(`${pathname}?${p}`));
+    /* `replace` et non `push` : paginer ou affiner une recherche n'est pas
+       changer de page. Avec `push`, « Précédent » remontait la liste écran par
+       écran — cinq clics pour ressortir des contacts — au lieu de ramener là
+       d'où l'on venait. L'adresse garde la position, l'historique garde les
+       pages : c'est la même règle que dans les listes chargées en mémoire. */
+    start(() => router.replace(`${pathname}?${p}`));
   };
 
   // Recherche différée : on ne relance pas une requête à chaque frappe.

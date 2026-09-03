@@ -38,6 +38,7 @@ import { PrixEcran } from "@/components/prix";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
 import type { OperationDecoupe } from "@/lib/bubble/server";
 import { PHASES, phase as phaseDe } from "@/lib/decoupe";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 
 
 
@@ -49,6 +50,14 @@ type SectionKey =
      pendant qu'on visite les autres sections, pour ne rien perdre de la
      saisie (#96, #125). */
   | "encours";
+
+/* Les rubriques que l'adresse a le droit de rouvrir. Un `?ecran=` bricolé à
+   la main ne doit pas pouvoir afficher une section qui n'existe pas. */
+const SECTIONS: readonly SectionKey[] = [
+  "suivi", "proprietaire", "emplacement", "locatif", "technique", "prix",
+  "photos", "estimations", "mandats", "dossiers", "tous-docs", "diffusion",
+  "acheteurs", "notes", "decoupe", "encours",
+];
 
 /**
  * L'estimation ouverte dans la fiche (retour #125).
@@ -108,6 +117,14 @@ const SOUS_ONGLETS: Partial<Record<SectionKey, readonly { key: string; label: st
   locatif: ONGLETS_LOCATIF,
   technique: ONGLETS_TECHNIQUE,
 };
+
+/* Tous les sous-onglets confondus : de quoi vérifier qu'un `?sous=` venu de
+   l'adresse désigne bien quelque chose. La chaîne vide est la valeur de
+   repli — « aucun sous-onglet demandé ». */
+const SOUS_TOUS: readonly string[] = [
+  "",
+  ...Object.values(SOUS_ONGLETS).flatMap((os) => os.map((o) => o.key)),
+];
 
 /** Valeur copiable en un clic (retour MAV #11 : tel et e-mail séparés). */
 function Copiable({ valeur, type }: { valeur: string; type: "tel" | "mail" }) {
@@ -170,7 +187,15 @@ export function BienFiche({
   const [est, setEst] = useState<EcranEstimation | null>(ouvrir ?? null);
   const [chargement, setChargement] = useState<string | null>(null);
   const [erreurEst, setErreurEst] = useState<string | null>(null);
-  const [sect, setSect] = useState<SectionKey>(contenu || ouvrir ? "encours" : "suivi");
+  /* La rubrique ouverte est mémorisée dans l'adresse : c'est elle qu'on
+     retrouve en cliquant sur « Précédent ». Par défaut on ouvre l'écran
+     greffé (mandat, estimation demandée par l'URL) quand il y en a un, sinon
+     le suivi — mais l'adresse a le dernier mot, sans quoi revenir sur un bien
+     dont le mandat est ouvert nous ramènerait toujours au mandat. */
+  const defautSect: SectionKey = contenu || ouvrir ? "encours" : "suivi";
+  const departSect = useDepartUrl<SectionKey>("ecran", defautSect, SECTIONS);
+  const [sect, setSect] = useState<SectionKey>(departSect);
+  useMemoireUrl("ecran", sect, defautSect);
 
   /* Nouvelle demande d'ouverture : on montre l'écran demandé. Ajuster l'état
      pendant le rendu est la façon prévue de réagir à un changement de props ;
@@ -207,7 +232,15 @@ export function BienFiche({
       .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
       .finally(() => setChargement(null));
   };
-  const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>({});
+  /* Le sous-onglet aussi : revenir sur « État locatif » sans revenir sur
+     « Baux », c'est encore avoir perdu sa place. Seul celui de la rubrique
+     ouverte est écrit — l'adresse dit où l'on est, pas tout ce qu'on a
+     visité. */
+  const departSous = useDepartUrl("sous", "", SOUS_TOUS);
+  const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>(
+    () => (departSous ? { [departSect]: departSous } : {}),
+  );
+  useMemoireUrl("sous", sous[sect], SOUS_ONGLETS[sect]?.[0]?.key);
   /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
   const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
   const basculer = (k: SectionKey) => {

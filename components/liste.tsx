@@ -7,8 +7,39 @@ import Link from "next/link";
 import type { ListCard } from "@/lib/bubble/server";
 import { appliquerFiltres, FILTRES_VIDES, PanneauFiltres, type Filtres } from "@/components/filtres-liste";
 import { Facade } from "@/components/facade";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 
 const TAILLES = [10, 25, 50, 100];
+
+/* Les filtres tiennent dans un seul paramètre, sous la forme `cle:valeur`
+   séparées par des barres verticales. Une clé par filtre aurait couvert
+   l'adresse d'une douzaine de paramètres pour un écran qui n'en a qu'un à
+   retenir : sa position. Seul ce qui diffère du filtre vide est écrit. */
+const ecrireFiltres = (f: Filtres): string => {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(f) as [keyof Filtres, string | string[]][]) {
+    const vide = FILTRES_VIDES[k];
+    const txt = Array.isArray(v) ? v.join("~") : v;
+    const refTxt = Array.isArray(vide) ? vide.join("~") : vide;
+    if (txt && txt !== refTxt) parts.push(`${k}:${encodeURIComponent(txt)}`);
+  }
+  return parts.join("|");
+};
+
+const lireFiltres = (s: string): Filtres => {
+  const f: Filtres = { ...FILTRES_VIDES, lieux: [] };
+  if (!s) return f;
+  for (const part of s.split("|")) {
+    const i = part.indexOf(":");
+    if (i < 1) continue;
+    const k = part.slice(0, i) as keyof Filtres;
+    if (!(k in FILTRES_VIDES)) continue;
+    const v = decodeURIComponent(part.slice(i + 1));
+    if (Array.isArray(FILTRES_VIDES[k])) (f[k] as string[]) = v.split("~").filter(Boolean);
+    else (f[k] as string) = v;
+  }
+  return f;
+};
 
 export function ListeShell({
   rows,
@@ -31,11 +62,29 @@ export function ListeShell({
   /** Action propre à l'écran, posée à droite de la barre du haut. */
   actions?: React.ReactNode;
 }) {
-  const [tab, setTab] = useState(tabs[0]?.key ?? "");
-  const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const [taille, setTaille] = useState(10);
-  const [f, setF] = useState<Filtres>(FILTRES_VIDES);
+  /* Où l'on en est dans la liste — onglet, recherche, page, taille, filtres —
+     vit dans l'adresse. Sans ça, revenir d'une fiche par « Précédent »
+     ramenait la liste au premier onglet, page 1, recherche effacée : la bonne
+     page, mais pas l'endroit qu'on venait de quitter. Voir lib/etat-url.ts. */
+  const defTab = tabs[0]?.key ?? "";
+  const departTab = useDepartUrl("vue", defTab, tabs.map((t) => t.key));
+  const departQ = useDepartUrl<string>("q", "");
+  const departPage = useDepartUrl<string>("p", "1");
+  const departTaille = useDepartUrl<string>("par", "10");
+  const departF = useDepartUrl<string>("f", "");
+
+  const [tab, setTab] = useState(departTab);
+  const [q, setQ] = useState(departQ);
+  const [page, setPage] = useState(() => Number(departPage) || 1);
+  const [taille, setTaille] = useState(() => Number(departTaille) || 10);
+  const [f, setF] = useState<Filtres>(() => lireFiltres(departF));
+
+  const filtresEcrits = useMemo(() => ecrireFiltres(f), [f]);
+  useMemoireUrl("vue", tab, defTab);
+  useMemoireUrl("q", q, "");
+  useMemoireUrl("p", String(page), "1");
+  useMemoireUrl("par", String(taille), "10");
+  useMemoireUrl("f", filtresEcrits, "");
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
