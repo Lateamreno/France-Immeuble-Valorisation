@@ -23,6 +23,10 @@ import { ouvrirEspace } from "@/lib/bo/espace-actions";
 import { MOYENS } from "@/lib/bo/itineraire";
 import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 import { analyseAuto } from "@/lib/bo/analyse";
+import {
+  DEST_PREFIX, aggLocatif, ecartRef, loyerM2Actuel, loyerM2Potentiel, pistesPrix,
+} from "@/lib/bo/marche";
+import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -48,10 +52,6 @@ const IC_DEST: Record<string, React.ReactNode> = {
   Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
 };
 
-/* Préfixe des colonnes de prix_secteur, identique à l'onglet Emplacement. */
-const DEST_PREFIX: Record<string, string> = {
-  Logement: "hab", Commerce: "com", Bureau: "bur", Parking: "parking", Cave: "cave",
-};
 
 /* Fondamentaux : la note se choisit en étoiles, le libellé suit (comme le BO). */
 const FONDAMENTAUX = [
@@ -351,35 +351,28 @@ export function EstimationWizard({
   const [tvxLots, setTvxLots] = useMemServi("tvxLots", tvxLots0 ? String(tvxLots0) : "");
 
   /* --- Agrégats lots, par destination comme le BO --- */
+  /* L'agrégat locatif vient de lib/bo/marche.ts depuis les retours #324/#326 :
+     la recherche d'acquéreurs s'en sert aussi. L'écran y ajoute ce que lui
+     seul affiche — le décompte par grande destination. */
   const agg = useMemo(() => {
-    const lots = b.lots;
-    const by = (d: string) => lots.filter((l) => String(l.Destination ?? "") === d);
-    const dests = [...new Set(lots.map((l) => String(l.Destination ?? "")).filter(Boolean))];
-    const carrez = lots.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
-    const occ = lots.filter((l) => (num(l.loyer) ?? 0) > 0);
+    const base = aggLocatif(b.lots);
+    const by = (d: string) => b.lots.filter((l) => String(l.Destination ?? "") === d).length;
     return {
-      dests,
-      parDest: dests.map((d) => {
-        const ls = by(d);
-        return {
-          dest: d,
-          lots: ls.length,
-          occ: ls.filter((l) => (num(l.loyer) ?? 0) > 0).length,
-          surface: ls.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
-          // Surface effectivement louée : la colonne « Dont louée » du dossier.
-          surfaceOcc: ls.filter((l) => (num(l.loyer) ?? 0) > 0)
-            .reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
-          loyer: ls.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12,
-          max: ls.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12,
-        };
-      }),
-      tot: lots.length, hab: by("Logement").length, com: by("Commerce").length, bur: by("Bureau").length,
-      carrez,
-      carrezOcc: occ.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
-      loyersAn: lots.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12,
-      loyersMaxAn: lots.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12,
-      occupation: lots.length ? Math.round((occ.length / lots.length) * 100) : 0,
-      destinations: dests,
+      lots: base.lots,
+      carrez: base.carrez,
+      carrezOcc: base.carrezOcc,
+      loyersAn: base.loyersAn,
+      loyersMaxAn: base.loyersMaxAn,
+      occupation: base.occupation,
+      destinations: base.destinations,
+      dests: base.destinations,
+      tot: base.lots,
+      hab: by("Logement"), com: by("Commerce"), bur: by("Bureau"),
+      parDest: base.parDest.map((d) => ({
+        dest: d.dest, lots: d.lots, surface: d.surface, surfaceOcc: d.surfaceOcc,
+        loyer: d.loyer, max: d.max,
+        occ: b.lots.filter((l) => String(l.Destination ?? "") === d.dest && (num(l.loyer) ?? 0) > 0).length,
+      })),
     };
   }, [b.lots]);
 
@@ -443,14 +436,11 @@ export function EstimationWizard({
   const rRenta = glob.renta;
   const rPrix = glob.prix;
   const rLoyer = glob.loyer;
-  const pRendement = rRenta > 0 ? agg.loyersAn / (rRenta / 100) : 0;
-  const pRendementMax = rRenta > 0 ? agg.loyersMaxAn / (rRenta / 100) : 0;
-  const pM2 = agg.carrez * rPrix;
-  const pM2Max = agg.carrez * rPrix + travauxTot;
-  const candidates = [pRendement, pRendementMax, pM2, pM2Max].filter((x) => x > 0);
-  const pAuto = candidates.length
-    ? Math.round(candidates.reduce((s, x) => s + x, 0) / candidates.length / 1000) * 1000
-    : 0;
+  /* Les quatre méthodes, leur moyenne et les bornes du curseur : voir
+     lib/bo/marche.ts (retours #324/#326). */
+  const {
+    nbCandidates, mini, maxi, bornes, pRendement, pRendementMax, pM2, pM2Max, auto: pAuto,
+  } = pistesPrix(agg, { loyer: rLoyer, prix: rPrix, renta: rRenta }, travauxTot);
 
   const [haiStr, setHaiStr] = useMem("haiStr", "");
   const hai = parse(haiStr) ?? pAuto;
@@ -460,18 +450,9 @@ export function EstimationWizard({
   const honos = hai - nv;
   const haiTravaux = hai + travauxTot;
 
-  /* Bornes du curseur : l'éventail des méthodes, élargi pour l'arbitrage. */
-  const bornes = useMemo(() => {
-    if (candidates.length === 0) return null;
-    const min = Math.floor((Math.min(...candidates) * 0.9) / 5000) * 5000;
-    const max = Math.ceil((Math.max(...candidates) * 1.1) / 5000) * 5000;
-    return { min, max: Math.max(max, min + 5000) };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pRendement, pRendementMax, pM2, pM2Max]);
-
-  const ecart = (v: number, ref: number) => (ref > 0 ? Math.round(((v - ref) / ref) * 100) : 0);
-  const lm2Act = agg.carrezOcc > 0 ? agg.loyersAn / 12 / agg.carrezOcc : 0;
-  const lm2Max = agg.carrez > 0 ? agg.loyersMaxAn / 12 / agg.carrez : 0;
+  const ecart = ecartRef;
+  const lm2Act = loyerM2Actuel(agg);
+  const lm2Max = loyerM2Potentiel(agg);
 
   /* --- Analyse --- */
   /* Retour #273 : « pour les fondamentaux, si j'ai rien indiqué tu laisses
@@ -491,6 +472,7 @@ export function EstimationWizard({
    * doit le refaire, pas le laisser périmé. Dès qu'on écrit dedans, la
    * mémoire garde la version de l'agent (voir `useMemoireServie`).
    */
+  const { carrez, loyersMaxAn } = agg;
   const analyseServie = useMemo(
     () => analyseAuto({
       phraseEmplacement: scores.emp > 0 ? FONDAMENTAUX[1].libelles[scores.emp - 1] : undefined,
@@ -504,11 +486,11 @@ export function EstimationWizard({
         || b.travaux.length > 0,
       hai,
       netVendeur: nv,
-      rendementPotentiel: haiTravaux > 0 ? (agg.loyersMaxAn / haiTravaux) * 100 : 0,
-      m2ApresTravaux: agg.carrez > 0 ? haiTravaux / agg.carrez : 0,
+      rendementPotentiel: haiTravaux > 0 ? (loyersMaxAn / haiTravaux) * 100 : 0,
+      m2ApresTravaux: carrez > 0 ? haiTravaux / carrez : 0,
       m2Decoupe: rPrix,
     }),
-    [scores, lm2Act, rLoyer, rPrix, b.lots, b.travaux, travauxTot, hai, nv, haiTravaux, agg.carrez, agg.loyersMaxAn],
+    [scores, lm2Act, rLoyer, rPrix, b.lots, b.travaux, travauxTot, hai, nv, haiTravaux, carrez, loyersMaxAn],
   );
   const [analyse, setAnalyse] = useMemServi("analyse", analyseServie);
   /**
@@ -1053,15 +1035,15 @@ export function EstimationWizard({
                 ["Prix au m² max", rPrix ? `${group(rPrix)} €/m²` : "—", pM2Max],
                 ["Prix au m²", rPrix ? `${group(rPrix)} €/m²` : "—", pM2],
               ] as const).map(([label, src, val]) => {
-                const mini = candidates.length > 0 && val === Math.min(...candidates);
-                const maxi = candidates.length > 0 && val === Math.max(...candidates);
+                const estMini = nbCandidates > 0 && val === mini;
+                const estMaxi = nbCandidates > 0 && val === maxi;
                 return (
                   <button key={label} type="button" className="est-meth"
                     title={`Caler le prix sur ${label}`}
                     onClick={() => val > 0 && setHaiStr(String(Math.round(val / 1000) * 1000))}>
                     <span className="t">{label}</span>
                     <span className="s">{src}</span>
-                    <span className={`v${mini ? " bas" : maxi ? " haut" : ""}`}>{euros(val) ?? "—"}</span>
+                    <span className={`v${estMini ? " bas" : estMaxi ? " haut" : ""}`}>{euros(val) ?? "—"}</span>
                   </button>
                 );
               })}
@@ -1099,80 +1081,15 @@ export function EstimationWizard({
               </label>
             </div>
 
-            {bornes && (
-              <div className="pxbar">
-                <input type="range" min={bornes.min} max={bornes.max} step={1000} value={hai}
-                  onChange={(e) => setHaiStr(e.target.value)}
-                  style={{ ["--p" as string]: `${((hai - bornes.min) / (bornes.max - bornes.min)) * 100}%` }} />
-                <div className="pxbar-reps">
-                  {/* #162 — quatre repères sur la règle, c'était trois de
-                      trop : les « max » disent la même chose décalée, et on
-                      ne savait plus lequel viser. Restent les deux que MAV
-                      regarde vraiment. */}
-                  {/* Retour #275 : « sur la barrette, pour le rendement du
-                      secteur, il faut que ce soit le potentiel, pas l'actuel ».
-                      Un acquéreur capitalise ce que l'immeuble rapportera une
-                      fois reloué, pas ce qu'il rapporte aujourd'hui à moitié
-                      vide — c'est le prix qu'il propose. */}
-                  {([["Rendement secteur", pRendementMax], ["Prix m² secteur", pM2]] as const)
-                    .filter(([, v]) => v > 0)
-                    .map(([l, v], i) => (
-                      <button key={l} type="button" className={`rep${i % 2 ? " bas" : ""}`}
-                        title={`Caler sur ${l} — ${euros(v)}`}
-                        style={{ left: `${((v - bornes.min) / (bornes.max - bornes.min)) * 100}%` }}
-                        onClick={() => setHaiStr(String(Math.round(v / 1000) * 1000))}>
-                        <i /><span>{l}</span>
-                      </button>
-                    ))}
-                </div>
-                {/* Retour #284 — « mets le prix qu'on sélectionne aussi en
-                    dessous de la barre de sélection, en gros, pour bien voir
-                    ce qu'on fait en termes de prix ». On tire le curseur en
-                    regardant le curseur ; le montant, lui, était trois lignes
-                    plus haut dans une case de formulaire. Le voici sous la
-                    main, avec sa décomposition en petit — c'est le net vendeur
-                    que le propriétaire retient, et les honoraires expliquent
-                    l'écart. */}
-                <div className="pxbar-val">
-                  <b>{euros(hai) ?? "—"}</b>
-                  <span>HAI</span>
-                  <em>{group(nv)} € net vendeur · {group(honos)} € d&apos;honoraires ({honosPct} %)</em>
-                </div>
-              </div>
-            )}
+            {/* Le curseur et le tableau vivent dans components/prix-marche.tsx
+                depuis les retours #324/#326 : la recherche d'acquéreurs les
+                affiche aussi, et deux copies auraient fini par annoncer deux
+                rendements différents pour le même immeuble. */}
+            <CurseurPrix bornes={bornes} pRendementMax={pRendementMax} pM2={pM2}
+              hai={hai} honosPct={pct} onHai={(v) => setHaiStr(String(v))} />
 
-            <div className="est-cmps">
-              {([
-                ["Actuel", agg.loyersAn, lm2Act, hai],
-                ["Potentiel", agg.loyersMaxAn, lm2Max, haiTravaux],
-              ] as const).map(([titre2, loyerAn, lm2, prix]) => {
-                const eLoyer = ecart(lm2, rLoyer);
-                const pm2 = agg.carrez > 0 ? prix / agg.carrez : 0;
-                const ePrix = ecart(pm2, rPrix);
-                const brut = prix > 0 ? (loyerAn / prix) * 100 : 0;
-                const eBrut = ecart(brut, rRenta);
-                return (
-                  <div className="est-cmp" key={titre2}>
-                    <div className="est-cmp-h">{titre2}<i title="Comparaison au secteur">ⓘ</i></div>
-                    <div className={`l ${eLoyer >= 0 ? "v" : "r"}`}>
-                      <span>Loyer au m²</span><em>{eLoyer >= 0 ? "+" : ""}{eLoyer} %</em><b>{fr1(lm2)} €/m²/mois</b>
-                    </div>
-                    <div className={`l ${ePrix > 0 ? "r" : "v"}`}>
-                      <span>Prix au m²</span><em>{ePrix >= 0 ? "+" : ""}{ePrix} %</em><b>{group(pm2)} €/m²</b>
-                    </div>
-                    <div className={`l ${eBrut >= 0 ? "v" : "r"}`}>
-                      <span>Brut</span><em>{eBrut >= 0 ? "+" : ""}{eBrut} %</em><b>{fr1(brut)} %</b>
-                    </div>
-                    <div className="l n">
-                      <span>Net</span><b>{prix > 0 ? fr1(((loyerAn - chargesTot) / prix) * 100) : "—"} %</b>
-                    </div>
-                    <div className="l n">
-                      <span>Acte en main</span><b>{prix > 0 ? fr1(((loyerAn - chargesTot) / (prix * 1.075)) * 100) : "—"} %</b>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <TableauActuelPotentiel agg={agg} refs={{ loyer: rLoyer, prix: rPrix, renta: rRenta }}
+              hai={hai} travaux={travauxTot} chargesTot={chargesTot} />
 
             <div className="est-sect">Analyse</div>
             <div className="est-l" style={{ alignItems: "flex-start" }}>
