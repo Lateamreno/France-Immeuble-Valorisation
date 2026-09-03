@@ -338,6 +338,52 @@ Mandats, contrats de mission, protocoles de départ locataire.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.
 - **Extranet vendeur ET extranet locataire** retenus (locataire en dernier, garde-fous §8.3).
 
+## 10 bis. Espace client — décisions actées et reste à faire
+
+> Mis en pause par MAV le 03/09/26, le temps qu'il boucle le parcours client de
+> son côté. À reprendre ici, sans redécider ce qui suit.
+
+**Ce qui est tranché et livré.**
+- **Un compte par PERSONNE**, rattaché à une fiche `bo_contact`, pas un lien par
+  immeuble : « sinon il va pas revenir sur un lien où tout le monde peut aller ».
+  Une seule personne porte les deux casquettes — ce qu'elle vend, ce qu'elle
+  cherche — et les deux vivent sur la même page.
+- **Cloisonnement en base, pas dans le code.** L'espace client porte la clé
+  publique (`anon`), qui ne lit aucune table, et n'appelle que les fonctions
+  `ec_*` (SECURITY DEFINER, `search_path` fixe, EXECUTE accordé au seul `anon`).
+  Chacune exige un jeton de session, le résout elle-même en contact, et ne rend
+  que ses lignes. **Ne jamais rebrancher une page cliente sur la clé de
+  service** : ce serait défaire tout l'édifice. Seule exception tolérée, l'écriture
+  d'un fichier dans le seau (`espace-depot.ts`), autorisée par la base AVANT.
+- Piège à retenir : une fonction SQL `returns <composite>` qui ne trouve rien
+  rend **une ligne toute nulle**, pas « rien » — d'où `returns setof` sur
+  `ec_compte_de_session`. Toute nouvelle garde de session doit passer par elle.
+- Mots de passe en **bcrypt calculé dans la base** : l'empreinte ne sort jamais.
+  12 caractères minimum, aucune règle de composition. Cinq échecs → blocage 15 min.
+- **On ne dit jamais si un compte existe** (connexion comme mot de passe oublié).
+  Le lien de réinitialisation part par e-mail, jamais rendu à l'appelant.
+- **Rien ne s'auto-crée** : MAV ouvre les comptes, depuis le bien (Description et
+  prix) ou depuis la fiche contact. Aucune page d'inscription.
+- Côté acquéreur : il remplit lui-même ses critères, et ne voit que ce qu'on lui
+  a proposé **ou** ce qui est **en ligne sur Plein Bail** (`pb_url` renseignée) —
+  **jamais tous les mandats**.
+- Le lien secret sans mot de passe est conservé, mais il s'échange contre une
+  session ordinaire : un seul mécanisme d'accès dans toute l'application.
+
+**Ce qui reste pour boucler le parcours de bout en bout.**
+1. Variables Vercel : `SITE_URL` (adresse publique du BO, pour le lien « mot de
+   passe oublié ») et, si on veut l'expliciter, `SUPABASE_ANON_KEY`.
+2. Le mail d'estimation joint encore le **lien secret** ; le basculer sur le lien
+   d'**activation de compte**, qui est ce qui fait revenir.
+3. Les réponses d'acquéreurs (« intéressé », « visite ») s'écrivent bien mais ne
+   s'affichent nulle part dans le BO : `reponsesEnAttente()` existe dans
+   `comptes-bo.ts`, il lui manque son écran (fiche bien et/ou Propositions).
+4. « Mot de passe oublié » dépend de `envoiPossible()` : à vérifier une fois la
+   route d'envoi configurée.
+5. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
+   connaît le chemin. L'espace client ne s'en sert pas, mais tant que le BO n'a
+   pas d'authentification, c'est une porte ouverte à refermer.
+
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
 - Société porteuse (Grey Stone Capital ou entité dédiée).
