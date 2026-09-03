@@ -11,6 +11,7 @@ import {
   type Acquereur, type CriteresBien, type FiltresMatch,
 } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier } from "@/lib/format";
+import { oublier, useMemoire } from "@/lib/memoire";
 import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
 import { saveMatch } from "@/lib/bo/actions";
@@ -29,24 +30,39 @@ type Source = "from_est" | "from_imm" | "from_doss";
 type Vue = "matchees" | "ajoutees" | "retirees" | "ciblees";
 type Tri = "oui" | "non" | "tous";
 
+type Resultat = {
+  matchId?: string;
+  criteres: CriteresBien;
+  filtres: FiltresMatch;
+  source: Source;
+  dossierId?: string;
+  estimationId?: string;
+  acquereurs: Acquereur[];
+};
+
 export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
   const [ouvrir, setOuvrir] = useState(false);
-  const [resultat, setResultat] = useState<{
-    matchId?: string;
-    criteres: CriteresBien;
-    filtres: FiltresMatch;
-    source: Source;
-    dossierId?: string;
-    estimationId?: string;
-    acquereurs: Acquereur[];
-  } | null>(null);
+  /* Retour #329 — « j'ai commencé une commercialisation et quand je me suis
+     baladé dans le BO elle avait disparue et je ne peux pas y revenir en
+     cliquant simplement sur le matching. […] même un truc pas enregistré
+     devrait rester en mémoire tant qu'on n'a pas cliqué sur annuler. »
+
+     Le matching lancé vivait dans un `useState` : sortir de la fiche démontait
+     l'écran et effaçait tout — les recherches ciblées, celles qu'on avait
+     retirées à la main, l'assistant à moitié rempli. Il vit maintenant dans la
+     mémoire d'écran (lib/memoire.ts), rangée par immeuble : revenir sur
+     l'onglet Acheteurs le retrouve tel quel. Seul « Abandonner » l'efface. */
+  const memo = `ach:${String(b.im._id)}`;
+  const [resultat, setResultat] = useMemoire<Resultat | null>(`${memo}:resultat`, null);
+
+  const abandonner = () => { oublier(`${memo}:`); setResultat(null); };
 
   if (resultat) {
     return (
       <Resultats
-        b={b} d={d} r={resultat}
-        onRelancer={() => { setResultat(null); setOuvrir(true); }}
-        onFermer={() => setResultat(null)}
+        b={b} d={d} r={resultat} memo={memo}
+        onRelancer={() => { oublier(`${memo}:`); setResultat(null); setOuvrir(true); }}
+        onFermer={abandonner}
       />
     );
   }
@@ -382,28 +398,32 @@ function ModaleMatching({
 /* ---------- Résultats ---------- */
 
 function Resultats({
-  b, d, r, onRelancer, onFermer,
+  b, d, r, memo, onRelancer, onFermer,
 }: {
   b: BienData;
   d: AcheteursData;
-  r: {
-    matchId?: string; criteres: CriteresBien; filtres: FiltresMatch; source: Source;
-    dossierId?: string; estimationId?: string; acquereurs: Acquereur[];
-  };
+  r: Resultat;
+  /** Espace de noms de la mémoire d'écran, propre à cet immeuble (#329). */
+  memo: string;
   onRelancer: () => void;
   onFermer: () => void;
 }) {
   const [vue, setVue] = useState<Vue>("matchees");
-  const [retirees, setRetirees] = useState<Set<string>>(new Set());
-  const [ajoutees, setAjoutees] = useState<Acquereur[]>([]);
+  /* Ce que l'agent a décidé — retirer une recherche, en ajouter une, ouvrir
+     l'assistant — survit à la navigation (#329). Les filtres d'affichage et la
+     recherche plein texte, eux, se refont d'un clic : les mémoriser
+     n'apporterait rien et embrouillerait le retour. Un Set ne se sérialise
+     pas : la mémoire garde un tableau. */
+  const [retireesL, setRetireesL] = useMemoire<string[]>(`${memo}:retirees`, []);
+  const retirees = useMemo(() => new Set(retireesL), [retireesL]);
+  const [ajoutees, setAjoutees] = useMemoire<Acquereur[]>(`${memo}:ajoutees`, []);
   const [avecContact, setAvecContact] = useState<Tri>("tous");
   const [avecTel, setAvecTel] = useState<Tri>("tous");
   const [avecDetails, setAvecDetails] = useState<Tri>("tous");
   const [q, setQ] = useState("");
   const [pending, start] = useTransition();
-  const [matchId, setMatchId] = useState(r.matchId);
-  const [assistant, setAssistant] = useState(false);
-
+  const [matchId, setMatchId] = useMemoire<string | undefined>(`${memo}:matchId`, r.matchId);
+  const [assistant, setAssistant] = useMemoire<boolean>(`${memo}:assistant`, false);
   const ciblees = useMemo(
     () => [...r.acquereurs, ...ajoutees].filter((a) => !retirees.has(a.rechercheId)),
     [r.acquereurs, ajoutees, retirees],
@@ -478,7 +498,11 @@ function Resultats({
   return (
     <>
       <div className="mrow" style={{ marginBottom: 10, alignItems: "center" }}>
-        <button className="fadd" type="button" onClick={onFermer}>← Retour</button>
+        {/* Retour #329 : « ← Retour » effaçait la sélection sans le dire. Comme
+            elle survit maintenant à la navigation, seul un abandon explicite la
+            jette — et le bouton dit ce qu'il fait. */}
+        <button className="fadd" type="button" onClick={onFermer}
+          title="Jeter cette sélection et repartir de zéro">Abandonner</button>
         <button className="fadd" type="button" onClick={onRelancer}>Relancer une recherche</button>
         <span className="sp" style={{ flex: 1 }} />
         <span className="mt-apercu" style={{ margin: 0 }}>
@@ -517,10 +541,8 @@ function Resultats({
           <CarteAcquereur
             key={a.rechercheId} a={a} vue={vue}
             retiree={retirees.has(a.rechercheId)}
-            onRetirer={() => setRetirees(new Set([...retirees, a.rechercheId]))}
-            onRemettre={() => {
-              const n = new Set(retirees); n.delete(a.rechercheId); setRetirees(n);
-            }}
+            onRetirer={() => setRetireesL((l) => [...new Set([...l, a.rechercheId])])}
+            onRemettre={() => setRetireesL((l) => l.filter((x) => x !== a.rechercheId))}
             onAjouter={() => setAjoutees([...ajoutees, { ...a, auto: false }])}
           />
         ))}

@@ -8,6 +8,7 @@ import { useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier } from "@/lib/format";
+import { oublier, useMemoire } from "@/lib/memoire";
 import { createCommercialisation, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -23,25 +24,37 @@ export function AssistantCommercialisation({
   cibles: Acquereur[];
   onFermer: () => void;
 }) {
-  const [etape, setEtape] = useState<Etape>("Dossier");
+  /* Retour #329 — « fais en sorte qu'on ne puisse pas perdre notre progression
+     quand on se balade dans les autres onglets du BO. » Une commercialisation,
+     c'est un e-mail rédigé, un SMS relu, un lien de partage collé : sortir de
+     la fiche pour vérifier un chiffre suffisait à tout perdre. Toute la saisie
+     de l'assistant passe donc par la mémoire d'écran, rangée sous le matching
+     auquel elle appartient — deux commercialisations ne se mélangent pas. */
+  const memo = `com:${matchId}`;
+  const [etape, setEtape] = useMemoire<Etape>(`${memo}:etape`, "Dossier");
   const [pending, start] = useTransition();
-  const [commId, setCommId] = useState<string>();
-  const [creees, setCreees] = useState(0);
-  const [mailsEnvoyes, setMailsEnvoyes] = useState(false);
-  const [smsEnvoyes, setSmsEnvoyes] = useState(false);
+  const [commId, setCommId] = useMemoire<string | undefined>(`${memo}:commId`, undefined);
+  const [creees, setCreees] = useMemoire(`${memo}:creees`, 0);
+  const [mailsEnvoyes, setMailsEnvoyes] = useMemoire(`${memo}:mails`, false);
+  const [smsEnvoyes, setSmsEnvoyes] = useMemoire(`${memo}:sms-envoyes`, false);
 
   const dossiers = b.dossiers;
-  const [dossier, setDossier] = useState(dossierId ?? S(dossiers[0]?._id));
+  const [dossier, setDossier] = useMemoire(`${memo}:dossier`, dossierId ?? S(dossiers[0]?._id));
   const mandats = b.mandats;
-  const [mandat, setMandat] = useState(S(mandats[0]?._id));
-  const [lien, setLien] = useState("");
+  const [mandat, setMandat] = useMemoire(`${memo}:mandat`, S(mandats[0]?._id));
+  const [lien, setLien] = useMemoire(`${memo}:lien`, "");
+
+  /* Sortir de l'assistant — « Fermer » comme « Terminer » — referme le
+     dossier : la mémoire de CETTE commercialisation est jetée, sinon la
+     suivante rouvrirait le message de la précédente. */
+  const fermer = () => { oublier(`${memo}:`); onFermer(); };
 
   const ville = b.ville || "l'immeuble";
   const prixHai = typeof b.im.prix_hai === "number" ? (b.im.prix_hai as number) : undefined;
 
-  const [objet, setObjet] = useState(`Immeuble à vendre à ${ville}`);
-  const [message, setMessage] = useState(messageParDefaut(b, lien));
-  const [sms, setSms] = useState(smsParDefaut(b));
+  const [objet, setObjet] = useMemoire(`${memo}:objet`, `Immeuble à vendre à ${ville}`);
+  const [message, setMessage] = useMemoire(`${memo}:message`, messageParDefaut(b, lien));
+  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b));
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
   const lots = paquets(dest.telephones, 50);
@@ -86,7 +99,7 @@ export function AssistantCommercialisation({
       <div className="asst-h">
         <span className="asst-t">Nouvelle commercialisation</span>
         <span className="sp" style={{ flex: 1 }} />
-        <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+        <button className="fadd" type="button" onClick={fermer}>Fermer</button>
       </div>
 
       <div className="asst-steps">
@@ -273,7 +286,7 @@ export function AssistantCommercialisation({
                 setSmsEnvoyes(true);
               })}
             >{smsEnvoyes ? "SMS marqués envoyés ✓" : "Marquer les SMS comme envoyés"}</button>
-            <button className="kgo" type="button" onClick={onFermer}><span className="ch">›</span> Terminer</button>
+            <button className="kgo" type="button" onClick={fermer}><span className="ch">›</span> Terminer</button>
           </div>
         </div>
       )}

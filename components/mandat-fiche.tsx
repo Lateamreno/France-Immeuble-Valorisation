@@ -12,6 +12,7 @@
 // CONDITIONS (Conditions) → et enfin ON ENVOIE (Envoi), verrouillé tant que
 // les pièces obligatoires manquent.
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group } from "@/lib/format";
@@ -109,11 +110,26 @@ const dureeExclu = (m: Record<string, unknown>) => {
   return num(m["durée_exclu_jours"]) ?? 90;
 };
 
+/**
+ * L'espace de noms de la mémoire d'écran d'un mandat (retour #329).
+ *
+ * Une clé par mandat : deux mandats ouverts tour à tour ne se marchent pas
+ * dessus. Chaque onglet efface sa branche en enregistrant comme en annulant —
+ * après quoi c'est la base qui refait foi.
+ */
+const MEMO = (mandatId: string) => `mdt:${mandatId}`;
+
 export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
   const { m, im, lots, agent, vignettes } = d;
   const mandatId = String(m._id);
   const immeubleId = im ? String(im._id) : "";
-  const [tab, setTab] = useState<Tab>("Mandants");
+  /* Retour #329 — « tant qu'on n'a pas cliqué sur annuler ça reste là et on
+     peut quand même se balader dans le BO sans perdre les informations. » Le
+     mandat vit sur sa propre route : sortir vers le dashboard le démontait et
+     jetait la saisie non enregistrée. Chaque onglet range désormais la sienne
+     dans la mémoire d'écran, sous la clé du mandat — voir `MEMO` ci-dessous.
+     L'onglet ouvert en fait partie : on revient là où on était. */
+  const [tab, setTab] = useMemoire<Tab>(`${MEMO(mandatId)}:tab`, "Mandants");
   /* Retour #229 : « quand j'enregistre, passe pas direct au menu suivant. »
      L'enchaînement automatique venait du #197 — la chaîne des onglets étant le
      déroulé du dossier, on gagnait un clic. À l'usage il dépossède : on
@@ -341,7 +357,8 @@ function OngletMandants({
      désignent à la main : rien ne dit qui elles sont. */
   const depart = (init.length ? init : [mandantVide(0)]).map((x, i) =>
     i === 0 && !x.contactId && proprietaireId ? { ...x, contactId: proprietaireId } : x);
-  const [rows, setRows] = useState<Mandant[]>(depart);
+  const memo = `${MEMO(mandatId)}:mandants`;
+  const [rows, setRows] = useMemoire<Mandant[]>(memo, depart);
   const [pending, start] = useTransition();
   const { modifie, valider } = useModifie(JSON.stringify(rows));
 
@@ -352,6 +369,7 @@ function OngletMandants({
   const save = () =>
     start(async () => {
       await majMandants(mandatId, immeubleId, rows);
+      oublier(memo);
       valider();
     });
 
@@ -1120,8 +1138,9 @@ function OngletObjet({
   }, [parcelles, im]);
   const terrainVerrouille = surfaceEmplacement !== undefined;
 
-  const [cad, setCad] = useState(refsEmplacement || S(m.ref_cadastre));
-  const [terrain, setTerrain] = useState(S(surfaceEmplacement ?? num(m.surface_terrain)));
+  const memo = `${MEMO(mandatId)}:objet`;
+  const [cad, setCad] = useMemoire(`${memo}:cad`, refsEmplacement || S(m.ref_cadastre));
+  const [terrain, setTerrain] = useMemoire(`${memo}:terrain`, S(surfaceEmplacement ?? num(m.surface_terrain)));
 
   /* Retour #296 — « quand j'ai rentré les parcelles en automatique dans
      Emplacement, ça ne l'a pas rentré quand j'y suis allé depuis la sidebar,
@@ -1147,8 +1166,8 @@ function OngletObjet({
     [im, lots, cad, terrain],
   );
   const dejaEcrit = S(m.description);
-  const [libre, setLibre] = useState(!!dejaEcrit && dejaEcrit !== auto);
-  const [desc, setDesc] = useState(dejaEcrit || auto);
+  const [libre, setLibre] = useMemoire(`${memo}:libre`, !!dejaEcrit && dejaEcrit !== auto);
+  const [desc, setDesc] = useMemoire(`${memo}:desc`, dejaEcrit || auto);
   const texte = libre ? desc : auto;
 
   /* Retour #231 : « dans l'objet il y a une notif disant qu'il manque quelque
@@ -1166,6 +1185,7 @@ function OngletObjet({
   }, [pose, locked, dejaEcrit, auto, im, mandatId, immeubleId, start]);
   const { modifie, valider } = useModifie(JSON.stringify([cad, terrain, libre, desc]));
   const annuler = () => {
+    oublier(`${memo}:`);
     setCad(refsEmplacement || S(m.ref_cadastre));
     setTerrain(S(surfaceEmplacement ?? num(m.surface_terrain)));
     setLibre(!!dejaEcrit && dejaEcrit !== auto);
@@ -1177,6 +1197,7 @@ function OngletObjet({
       /* #175 — la parcelle saisie ici appartient à l'immeuble : on la reporte
          sur sa fiche si elle n'y est pas encore. */
       await reporterCadastre(immeubleId, cad, parse(terrain));
+      oublier(`${memo}:`);
       valider();
       await updateMandat(mandatId, immeubleId, {
         ref_cadastre: cad || undefined,
@@ -1313,16 +1334,18 @@ function OngletPrix({
   bareme?: Tranche[];
 }) {
   const [pending, start] = useTransition();
-  const [p, setP] = useState<Prix>({
+  const memo = `${MEMO(mandatId)}:prix`;
+  const [p, setP] = useMemoire<Prix>(`${memo}:p`, {
     nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc),
   });
   /* Le prix HAI est l'ancre : c'est lui qu'on annonce, il ne bouge pas tout
      seul quand on ajuste les honoraires ou le net vendeur (retour #190). */
   const [pilotes, setPilotes] = useState<ChampPrix[]>(["hai"]);
-  const [charge, setCharge] = useState(S(m.Charge_hono) || "Acheteur");
-  const [mode, setMode] = useState<Mode>(modeVente(m));
+  const [charge, setCharge] = useMemoire(`${memo}:charge`, S(m.Charge_hono) || "Acheteur");
+  const [mode, setMode] = useMemoire<Mode>(`${memo}:mode`, modeVente(m));
   const { modifie, valider } = useModifie(JSON.stringify([p, charge, mode]));
   const annuler = () => {
+    oublier(`${memo}:`);
     setP({ nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc) });
     setCharge(S(m.Charge_hono) || "Acheteur");
     setMode(modeVente(m));
@@ -1345,6 +1368,7 @@ function OngletPrix({
         Charge_hono: regime.charge,
         vente_mode: mode,
       } as MandatPatch);
+      oublier(`${memo}:`);
       valider();
     });
 
@@ -1479,11 +1503,12 @@ function OngletConditions({
   const [pending, start] = useTransition();
   /* Retour #193 : la prise d'effet part de la date du jour, et reste
      modifiable. Un mandat sans date d'effet n'a pas d'échéance. */
-  const [debut, setDebut] = useState(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
-  const [duree, setDuree] = useState(S(num(m["durée_tot_month"]) ?? 12));
-  const [exclu, setExclu] = useState(S(m.Type_exclu) || "Simple");
-  const [dExclu, setDExclu] = useState(S(num(m["durée_exclu_jours"]) ?? 90));
-  const [irrevoc, setIrrevoc] = useState(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
+  const memo = `${MEMO(mandatId)}:durees`;
+  const [debut, setDebut] = useMemoire(`${memo}:debut`, dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
+  const [duree, setDuree] = useMemoire(`${memo}:duree`, S(num(m["durée_tot_month"]) ?? 12));
+  const [exclu, setExclu] = useMemoire(`${memo}:exclu`, S(m.Type_exclu) || "Simple");
+  const [dExclu, setDExclu] = useMemoire(`${memo}:dexclu`, S(num(m["durée_exclu_jours"]) ?? 90));
+  const [irrevoc, setIrrevoc] = useMemoire(`${memo}:irrevoc`, S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
   /* Retour #297 — « L'exclusivité révocable à compter du : mieux vaut écrire
      durée de l'exclusivité, et donner l'option d'écrire un nombre de jours
      (max 90) et un nombre de mois (max 3). »
@@ -1493,13 +1518,14 @@ function OngletConditions({
      désormais depuis la prise d'effet. Au chargement, on refait le chemin
      inverse : des mois pleins s'affichent en mois, le reste en jours. */
   const revoc0 = dureeDepuis(m.date_effet, m.date_revoc_exclu);
-  const [revocN, setRevocN] = useState(revoc0.n);
-  const [revocU, setRevocU] = useState<"jours" | "mois">(revoc0.unite);
-  const [web, setWeb] = useState(publicationWeb(m));
+  const [revocN, setRevocN] = useMemoire(`${memo}:revocN`, revoc0.n);
+  const [revocU, setRevocU] = useMemoire<"jours" | "mois">(`${memo}:revocU`, revoc0.unite);
+  const [web, setWeb] = useMemoire(`${memo}:web`, publicationWeb(m));
   const { modifie, valider } = useModifie(
     JSON.stringify([debut, duree, exclu, dExclu, irrevoc, revocN, revocU, web]),
   );
   const annuler = () => {
+    oublier(`${memo}:`);
     setDebut(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
     setDuree(S(num(m["durée_tot_month"]) ?? 12));
     setExclu(S(m.Type_exclu) || "Simple");
@@ -1543,6 +1569,7 @@ function OngletConditions({
         "durée_irrevoc_days": parse(irrevoc),
         publication_web_yn: web,
       });
+      oublier(`${memo}:`);
       valider();
     });
 
