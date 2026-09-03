@@ -4959,6 +4959,35 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .apr-motifs b { font-size: 12.5px; color: var(--slate); }
 .apr-fait { font-size: 12px; color: var(--green); font-weight: 600; }
 
+/* ---- Modales de la barre d'actions rapides (retours #333 à #336) ---- */
+.arp-biens { display: flex; flex-direction: column; gap: 5px; max-height: 38vh; overflow-y: auto; margin-top: 8px; }
+.arp-bien {
+  display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;
+  padding: 6px 9px; border: 1px solid var(--border); border-radius: 5px; background: #fff;
+}
+.arp-bien:hover { border-color: var(--green); background: #f5fbf7; }
+.arp-bien img, .arp-vide {
+  flex: 0 0 auto; width: 52px; height: 38px; object-fit: cover;
+  border-radius: 3px; background: var(--slate-2, #eef1f4);
+}
+.arp-bien span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.arp-bien b { font-size: 12.5px; color: var(--slate); }
+.arp-bien em { font-style: normal; font-size: 11.5px; color: var(--gray-lt); }
+.arp-x { margin-left: 5px; background: none; border: none; padding: 0; cursor: pointer; color: var(--gray-lt); font-size: 11px; }
+.arp-x:hover { color: var(--red); }
+.arp-case {
+  display: flex; gap: 9px; align-items: flex-start; margin-top: 12px;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 5px; background: #fbfcfd;
+  cursor: pointer;
+}
+.arp-case span { display: flex; flex-direction: column; gap: 2px; }
+.arp-case b { font-size: 12.5px; color: var(--slate); }
+.arp-case em { font-style: normal; font-size: 11.5px; color: var(--gray-lt); line-height: 1.5; }
+
+/* Le « + Ajouter … » de la fiche contact est devenu un bouton (retour #336) :
+   il garde l'allure du lien qu'il remplace. */
+button.cfx-add { border: none; font: inherit; cursor: pointer; }
+
 .rc-ct-zone { position: relative; }
 .rc-ct {
   display: inline-flex; align-items: center; gap: 6px;

@@ -15,6 +15,8 @@ import type { ContactData, FilMail, RechercheCard } from "@/lib/bubble/server";
 import { dmy } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
+import { ModaleRechercheEdition } from "@/components/recherche-modale";
+import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { archiverContact, noterProposition, retirerPieceContact, updateContact } from "@/lib/bo/actions";
 import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
@@ -205,6 +207,9 @@ export function ContactFiche({ d, echanges = [], compte }: {
   useMemoireUrl("onglet", tab, "infos");
   const [pending, start] = useTransition();
   const [detail, setDetail] = useState<RechercheCard | null>(null);
+  /* Retour #336 : les mêmes modales que la barre d'actions rapides, ouvertes
+     ici avec l'acquéreur déjà rempli. */
+  const [ajout, setAjout] = useState<"recherche" | "proposition" | "visite" | "offre" | null>(null);
   const [suppression, setSuppression] = useState(false);
 
   /* --- Champs modifiables --- */
@@ -588,6 +593,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
 
         {tab === "recherches" && (
           <Onglet ajout="+ Ajouter une recherche" href="/recherches" vide={d.recherches.length === 0} quoi="recherche"
+            onAjouter={() => setAjout("recherche")}
             cartes={d.recherches.map((r) => (
               <CarteRecherche key={r.id} r={r} onDetail={setDetail} sansContact
                 mention={d.mandatRechercheActif ? "Mandat de recherche actif" : undefined} />
@@ -630,6 +636,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
 
         {tab === "propositions" && (
           <Onglet ajout="+ Ajouter une proposition" href="/propositions" vide={d.propositions.length === 0} quoi="proposition"
+            onAjouter={() => setAjout("proposition")}
             entete={d.aRelancer > 0 ? (
               <div className="cfx-relance">
                 <b>⚠ {d.aRelancer} proposition{d.aRelancer > 1 ? "s" : ""} à relancer</b>
@@ -694,6 +701,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
             key={tab}
             ajout={tab === "visites" ? "+ Ajouter une visite" : "+ Ajouter une offre"}
             href={tab === "visites" ? "/visites" : "/offres"}
+            onAjouter={() => setAjout(tab === "visites" ? "visite" : "offre")}
             vide={(tab === "visites" ? d.visites : d.offres).length === 0}
             quoi={tab === "visites" ? "visite" : "offre"}
             cartes={(tab === "visites" ? d.visites : d.offres).map((a) => (
@@ -772,7 +780,31 @@ export function ContactFiche({ d, echanges = [], compte }: {
         </div>
       )}
 
-      {detail && <ModaleRecherche detail={detail} onClose={() => setDetail(null)} />}
+      {detail && (
+        <ModaleRecherche
+          detail={detail} onClose={() => setDetail(null)}
+          onModifier={() => { setDetail(null); setAjout("recherche"); }}
+        />
+      )}
+
+      {/* Retour #336 : la barre du bas et la fiche client montent les mêmes
+          modales — ici, l'acquéreur est déjà connu, on ne le redemande pas. */}
+      {ajout === "recherche" && (
+        <ModaleRechercheEdition
+          contactImpose={{ id, nom: nomComplet }}
+          onFermer={() => setAjout(null)} onEnregistre={() => setAjout(null)}
+        />
+      )}
+      {ajout === "proposition" && (
+        <ModaleProposition contact={{ id, nom: nomComplet, email: email.trim() || undefined }}
+          onFermer={() => setAjout(null)} />
+      )}
+      {ajout === "visite" && (
+        <ModaleVisite contact={{ id, nom: nomComplet }} onFermer={() => setAjout(null)} />
+      )}
+      {ajout === "offre" && (
+        <ModaleOffre contact={{ id, nom: nomComplet }} onFermer={() => setAjout(null)} />
+      )}
       {suppression && (
         <Suppression id={id} nom={nomComplet} onClose={() => setSuppression(false)} />
       )}
@@ -888,17 +920,27 @@ function PieceJointe({ url, contactId, cle, depose }: {
  *  ferait une page de vingt écrans de haut. */
 const PAQUET = 25;
 
-function Onglet({ ajout, href, vide, quoi, entete, cartes }: {
+function Onglet({ ajout, href, vide, quoi, entete, cartes, onAjouter }: {
   ajout: string; href: string; vide: boolean; quoi: string;
   entete?: React.ReactNode;
   cartes: React.ReactNode[];
+  /* Retour #336 — « dans la fiche client il y a plein de menus et on peut à
+     chaque fois ajouter un immeuble, une recherche, une proposition, une
+     visite, une offre, un suivi, et bien il faudrait qu'à chaque fois ce soit
+     les mêmes modales que celles de la sticky bar d'actions rapides. »
+     Le lien renvoyait vers l'écran de liste, à charge pour l'agent de
+     recommencer là-bas — en ayant perdu le contact d'où il partait. Quand une
+     modale existe, elle s'ouvre ici, l'acquéreur déjà rempli. */
+  onAjouter?: () => void;
 }) {
   const [vues, setVues] = useState(PAQUET);
   const feminin = ["visite", "offre", "recherche", "proposition", "question"].includes(quoi);
   const reste = cartes.length - vues;
   return (
     <div className="cfx-liste">
-      <Link className="cfx-add" href={href}>{ajout}</Link>
+      {onAjouter
+        ? <button type="button" className="cfx-add" onClick={onAjouter}>{ajout}</button>
+        : <Link className="cfx-add" href={href}>{ajout}</Link>}
       {entete}
       {vide
         ? <div className="fempty">Aucun{feminin ? "e" : ""} {quoi}.</div>

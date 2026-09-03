@@ -2673,6 +2673,52 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
   });
 }
 
+/**
+ * Cherche un immeuble par son adresse, pour les modales d'actions rapides
+ * (retours #333 à #336).
+ *
+ * Sans mot-clé, on rend les immeubles en commercialisation : ce sont ceux
+ * qu'on propose, fait visiter et sur lesquels on reçoit des offres. Une modale
+ * qui s'ouvre sur une liste vide oblige à taper avant de comprendre ce qu'on
+ * attend d'elle.
+ */
+export async function chercherImmeublesBO(q: string) {
+  await loadInitials();
+  const mots = motsRecherche(q);
+  const carte = (im: Record<string, unknown>) => ({
+    id: String(im._id),
+    libelle: imLabel(im),
+    statut: S2(im.Statut)?.replace(/^\d+ - /, ""),
+    prix: euros(im.prix_hai) ?? undefined,
+    photoUrl: photoProxy(im.photo_main_compressed),
+  });
+
+  if (mots.length === 0) {
+    const ims = await fetchAll(
+      "immeuble",
+      [{ key: "archived", constraint_type: "equals", value: "false" }],
+      600,
+      { field: "Modified Date", desc: true },
+    ).catch(() => [] as Record<string, unknown>[]);
+    return ims
+      .filter((im) => { const r = statutOf(im); return r >= 5 && r <= 7; })
+      .slice(0, 25)
+      .map(carte);
+  }
+
+  if (!USE_SB) return [];
+  const p = new URLSearchParams({ select: "data", limit: "25" });
+  const f = filtreMots(["searchfield"], mots);
+  if (f) p.append(f[0], f[1]);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_immeuble?${p}`, {
+    headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  return ((await res.json()) as { data: Record<string, unknown> }[])
+    .map((r) => r.data).filter(Boolean).map(carte);
+}
+
 /* ------------------- Les biens à proposer à une recherche ------------------
    Retour #331 : « les pastilles de notification qui s'affichent rouge dans une
    recherche, c'est parce qu'un immeuble correspondant à la recherche n'a pas

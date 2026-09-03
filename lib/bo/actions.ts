@@ -2446,7 +2446,14 @@ export async function deleteDocument(immeubleId: string, documentId: string) {
 export async function addVisite(
   immeubleId: string,
   agentId: string,
-  input: { date: string; visiteur?: string; commentaire_interne?: string; source?: string },
+  input: {
+    date: string; visiteur?: string; commentaire_interne?: string; source?: string;
+    /* Retour #334 — « toutes les modales de la sticky barre du bas viennent
+       compléter les fiches contact, propriétaire, biens etc. » Un nom de
+       visiteur en texte libre ne remonte sur aucune fiche : c'est le
+       rattachement qui fait exister la visite côté acquéreur. */
+    visiteurIds?: string[];
+  },
 ) {
   const id = newId();
   const now = new Date().toISOString();
@@ -2459,12 +2466,15 @@ export async function addVisite(
       date: new Date(input.date).toISOString(),
       Statut: "Confirmée",
       visiteur_nom: input.visiteur,
+      VISITEURs: input.visiteurIds?.length ? input.visiteurIds : undefined,
       commentaire_interne: input.commentaire_interne,
       source: input.source,
       "Created Date": now,
       "Modified Date": now,
     }),
   });
+  for (const c of input.visiteurIds ?? []) revalidatePath(`/contact/${c}`);
+  revalidatePath("/visites");
   refresh(immeubleId);
   return id;
 }
@@ -2489,11 +2499,15 @@ export async function addOffre(
   immeubleId: string,
   input: {
     acheteur?: string;
+    /* Retour #335 : l'offre doit apparaître sur la fiche de l'acquéreur. */
+    acheteurIds?: string[];
     prix_nv: number;
     honos_ht?: number;
     date_expiration?: string;
     commentaire?: string;
     source?: string;
+    /* Le PDF de l'offre, déjà déposé dans le coffre (#335). */
+    pdfUrl?: string;
   },
 ) {
   const id = newId();
@@ -2507,6 +2521,8 @@ export async function addOffre(
       Statut: "En cours",
       date: now,
       acheteur_nom: input.acheteur,
+      ACHETEURs: input.acheteurIds?.length ? input.acheteurIds : undefined,
+      pdf: input.pdfUrl,
       prix_nv: input.prix_nv,
       honos_ht: input.honos_ht,
       honos_ttc: honosTtc,
@@ -2518,6 +2534,8 @@ export async function addOffre(
       "Modified Date": now,
     }),
   });
+  for (const c of input.acheteurIds ?? []) revalidatePath(`/contact/${c}`);
+  revalidatePath("/offres");
   refresh(immeubleId);
   return id;
 }
@@ -3874,6 +3892,44 @@ export async function noterProposition(propositionId: string, contactId: string,
   revalidatePath("/propositions");
 }
 
+/**
+ * Dépose le PDF d'une offre dans le coffre du bien et rend son chemin
+ * (retour #335 : « n'oublie pas de rajouter le bouton pour ajouter l'offre en
+ * PDF »). L'offre signée est la pièce qui compte : elle doit vivre avec le
+ * bien, pas dans la boîte mail de l'agent.
+ */
+export async function deposerOffrePdf(immeubleId: string, fd: FormData): Promise<string> {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 25 * 1024 * 1024) throw new Error("Fichier trop lourd (25 Mo max)");
+  const path = `documents/${immeubleId}/offre-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  return `storage:${path}`;
+}
+
+/* ---------- Sélecteur d'immeuble pour les actions rapides (#333-#336) ------ */
+
+export type ImmeubleTrouve = {
+  id: string;
+  libelle: string;
+  statut?: string;
+  prix?: string;
+  photoUrl?: string;
+};
+
+/**
+ * Cherche un immeuble par son adresse.
+ *
+ * Les modales de la barre d'actions rapides partent de nulle part : proposer,
+ * faire visiter ou recevoir une offre suppose de désigner le bien. Sans mot-clé
+ * on rend les immeubles en commercialisation, les seuls qu'on propose vraiment
+ * — c'est le cas courant, et il évite une page blanche.
+ */
+export async function chercherImmeubles(q: string): Promise<ImmeubleTrouve[]> {
+  const { chercherImmeublesBO } = await import("@/lib/bubble/server");
+  return chercherImmeublesBO(q);
+}
+
 /* --------- Créer et modifier une recherche acquéreur (retours #330, #332) -- */
 
 export type SaisieRecherche = {
@@ -4011,11 +4067,15 @@ export async function traiterAProposer(
   immeubleIds: string[],
   issue: IssueProposition,
   agentId?: string,
+  /* Retour #333 : la modale d'actions rapides part d'une PERSONNE, pas d'une
+     recherche. Une proposition sans recherche reste une proposition — c'est le
+     bien et l'acquéreur qui comptent. */
+  acheteurImpose?: string,
 ) {
   if (immeubleIds.length === 0) return { crees: 0 };
   const now = new Date().toISOString();
-  const [r] = await bqIn("bo_recherche", [rechercheId]);
-  const acheteurId = r ? String(r.ACHETEUR ?? "") || null : null;
+  const [r] = rechercheId ? await bqIn("bo_recherche", [rechercheId]) : [];
+  const acheteurId = acheteurImpose || (r ? String(r.ACHETEUR ?? "") || null : null);
 
   /* Le dernier dossier de chaque bien : c'est la pièce jointe de l'e-mail, et
      la proposition doit dire laquelle est partie — sinon, six mois plus tard,
@@ -4047,9 +4107,9 @@ export async function traiterAProposer(
       IMMEUBLE: immeubleId,
       DOSSIER: dossier ? String(dossier._id) : null,
       ACHETEUR: acheteurId,
-      RECHERCHEs: [rechercheId],
+      RECHERCHEs: rechercheId ? [rechercheId] : undefined,
       AGENTs: agentId ? [agentId] : [],
-      Source_proposition: "Recherche",
+      Source_proposition: rechercheId ? "Recherche" : "Saisie directe",
       date_modif: now,
       stop_relances_yn: false,
       "Created By": agentId ?? null,
@@ -4091,13 +4151,15 @@ export async function traiterAProposer(
   /* La recherche mémorise ce qui a été traité : ces biens sortent de la
      pastille, quelle qu'ait été l'issue. C'est la raison d'être des trois
      boutons — « ne correspond pas » aussi doit faire taire la notification. */
-  for (const immeubleId of immeubleIds) {
-    await rpc("bo_append_ref", {
-      p_table: "bo_recherche",
-      p_id: rechercheId,
-      p_key: "IMMEUBLEs_proposed",
-      p_value: immeubleId,
-    }).catch(() => undefined);
+  if (rechercheId) {
+    for (const immeubleId of immeubleIds) {
+      await rpc("bo_append_ref", {
+        p_table: "bo_recherche",
+        p_id: rechercheId,
+        p_key: "IMMEUBLEs_proposed",
+        p_value: immeubleId,
+      }).catch(() => undefined);
+    }
   }
 
   revalidatePath("/recherches");
