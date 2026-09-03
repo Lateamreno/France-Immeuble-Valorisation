@@ -8,7 +8,6 @@
 import type { DossierVente } from "@/lib/bo/dossier-vente";
 import { group } from "@/lib/format";
 import { MENTIONS } from "@/lib/bo/textes-cible";
-import { BadgeDpe } from "@/components/pictos";
 import { PhotoDossier } from "@/components/photo-dossier";
 
 const fr1 = (x?: number) => (x === undefined ? "n.c." : x.toFixed(1).replace(".", ","));
@@ -373,14 +372,12 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
                 <td><span className="dv-lot"><Ic d={IC_DEST[l.dest] ?? I.maison} cls="dv-ic mini" />{l.type}</span></td>
                 <td className="c">{l.carrez !== undefined ? <>{group(l.carrez)} <i>m²</i></> : "n.a."}</td>
                 <td className="c">{l.sol !== undefined ? <>{group(l.sol)} <i>m²</i></> : "n.a."}</td>
-                {/* Retour #317 — « dans la colonne DPE du dossier, ce serait
-                    bien de remettre les mêmes pictos que dans l'état
-                    locatif. » Une lettre en gris se lit comme une donnée
-                    quelconque ; la pastille colorée se voit en survolant la
-                    page, et c'est ce que l'acquéreur cherche en premier. */}
-                <td className="c dv-dpe">
-                  {l.dpe ? <BadgeDpe lettre={l.dpe} /> : <span className="gris">n.c.</span>}
-                </td>
+                {/* Le DPE du dossier reste une lettre en gris. Les pastilles
+                    de l'état locatif, essayées au #317, ont été écartées à la
+                    relecture (#337) : à l'écran elles guident l'œil, mais sur
+                    une page imprimée où douze lignes se suivent, douze aplats
+                    de couleur tirent le regard avant le prix et la surface. */}
+                <td className="c gris">{nc(l.dpe)}</td>
                 <td className={`c${/rénov|renov|neuf/i.test(l.etat) ? " vert" : ""}`}>{nc(l.etat)}</td>
                 {colBail && (
                   <td className={`c${/^vide$/i.test(l.bail) ? " rouge" : ""}`}>{nc(l.bail)}</td>
