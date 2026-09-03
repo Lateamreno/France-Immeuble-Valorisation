@@ -15,7 +15,9 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
-import { correspond } from "@/lib/bo/matching";
+import { correspond, type CriteresBien } from "@/lib/bo/matching";
+import { lireExclusionsDe } from "@/lib/bo/exclusions";
+import { codeDepartement, regionDe } from "@/lib/geo-fr";
 import { cache } from "react";
 
 const TOKEN = process.env.BUBBLE_API_TOKEN;
@@ -2514,6 +2516,17 @@ export type RechercheCard = {
   };
   /** Coordonnées brutes quand la fiche contact n'existe pas encore. */
   orphelin?: { email?: string; tel?: string };
+  /** Les valeurs telles qu'elles sont en base, pour la modale de modification
+   *  (retour #330). Les champs ci-dessus sont mis en forme pour la carte :
+   *  « Investissement locatif » ne se réenregistre pas, la base attend
+   *  « Investisseur », et « 400 000 € à 600 000 € » n'est pas un nombre. */
+  brut: {
+    cible?: string;
+    prixMin?: number; prixMax?: number;
+    surfaceMin?: number; surfaceMax?: number;
+    occupMin?: number; occupMax?: number;
+    renta?: number;
+  };
   /** Immeubles en mandat qui correspondent et qu'on ne lui a jamais envoyés. */
   aProposer: number;
   group: "en_cours" | "en_attente" | "archivees";
@@ -2527,6 +2540,8 @@ const TITRES_CIBLE: Record<string, string> = {
   Patrimonial: "Immeuble patrimonial",
 };
 
+const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
 /** Une fourchette en toutes lettres, ou rien si les deux bornes manquent. */
 function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
   const a = typeof min === "number" && min > 0 ? min : undefined;
@@ -2534,6 +2549,35 @@ function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
   if (a === undefined && b === undefined) return undefined;
   if (a !== undefined && b !== undefined) return `${fmt(a)} à ${fmt(b)}`;
   return a !== undefined ? `≥ ${fmt(a)}` : `≤ ${fmt(b!)}`;
+}
+
+/**
+ * Les caractéristiques d'un immeuble telles que le matching les lit.
+ *
+ * Retour #332 : `Destinations` porte TOUTES les destinations présentes, quand
+ * `Destination_principale` n'en donne qu'une. C'est la première qu'il faut —
+ * « dès qu'un immeuble contient de l'habitation il le reçoit », et c'est aussi
+ * elle que les exclusions interrogent. La principale ne sert plus que de
+ * secours pour les fiches anciennes qui n'ont pas la liste.
+ */
+export function critereBien(im: Record<string, unknown>): CriteresBien {
+  const toutes = Array.isArray(im.Destinations) ? (im.Destinations as unknown[]).map(String) : [];
+  return {
+    immeubleId: String(im._id),
+    prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+    surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
+    occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
+    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+    ville: S2(im.adresse_ville),
+    /* `adresse_dpt` quand la fiche l'a, sinon le code postal — mais pas une
+       coupe à deux caractères : 20… c'est la Corse, 974… La Réunion. */
+    departement: codeDepartement(S2(im.adresse_dpt), S2(im.adresse_zipcode)),
+    region: regionDe(S2(im.adresse_dpt), S2(im.adresse_zipcode)),
+    destinations: toutes.length
+      ? toutes
+      : typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
+    cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+  };
 }
 
 export async function listRecherchesBO(): Promise<RechercheCard[]> {
@@ -2556,6 +2600,9 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
   for (const c of await parIds("contact", rechs.map((r) => r.ACHETEUR))) {
     contacts.set(String(c._id), c);
   }
+  /* Ce que chaque recherche refuse explicitement (retour #332), en un seul
+     aller-retour pour les 1 900 recherches. */
+  const exclusions = await lireExclusionsDe(rechs.map((r) => String(r._id)));
 
   /* Le dédoublonnage demandé : un immeuble déjà envoyé à un acquéreur sur SA
      recherche marchand ne doit plus apparaître comme « à proposer » sur sa
@@ -2569,17 +2616,7 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
     dejaVuParContact.set(cid, set);
   }
 
-  const criteres = dispo.map((im) => ({
-    immeubleId: String(im._id),
-    prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
-    surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
-    occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
-    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
-    ville: S2(im.adresse_ville),
-    departement: S2(im.adresse_zipcode)?.slice(0, 2),
-    destinations: typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
-    cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
-  }));
+  const criteres = dispo.map(critereBien);
 
   return rechs.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
@@ -2588,7 +2625,8 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
 
     const aProposer = r.archived === true || r.standby === true
       ? 0
-      : criteres.filter((b) => !vus.has(b.immeubleId) && correspond(r, b)).length;
+      : criteres.filter((b) =>
+          !vus.has(b.immeubleId) && correspond(r, b, exclusions.get(String(r._id)))).length;
 
     const lieux = [
       ...(Array.isArray(r.villes) ? (r.villes as string[]) : []).filter((v) => !/^\d{13}x\d+$/.test(v)),
@@ -2621,11 +2659,136 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
           }
         : undefined,
       orphelin: c ? undefined : { email: S2(r.email), tel: S2(r.phone) },
+      brut: {
+        cible: S2(r.Cible),
+        prixMin: nombre(r.prix_min), prixMax: nombre(r.prix_max),
+        surfaceMin: nombre(r.surface_min), surfaceMax: nombre(r.surface_max),
+        occupMin: nombre(r.occup_min), occupMax: nombre(r.occup_max),
+        renta: nombre(r.renta),
+      },
       aProposer,
       group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",
       date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
     } satisfies RechercheCard;
   });
+}
+
+/* ------------------- Les biens à proposer à une recherche ------------------
+   Retour #331 : « les pastilles de notification qui s'affichent rouge dans une
+   recherche, c'est parce qu'un immeuble correspondant à la recherche n'a pas
+   encore été proposé à l'acquéreur. Si on clique sur la pastille on voit les
+   modales des biens concernés et on peut les sélectionner. »
+
+   La liste était calculée pour être comptée, jamais rendue : on ne voyait que
+   le chiffre. On la rend maintenant vraiment, avec de quoi décider — le prix,
+   la surface, le rendement, et le dernier dossier, qui est la pièce jointe de
+   l'e-mail qu'on s'apprête à écrire. */
+
+export type BienAProposer = {
+  id: string;
+  libelle: string;
+  ville?: string;
+  photoUrl?: string;
+  prix?: string;
+  surface?: string;
+  occupation?: string;
+  renta?: string;
+  destinations: string[];
+  statut?: string;
+  /** Le dernier dossier de vente : ce qu'on joindra à l'e-mail. */
+  dossier?: { id: string; version: string; pdf?: string };
+};
+
+export type APropositions = {
+  recherche: RechercheCard;
+  /** Le contact destinataire, quand la recherche en a un. */
+  contact?: { id: string; nom: string; email?: string; tel?: string };
+  biens: BienAProposer[];
+};
+
+export async function getAProposer(rechercheId: string): Promise<APropositions | null> {
+  await loadInitials();
+  const cartes = await listRecherchesBO();
+  const carte = cartes.find((c) => c.id === rechercheId);
+  if (!carte) return null;
+
+  const [r] = await parIds("recherche", [rechercheId]);
+  if (!r) return null;
+
+  const [ims, exclusions] = await Promise.all([
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000)
+      .catch(() => [] as Record<string, unknown>[]),
+    lireExclusionsDe([rechercheId]),
+  ]);
+
+  /* Le même dédoublonnage que la pastille : par PERSONNE, pas par recherche.
+     Un immeuble déjà envoyé sur sa recherche marchand ne réapparaît pas sur sa
+     recherche investisseur. */
+  const contactId = S2(r.ACHETEUR);
+  const soeurs = contactId
+    ? await fetchAll("recherche", [{ key: "ACHETEUR", constraint_type: "equals", value: contactId }], 200)
+        .catch(() => [r])
+    : [r];
+  const vus = new Set<string>();
+  for (const x of soeurs) {
+    for (const id of (Array.isArray(x.IMMEUBLEs_proposed) ? x.IMMEUBLEs_proposed : []) as unknown[]) vus.add(String(id));
+    for (const id of (Array.isArray(x.IMMEUBLES_hidden) ? x.IMMEUBLES_hidden : []) as unknown[]) vus.add(String(id));
+  }
+
+  const retenus = ims.filter((im) => {
+    const rang = statutOf(im);
+    if (rang < 5 || rang > 7) return false;
+    if (vus.has(String(im._id))) return false;
+    return correspond(r, critereBien(im), exclusions.get(rechercheId));
+  });
+
+  /* Le dernier dossier de chaque immeuble retenu, en un aller-retour. */
+  const dossiers = retenus.length
+    ? await fetchAll("dossier", [
+        { key: "IMMEUBLE", constraint_type: "in", value: retenus.map((im) => String(im._id)) },
+      ], 500).catch(() => [] as Record<string, unknown>[])
+    : [];
+  const dernier = new Map<string, Record<string, unknown>>();
+  for (const d of dossiers) {
+    const im = String(d.IMMEUBLE ?? "");
+    const p = dernier.get(im);
+    if (!p || Number(d.version ?? 0) > Number(p.version ?? 0)) dernier.set(im, d);
+  }
+
+  const contact = carte.contact
+    ? {
+        id: carte.contact.id,
+        nom: carte.contact.nom,
+        email: carte.contact.email,
+        tel: carte.contact.tel,
+      }
+    : undefined;
+
+  return {
+    recherche: carte,
+    contact,
+    biens: retenus.map((im) => {
+      const d = dernier.get(String(im._id));
+      return {
+        id: String(im._id),
+        libelle: imLabel(im),
+        ville: S2(im.adresse_ville),
+        photoUrl: photoProxy(im.photo_main_compressed),
+        prix: euros(im.prix_hai) ?? undefined,
+        surface: typeof im.surface_carrez === "number" && im.surface_carrez > 0
+          ? `${Math.round(im.surface_carrez as number).toLocaleString("fr-FR")} m²` : undefined,
+        occupation: typeof im.occupation_lots === "number"
+          ? `${Math.round(im.occupation_lots as number)} %` : undefined,
+        renta: typeof im.fin_renta_ba === "number" && im.fin_renta_ba > 0
+          ? `${(im.fin_renta_ba as number).toLocaleString("fr-FR")} %` : undefined,
+        destinations: Array.isArray(im.Destinations) ? (im.Destinations as unknown[]).map(String) : [],
+        statut: S2(im.Statut)?.replace(/^\d+ - /, ""),
+        dossier: d
+          ? { id: String(d._id), version: String(d.version ?? "?"), pdf: S2(d.pdf) }
+          : undefined,
+      } satisfies BienAProposer;
+    }).sort((a, b) => a.libelle.localeCompare(b.libelle, "fr")),
+  };
 }
 
 /* ============================ Écran Questions ============================

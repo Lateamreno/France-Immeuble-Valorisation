@@ -3,6 +3,7 @@
 // Écritures du BO — uniquement vers Supabase (bo_*), jamais vers Bubble.
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
+import { ecrireExclusions, lireExclusions } from "@/lib/bo/exclusions";
 import { after } from "next/server";
 import {
   filtreMots, getAgentFiche, getBien, getEstimation, getPrixSecteur, motsRecherche,
@@ -3871,6 +3872,238 @@ export async function noterProposition(propositionId: string, contactId: string,
   });
   revalidatePath(`/contact/${contactId}`);
   revalidatePath("/propositions");
+}
+
+/* --------- Créer et modifier une recherche acquéreur (retours #330, #332) -- */
+
+export type SaisieRecherche = {
+  /** Absent = création (#332), présent = modification (#330). */
+  id?: string;
+  contactId?: string;
+  cible?: string;
+  destinations: string[];
+  villes: string[];
+  departements: string[];
+  prixMin?: number;
+  prixMax?: number;
+  surfaceMin?: number;
+  surfaceMax?: number;
+  occupMin?: number;
+  occupMax?: number;
+  renta?: number;
+  commentaire?: string;
+  /** Ce que la recherche refuse (retour #332) — voir lib/bo/exclusions.ts. */
+  exclusions: {
+    destinations: string[];
+    villes: string[];
+    departements: string[];
+    regions: string[];
+  };
+};
+
+/**
+ * Enregistre une recherche, créée ou modifiée (retours #330, #332).
+ *
+ * MAV : « il faut qu'en cliquant sur une recherche on puisse la modifier avec
+ * le popup qui s'ouvre » et « quand on clique sur créer une recherche il faut
+ * la modale de recherche qui va créer la recherche pour le client ». Une même
+ * modale sert les deux : c'est le même objet, avec ou sans identifiant.
+ *
+ * Les critères vont dans `bo_recherche`, que Bubble connaît ; les exclusions
+ * dans la table de l'application, qu'il n'écrase pas.
+ */
+export async function enregistrerRecherche(saisie: SaisieRecherche, agentId?: string) {
+  const now = new Date().toISOString();
+  const id = saisie.id ?? newId();
+  const doc = cleanPatch({
+    ACHETEUR: saisie.contactId || null,
+    Cible: saisie.cible || null,
+    Destinations: saisie.destinations,
+    villes: saisie.villes,
+    dpts: saisie.departements,
+    prix_min: saisie.prixMin ?? null,
+    prix_max: saisie.prixMax ?? null,
+    surface_min: saisie.surfaceMin ?? null,
+    surface_max: saisie.surfaceMax ?? null,
+    occup_min: saisie.occupMin ?? null,
+    occup_max: saisie.occupMax ?? null,
+    renta: saisie.renta ?? null,
+    commentaire: saisie.commentaire?.trim() || null,
+    date_modif: now,
+    "Modified Date": now,
+  });
+
+  if (saisie.id) {
+    await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: doc });
+  } else {
+    await rpc("bo_insert_doc", {
+      p_table: "bo_recherche",
+      p_id: id,
+      p_doc: {
+        ...doc,
+        SUIVI: agentId ?? null,
+        archived: false,
+        standby: false,
+        "Created By": agentId ?? null,
+        "Created Date": now,
+      },
+    });
+    /* La fiche du contact doit connaître sa recherche, sinon l'onglet
+       Recherches de la fiche reste vide (même piège de casse qu'au #288 : sur
+       un CONTACT, la liste s'appelle RECHERCHEs). */
+    if (saisie.contactId) {
+      await rpc("bo_append_ref", {
+        p_table: "bo_contact",
+        p_id: saisie.contactId,
+        p_key: "RECHERCHEs",
+        p_value: id,
+      }).catch(() => undefined);
+    }
+  }
+
+  await ecrireExclusions(id, {
+    destinations: saisie.exclusions.destinations,
+    villes: saisie.exclusions.villes,
+    departements: saisie.exclusions.departements,
+    regions: saisie.exclusions.regions,
+  });
+
+  revalidatePath("/recherches");
+  if (saisie.contactId) revalidatePath(`/contact/${saisie.contactId}`);
+  return id;
+}
+
+/** Les exclusions d'une recherche, pour remplir la modale de modification. */
+export async function chargerExclusions(rechercheId: string) {
+  return lireExclusions(rechercheId);
+}
+
+/* ------------- Proposer des biens depuis une recherche (retour #331) ------ */
+
+/** Charge les biens qu'on pourrait proposer à une recherche. */
+export async function chargerAProposer(rechercheId: string) {
+  const { getAProposer } = await import("@/lib/bubble/server");
+  return getAProposer(rechercheId);
+}
+
+export type IssueProposition =
+  /** L'e-mail est préparé, l'agent l'envoie : la proposition part « Envoyée ». */
+  | { mode: "envoyer"; objet: string; message: string; email?: string }
+  /** Le bien ne correspond pas : proposition créée puis refusée, avec le motif. */
+  | { mode: "ne_correspond_pas"; motifs: Record<string, string> }
+  /** On l'avait déjà envoyé hors de l'outil ; `retour` dit si l'acquéreur a répondu. */
+  | { mode: "deja_envoye"; retour?: { statut: string; commentaire?: string } };
+
+/**
+ * Traite d'un coup les biens cochés dans le panneau « à proposer » (#331).
+ *
+ * Les trois issues créent TOUTES une proposition — c'est le point : ce qui a
+ * été écarté doit laisser une trace, sinon le bien remonte demain dans la
+ * pastille et l'agent refait le même arbitrage. Ce qui les distingue, c'est le
+ * statut de départ et ce qu'on inscrit dessus.
+ *
+ * Rien n'est envoyé ici : l'e-mail est préparé et enregistré sur la
+ * proposition, l'agent l'envoie depuis le module Mails. Doctrine maison —
+ * validation humaine avant tout envoi.
+ */
+export async function traiterAProposer(
+  rechercheId: string,
+  immeubleIds: string[],
+  issue: IssueProposition,
+  agentId?: string,
+) {
+  if (immeubleIds.length === 0) return { crees: 0 };
+  const now = new Date().toISOString();
+  const [r] = await bqIn("bo_recherche", [rechercheId]);
+  const acheteurId = r ? String(r.ACHETEUR ?? "") || null : null;
+
+  /* Le dernier dossier de chaque bien : c'est la pièce jointe de l'e-mail, et
+     la proposition doit dire laquelle est partie — sinon, six mois plus tard,
+     on ne sait plus quel prix l'acquéreur a vu. Un seul aller-retour pour tout
+     le lot. */
+  const dossierParImmeuble = new Map<string, Record<string, unknown>>();
+  if (SB_KEY) {
+    const filtre = `(${immeubleIds.map((i) => `"${i.replace(/"/g, "")}"`).join(",")})`;
+    const res = await fetch(
+      `${SB_URL}/rest/v1/bo_dossier?data->>IMMEUBLE=in.${encodeURIComponent(filtre)}&select=data&limit=500`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+    ).catch(() => null);
+    if (res?.ok) {
+      for (const { data: d } of (await res.json()) as { data: Record<string, unknown> }[]) {
+        if (!d) continue;
+        const im = String(d.IMMEUBLE ?? "");
+        const p = dossierParImmeuble.get(im);
+        if (!p || Number(d.version ?? 0) > Number(p.version ?? 0)) dossierParImmeuble.set(im, d);
+      }
+    }
+  }
+
+  let crees = 0;
+  for (const immeubleId of immeubleIds) {
+    const id = newId();
+    const dossier = dossierParImmeuble.get(immeubleId);
+
+    const base: Record<string, unknown> = {
+      IMMEUBLE: immeubleId,
+      DOSSIER: dossier ? String(dossier._id) : null,
+      ACHETEUR: acheteurId,
+      RECHERCHEs: [rechercheId],
+      AGENTs: agentId ? [agentId] : [],
+      Source_proposition: "Recherche",
+      date_modif: now,
+      stop_relances_yn: false,
+      "Created By": agentId ?? null,
+      "Created Date": now,
+      "Modified Date": now,
+    };
+
+    if (issue.mode === "envoyer") {
+      Object.assign(base, {
+        Statut: "Envoyée",
+        date_envoi: now,
+        mail_adresse: issue.email ?? null,
+        mail_subject: issue.objet,
+        mail_text: issue.message,
+      });
+    } else if (issue.mode === "ne_correspond_pas") {
+      const motif = issue.motifs[immeubleId]?.trim();
+      Object.assign(base, {
+        Statut: "Refusée (sans offre)",
+        motif_refus: motif || "Ne correspond pas à la recherche",
+        date_fin: now,
+        stop_relances_yn: true,
+      });
+    } else {
+      Object.assign(base, {
+        Statut: issue.retour?.statut ?? "Envoyée",
+        date_envoi: now,
+        commentaire: issue.retour?.commentaire?.trim() || null,
+        ...(issue.retour?.statut?.startsWith("Refus")
+          ? { date_fin: now, stop_relances_yn: true, motif_refus: issue.retour.commentaire ?? null }
+          : {}),
+      });
+    }
+
+    await rpc("bo_insert_doc", { p_table: "bo_proposition", p_id: id, p_doc: cleanPatch(base) });
+    crees++;
+  }
+
+  /* La recherche mémorise ce qui a été traité : ces biens sortent de la
+     pastille, quelle qu'ait été l'issue. C'est la raison d'être des trois
+     boutons — « ne correspond pas » aussi doit faire taire la notification. */
+  for (const immeubleId of immeubleIds) {
+    await rpc("bo_append_ref", {
+      p_table: "bo_recherche",
+      p_id: rechercheId,
+      p_key: "IMMEUBLEs_proposed",
+      p_value: immeubleId,
+    }).catch(() => undefined);
+  }
+
+  revalidatePath("/recherches");
+  revalidatePath("/propositions");
+  if (acheteurId) revalidatePath(`/contact/${acheteurId}`);
+  return { crees };
 }
 
 /** Charge le vivier acquéreurs à la demande : 1 900 recherches et leurs

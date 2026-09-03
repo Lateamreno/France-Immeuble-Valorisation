@@ -10,6 +10,8 @@
 import { useMemo, useState } from "react";
 import type { RechercheCard } from "@/lib/bubble/server";
 import { CarteRecherche, DESTINATIONS, ModaleRecherche } from "@/components/carte-recherche";
+import { ModaleRechercheEdition } from "@/components/recherche-modale";
+import { PanneauAProposer } from "@/components/a-proposer";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -35,8 +37,20 @@ export function EcranRecherches({
   const [taille, setTaille] = useState(10);
   const [detail, setDetail] = useState<RechercheCard | null>(null);
   const [choisies, setChoisies] = useState<Set<string>>(new Set());
+  /* Retours #330 et #332 : la même modale modifie une recherche existante et
+     en crée une nouvelle. `edition` vaut `null` quand rien n'est ouvert,
+     `{ r: undefined }` en création. */
+  const [edition, setEdition] = useState<{ r?: RechercheCard } | null>(null);
+  /* Retour #331 : les biens à proposer à une recherche donnée. */
+  const [aProposer, setAProposer] = useState<string | null>(null);
 
   const compte = (v: Vue) => rows.filter((r) => r.group === v).length;
+
+  /* À qui attribuer une recherche créée ici ? Le BO n'a pas encore
+     d'authentification : faute d'agent connecté, on prend celui que le filtre
+     du bandeau désigne. Sans filtre, la recherche reste non suivie et la carte
+     l'annonce « FI » — ce qui est vrai, et se corrige d'un clic. */
+  const agentId = agents.find((a) => a.initials === agent)?.id;
 
   const filtrees = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -95,6 +109,11 @@ export function EcranRecherches({
     <div className="lstx">
       <div className="lstx-top">
         <h1 className="lstx-titre">Recherches</h1>
+        {/* Retour #332 — « quand on clique sur créer une recherche il faut la
+            modale de recherche qui va créer la recherche pour le client. » */}
+        <button type="button" className="lstx-add" onClick={() => setEdition({})}>
+          + Créer une recherche
+        </button>
         <div className="lst-search">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input
@@ -193,7 +212,12 @@ export function EcranRecherches({
           )}
 
           {tranche.map((r) => (
-            <CarteRecherche key={r.id} r={r} choisi={choisies.has(r.id)} onCocher={cocher} onDetail={setDetail} />
+            <CarteRecherche
+              key={r.id} r={r} choisi={choisies.has(r.id)} onCocher={cocher}
+              onDetail={setDetail}
+              onAProposer={(x) => setAProposer(x.id)}
+              onModifier={(x) => setEdition({ r: x })}
+            />
           ))}
 
           {tranche.length === 0 && <div className="fempty">Aucune recherche.</div>}
@@ -215,7 +239,31 @@ export function EcranRecherches({
         </div>
       </div>
 
-      {detail && <ModaleRecherche detail={detail} onClose={() => setDetail(null)} />}
+      {detail && (
+        <ModaleRecherche
+          detail={detail} onClose={() => setDetail(null)}
+          onAProposer={(x) => { setDetail(null); setAProposer(x.id); }}
+          onModifier={(x) => { setDetail(null); setEdition({ r: x }); }}
+        />
+      )}
+
+      {edition && (
+        <ModaleRechercheEdition
+          depart={edition.r} agentId={agentId}
+          onFermer={() => setEdition(null)}
+          /* Retour #332 : « à la fin du processus de création on va dire s'il y
+             a des biens qui correspondent ». On enchaîne donc sur le panneau
+             des biens à proposer, plutôt que de renvoyer l'agent le chercher. */
+          onEnregistre={({ id }) => { setEdition(null); setAProposer(id); }}
+        />
+      )}
+
+      {aProposer && (
+        <PanneauAProposer
+          rechercheId={aProposer} agentId={agentId}
+          onFermer={() => setAProposer(null)}
+        />
+      )}
     </div>
   );
 }
