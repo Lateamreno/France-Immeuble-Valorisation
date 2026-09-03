@@ -29,6 +29,7 @@ import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
 import { Facade } from "@/components/facade";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
@@ -115,10 +116,17 @@ const I = {
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
  *  section ouvre directement ses sous-menus, sans perdre les onglets
  *  horizontaux du contenu. */
+/* Retour #303 — l'ordre du BO : le prix d'abord, le descriptif ensuite. */
+const ONGLETS_PRIX = [
+  { key: "prix", label: "Prix" },
+  { key: "descriptif", label: "Descriptif" },
+] as const;
+
 const SOUS_ONGLETS: Partial<Record<SectionKey, readonly { key: string; label: string }[]>> = {
   emplacement: ONGLETS_EMPLACEMENT,
   locatif: ONGLETS_LOCATIF,
   technique: ONGLETS_TECHNIQUE,
+  prix: ONGLETS_PRIX,
 };
 
 /* Tous les sous-onglets confondus : de quoi vérifier qu'un `?sous=` venu de
@@ -366,7 +374,10 @@ export function BienFiche({
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
-              {sect === "prix" && <PrixSection b={b} espace={espace} compteActif={compteActif} />}
+              {sect === "prix" && (
+                <PrixSection b={b} espace={espace} compteActif={compteActif}
+                  tab={sous.prix} onTab={majSous("prix")} />
+              )}
               {sect === "photos" && <PhotosSection b={b} />}
               {sect === "estimations" && (
                 <EstimationsSection
@@ -1053,21 +1064,36 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
   );
 }
 
-function PrixSection({ b, espace, compteActif }: {
+/**
+ * Description et prix, en deux onglets (retour #303).
+ *
+ * MAV : « pour Descriptif et Prix, c'est en deux onglets sur le BO actuel, je
+ * veux que tu fasses de même. » Ce sont deux travaux distincts — on fixe un
+ * prix, ou on rédige une annonce — et les tenir sur un seul écran obligeait à
+ * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
+ * sous-entrées, comme pour l'emplacement ou l'état locatif.
+ */
+function PrixSection({ b, espace, compteActif, tab, onTab }: {
   b: BienData; espace?: Espace | null; compteActif?: boolean;
+  tab?: string; onTab?: (t: string) => void;
 }) {
+  const courant = tab ?? ONGLETS_PRIX[0].key;
   return (
     <>
       <SectTitle icon={I.info} title="Description et prix" />
-      {/* Retour #232 : « la section descriptif, mets-la au-dessus de
-          l'historique des prix pour qu'on puisse le voir plus facilement. »
-          C'est le texte qui part au vendeur et à l'acquéreur : il passe devant
-          l'historique, qui est une archive. */}
-      <div className="fh2">Descriptif</div>
-      <DescriptifForm b={b} />
-      <div style={{ marginTop: 20 }}>
-        <PrixEcran b={b} espace={espace} compteActif={compteActif} />
+      <div className="fsub-nav">
+        {ONGLETS_PRIX.map((o) => (
+          <button key={o.key} type="button" className={courant === o.key ? "on" : undefined}
+            onClick={() => onTab?.(o.key)}>
+            {o.label}
+          </button>
+        ))}
       </div>
+      {courant === "descriptif" ? (
+        <DescriptifForm b={b} />
+      ) : (
+        <PrixEcran b={b} espace={espace} compteActif={compteActif} />
+      )}
     </>
   );
 }
@@ -1247,6 +1273,16 @@ function DescriptifForm({ b }: { b: BienData }) {
       await updateBien(String(b.im._id), { descriptif: valeur, descriptif_auto: auto });
     });
 
+  /* Retour #303 — « l'enregistrement, tu le fais pas en dessous du cadre de
+     texte mais bien sur la barre sticky en bas. Par contre laisse bien le
+     "reprendre le texte automatique" sous la barre du texte. »
+     Le gros bouton vert sous le champ était le seul de la fiche à ne pas être
+     dans la barre collée : on le cherchait après avoir fait défiler la page,
+     et on quittait l'onglet sans enregistrer. Le retour au texte automatique,
+     lui, appartient au champ — c'est une action SUR le texte, pas sur la
+     fiche. */
+  const modifie = txt !== (enregistre || auto);
+
   return (
     <div className="frow" style={{ display: "block" }}>
       {aVerifier && (
@@ -1257,7 +1293,7 @@ function DescriptifForm({ b }: { b: BienData }) {
       )}
       <textarea
         className="min"
-        rows={8}
+        rows={12}
         style={{ width: "100%", fontSize: 13 }}
         value={txt}
         onChange={(e) => { setTxt(e.target.value); setALaMain(true); }}
@@ -1271,20 +1307,20 @@ function DescriptifForm({ b }: { b: BienData }) {
         </span>
         {txt.trim() !== auto.trim() && (
           <button type="button" className="fadd"
-            onClick={() => { setTxt(auto); setALaMain(false); }}>
+            onClick={() => { setTxt(auto); setALaMain(true); }}>
             Reprendre le texte automatique
           </button>
         )}
-        <button
-          className="kgo"
-          type="button"
-          disabled={pending}
-          style={pending ? { opacity: 0.5 } : undefined}
-          onClick={() => sauver(txt)}
-        >
-          <span className="ch">›</span> Enregistrer
-        </button>
       </div>
+      <BarreEnregistrer
+        modifie={modifie} pending={pending}
+        onEnregistrer={() => sauver(txt)}
+        onAnnuler={() => { setTxt(enregistre || auto); setALaMain(!!enregistre.trim()); }}
+      >
+        {modifie
+          ? "Ce texte part au vendeur, dans le dossier et dans l'annonce — modifications non enregistrées"
+          : "Ce texte part au vendeur, dans le dossier et dans l'annonce"}
+      </BarreEnregistrer>
     </div>
   );
 }

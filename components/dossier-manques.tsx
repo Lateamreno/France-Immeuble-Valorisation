@@ -130,6 +130,13 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
   const [fait, setFait] = useState(false);
 
   const remplis = m.champs.filter((c) => (vals[c.cle] ?? "").trim() !== "");
+  /* Les cases compagnonnes (le moyen de déplacement, #304) s'enregistrent avec
+     leur ligne : elles ne sont pas dans `m.champs`, mais elles vont au même
+     endroit — l'immeuble — et sous leur propre clé. */
+  const compagnons = m.champs
+    .map((c) => c.compagnon)
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .filter((x) => (vals[x.cle] ?? "").trim() !== "" && vals[x.cle] !== x.valeur);
 
   const enregistrer = () =>
     start(async () => {
@@ -148,6 +155,7 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
         if (c.unite) emp[c.cle] = parse(v);
         else emp[c.cle] = v;
       }
+      for (const x of compagnons) emp[x.cle] = vals[x.cle].trim();
 
       const cad = remplis.find((c) => c.cle === "ref_cadastre");
       if (cad) {
@@ -241,13 +249,24 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
                 )}
                 {c.unite && <i>{c.unite}</i>}
               </label>
-              {c.lien && <LienAller l={c.lien} />}
+              {/* Retour #304 — à droite de la durée, le moyen de déplacement,
+                  à la place du lien : c'est lui qui donne son sens au chiffre,
+                  et il s'écrit dans Emplacement comme s'il y avait été saisi. */}
+              {c.compagnon && (
+                <select className="dmq-moyen"
+                  value={vals[c.compagnon.cle] ?? c.compagnon.valeur ?? ""}
+                  onChange={(e) => setVals({ ...vals, [c.compagnon!.cle]: e.target.value })}>
+                  <option value="">Comment ?</option>
+                  {c.compagnon.options.map((o) => <option key={o}>{o}</option>)}
+                </select>
+              )}
+              {c.lien && !c.compagnon && <LienAller l={c.lien} />}
             </div>
           ))}
           <button
             type="button" className="savebar-go"
-            disabled={pending || remplis.length === 0}
-            style={pending || remplis.length === 0 ? { opacity: 0.5 } : undefined}
+            disabled={pending || (remplis.length === 0 && compagnons.length === 0)}
+            style={pending || (remplis.length === 0 && compagnons.length === 0) ? { opacity: 0.5 } : undefined}
             onClick={enregistrer}
           >{pending ? "Enregistrement…" : "❯ Enregistrer"}</button>
         </div>

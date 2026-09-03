@@ -323,9 +323,15 @@ export function descriptifLegal(
         ? `L'immeuble est vendu occupé : l'ensemble des lots est loué${bail}.${loyer}`
         : `L'immeuble est vendu partiellement occupé : ${pluriel(s.occupes, "lot")} ${s.occupes > 1 ? "sont loués" : "est loué"}${bail} et ${pluriel(s.libres, "lot")} ${s.libres > 1 ? "sont libres" : "est libre"} de toute occupation.${loyer}`,
     );
-    phrases.push(
-      "Le mandant déclare que les baux en cours seront transmis à l'acquéreur et qu'aucun congé, ni aucune procédure, n'est en cours à la date des présentes, sauf mention contraire portée ci-dessus.",
-    );
+    /* Retour #301 — MAV a fait retirer la déclaration sur les baux (« le
+       mandant déclare que les baux en cours seront transmis à l'acquéreur et
+       qu'aucun congé, ni aucune procédure, n'est en cours… »). Elle n'a rien à
+       faire dans un DESCRIPTIF : c'est un engagement du vendeur, pas une
+       description du bien. Elle se retrouvait recopiée telle quelle dans
+       l'annonce et dans le dossier envoyé aux acquéreurs, où elle faisait
+       promettre au mandant, hors de tout contrat, quelque chose qu'il n'avait
+       pas relu. Les obligations du mandant restent où elles sont opposables :
+       dans les articles du mandat. */
   }
 
   return phrases.join("\n\n");

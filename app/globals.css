@@ -6598,3 +6598,13 @@ body.hors-bo {
 /* Retour #296 — le même bouton, en plus petit, dans l'onglet Objet du mandat. */
 .terr-auto.petit { margin: 5px 0 0; padding: 6px 11px; font-size: 12px; }
 .terr-auto.petit svg { width: 14px; height: 14px; }
+
+/* Retour #302 — le renvoi vers le descriptif, depuis le motif de blocage. */
+.dos-lien { color: var(--gold-bo); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+
+/* Retour #304 — le moyen de déplacement, à droite de la durée qu'il qualifie. */
+.dmq-moyen {
+  flex: none; min-width: 128px; height: 32px; box-sizing: border-box;
+  border: 1px solid #cfcfcf; border-radius: 4px; background: #fff;
+  padding: 0 8px; font: inherit; font-size: 12.5px; color: var(--slate);
+}

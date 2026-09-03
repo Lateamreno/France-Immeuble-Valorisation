@@ -982,7 +982,14 @@ export function LotsEditor({ b }: { b: BienData }) {
                       au sol, elle, reste saisissable : elle renseigne sans
                       entrer dans le total de l'immeuble. */}
                   {compteAuLot(r.Destination) ? (
-                    <td className="na sansm2" title="Une cave ou un parking se compte au lot, pas au m²">—</td>
+                    /* Retour #305 — « à la place de zéro sur ces types de lots on devrait
+                        pouvoir choisir NC ». Un tiret se lit comme un oubli ;
+                        « n.c. » est une réponse, et c'est le mot que le reste
+                        du tableau emploie déjà. La case reste barrée : une
+                        cave se compte au lot, pas au m² (#250), et ce qu'on y
+                        écrirait ne pourrait pas entrer dans la surface de
+                        l'immeuble sans la fausser. */
+                    <td className="na sansm2" title="Une cave ou un parking se compte au lot, pas au m² — surface Carrez sans objet">n.c.</td>
                   ) : (
                     <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
                   )}
