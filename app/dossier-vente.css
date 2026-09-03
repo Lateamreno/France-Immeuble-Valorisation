@@ -158,8 +158,19 @@
   display: grid; grid-template-columns: 1fr 1fr; gap: 3mm;
   margin: 0 8mm;
 }
+/* Retour #322 — « pour les photos en portrait, tu laisses le cadre dans les
+   mêmes proportions en 16/9, t'affiches la photo en pleine hauteur avec des
+   bandes noires de chaque côté pour que ce soit normé en terme de hauteur. »
+
+   Le cadre (95,5 mm × 52 mm sur la planche, soit du 16/9) ne bouge donc pas :
+   c'est la photo qui s'y inscrit en entier. `cover` recadrait au centre — sur
+   une photo verticale, il n'en restait qu'une tranche de mur. `contain` sur
+   fond noir garde la hauteur commune à toutes les vignettes et ne coupe plus
+   rien ; les photos moins larges que le cadre reçoivent une bande de chaque
+   côté, ce qui, sur un dossier au fond sombre, se lit comme une intention. */
 .dv-ph-grid img {
-  width: 100%; height: 52mm; object-fit: cover; display: block;
+  width: 100%; height: 52mm; object-fit: contain; display: block;
+  background: #000;
   border-radius: 1.5mm; border: .3mm solid var(--dv-or);
 }
 .dv-vide-bloc {

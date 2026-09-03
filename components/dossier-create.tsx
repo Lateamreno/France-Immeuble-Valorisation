@@ -167,6 +167,34 @@ export function AddDossierButton({ b }: { b: BienData }) {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">Nouveau dossier — V{version}<button type="button" onClick={close}>✕</button></div>
             <div className="modal-b">
+              {/* Retour #321 — « comme c'est pas immédiat on a l'impression
+                  qu'il y a un bug et on est tenté de faire un deuxième dossier
+                  alors qu'il n'y a pas lieu. »
+
+                  Un dossier, c'est vingt pages, six cartes Google et un PDF :
+                  dix à trente secondes. Le seul signe qu'il se passait quelque
+                  chose était le libellé d'un bouton grisé, en bas de la modale,
+                  là où l'œil n'est plus une fois qu'on a cliqué. D'où un
+                  bandeau qui occupe le haut de l'écran, dit à quelle étape on
+                  est, et demande explicitement de ne pas relancer. */}
+              {pending && (
+                <div className="dos-encours" role="status" aria-live="polite">
+                  <span className="dos-encours-r" aria-hidden="true" />
+                  <div>
+                    <b>
+                      {createdId
+                        ? `Dossier V${version} enregistré — fabrication du PDF…`
+                        : vu
+                        ? "Enregistrement du dossier…"
+                        : "Fabrication de l'aperçu…"}
+                    </b>
+                    <span>
+                      Une vingtaine de pages, les cartes et le PDF : comptez quelques
+                      secondes. Ne relancez pas, cela créerait un dossier en double.
+                    </span>
+                  </div>
+                </div>
+              )}
               {/* #182 — « tu peux reprendre la modale en une seule page ». Le
                   stepper Immeuble → Prix → PDF faisait trois écrans pour deux
                   chiffres : tout tient sur une page, les données de l'immeuble
@@ -296,7 +324,11 @@ export function AddDossierButton({ b }: { b: BienData }) {
                     style={pending || vHai <= 0 || !vu ? { opacity: 0.5 } : undefined}
                     title={vu ? undefined : "Fabriquez d'abord l'aperçu et relisez-le."}
                     onClick={generer}>
-                    <span className="ch">+</span> Enregistrer la version V{prochaine}
+                    {/* Retour #321 : enregistrer prend quelques secondes. Sans
+                        libellé qui bouge, le bouton grisé passe pour un bug et
+                        l'agent reclique — d'où les doublons de dossiers. */}
+                    <span className="ch">+</span>{" "}
+                    {pending && vu ? "Enregistrement…" : `Enregistrer la version V${prochaine}`}
                   </button>
                 </>
               ) : (

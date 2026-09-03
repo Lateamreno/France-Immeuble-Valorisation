@@ -22,6 +22,7 @@ import { rendements } from "./rendements";
 import { photoUrl } from "./dossier";
 import { estFacadeRue } from "./facade";
 import { descriptifRetenu } from "./descriptif";
+import { selectionDossier } from "./photos-dossier";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -169,9 +170,13 @@ export function construireDossierVente(
         ?? (estFacadeRue(im.photo_main_compressed) ? "" : photoUrl(S(im.photo_main_compressed))),
       1520,
     ),
-    photos: b.photos
-      .filter((p) => p.type !== "Principale" && !["Cadastre", "Carte", "Vue de rue"].includes(S(p.type)))
-      .sort((x, y) => x.ordre - y.ordre)
+    /* Retour #322 — deux pages de huit, seize photos, et ce sont celles que
+       l'agent a cochées sur l'écran Photos (à défaut, les seize premières).
+       Le tri, le plafond et le choix des photos vivent dans un seul endroit :
+       l'écran de sélection et l'impression ne peuvent plus dire deux choses
+       différentes. */
+    photos: selectionDossier(b.photos)
+      .retenues
       .map((p) => taille(p.urlPleine ?? p.url, 760))
       .filter((u): u is string => !!u),
 

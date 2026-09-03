@@ -13,6 +13,22 @@ export const dmy = (iso?: unknown): string | undefined => {
   return FR_DATE.format(d);
 };
 
+/**
+ * « Dossier V3 — 12/08/26 » : le libellé d'un dossier dans un sélecteur
+ * (retour #325).
+ *
+ * MAV : « sur le dossier sélectionné il faut rajouter le numéro de version en
+ * plus de la date. » Deux dossiers générés le même jour se lisaient pareil, et
+ * c'est la version qui figure au pied du dossier imprimé — sans elle, on ne
+ * sait pas lequel on est en train de joindre à un e-mail.
+ */
+export const libelleDossier = (d: Record<string, unknown>): string => {
+  const titre = typeof d.titre === "string" && d.titre.trim() ? d.titre.trim() : "Dossier";
+  const v = d.version === undefined || d.version === null ? "" : ` V${String(d.version)}`;
+  const date = dmy(d["Created Date"]);
+  return `${titre}${v}${date ? ` — ${date}` : ""}`;
+};
+
 export const group = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
 export const euros = (n?: unknown): string | undefined =>

@@ -1629,16 +1629,32 @@ function MandatsSection({ b, ouvert, onRevenir }: {
 }
 
 function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => void }) {
+  /* L'heure est lue une fois, à l'affichage de l'écran : appeler `Date.now()`
+     en pleine composition rendrait le rendu non idempotent. */
+  const [maintenant] = useState(() => Date.now());
   return (
     <>
       <SectTitle icon={I.pdf} title="Dossiers" />
       {/* #182 — ce qui manque, en tête, avec de quoi le remplir sur place. */}
       <ManquesDossier b={b} onAller={onAller} />
       <AddDossierButton b={b} />
-      {b.dossiers.map((d, i) => (
+      {b.dossiers.map((d, i) => {
+        /* Retour #321 — le PDF se fabrique après l'enregistrement, et l'agent
+           qui a fermé la modale entre-temps voyait une ligne sans bouton PDF :
+           rien ne distinguait « ça travaille » de « ça a raté ». Un dossier
+           enregistré depuis moins de cinq minutes et encore sans PDF est
+           annoncé comme en cours — passé ce délai, ce n'est plus de l'attente,
+           c'est un échec, et la ligne reste muette comme avant. */
+        const enCours =
+          !(typeof d.pdf === "string" && d.pdf) &&
+          maintenant - new Date(String(d["Created Date"] ?? "")).getTime() < 5 * 60_000;
+        return (
         <Row key={d._id as string}>
           <div className="grow">
-            <div className="t">Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}</div>
+            <div className="t">
+              Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}
+              {enCours && <span className="badge-encours">PDF en préparation…</span>}
+            </div>
             <div className="s">
               {dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI
               {typeof d.surface === "number" && <> · {Math.round(d.surface as number)} m² · {String(d.occupation ?? "?")} % · {String(d.renta_actuelle ?? "?")} %</>}
@@ -1651,7 +1667,8 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
             <a className="fbtn" href={(d.pdf as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
           )}
         </Row>
-      ))}
+        );
+      })}
       {b.dossiers.length === 0 && <div className="fempty">Aucun dossier.</div>}
     </>
   );

@@ -54,8 +54,9 @@ function phraseAcces(im: Record<string, unknown>): string | undefined {
   dire("gare", "des transports");
   dire("com", "des commerces");
   if (bouts.length === 0) return undefined;
-  const ville = S(im.adresse_ville).trim();
-  return `L'immeuble se trouve ${bouts.join(" et ")}${ville ? `, à ${ville}` : ""}.`;
+  /* La ville est déjà dans la première phrase de la désignation — la répéter
+     ici la faisait apparaître deux fois en trois lignes (retour #323). */
+  return `L'immeuble se trouve ${bouts.join(" et ")}.`;
 }
 
 /**
@@ -66,10 +67,15 @@ function phraseAcces(im: Record<string, unknown>): string | undefined {
  */
 export function descriptifAuto(b: SourceDescriptif): string {
   const refs = b.parcelles.map((p) => S(p.ref_cadastre).trim()).filter(Boolean).join(", ");
+  /* Retour #323 : ce texte-là part dans les annonces et dans les dossiers
+     envoyés aux acquéreurs. Il n'y donne donc ni l'adresse exacte ni le
+     cadastre — la doctrine maison est que l'adresse se communique, mais ne se
+     publie pas. La désignation complète reste dans le mandat. */
   const legal = descriptifLegal(
     b.im, b.lots,
     refs || S(b.im.ref_cadastre) || undefined,
     N(b.im.ter_surface),
+    true,
   );
   const acces = phraseAcces(b.im);
   return [legal, acces].filter(Boolean).join("\n\n");

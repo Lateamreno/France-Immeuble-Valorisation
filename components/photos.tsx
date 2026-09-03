@@ -17,8 +17,11 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import {
   associerPhoto, basculerDiffusionPhoto, definirPhotoPrincipale, deletePhoto,
-  ordonnerPhotos, rafraichirFiche, uploadPhoto,
+  fixerPhotosDossier, ordonnerPhotos, rafraichirFiche, uploadPhoto,
 } from "@/lib/bo/actions";
+import {
+  MAX_PHOTOS_DOSSIER, pagesPhotos, selectionDossier,
+} from "@/lib/bo/photos-dossier";
 
 type Photo = BienData["photos"][number];
 
@@ -111,6 +114,28 @@ export function PhotosEcran({ b }: { b: BienData }) {
   const secondaires = toutes.filter((p) => p.type !== "Principale" && !HORS_GALERIE.has(p.type ?? ""));
   const visibles = filtre ? secondaires.filter((p) => p.type === filtre) : secondaires;
   const compte = (t: string) => secondaires.filter((p) => p.type === t).length;
+
+  /* Retour #322 — la sélection du dossier, plafonnée à deux planches de huit.
+     Elle se calcule avec la même règle que l'impression (voir
+     lib/bo/photos-dossier.ts) : tant que personne n'a coché, ce sont les seize
+     premières, et l'écran les montre cochées pour ne pas mentir sur ce que le
+     dossier contiendra. */
+  const { retenues, auto } = useMemo(() => selectionDossier(toutes), [toutes]);
+  const auDossier = useMemo(() => new Set(retenues.map((p) => p.id)), [retenues]);
+  const [plein, setPlein] = useState(false);
+
+  /** Coche ou décoche une photo pour le dossier, en tenant le plafond. */
+  const basculerDossier = (p: Photo) => {
+    const dedans = auDossier.has(p.id);
+    if (!dedans && auDossier.size >= MAX_PHOTOS_DOSSIER) { setPlein(true); return; }
+    const cible = dedans
+      ? retenues.filter((x) => x.id !== p.id).map((x) => x.id)
+      : [...retenues.map((x) => x.id), p.id];
+    /* Au premier clic sur une sélection encore implicite, on l'écrit en entier :
+       une seule case cochée en base ferait sortir les quinze autres du dossier. */
+    if (auto) start(() => fixerPhotosDossier(immeubleId, cible));
+    else start(() => basculerDiffusionPhoto(immeubleId, p.id, "show_in_doss", !dedans));
+  };
 
   const lotLabel = (id?: string) => {
     const l = b.lots.find((x) => String(x._id) === id);
@@ -259,7 +284,38 @@ export function PhotosEcran({ b }: { b: BienData }) {
             {t.label} <b>{compte(t.valeur)}</b>
           </button>
         ))}
+        {/* Retour #322 — « il faut un compteur de photos au dossier au-dessus
+            des photos, peut-être à droite de toutes les autres cases, pour
+            dire y a combien de photos sélectionnées et donc le nombre de pages
+            qu'il y aura en tout dans le dossier, 1 ou 2. » */}
+        <span style={{ flex: 1 }} />
+        <span className={`gph-doss-cpt${auDossier.size >= MAX_PHOTOS_DOSSIER ? " plein" : ""}`}
+          title={auto
+            ? "Personne n'a encore choisi : le dossier prend les premières photos, dans l'ordre de la grille."
+            : undefined}>
+          Au dossier <b>{auDossier.size}</b>/{MAX_PHOTOS_DOSSIER}
+          <i>{pagesPhotos(auDossier.size)} page{pagesPhotos(auDossier.size) > 1 ? "s" : ""}{auto ? " · par défaut" : ""}</i>
+        </span>
       </div>
+
+      {plein && (
+        <div className="modal-ov" onClick={() => setPlein(false)}>
+          <div className="modal att" onClick={(e) => e.stopPropagation()}>
+            <div className="tr-head">Le dossier est complet<button type="button" onClick={() => setPlein(false)}>✕</button></div>
+            <div className="tr-body">
+              <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                Le dossier de vente imprime <b>deux planches de huit photos</b>, soit{" "}
+                {MAX_PHOTOS_DOSSIER} au maximum. Pour en ajouter une, retirez-en une d&apos;abord —
+                sinon la dix-septième serait tombée sans que personne le voie.
+              </p>
+            </div>
+            <div className="tr-foot">
+              <span style={{ flex: 1 }} />
+              <button className="vf-go" type="button" onClick={() => setPlein(false)}>Compris</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {err && (
         <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)", whiteSpace: "pre-line" }}>
@@ -287,11 +343,11 @@ export function PhotosEcran({ b }: { b: BienData }) {
             <figcaption>
               <button
                 type="button"
-                className={`gph-doss${p.dossier ? " on" : ""}`}
-                title={p.dossier ? "Retirer du dossier de vente" : "Mettre dans le dossier de vente"}
-                onClick={() => start(() => basculerDiffusionPhoto(immeubleId, p.id, "show_in_doss", !p.dossier))}
+                className={`gph-doss${auDossier.has(p.id) ? " on" : ""}`}
+                title={auDossier.has(p.id) ? "Retirer du dossier de vente" : "Mettre dans le dossier de vente"}
+                onClick={() => basculerDossier(p)}
               >
-                {p.dossier ? "✓ Dossier" : "Dossier"}
+                {auDossier.has(p.id) ? "✓ Dossier" : "Dossier"}
               </button>
               <button type="button" className="gph-a" onClick={() => setAssocie(p)}>Associer</button>
               <button

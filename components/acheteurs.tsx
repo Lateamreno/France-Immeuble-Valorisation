@@ -10,7 +10,7 @@ import {
   carte, destinataires, FILTRES_MATCH_DEFAUT, matcher,
   type Acquereur, type CriteresBien, type FiltresMatch,
 } from "@/lib/bo/matching";
-import { dmy, euros } from "@/lib/format";
+import { dmy, euros, libelleDossier } from "@/lib/format";
 import { saveMatch } from "@/lib/bo/actions";
 import { AssistantCommercialisation } from "@/components/commercialisation-assistant";
 
@@ -211,7 +211,7 @@ function ModaleMatching({
           {source === "from_doss" && dossiers.length > 0 && (
             <select className="min" value={dossierId} onChange={(e) => { setDossierId(e.target.value); choisirSource("from_doss"); }}>
               {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{S(x.titre) || "Dossier"} — {dmy(x["Created Date"])}</option>
+                <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
               ))}
             </select>
           )}

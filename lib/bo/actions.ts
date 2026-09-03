@@ -1909,6 +1909,28 @@ export async function basculerDiffusionPhoto(
   refresh(immeubleId);
 }
 
+/**
+ * Fixe d'un coup les photos retenues pour le dossier de vente (retour #322).
+ *
+ * Tant que personne n'a coché, la sélection est implicite — « les seize
+ * premières » (voir `lib/bo/photos-dossier.ts`). Au premier clic de l'agent il
+ * faut la matérialiser en entier, sinon on écrirait une seule case cochée et
+ * les quinze autres photos sortiraient du dossier sans que personne l'ait
+ * demandé. On écrit donc les seize d'un coup, et on décoche explicitement le
+ * reste : ce qui est en base dit désormais exactement ce que le dossier
+ * imprimera.
+ */
+export async function fixerPhotosDossier(immeubleId: string, retenues: string[]) {
+  const garde = new Set(retenues);
+  const photos = await photosDe(immeubleId);
+  await Promise.all(
+    photos
+      .filter((p) => (p.show_in_doss === true) !== garde.has(String(p._id)))
+      .map((p) => patchPhoto(String(p._id), { show_in_doss: garde.has(String(p._id)) })),
+  );
+  refresh(immeubleId);
+}
+
 /** Modale « Associer » : rattache la photo à un lot, à la façade, aux parties
  *  communes, au cadastre ou à la carte. */
 export async function associerPhoto(

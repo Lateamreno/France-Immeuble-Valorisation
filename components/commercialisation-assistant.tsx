@@ -7,7 +7,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
-import { dmy, euros } from "@/lib/format";
+import { dmy, euros, libelleDossier } from "@/lib/format";
 import { createCommercialisation, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
@@ -120,7 +120,7 @@ export function AssistantCommercialisation({
             <select className="min" value={dossier} onChange={(e) => setDossier(e.target.value)}>
               <option value="">Sans dossier</option>
               {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{S(x.titre) || "Dossier"} — {dmy(x["Created Date"])}</option>
+                <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
               ))}
             </select>
           )}
@@ -131,6 +131,29 @@ export function AssistantCommercialisation({
             Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
             auprès de {dest.emails.length} destinataires.
           </div>
+          {/* Retour #328 — l'écran demandait un lien de partage sans dire où
+              on le fabrique. C'est transfer.it que la maison utilise : le
+              dossier, les plans, les diagnostics et les photos y montent d'un
+              coup, et le lien revient se coller ici. */}
+          <a className="asst-tr" href="https://transfer.it/start" target="_blank" rel="noreferrer">
+            <span className="asst-tr-l" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M12 16V4M8 8l4-4 4 4" />
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              transfer<b>.it</b>
+            </span>
+            <span className="asst-tr-t">
+              <b>Déposer les pièces et récupérer le lien →</b>
+              Le dossier, les plans, les diagnostics, les photos — tout dans un seul envoi,
+              puis collez le lien ci-dessus.
+              <i>
+                RGPD : caviardez les baux avant de les déposer. Le nom, la profession et les
+                coordonnées d&apos;un locataire n&apos;ont rien à faire dans un dossier
+                d&apos;acquéreur.
+              </i>
+            </span>
+          </a>
           <div className="wnav"><span className="sp" style={{ flex: 1 }} />
             <button className="kgo" type="button" onClick={() => setEtape("Mandat")}><span className="ch">›</span> Continuer</button>
           </div>
