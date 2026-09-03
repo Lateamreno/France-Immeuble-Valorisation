@@ -945,6 +945,11 @@ export async function getMandat(id: string): Promise<{
      c'est lui qui fait foi ; quand il ne les connaît pas, le mandat les
      saisit et les lui renvoie. */
   parcelles: Record<string, unknown>[];
+  /* Retour #296 — « l'histoire de pouvoir trouver les références cadastrales
+     automatiquement, c'est ici que ce serait top aussi. » Le remplissage
+     automatique interroge le cadastre sous un POINT : il lui faut donc les
+     coordonnées de l'immeuble, que seule la fiche adresse porte. */
+  geo: { lat: number; lon: number } | null;
   /** Cartes de visite des contacts cités, par identifiant (retour #205). */
   vignettes: Record<string, Vignette>;
 } | null> {
@@ -955,7 +960,7 @@ export async function getMandat(id: string): Promise<{
   const m = r.results[0];
   if (!m) return null;
   const imId = Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as string[])[0] : undefined;
-  const [im, lots, tousAgents] = await Promise.all([
+  const [im, lots, tousAgents, adresses] = await Promise.all([
     imId
       ? bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: imId }], limit: 1 })
           .then((x) => x.results[0] ?? null)
@@ -965,7 +970,14 @@ export async function getMandat(id: string): Promise<{
       ? fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: imId }], 200).catch(() => [])
       : Promise.resolve([] as Record<string, unknown>[]),
     agents().catch(() => [] as Agent[]),
+    imId
+      ? fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: imId }], 2).catch(() => [])
+      : Promise.resolve([] as Record<string, unknown>[]),
   ]);
+  const pointGeo = adresses[0]?.geo as { lat?: unknown; lng?: unknown } | undefined;
+  const geo = typeof pointGeo?.lat === "number" && typeof pointGeo?.lng === "number"
+    ? { lat: pointGeo.lat, lon: pointGeo.lng }
+    : null;
   const lotsTries = [...lots].sort(
     (a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0),
   );
@@ -989,7 +1001,7 @@ export async function getMandat(id: string): Promise<{
     S2(im?.PROPRIETAIRE),
   ].filter((x): x is string => !!x);
   const vignettes = await getVignettes(idsMandants).catch(() => ({}));
-  return { m, im, lots: lotsTries, agent, parcelles, vignettes };
+  return { m, im, lots: lotsTries, agent, parcelles, geo, vignettes };
 }
 
 /* ---------- Vues listes (réplique des modules de la sidebar) ---------- */

@@ -33,7 +33,8 @@ import {
 } from "@/lib/bo/proprio-actions";
 import {
   cancelMandat, capitalDuSiren, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
-  majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne, reporterCadastre,
+  addParcelle, majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne,
+  reporterCadastre,
   reserveMandatNumero,
   updateMandat, type EntrepriseTrouvee, type MandatPatch,
 } from "@/lib/bo/actions";
@@ -282,7 +283,7 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
           />
         )}
         {tab === "Objet" && (
-          <OngletObjet m={m} im={im} lots={lots} parcelles={d.parcelles}
+          <OngletObjet m={m} im={im} lots={lots} parcelles={d.parcelles} geo={d.geo ?? null}
             mandatId={mandatId} immeubleId={immeubleId} locked={locked} />
         )}
         {tab === "Prix" && (
@@ -1031,14 +1032,66 @@ function Piece({
   );
 }
 
+/**
+ * « Remplir automatiquement les parcelles », depuis le mandat (retour #296).
+ *
+ * Le cadastre de l'IGN dit quelle parcelle contient le point d'adresse. On
+ * écrit le résultat sur la FICHE du bien, jamais sur le mandat : c'est
+ * Emplacement qui fait foi (#202), et le mandat le relit aussitôt.
+ */
+function RemplirParcelles({ immeubleId, lat, lon }: {
+  immeubleId: string; lat: number; lon: number;
+}) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const chercher = () =>
+    start(async () => {
+      setMsg(null);
+      try {
+        const r = await fetch(`/api/cadastre?lat=${lat}&lon=${lon}`);
+        const d = (await r.json()) as {
+          parcelles?: { ref: string; superficie?: number; idu?: string }[];
+        };
+        const liste = d.parcelles ?? [];
+        if (liste.length === 0) {
+          setMsg("Le cadastre ne rend aucune parcelle sous cette adresse.");
+          return;
+        }
+        for (const p of liste) {
+          await addParcelle(immeubleId, {
+            ref_cadastre: p.ref, superficie: p.superficie, idu: p.idu,
+          });
+        }
+        setMsg(`${liste.length} parcelle${liste.length > 1 ? "s" : ""} ajoutée${liste.length > 1 ? "s" : ""} à la fiche.`);
+      } catch {
+        setMsg("Le cadastre n'a pas répondu — à saisir à la main.");
+      }
+    });
+
+  return (
+    <>
+      <button type="button" className="terr-auto petit" disabled={pending} onClick={chercher}>
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M12 3v4M12 17v4M3 12h4M17 12h4" /><circle cx="12" cy="12" r="3.4" />
+        </svg>
+        {pending ? "Recherche au cadastre…" : "Remplir automatiquement les parcelles"}
+      </button>
+      {msg && <span className="mdt-hint">{msg}</span>}
+    </>
+  );
+}
+
 /* ---------------------------------------------------- Onglet 2 · Objet */
 
 function OngletObjet({
-  m, im, lots, parcelles, mandatId, immeubleId, locked,
+  m, im, lots, parcelles, geo, mandatId, immeubleId, locked,
 }: {
   m: Record<string, unknown>; im: Record<string, unknown> | null; lots: Record<string, unknown>[];
   /** Parcelles déjà connues de l'onglet Emplacement (retour #202). */
   parcelles: Record<string, unknown>[];
+  /** Le point géocodé de l'immeuble : il ouvre le remplissage automatique. */
+  geo: { lat: number; lon: number } | null;
   mandatId: string; immeubleId: string; locked: boolean;
 }) {
   const [pending, start] = useTransition();
@@ -1069,6 +1122,26 @@ function OngletObjet({
 
   const [cad, setCad] = useState(refsEmplacement || S(m.ref_cadastre));
   const [terrain, setTerrain] = useState(S(surfaceEmplacement ?? num(m.surface_terrain)));
+
+  /* Retour #296 — « quand j'ai rentré les parcelles en automatique dans
+     Emplacement, ça ne l'a pas rentré quand j'y suis allé depuis la sidebar,
+     mais ça a bien fonctionné en faisant précédent-suivant, c'est bizarre. »
+     Rien de bizarre en fait : les deux cases étaient initialisées AU MONTAGE.
+     Passer par précédent-suivant remontait l'onglet, donc relisait la fiche ;
+     y arriver par le rail réutilisait le composant, qui gardait ce qu'il avait
+     lu la première fois — c'est-à-dire vide. On se recale donc pendant le
+     rendu, sans écraser une frappe en cours : la valeur ne bouge que si celle
+     de la fiche a changé ET qu'on affichait encore l'ancienne. */
+  const servi = `${refsEmplacement}|${S(surfaceEmplacement)}`;
+  const [vuServi, setVuServi] = useState(servi);
+  if (vuServi !== servi) {
+    const [refAvant, surfAvant] = vuServi.split("|");
+    setVuServi(servi);
+    if (refsEmplacement && cad === refAvant) setCad(refsEmplacement);
+    if (surfaceEmplacement !== undefined && terrain === surfAvant) {
+      setTerrain(S(surfaceEmplacement));
+    }
+  }
   const auto = useMemo(
     () => descriptifLegal(im ?? {}, lots, cad || undefined, parse(terrain)),
     [im, lots, cad, terrain],
@@ -1149,7 +1222,17 @@ function OngletObjet({
             onChange={(e) => setCad(e.target.value)}
           />
           {cadVerrouille && immeubleId && (
-            <Link className="mdt-lien" href={`/bien/${immeubleId}`}>Modifier dans Emplacement</Link>
+            <Link className="mdt-lien" href={`/bien/${immeubleId}?ecran=emplacement&sous=parcelles`}>
+              Modifier dans Emplacement
+            </Link>
+          )}
+          {/* Retour #296 — « l'histoire de pouvoir trouver les références
+              cadastrales automatiquement, c'est ici que ce serait top aussi. »
+              Même bouton qu'au bien : il écrit sur la FICHE, pas sur le mandat,
+              et le mandat s'en trouve rempli par ricochet — c'est la doctrine
+              du #202, la parcelle n'a qu'un propriétaire de la vérité. */}
+          {!cadVerrouille && !locked && geo && (
+            <RemplirParcelles immeubleId={immeubleId} lat={geo.lat} lon={geo.lon} />
           )}
         </Champ>
         <Champ label="Surface du terrain (m²)">

@@ -968,6 +968,32 @@ export async function reporterCadastre(
   await addParcelle(immeubleId, { ref_cadastre: propre, superficie: surface });
 }
 
+/**
+ * Corrige une parcelle déjà au dossier (retour #295).
+ *
+ * MAV : « quand je clique sur ajouter les parcelles trouvées, il faut quand
+ * même que je puisse ajouter la longueur de façade, si tu ne peux pas trouver
+ * l'info toi-même, et que je puisse ajouter aussi d'autres parcelles. »
+ *
+ * Le cadastre donne la référence et la superficie ; la façade, il ne la donne
+ * pas — elle se mesure sur le plan. Une parcelle ajoutée automatiquement
+ * n'était plus modifiable qu'en la supprimant pour la resaisir, ce qui faisait
+ * perdre la superficie officielle au passage.
+ */
+export async function updateParcelle(
+  immeubleId: string,
+  parcelleId: string,
+  patch: { ref_cadastre?: string; superficie?: number | null; facade?: number | null },
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_parcelle",
+    p_id: parcelleId,
+    p_patch: cleanPatch({ ...patch, "Modified Date": new Date().toISOString() }),
+  });
+  await syncTerrain(immeubleId);
+  refresh(immeubleId);
+}
+
 /** Retire une parcelle (corbeille + retrait du tableau PARCELLEs). */
 export async function deleteParcelle(immeubleId: string, parcelleId: string) {
   await rpc("bo_delete_doc", { p_table: "bo_parcelle", p_id: parcelleId });
