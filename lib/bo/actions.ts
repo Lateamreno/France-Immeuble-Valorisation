@@ -2,6 +2,7 @@
 
 // Écritures du BO — uniquement vers Supabase (bo_*), jamais vers Bubble.
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
+import { colonneApres } from "./colonnes";
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { ecrireExclusions, lireExclusions } from "@/lib/bo/exclusions";
 import { after } from "next/server";
@@ -3758,8 +3759,10 @@ export type CommercialisationInput = {
   objet: string;
   message: string;
   smsTexte?: string;
-  /** Acquéreurs ciblés : une proposition sera créée pour chacun. */
-  cibles: { rechercheId: string; contactId?: string; email?: string; telephone?: string }[];
+  /** Acquéreurs ciblés : une proposition sera créée pour chacun.
+   *  `note` est le grade du contact (A/B/C/D) : c'est lui qui décide de la
+   *  colonne où l'immeuble atterrit sur le dashboard — voir `colonneApres`. */
+  cibles: { rechercheId: string; contactId?: string; email?: string; telephone?: string; note?: string }[];
 };
 
 /** Crée la commercialisation et une proposition par acquéreur ciblé.
@@ -3834,9 +3837,24 @@ export async function createCommercialisation(input: CommercialisationInput) {
     }).catch(() => undefined);
   }
 
+  /* L'immeuble change de colonne sur le dashboard. C'est le geste qui manquait :
+     on créait les propositions, et le bien restait en « Préparation mandat et
+     dossier » — donc le tableau de bord ne montrait jamais où en était
+     réellement la commercialisation. */
+  const im = await bqOne("immeuble", input.immeubleId).catch(() => null);
+  const cible = im ? colonneApres(String(im.Statut ?? ""), input.cibles.map((c) => c.note)) : null;
+  if (cible) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_immeuble",
+      p_id: input.immeubleId,
+      p_patch: { Statut: cible, "Modified Date": now },
+    }).catch(() => undefined);
+  }
+
+  revalidatePath("/", "layout");
   revalidatePath(`/bien/${input.immeubleId}`);
   revalidatePath("/propositions");
-  return { commercialisationId: commId, propositions: propositions.length };
+  return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
 }
 
 /** Marque les e-mails ou les SMS d'une commercialisation comme envoyés. */

@@ -85,6 +85,10 @@ export function AssistantCommercialisation({
           contactId: a.contactId,
           email: a.email,
           telephone: a.telephone,
+          /* Le grade décide de la colonne du dashboard après l'envoi : A/B
+             seulement → « Commercialisés aux clients A et B », dès qu'un C, un
+             D ou un sans-grade est dedans → « à tous les clients ». */
+          note: a.note,
         })),
       });
       setCommId(res.commercialisationId);

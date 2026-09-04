@@ -2038,11 +2038,85 @@ function EcranOffres({ b }: { b: BienData }) {
 }
 
 /** Relance, refus motivé et réactivation d'une proposition. */
+/* Les motifs de refus réellement utilisés dans le back-office, relevés sur les
+   propositions existantes. Ils couvrent l'écrasante majorité des cas ; « Autre »
+   ouvre la saisie libre pour le reste. Un menu vaut mieux qu'un champ vide :
+   il rend les motifs comparables d'une affaire à l'autre. */
+const MOTIFS_REFUS = [
+  "Pas intéressé",
+  "N'est plus en recherche",
+  "Budget insuffisant",
+  "Secteur qui ne correspond pas",
+  "Rendement insuffisant",
+  "Doublon — dossier déjà envoyé",
+  "Mise à jour du dossier — nouvel envoi",
+  "Ancienne commercialisation",
+  "Autre — à préciser",
+];
+
+/** La fenêtre de refus d'une proposition : un motif choisi, ou écrit. */
+function ModaleRefus({ onFermer, onRefuser, pending }: {
+  onFermer: () => void;
+  onRefuser: (motif: string) => void;
+  pending: boolean;
+}) {
+  const [motif, setMotif] = useState(MOTIFS_REFUS[0]);
+  const [libre, setLibre] = useState("");
+  const autre = motif === "Autre — à préciser";
+  const valeur = autre ? libre.trim() : motif;
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Refuser la proposition
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <span className="mlab">Motif du refus</span>
+          <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
+            {MOTIFS_REFUS.map((m) => <option key={m}>{m}</option>)}
+          </select>
+          {autre && (
+            <>
+              <span className="mlab">Préciser</span>
+              <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
+                placeholder="Ce que l'acquéreur a répondu" />
+            </>
+          )}
+          <div className="asst-note">
+            Le motif s'affiche sur la ligne de la proposition et reste consultable :
+            c'est lui qui évite de renvoyer le même dossier à quelqu'un qui l'a déjà refusé.
+          </div>
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <button className="kgo" type="button" disabled={pending || (autre && !valeur)}
+            onClick={() => onRefuser(valeur)}>
+            <span className="ch">›</span> Marquer refusée
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> }) {
   const [pending, start] = useTransition();
+  const [refus, setRefus] = useState(false);
   const immeubleId = String(b.im._id);
   const id = String(p._id);
   const refusee = String(p.Statut ?? "").startsWith("Refus");
+  /* Depuis quand la proposition attend : c'est ce qui dit s'il faut relancer.
+     Le bouton se teinte au-delà de dix jours plutôt que de rester neutre —
+     « faire régulièrement les relances » suppose de voir lesquelles le
+     méritent sans ouvrir chaque ligne. */
+  const depuis = (() => {
+    const d = new Date(String(p.date_last_relance ?? p.date_envoi ?? p["Created Date"] ?? ""));
+    if (Number.isNaN(+d)) return undefined;
+    return Math.floor((Date.now() - +d) / 86400000);
+  })();
+  const aRelancer = depuis !== undefined && depuis >= 10;
   return (
     <span className="mrow" style={{ gap: 4 }}>
       {refusee ? (
@@ -2050,15 +2124,30 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
           onClick={() => start(() => setPropositionStatut(immeubleId, id, "reactiver"))}>Réactiver</button>
       ) : (
         <>
-          <button className="fadd" type="button" disabled={pending}
-            onClick={() => start(() => setPropositionStatut(immeubleId, id, "relancer"))}>Relancer</button>
+          <button className={`fadd${aRelancer ? " arelancer" : ""}`} type="button" disabled={pending}
+            title={depuis === undefined ? undefined
+              : depuis === 0 ? "Envoyée aujourd'hui"
+              : `Sans nouvelle depuis ${depuis} jour${depuis > 1 ? "s" : ""}`}
+            onClick={() => start(() => setPropositionStatut(immeubleId, id, "relancer"))}>
+            Relancer{aRelancer ? ` · ${depuis} j` : ""}
+          </button>
+          {/* Le motif de refus se choisit dans une fenêtre, plus dans un
+              `prompt()` du navigateur : c'est la même famille que les alertes
+              retirées au #333, et un champ libre ne rend aucun motif
+              comparable d'une affaire à l'autre. */}
           <button className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
-            onClick={() => {
-              const motif = prompt("Motif du refus ?");
-              if (motif === null) return;
-              start(() => setPropositionStatut(immeubleId, id, "refuser", motif || undefined));
-            }}>Refuser</button>
+            onClick={() => setRefus(true)}>Refuser</button>
         </>
+      )}
+      {refus && (
+        <ModaleRefus
+          pending={pending}
+          onFermer={() => setRefus(false)}
+          onRefuser={(motif) => {
+            setRefus(false);
+            start(() => setPropositionStatut(immeubleId, id, "refuser", motif || undefined));
+          }}
+        />
       )}
     </span>
   );

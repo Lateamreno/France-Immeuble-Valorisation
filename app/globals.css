@@ -1940,6 +1940,13 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ac-com { margin-top: 7px; padding: 7px 9px; border-radius: 4px; background: #faf9f6; font-size: 12px; color: var(--slate); white-space: pre-wrap; }
 .ac-f { display: flex; gap: 6px; margin-top: 9px; }
 
+/* Une proposition sans nouvelle depuis dix jours : le bouton de relance se
+   teinte. « Faire régulièrement les relances » suppose de voir lesquelles le
+   méritent sans ouvrir chaque ligne. */
+.fadd.arelancer { border-color: #e8c48a; background: #fffaf0; color: #8a5300; }
+.fadd.arelancer:hover { background: #fef4e2; }
+
+
 /* Retour #347 — la carte d'un matching enregistré devient cliquable : elle
    rouvre le tri tel qu'il a été arrêté. Comme c'est un <button>, il faut lui
    rendre l'apparence d'un bloc de texte que le navigateur lui retire. */
