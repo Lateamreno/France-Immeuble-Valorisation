@@ -14,6 +14,57 @@ Ce document est la source de vérité du projet. Avant toute session de code :
 3. Ne jamais élargir le périmètre d'un milestone sans validation explicite.
 4. Respecter les **garde-fous** de la section 8 comme des invariants non négociables (conformité Hoguet, RGPD locataires, doctrine préemption). Une violation de garde-fou est un bug bloquant, pas un arbitrage de style.
 5. À chaque fin de milestone : déployer sur preview Vercel, attendre validation humaine avant le milestone suivant.
+6. À chaque **lot de modifications livré**, produire le document avant / après (§0 bis). Ce n'est pas une option.
+
+---
+
+## 0 bis. Le document avant / après — à chaque lot livré
+
+> Règle générale de travail avec MAV, valable sur **tous** ses projets (une copie
+> vit dans son contexte permanent utilisateur). Elle est répétée ici parce que le
+> contexte utilisateur ne survit pas à un conteneur neuf, alors que ce fichier,
+> lui, est dans le dépôt.
+
+Dès qu'un **lot de modifications** est livré — plusieurs corrections d'un coup,
+qu'elles soient arrivées **en direct dans la conversation** ou **via l'outil de
+correction** (`bo_feedback`) — le travail n'est pas fini tant que le document
+n'est pas publié en **Artifact** et le lien donné. Sans le demander.
+
+Le document contient, dans cet ordre :
+
+1. **Le relevé** — une ligne par modification, dans la numérotation de MAV quand
+   elle existe, avec sa mention « vérifié ».
+2. **Les comparaisons avant / après** — des captures **réelles**, prises au
+   navigateur sur les **deux versions construites** : l'ancienne servie depuis un
+   worktree du commit d'avant, la nouvelle depuis le build courant, sur le même
+   écran et les mêmes données. Les deux commits sont cités dans le document.
+3. **Ce qu'il faut savoir** — les arbitrages pris sans lui, les vrais défauts
+   trouvés en chemin, ce qui reste en pause.
+
+Règles non négociables :
+
+- **Aucune capture fabriquée ni décorative.** Si un écran n'existait pas avant,
+  le volet « avant » est un **texte** qui dit ce que faisait l'ancienne version —
+  avec le libellé exact de l'alerte ou du message s'il y en avait un — jamais une
+  image de rien.
+- **Écarter les paires trompeuses** : deux captures identiques au pixel près (le
+  changement est un comportement, pas un dessin), ou une capture qui ne montre
+  pas ce dont parle la légende. Mieux vaut huit comparaisons vraies que douze
+  dont trois mentent.
+- **Pas de données personnelles inutiles** dans les captures : une liste qui
+  étale des e-mails et des téléphones sans rien démontrer n'y a pas sa place
+  (cohérent avec le §8.3).
+- **Un revirement de MAV se dit dans le document**, pas seulement dans le commit :
+  la ligne du relevé porte la mention, et la capture « après » est refaite.
+- Le document se **met à jour à la même adresse** quand un retour arrive après
+  coup — jamais un second lien.
+
+Recette éprouvée pour les captures (à reprendre telle quelle) : `git worktree add`
+sur le commit d'avant, `npm run build` puis `next start` sur deux ports distincts,
+puis puppeteer-core (`executablePath: "/opt/pw-browsers/chromium"`, `--no-sandbox`)
+qui cadre chaque scène sur le sélecteur qui compte. Les images partent en
+**data: URI base64** dans la page — la CSP des Artifacts bloque toute image
+externe. Nettoyer le worktree ensuite (`git worktree remove`), il pèse ~900 Mo.
 
 ---
 
@@ -35,7 +86,7 @@ Ce n'est **pas** un CRM généraliste ni un logiciel de gestion locative. C'est 
 - **Backend :** Supabase **« Plein Bail »** — projet mutualisé avec la marketplace « biens loués », déjà en production. PostgreSQL + RLS + Storage + Edge Functions.
   - Project ID : `fkfwucqpdhbkgkouccyi` · région `eu-west-1`.
 - **Auth :** Supabase Auth (table `profiles` déjà en place, extension de `auth.users`). Rôles applicatifs (voir §3.2).
-- **Email :** boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium ni SendGrid) synchronisée via **Gmail API** (envoi + réception threadée). Voir §7.1.
+- **Email :** deux routes (§7.1). Un-à-un : boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium) via **Gmail API**, envoi + réception threadée. Masse : relais **SendGrid** en SMTP, sur un **sous-domaine d'envoi dédié**, plafonné à 4 000 messages par jour.
 - **Signature (V2) :** Docusign (connecteur déjà disponible).
 - **Données de marché :** DVF + loyers **déjà chargés dans Plein Bail** (voir §4.3). Pas d'API externe à brancher.
 - **Diffusion :** Ubiflow (pont marketplace).
@@ -227,10 +278,61 @@ Générés par le moteur de séquencement + saisie manuelle. Le calendrier agrè
 
 ## 7. Intégrations
 
-### 7.1 Email (`devis@`)
-- Boîte **dédiée**, jamais la boîte FI premium, jamais SendGrid (doctrine délivrabilité).
+### 7.1 Email — deux routes, jamais une seule
+
+Le BO écrit à deux publics très différents, et confondre leurs routes est le
+meilleur moyen de griller le domaine. D'où deux chemins distincts, décidés au
+seul endroit qui décide (`lancerSalve` dans `lib/bo/mails-actions.ts`).
+
+**Route nominative — le un-à-un.** Estimation au propriétaire, demande de devis
+à un prestataire, réponse à un locataire.
+- Boîte **dédiée** `devis@`, jamais la boîte FI premium.
 - Gmail API : envoi (avec PJ depuis le coffre) + réception, threading rattaché à `operation_id`/`provider_id`.
-- Doctrine héritée du netlinking : **validation humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Pas d'envoi automatique en masse.
+- Part de l'adresse de l'agent : c'est une conversation, elle doit avoir un visage.
+
+**Route de masse — les salves.** Diffusion d'un dossier à un vivier
+d'acquéreurs, projets annexes.
+- Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
+  mot de passe = la clé d'API). Variables `MASSE_SMTP_*`, puis `MASSE_DOMAINE`
+  (une adresse par agent) ou `MASSE_FROM` (adresse de service unique).
+- Adresse d'expédition sur un **sous-domaine dédié** (`agence.france-immeuble.fr`),
+  jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
+  de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
+  un nom de domaine proche de la marque et sans historique est le motif même du
+  phishing, c'est lui qui se fait signaler.
+  - Nom du sous-domaine : **neutre et durable**. `dossiers.` deviendrait faux le
+    jour d'une salve « projets annexes » ; `communication.` est long (il s'affiche
+    dans chaque expéditeur, tronqué sur mobile) et sonne publipostage.
+    `agence.` reste vrai quoi qu'on envoie — c'est le nom retenu et authentifié
+    chez SendGrid, il ne change plus.
+  - **Une adresse par agent** sur ce sous-domaine, à sa convention habituelle :
+    `r.voci@agence.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
+    visage. Attention à deux illusions : ça ne cloisonne PAS la réputation entre
+    agents — les messageries la calculent au niveau du domaine signataire, pas de
+    l'adresse ; et chaque adresse doit **exister en renvoi** vers la vraie boîte
+    de l'agent, sinon une réponse qui ignore le `Reply-To` part dans le vide.
+  - Le **nom affiché** fait l'essentiel : c'est lui que montrent presque tous les
+    clients de messagerie, l'adresse ne venant qu'après.
+- SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
+  sert à rien.
+- `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit
+  l'expéditeur affiché. C'est ce qui permet à la route de masse de rester
+  compatible avec « le commercial gère les retours ».
+- `List-Unsubscribe` + `List-Unsubscribe-Post` sur chaque message. Sans eux, le
+  bouton « désabonnement » des messageries devient « signaler comme spam ».
+- **Plafond du jour : `PLAFOND_JOUR` (4 000 par défaut).** Au-delà de 5 000 par
+  jour, Gmail classe l'expéditeur en « masse » et lui impose ses obligations :
+  on s'arrête avant, avec une marge. Le compteur s'affiche à l'écran de salve
+  et le bouton se ferme quand la salve ferait franchir la ligne.
+- Connexion SMTP mutualisée, cadence tenue à 4 messages/seconde. Une rafale de
+  connexions se fait limiter aussi sûrement qu'un volume excessif.
+- Montée en charge sur un domaine neuf : 20 le premier jour, 50, 100, puis le
+  régime normal à partir de la deuxième semaine. C'est le démarrage à froid qui
+  se fait signaler, pas le volume.
+
+**Commun aux deux routes :** doctrine héritée du netlinking — **validation
+humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
+automatique, jamais.
 
 ### 7.2 DVF / loyers
 Déjà en base (§4.3). Consommation directe, aucune API externe.
@@ -281,11 +383,57 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ## 10. Décisions actées
 
-- Boîte email **dédiée** (`devis@`), Gmail API, jamais la boîte FI premium ni SendGrid.
+- **Deux routes e-mail, jamais une seule** (§7.1) : le un-à-un part de la boîte dédiée `devis@` via Gmail API, jamais de la boîte FI premium ; la masse part de SendGrid sur un sous-domaine dédié, avec `Reply-To` sur l'agent et un plafond de 4 000 par jour.
 - Supabase **« Plein Bail »** (`fkfwucqpdhbkgkouccyi`) mutualisé : bien = `listings`, lots+baux = `listing_lots`, pas de table `properties`. Le cockpit ajoute la couche `operations`.
 - Benchmarks DVF/loyers déjà chargés → rapprochement DVF dès le MVP.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.
 - **Extranet vendeur ET extranet locataire** retenus (locataire en dernier, garde-fous §8.3).
+
+## 10 bis. Espace client — décisions actées et reste à faire
+
+> Mis en pause par MAV le 03/09/26, le temps qu'il boucle le parcours client de
+> son côté. À reprendre ici, sans redécider ce qui suit.
+
+**Ce qui est tranché et livré.**
+- **Un compte par PERSONNE**, rattaché à une fiche `bo_contact`, pas un lien par
+  immeuble : « sinon il va pas revenir sur un lien où tout le monde peut aller ».
+  Une seule personne porte les deux casquettes — ce qu'elle vend, ce qu'elle
+  cherche — et les deux vivent sur la même page.
+- **Cloisonnement en base, pas dans le code.** L'espace client porte la clé
+  publique (`anon`), qui ne lit aucune table, et n'appelle que les fonctions
+  `ec_*` (SECURITY DEFINER, `search_path` fixe, EXECUTE accordé au seul `anon`).
+  Chacune exige un jeton de session, le résout elle-même en contact, et ne rend
+  que ses lignes. **Ne jamais rebrancher une page cliente sur la clé de
+  service** : ce serait défaire tout l'édifice. Seule exception tolérée, l'écriture
+  d'un fichier dans le seau (`espace-depot.ts`), autorisée par la base AVANT.
+- Piège à retenir : une fonction SQL `returns <composite>` qui ne trouve rien
+  rend **une ligne toute nulle**, pas « rien » — d'où `returns setof` sur
+  `ec_compte_de_session`. Toute nouvelle garde de session doit passer par elle.
+- Mots de passe en **bcrypt calculé dans la base** : l'empreinte ne sort jamais.
+  12 caractères minimum, aucune règle de composition. Cinq échecs → blocage 15 min.
+- **On ne dit jamais si un compte existe** (connexion comme mot de passe oublié).
+  Le lien de réinitialisation part par e-mail, jamais rendu à l'appelant.
+- **Rien ne s'auto-crée** : MAV ouvre les comptes, depuis le bien (Description et
+  prix) ou depuis la fiche contact. Aucune page d'inscription.
+- Côté acquéreur : il remplit lui-même ses critères, et ne voit que ce qu'on lui
+  a proposé **ou** ce qui est **en ligne sur Plein Bail** (`pb_url` renseignée) —
+  **jamais tous les mandats**.
+- Le lien secret sans mot de passe est conservé, mais il s'échange contre une
+  session ordinaire : un seul mécanisme d'accès dans toute l'application.
+
+**Ce qui reste pour boucler le parcours de bout en bout.**
+1. Variables Vercel : `SITE_URL` (adresse publique du BO, pour le lien « mot de
+   passe oublié ») et, si on veut l'expliciter, `SUPABASE_ANON_KEY`.
+2. Le mail d'estimation joint encore le **lien secret** ; le basculer sur le lien
+   d'**activation de compte**, qui est ce qui fait revenir.
+3. Les réponses d'acquéreurs (« intéressé », « visite ») s'écrivent bien mais ne
+   s'affichent nulle part dans le BO : `reponsesEnAttente()` existe dans
+   `comptes-bo.ts`, il lui manque son écran (fiche bien et/ou Propositions).
+4. « Mot de passe oublié » dépend de `envoiPossible()` : à vérifier une fois la
+   route d'envoi configurée.
+5. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
+   connaît le chemin. L'espace client ne s'en sert pas, mais tant que le BO n'a
+   pas d'authentification, c'est une porte ouverte à refermer.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).

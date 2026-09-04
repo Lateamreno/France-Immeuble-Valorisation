@@ -1,0 +1,2206 @@
+"use client";
+
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { AcheteursData, BienData } from "@/lib/bubble/server";
+import { dmy, euros, keur } from "@/lib/format";
+import {
+  addSuivi, changerProprietaire, chargerAcheteurs, ouvrirEstimation, reactiver,
+  setApporteur, setPropositionStatut, setStatut, supprimerEstimation, updateBien,
+  updateContact,
+} from "@/lib/bo/actions";
+import { ModaleMoyenContact } from "@/components/dashboard-modales";
+import { EstimationWizard, type RepriseEstimation } from "@/components/estimation-wizard";
+import { EstimationEnLecture } from "@/components/estimation-lecture";
+import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
+import type { Espace } from "@/lib/bo/espace-modele";
+import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
+import { SuiviModal } from "@/components/suivi-modal";
+import { AddMandatButton } from "@/components/mandat-create";
+import { SectionDiffusion } from "@/components/diffusion";
+import { lireEtat } from "@/lib/diffusion";
+import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
+import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
+import { AddDossierButton } from "@/components/dossier-create";
+import { ManquesDossier } from "@/components/dossier-manques";
+import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
+import { manquesDossier } from "@/lib/bo/completude";
+import { Facade } from "@/components/facade";
+import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
+import { Acheteurs } from "@/components/acheteurs";
+import { Avion, Corbeille, Picto } from "@/components/pictos";
+import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
+import { DocumentsCoffre } from "@/components/fichiers";
+import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
+import { ContactPicker } from "@/components/contact-picker";
+import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
+import { Copier, copierTexte } from "@/components/copier";
+import { EspaceVendeur, PrixEcran } from "@/components/prix";
+import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
+import type { OperationDecoupe } from "@/lib/bubble/server";
+import { PHASES, phase as phaseDe } from "@/lib/decoupe";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
+
+
+
+type SectionKey =
+  | "suivi" | "proprietaire" | "emplacement" | "locatif" | "technique"
+  | "prix" | "photos" | "estimations" | "mandats" | "dossiers" | "tous-docs" | "diffusion"
+  | "acheteurs" | "notes" | "decoupe"
+  /* Retour #327 — les cinq sous-menus du BO sous « Acheteurs ». Ils étaient
+     repliés en deux onglets maison ; MAV en a envoyé les dix captures et
+     demandé qu'on les reproduise trait pour trait. */
+  | "commercialisations" | "propositions" | "visites" | "offres"
+  /* Écran greffé sur la fiche (l'estimation, le mandat) : il reste monté
+     pendant qu'on visite les autres sections, pour ne rien perdre de la
+     saisie (#96, #125). */
+  | "encours";
+
+/* Les rubriques que l'adresse a le droit de rouvrir. Un `?ecran=` bricolé à
+   la main ne doit pas pouvoir afficher une section qui n'existe pas. */
+const SECTIONS: readonly SectionKey[] = [
+  "suivi", "proprietaire", "emplacement", "locatif", "technique", "prix",
+  "photos", "estimations", "mandats", "dossiers", "tous-docs", "diffusion",
+  "acheteurs", "notes", "decoupe", "encours",
+  "commercialisations", "propositions", "visites", "offres",
+];
+
+/**
+ * L'estimation ouverte dans la fiche (retour #125).
+ *
+ * MAV, deux fois : « l'estimation en cours doit faire partie de la page […]
+ * ça ne doit pas être une page à part, ça ne doit pas être une modale ni
+ * rien. » Elle vit donc dans l'état de la fiche : passer d'un onglet du rail à
+ * l'autre ne la démonte pas, et ouvrir une autre estimation ne fait pas
+ * changer d'URL.
+ */
+export type EcranEstimation =
+  /** Une estimation qu'on est en train de faire. */
+  | { mode: "neuve" }
+  /** Une estimation existante, rouverte pour l'envoyer (#98)… */
+  | { mode: "reprise"; reprise: RepriseEstimation; lecture: EstimationLecture }
+  /** …ou simplement relue, figée à sa date (#55). */
+  | {
+    mode: "lecture"; reprise: RepriseEstimation; lecture: EstimationLecture;
+    /** Ce que la fiche dit aujourd'hui, là où ça diverge (retour #143). */
+    ecarts?: Record<string, { alors: string; aujourdhui: string }>;
+  };
+
+const LIBELLE_EST: Record<EcranEstimation["mode"], string> = {
+  neuve: "Estimation en cours",
+  reprise: "Estimation à envoyer",
+  lecture: "Estimation consultée",
+};
+
+const I = {
+  suivi: <><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></>,
+  user: <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></>,
+  pin: <><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></>,
+  signpost: <><path d="M12 3v3M12 13v8M8 21h8" /><path d="M5 6h12l2 2.5L17 11H5z" /></>,
+  key: <><circle cx="8" cy="14" r="4" /><path d="M11 11 20 2M16 6l2.5 2.5M13 9l2 2" /></>,
+  tech: <><path d="M12 3v4M12 17v4M3 12h4M17 12h4" /><circle cx="12" cy="12" r="4.5" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 10.5V17M12 7.2v.2" /></>,
+  cam: <><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.5-3h5L16 7" /><circle cx="12" cy="13" r="3.4" /></>,
+  folder: <><path d="M3 6h6l2 2.5h10V20H3z" /></>,
+  calc: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 7h6M9 12h.1M12 12h.1M15 12h.1M9 16h.1M12 16h.1M15 16h.1" /></>,
+  brief: <><path d="M5 8h14v12H5z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></>,
+  pdf: <><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></>,
+  users: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></>,
+  note: <><path d="M4 4h16v12l-4 4H4z" /><path d="M16 20v-4h4" /></>,
+  phone: <><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></>,
+  maps: <><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6z" /><path d="M9 3v15M15 6v15" /></>,
+  decoupe: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></>,
+  sablier: <><path d="M7 3h10M7 21h10" /><path d="M8 3v3.5c0 2 4 3.3 4 5.5s-4 3.5-4 5.5V21M16 3v3.5c0 2-4 3.3-4 5.5s4 3.5 4 5.5V21" /></>,
+  /* Retour #327 — les trois pictos des sous-menus Acheteurs, repris du BO :
+     l'avion en papier des propositions, la voiture des visites, le marteau de
+     commissaire-priseur des offres. */
+  avion: <><path d="M20.5 3.5 3.5 10.2l6 2.3 2.3 6z" /><path d="M20.5 3.5 9.5 12.5" /></>,
+  voiture: <><path d="M4.5 13.5 6.4 8.6A2 2 0 0 1 8.3 7.3h7.4a2 2 0 0 1 1.9 1.3l1.9 4.9" /><rect x="3" y="13.2" width="18" height="4.6" rx="1.4" /><circle cx="7" cy="19.4" r="1.3" /><circle cx="17" cy="19.4" r="1.3" /></>,
+  marteau: <><path d="m11 4 6.5 6.5-2.2 2.2L8.8 6.2z" /><path d="m9.4 11.4 3.2 3.2-6.1 6.1-3.2-3.2z" /><path d="M15 15.5h6" /></>,
+  antenne: <><circle cx="12" cy="12" r="2.4" /><path d="M7.8 7.8a5.9 5.9 0 0 0 0 8.4M16.2 7.8a5.9 5.9 0 0 1 0 8.4M4.6 4.6a10.4 10.4 0 0 0 0 14.8M19.4 4.6a10.4 10.4 0 0 1 0 14.8" /></>,
+  /* Retour #340 — « Commercialisation, mets-moi un picto mégaphone pour que je
+     fasse la différence avec Diffusion. » Les deux portaient l'antenne : deux
+     entrées voisines, deux dessins identiques, aucune chance de les
+     distinguer d'un coup d'œil. Le mégaphone dit l'off-market — on va
+     chercher des gens — quand l'antenne dit la vitrine publique. */
+  megaphone: <><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1Z" /><path d="M17 9.2a4 4 0 0 1 0 5.6M19.6 6.6a7.7 7.7 0 0 1 0 10.8" /></>,
+};
+
+/** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
+ *  section ouvre directement ses sous-menus, sans perdre les onglets
+ *  horizontaux du contenu. */
+/* Retour #303 — l'ordre du BO : le prix d'abord, le descriptif ensuite. */
+const ONGLETS_PRIX = [
+  { key: "prix", label: "Prix" },
+  { key: "descriptif", label: "Descriptif" },
+] as const;
+
+const SOUS_ONGLETS: Partial<Record<SectionKey, readonly { key: string; label: string }[]>> = {
+  emplacement: ONGLETS_EMPLACEMENT,
+  locatif: ONGLETS_LOCATIF,
+  technique: ONGLETS_TECHNIQUE,
+  prix: ONGLETS_PRIX,
+};
+
+/* Tous les sous-onglets confondus : de quoi vérifier qu'un `?sous=` venu de
+   l'adresse désigne bien quelque chose. La chaîne vide est la valeur de
+   repli — « aucun sous-onglet demandé ». */
+const SOUS_TOUS: readonly string[] = [
+  "",
+  ...Object.values(SOUS_ONGLETS).flatMap((os) => os.map((o) => o.key)),
+];
+
+/** Valeur copiable en un clic (retour MAV #11 : tel et e-mail séparés). */
+function Copiable({ valeur, type }: { valeur: string; type: "tel" | "mail" }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <span className="cpv">
+      <a href={`${type === "tel" ? "tel:" : "mailto:"}${valeur}`} className="v">
+        <svg viewBox="0 0 24 24">{type === "tel" ? I.phone : I.mail}</svg>{valeur}
+      </a>
+      <button type="button" title={ok ? "Copié" : "Copier"} onClick={async (e) => {
+        e.preventDefault();
+        await copierTexte(valeur);
+        setOk(true);
+        setTimeout(() => setOk(false), 1200);
+      }}>{ok ? "✓" : "⧉"}</button>
+    </span>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return <div className="frow">{children}</div>;
+}
+
+export function BienFiche({
+  b, contenu, contenuLabel, contenuIcone, operation, secteur, espace, compteActif, envoiActif, ouvrir, cleEcran,
+}: {
+  b: BienData;
+  /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
+  operation?: OperationDecoupe | null;
+  /** Contenu qui remplace les sections de la fiche (mandat en cours de
+   *  rédaction) : le rail de droite reste affiché pour garder l'accès aux
+   *  informations de l'immeuble pendant la saisie. */
+  contenu?: React.ReactNode;
+  /** Ce que le rail annonce pour cet écran. Défaut : l'estimation. */
+  contenuLabel?: string;
+  contenuIcone?: "estimation" | "mandat";
+  /** Prix du secteur : le wizard d'estimation s'en sert, la fiche les porte
+   *  donc en permanence pour pouvoir le monter sans changer de page (#125). */
+  secteur?: Record<string, unknown> | null;
+  /** L'espace propriétaire ouvert sur ce bien, s'il y en a un. */
+  espace?: Espace | null;
+  /** Le propriétaire a-t-il déjà un espace client actif ? */
+  compteActif?: boolean;
+  /** Vrai quand la boîte d'envoi est configurée. */
+  envoiActif?: boolean;
+  /** Estimation à ouvrir d'emblée (accès direct par l'URL). */
+  ouvrir?: EcranEstimation;
+  /**
+   * Ce que l'URL demande d'ouvrir — l'identifiant du mandat, de l'estimation.
+   *
+   * Il faut ça parce que Next réutilise le composant d'une adresse à l'autre
+   * quand elles ont la même forme. Sans lui : on ouvre un mandat, on va voir
+   * la liste des mandats, on clique sur un mandat — l'adresse change, mais
+   * l'écran restait sur la liste. C'est exactement le « je n'arrive plus à
+   * revenir dessus » de MAV (retour #137).
+   */
+  cleEcran?: string;
+}) {
+  /* L'estimation ouverte, s'il y en a une : elle vit ici, pas dans une route. */
+  const [est, setEst] = useState<EcranEstimation | null>(ouvrir ?? null);
+  const [chargement, setChargement] = useState<string | null>(null);
+  const [erreurEst, setErreurEst] = useState<string | null>(null);
+  /* La rubrique ouverte est mémorisée dans l'adresse : c'est elle qu'on
+     retrouve en cliquant sur « Précédent ». Par défaut on ouvre l'écran
+     greffé (mandat, estimation demandée par l'URL) quand il y en a un, sinon
+     le suivi — mais l'adresse a le dernier mot, sans quoi revenir sur un bien
+     dont le mandat est ouvert nous ramènerait toujours au mandat. */
+  const defautSect: SectionKey = contenu || ouvrir ? "encours" : "suivi";
+  const departSect = useDepartUrl<SectionKey>("ecran", defautSect, SECTIONS);
+  const [sect, setSect] = useState<SectionKey>(departSect);
+  useMemoireUrl("ecran", sect, defautSect);
+
+  /* Nouvelle demande d'ouverture : on montre l'écran demandé. Ajuster l'état
+     pendant le rendu est la façon prévue de réagir à un changement de props ;
+     un effet ferait clignoter la liste avant de basculer. */
+  const [cleVue, setCleVue] = useState(cleEcran);
+  if (cleEcran !== cleVue) {
+    setCleVue(cleEcran);
+    if (cleEcran) {
+      setSect("encours");
+      if (ouvrir) setEst(ouvrir);
+    } else if (cleVue) {
+      /* On vient de quitter l'écran greffé (mandat envoyé, estimation marquée
+         envoyée…) : sans ça, la fiche restait sur un panneau vide. */
+      setEst(null);
+      setSect(cleVue.startsWith("mandat") ? "mandats" : "estimations");
+    }
+  }
+
+  /**
+   * Ouvre une estimation dans la page. Rien n'est démonté : ce qui est en
+   * cours de saisie ailleurs reste en place, et l'URL ne bouge pas.
+   */
+  const ouvrirEst = (mode: "reprise" | "lecture", eid: string) => {
+    setChargement(eid);
+    setErreurEst(null);
+    /* On ne bascule qu'une fois les données là : basculer d'abord laisserait
+       l'écran vide en cas d'échec, sans rien pour revenir en arrière. */
+    ouvrirEstimation(eid)
+      .then((r) => {
+        if (!r) { setErreurEst("Estimation introuvable."); return; }
+        setEst({ mode, reprise: r.reprise, lecture: r.lecture, ecarts: r.ecarts });
+        setSect("encours");
+      })
+      .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
+      .finally(() => setChargement(null));
+  };
+  /* Le sous-onglet aussi : revenir sur « État locatif » sans revenir sur
+     « Baux », c'est encore avoir perdu sa place. Seul celui de la rubrique
+     ouverte est écrit — l'adresse dit où l'on est, pas tout ce qu'on a
+     visité. */
+  const departSous = useDepartUrl("sous", "", SOUS_TOUS);
+  const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>(
+    () => (departSous ? { [departSect]: departSous } : {}),
+  );
+  useMemoireUrl("sous", sous[sect], SOUS_ONGLETS[sect]?.[0]?.key);
+  /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
+  const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
+  const basculer = (k: SectionKey) => {
+    if (sect === k && SOUS_ONGLETS[k]) {
+      setPlies((p) => {
+        const n = new Set(p);
+        if (n.has(k)) n.delete(k);
+        else n.add(k);
+        return n;
+      });
+    } else {
+      setSect(k);
+      setPlies((p) => { const n = new Set(p); n.delete(k); return n; });
+    }
+  };
+  const majSous = (k: SectionKey) => (t: string) => setSous((p) => ({ ...p, [k]: t }));
+  /* Les deux groupes du rail qui n'ont pas d'écran à eux. Ils s'ouvrent quand
+     l'écran en cours leur appartient — donc jamais deux à la fois, et jamais
+     en même temps que les sous-onglets d'une section (#339). */
+  const CLES_DOCS: SectionKey[] = ["estimations", "mandats", "dossiers", "tous-docs"];
+  const CLES_ACH: SectionKey[] = ["acheteurs", "commercialisations", "propositions", "visites", "offres"];
+  const groupeDocs = CLES_DOCS.includes(sect);
+  const groupeAch = CLES_ACH.includes(sect);
+  const im = b.im;
+
+  /**
+   * Les pastilles du rail viennent du MÊME moteur que « ce qui reste à
+   * saisir » (retour #267).
+   *
+   * MAV : « j'ai rentré les infos sur le propriétaire mais j'ai toujours
+   * l'alerte à côté de Propriétaire dans la sidebar ». Elles lisaient des
+   * booléens `ok_*` calculés par Bubble, que cette application n'écrit jamais :
+   * ils restaient donc faux quoi qu'on saisisse. Une pastille qui ne bouge pas
+   * n'est pas une alerte, c'est un décor — et pire, elle contredisait la liste
+   * des manques, qui elle disait juste.
+   */
+  const manques = useMemo(
+    () => manquesDossier({
+      im: b.im, lots: b.lots, parcelles: b.parcelles, photos: b.photos,
+      secteur: b.secteur, estimations: b.estimations,
+      charges: b.charges, composants: b.composants, proprietaire: b.proprietaire,
+    }),
+    [b.im, b.lots, b.parcelles, b.photos, b.secteur, b.estimations, b.charges, b.composants, b.proprietaire],
+  );
+  /* Les parcelles sont une rubrique d'Emplacement : leur manque doit allumer
+     la pastille d'Emplacement, pas une section qui n'existe pas au rail. */
+  const manque = (k: string) =>
+    manques.some((m) => m.section === k || m.section.startsWith(`${k}:`));
+  const pastille = (k: string) =>
+    manque(k) ? <span className="warn3" /> : <span className="okv">✓</span>;
+
+  const sections: {
+    key: SectionKey; label: string; icon: React.ReactNode;
+    indicator?: React.ReactNode; sub?: boolean;
+  }[] = [
+    { key: "suivi", label: "Suivi", icon: I.suivi, indicator: <span className="ncount">{b.suivis.length}</span> },
+    { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: pastille("proprietaire") },
+    { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: pastille("emplacement") },
+    { key: "locatif", label: "Etat locatif", icon: I.key, indicator: pastille("locatif") },
+    { key: "technique", label: "Etat technique", icon: I.tech, indicator: pastille("technique") },
+    { key: "prix", label: "Description et prix", icon: I.info, indicator: pastille("prix") },
+    { key: "photos", label: "Photos", icon: I.cam, indicator: manque("photos") ? <span className="ncount">{b.photos.length}</span> : <span className="okv">✓</span> },
+  ];
+
+  const docSub: typeof sections = [
+    { key: "estimations", label: "Estimations", icon: I.calc, sub: true, indicator: <span className="right"><span className="nmoney">{euros(im.prix_hai_estim as number | undefined) ?? ""}</span><span className="ncount">{b.estimations.length}</span></span> },
+    { key: "mandats", label: "Mandats", icon: I.brief, sub: true, indicator: <span className="ncount">{b.mandats.length}</span> },
+    { key: "dossiers", label: "Dossiers", icon: I.pdf, sub: true, indicator: <span className="ncount">{b.dossiers.length}</span> },
+    { key: "tous-docs", label: "Tous les documents", icon: I.folder, sub: true, indicator: <span className="ncount">{b.estimations.length + b.dossiers.length + b.mandats.length}</span> },
+  ];
+
+  return (
+    <div className="fiche">
+      <div className="fiche-main">
+        <div className={`fiche-inner${sect === "locatif" || sect === "encours" || est ? " wide" : ""}`}>
+          {/* L'écran en cours n'est jamais démonté, seulement masqué : c'est ce
+              qui permet d'aller voir l'état locatif ou les photos et de
+              revenir à l'estimation sans avoir rien perdu (#96).
+              #159 — et il ne se masque plus tout seul : « tant que je ne l'ai
+              pas fermée ou annulée, la page reste en place même quand je
+              change d'onglet dans la sidebar de droite ». Le clic sur le rail
+              choisit donc la section qu'on trouvera en refermant. */}
+          {contenu && <div hidden={sect !== "encours"}>{contenu}</div>}
+          {/* #185 — l'estimation se comporte comme n'importe quelle page : elle
+              reste MONTÉE quand on va voir l'état locatif ou les photos, mais
+              elle se masque au lieu de tout recouvrir. J'avais sur-appliqué le
+              retour #159 : MAV demandait que la saisie ne soit pas perdue en
+              changeant d'onglet, pas que l'estimation bloque la navigation —
+              d'où l'impression de modale qui ne se referme jamais. */}
+          {est && (
+            <div hidden={sect !== "encours"}>
+              {est.mode === "lecture" ? (
+                <EstimationEnLecture
+                  key={est.reprise.id}
+                  e={est.lecture}
+                  immeubleId={String(b.im._id)}
+                  pdfUrl={est.reprise.pdfUrl}
+                  ecarts={est.ecarts}
+                  onEnvoyer={() => setEst({ ...est, mode: "reprise" })}
+                />
+              ) : (
+                /* La clé change avec l'estimation : rouvrir une autre fiche ne
+                   doit pas réutiliser la saisie de la précédente. */
+                <EstimationWizard
+                  key={est.mode === "neuve" ? "neuve" : est.reprise.id}
+                  b={b}
+                  secteur={secteur ?? null}
+                  envoiActif={envoiActif}
+                  reprise={est.mode === "neuve" ? undefined : est.reprise}
+                  onFermer={() => { setEst(null); if (sect === "encours") setSect("estimations"); }}
+                />
+              )}
+            </div>
+          )}
+          {sect === "encours" && !contenu && !est && (
+            <div className="fempty">
+              {chargement ? "Ouverture de l'estimation…" : "Aucune estimation ouverte."}
+            </div>
+          )}
+          {/* Les sections de la fiche restent accessibles pendant qu'une
+              estimation est ouverte (#185) : elle attend, masquée, et on la
+              retrouve intacte en revenant. */}
+          {sect !== "encours" && (
+            <>
+              {sect === "suivi" && <SuiviSection b={b} />}
+              {sect === "proprietaire" && (
+                <ProprioSection b={b} espace={espace} compteActif={compteActif} />
+              )}
+              {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
+              {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+              {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
+              {sect === "prix" && (
+                <PrixSection b={b} espace={espace}
+                  tab={sous.prix} onTab={majSous("prix")} />
+              )}
+              {sect === "photos" && <PhotosSection b={b} />}
+              {sect === "estimations" && (
+                <EstimationsSection
+                  b={b}
+                  onNeuve={() => { setEst({ mode: "neuve" }); setSect("encours"); }}
+                  onOuvrir={ouvrirEst}
+                  enCours={chargement}
+                  erreur={erreurEst}
+                />
+              )}
+              {sect === "mandats" && (
+                <MandatsSection
+                  b={b}
+                  ouvert={cleEcran?.startsWith("mandat:") ? cleEcran.slice("mandat:".length) : undefined}
+                  onRevenir={() => setSect("encours")}
+                />
+              )}
+              {sect === "diffusion" && (
+                <SectionDiffusion immeubleId={String(b.im._id)} etat={lireEtat(b.im)} />
+              )}
+              {/* Retour #236 : une rubrique peut désigner son sous-onglet
+                  (« emplacement:parcelles »), sinon on tombait sur le premier
+                  de la section — les prix du secteur au lieu du PLU. */}
+              {sect === "dossiers" && (
+                <DossiersSection b={b} onAller={(x) => {
+                  const [s, sous2] = x.split(":");
+                  setSect(s as SectionKey);
+                  if (sous2) setSous((p) => ({ ...p, [s as SectionKey]: sous2 }));
+                }} />
+              )}
+              {sect === "tous-docs" && (
+                <>
+                  <SectTitle icon={I.folder} title="Tous les documents" chips={<span className="fchip">{b.documents.length} documents</span>} />
+                  <DocumentsCoffre b={b} />
+                </>
+              )}
+              {sect === "decoupe" && operation && (
+                <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
+              )}
+              {sect === "acheteurs" && <AcheteursSection b={b} />}
+              {sect === "commercialisations" && (
+                <EcranCommercialisations b={b} onCommercialiser={() => setSect("acheteurs")} />
+              )}
+              {sect === "propositions" && <EcranPropositions b={b} />}
+              {sect === "visites" && <EcranVisites b={b} />}
+              {sect === "offres" && <EcranOffres b={b} />}
+              {sect === "notes" && <NotesSection b={b} />}
+            </>
+          )}
+        </div>
+      </div>
+
+      <aside className="brail">
+        <div className="brail-head">
+          <div className="bthumb">
+            <Facade photoUrl={b.photoUrl} facadeRue={b.facadeRue} />
+            <span className="rv">{b.agentInitials}</span>
+          </div>
+          <div className="bh">
+            <div className="bt">{b.ville}</div>
+            <div><span className="bst">{b.statut}</span></div>
+            {b.prix && <div className="bp">{b.prix}</div>}
+          </div>
+        </div>
+        {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
+        <nav>
+          {/* Retour #201 — « il faut avoir une croix pour fermer cette fenêtre,
+              de telle façon qu'on puisse aller chercher des infos dans le reste
+              de la sidebar et revenir là où on en était ». Le mandat restait
+              bien monté quand on changeait de menu, mais rien ne permettait de
+              le refermer : son entrée du rail porte maintenant la même croix
+              que l'estimation, et elle ramène à la fiche. */}
+          {contenu && (
+            <div className={`srow2 encours ouvert${sect === "encours" ? " on" : ""}`}>
+              <button type="button" className="srow2-in" onClick={() => setSect("encours")}>
+                <span className="sic2">
+                  <svg viewBox="0 0 24 24">{contenuIcone === "mandat" ? I.brief : I.calc}</svg>
+                </span>
+                {contenuLabel ?? "Estimation en cours"}
+                <span className="right"><span className="pastille" /></span>
+              </button>
+              <Link
+                className="srow2-x" href={`/bien/${String(b.im._id)}`}
+                title={contenuIcone === "mandat" ? "Fermer le mandat" : "Fermer l'estimation"}
+              >✕</Link>
+            </div>
+          )}
+          {/* L'estimation ouverte : une entrée du rail comme les autres. On
+              passe à l'état locatif et on revient, rien n'a bougé (#125). */}
+          {est && !contenu && (
+            <div className={`srow2 encours ouvert${sect === "encours" ? " on" : ""}`}>
+              <button type="button" className="srow2-in" onClick={() => setSect("encours")}>
+                <span className="sic2"><svg viewBox="0 0 24 24">{I.calc}</svg></span>
+                {LIBELLE_EST[est.mode]}
+                <span className="right"><span className="pastille" /></span>
+              </button>
+              <button
+                type="button" className="srow2-x" title="Fermer l'estimation"
+                onClick={() => { setEst(null); setSect("estimations"); }}
+              >✕</button>
+            </div>
+          )}
+          {sections.map((s) => (
+            <div key={s.key}>
+              <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => basculer(s.key)}>
+                <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
+                {s.label}
+                {s.key === "emplacement" && <MapsBtn b={b} />}
+                {/* Retour #274 : « une petite icône pour copier l'adresse du
+                    bien, à côté de l'icône de carte sur Emplacement, pour
+                    pouvoir tout le temps copier l'adresse sans avoir à ouvrir
+                    l'onglet ». Le rail est visible depuis toutes les sections :
+                    c'est le seul endroit qui remplit cette condition. */}
+                {s.key === "emplacement" && <CopieAdresse b={b} />}
+                <span className="right">{s.indicator}</span>
+              </button>
+              {sect === s.key && !plies.has(s.key) && SOUS_ONGLETS[s.key]?.map((o) => (
+                <button key={o.key} type="button"
+                  className={`srow2 sub${(sous[s.key] ?? SOUS_ONGLETS[s.key]![0].key) === o.key ? " on" : ""}`}
+                  onClick={() => setSous((p) => ({ ...p, [s.key]: o.key }))}>
+                  <Picto nom={o.key} />
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          {operation && (
+            <button
+              type="button"
+              className={`srow2 sdecoupe${sect === "decoupe" ? " on" : ""}`}
+              onClick={() => setSect("decoupe")}
+            >
+              <span className="sic2"><svg viewBox="0 0 24 24">{I.decoupe}</svg></span>
+              Découpe
+              <span className="right">
+                <span className="pill-dec">{phaseDe(operation.phase).n}/{PHASES.length}</span>
+              </span>
+            </button>
+          )}
+          {/* Retour #339 — « quand on clique sur un menu qui a des sous-menus,
+              ça ne referme pas les sous-menus ». Documents et Acheteurs
+              restaient dépliés en permanence : on lisait onze entrées pour en
+              atteindre une. Ils suivent maintenant la règle des autres —
+              le groupe qui contient l'écran en cours est ouvert, les autres
+              sont fermés — et leur en-tête est cliquable pour y revenir. */}
+          <button type="button" className={`srow2 sgroupe${groupeDocs ? " ouvert" : ""}`}
+            aria-expanded={groupeDocs}
+            onClick={() => setSect(groupeDocs ? "suivi" : "estimations")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.folder}</svg></span>
+            Documents
+            <span className="right"><span className="chev">{groupeDocs ? "˄" : "˅"}</span></span>
+          </button>
+          {groupeDocs && docSub.map((s) => (
+            <button key={s.key} type="button" className={`srow2 sub${sect === s.key ? " on" : ""}`} onClick={() => setSect(s.key)}>
+              <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
+              {s.label}
+              <span className="right">{s.indicator}</span>
+            </button>
+          ))}
+          {/* Diffusion : le bien vu de l'extérieur. Placée juste avant les
+              acheteurs, parce que c'est elle qui les amène. */}
+          <button type="button" className={`srow2${sect === "diffusion" ? " on" : ""}`} onClick={() => setSect("diffusion")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
+            {/* Retour #340 — « écris Diffusion en ligne, ce sera plus parlant » :
+                la diffusion marketplace ne se confond plus avec la
+                commercialisation off-market du menu Acheteurs. */}
+            Diffusion en ligne
+            <span className="right">
+              {typeof im.pb_listing_id === "string" && im.pb_listing_id ? (
+                im.pb_a_resynchroniser === true
+                  ? <span className="pill-dec">à republier</span>
+                  : <span className="okv">✓</span>
+              ) : (
+                <span className="ncount">—</span>
+              )}
+            </span>
+          </button>
+          {/* Retour #327 — « dans le menu Acheteurs on a de nombreux sous-menus.
+              Je te mets les captures correspondantes et tu reproduis trait pour
+              trait. » Le BO en a cinq, rangés sous un intitulé qui ne s'ouvre
+              pas lui-même — exactement comme Documents juste au-dessus. Le
+              premier, « Acheteurs », porte le matching ; les quatre autres sont
+              les étapes qui en découlent. Les « + » ouvrent les mêmes modales
+              que la barre du bas (#333 à #335) : on programme une visite d'ici
+              sans quitter le bien. */}
+          <button type="button" className={`srow2 sgroupe${groupeAch ? " ouvert" : ""}`}
+            aria-expanded={groupeAch}
+            onClick={() => setSect(groupeAch ? "suivi" : "acheteurs")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
+            Acheteurs
+            <span className="right"><span className="chev">{groupeAch ? "˄" : "˅"}</span></span>
+          </button>
+          {groupeAch && <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />}
+          <button type="button" className={`srow2${sect === "notes" ? " on" : ""}`} onClick={() => setSect("notes")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
+            Notes
+          </button>
+          {/* Tant qu'aucune opération n'est ouverte, l'entrée « Découpe »
+              n'existe pas : c'est ce bouton qui la fait naître. */}
+          {!operation && (
+            <div className="brail-act">
+              <PasserEnDecoupe
+                immeubleId={String(im._id)}
+                valeurBloc={typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined}
+              />
+            </div>
+          )}
+        </nav>
+        <div className="brail-foot">
+          <button className="kbtn" type="button" aria-label="Autres actions">
+            <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>
+          </button>
+          <span className="sp" />
+          <ActionRail b={b} />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/** Bandeau « en attente » du rail (retour #73).
+ *
+ *  Le bandeau disait seulement pourquoi le bien dormait ; il ne disait pas
+ *  jusqu'à quand. On tient les trois informations sur la même ligne, à
+ *  hauteur inchangée : le motif, l'échéance, et le temps qui reste. La barre
+ *  d'avancement est posée sur le bord bas du bandeau, elle ne coûte donc
+ *  aucun pixel de hauteur, et vire au rouge dès que la date est passée. */
+function BandeauAttente({ b }: { b: BienData }) {
+  const attente = b.suivis.find((s) => s.relance) ?? b.suivis[0];
+  const motif = attente?.motif ?? b.standby ?? "En attente";
+  // Les dates de la fiche sont formatées en jj/mm/aa (parfois jj/mm/aaaa).
+  const jour = (s?: string) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{2}(?:\d{2})?)$/.exec(s ?? "");
+    if (!m) return undefined;
+    const an = +m[3];
+    return new Date(an < 100 ? 2000 + an : an, +m[2] - 1, +m[1]);
+  };
+  const fin = jour(attente?.relance);
+  const debut = jour(attente?.date);
+
+  if (!fin) {
+    return (
+      <div className="brail-prog" title={motif}>
+        <span className="ic"><svg viewBox="0 0 24 24">{I.sablier}</svg></span>
+        <span className="pill">{motif}</span>
+        <span className="sansfin">sans échéance</span>
+      </div>
+    );
+  }
+
+  const jourMs = 86400000;
+  const aujourdhui = new Date();
+  aujourdhui.setHours(0, 0, 0, 0);
+  const restants = Math.round((fin.getTime() - aujourdhui.getTime()) / jourMs);
+  const retard = restants < 0;
+  const total = debut ? Math.max(1, Math.round((fin.getTime() - debut.getTime()) / jourMs)) : 0;
+  const avance = total ? Math.min(100, Math.max(0, ((total - restants) / total) * 100)) : retard ? 100 : 0;
+  const fr = fin.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+
+  return (
+    <div
+      className={`brail-prog${retard ? " retard" : ""}`}
+      title={
+        `${motif} — ${debut ? `du ${attente?.date} au ` : "jusqu'au "}${attente?.relance}` +
+        ` (${retard ? `en retard de ${-restants} j` : restants === 0 ? "échéance aujourd'hui" : `${restants} j restants`})`
+      }
+    >
+      <span className="ic"><svg viewBox="0 0 24 24">{I.sablier}</svg></span>
+      <span className="pill">{motif}</span>
+      <span className="fin">{fr}</span>
+      <span className="jr">{retard ? `+${-restants} j` : `J-${restants}`}</span>
+      <span className="jauge"><i style={{ width: `${avance}%` }} /></span>
+    </div>
+  );
+}
+
+/** Icône Google Maps du rail (retour MAV #12) : ouvre l'immeuble dans une
+ *  fenêtre, sans quitter la page en cours. */
+/**
+ * Copier l'adresse du bien, depuis le rail (retour #274).
+ *
+ * En `span`, pas en `button` : la ligne du rail est elle-même un bouton, et un
+ * bouton dans un bouton est du HTML invalide — le navigateur le sort du
+ * parent, ce qui casse l'hydratation (React #418, constaté au navigateur).
+ * `MapsBtn`, juste à côté, est un `span` pour exactement cette raison.
+ */
+function CopieAdresse({ b }: { b: BienData }) {
+  const [fait, setFait] = useState(false);
+  const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`
+    .replace(/\s+/g, " ").trim();
+  const copier = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    void copierTexte(adresse).then((ok) => {
+      setFait(ok);
+      if (ok) setTimeout(() => setFait(false), 1600);
+    });
+  };
+  return (
+    <span className={`smaps${fait ? " ok" : ""}`} role="button" tabIndex={0}
+      title={fait ? "Adresse copiée" : "Copier l'adresse du bien"}
+      onClick={copier}
+      onKeyDown={(e) => { if (e.key === "Enter") copier(e); }}>
+      <svg viewBox="0 0 24 24">
+        {fait
+          ? <path d="m5 12.5 4.5 4.5L19 7.5" />
+          : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>}
+      </svg>
+    </span>
+  );
+}
+
+function MapsBtn({ b }: { b: BienData }) {
+  const [ouvert, setOuvert] = useState(false);
+  const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
+  const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`.trim();
+  const q = geo?.lat !== undefined && geo?.lng !== undefined ? `${geo.lat},${geo.lng}` : adresse;
+  const lien = String(b.adr?.maps_url ?? "") || `https://www.google.com/maps/search/${encodeURIComponent(adresse)}`;
+  const [mode, setMode] = useState<"plan" | "rue">("plan");
+  // Avec une clé Google, on utilise l'API Embed officielle, qui sait afficher
+  // la façade en Street View ; sans clé, l'embed public affiche le plan.
+  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const src = cle
+    ? mode === "rue"
+      ? `https://www.google.com/maps/embed/v1/streetview?key=${cle}&location=${encodeURIComponent(q)}&fov=80`
+      : `https://www.google.com/maps/embed/v1/place?key=${cle}&q=${encodeURIComponent(q)}&zoom=18`
+    : `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=18&output=embed`;
+
+  return (
+    <>
+      <span className="smaps" title="Voir l'immeuble sur Google Maps" role="button" tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); setOuvert(true); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setOuvert(true); } }}>
+        <svg viewBox="0 0 24 24">{I.maps}</svg>
+      </span>
+      {ouvert && createPortal(
+        <div className="modal-ov">
+          <div className="modal lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              {adresse || b.ville}
+              {/* La même copie, là où l'adresse est sous les yeux (#274). */}
+              <Copier cls="cop" titre="Copier l'adresse" valeur={adresse || b.ville} />
+              <span style={{ flex: 1 }} />
+              <button type="button" onClick={() => setOuvert(false)}>✕</button>
+            </div>
+            <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />
+            <div className="modal-f">
+              {cle && (
+                <span className="mrow" style={{ marginRight: 8 }}>
+                  <button type="button" className={`mopt${mode === "plan" ? " on" : ""}`} onClick={() => setMode("plan")}>Plan</button>
+                  <button type="button" className={`mopt${mode === "rue" ? " on" : ""}`} onClick={() => setMode("rue")}>Street View</button>
+                </span>
+              )}
+              <a className="mopt" href={lien} target="_blank" rel="noreferrer">Ouvrir dans Google Maps ↗</a>
+              <a className="mopt" href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">Street View ↗</a>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function SectTitle({ icon, title, chips }: { icon: React.ReactNode; title: string; chips?: React.ReactNode }) {
+  return (
+    <div className="sect-title">
+      <div className="t"><svg viewBox="0 0 24 24">{icon}</svg>{title}</div>
+      {chips && <div className="chips">{chips}</div>}
+    </div>
+  );
+}
+
+function SuiviSection({ b }: { b: BienData }) {
+  const [tousSuivis, setTousSuivis] = useState(false);
+  const im = b.im;
+  return (
+    <>
+      <SectTitle icon={I.suivi} title="Suivi" />
+      <div className="fcards">
+        <div className="fcard">
+          <span className="fic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></svg></span>
+          <div><div className="k">Création</div><div className="v">{dmy(im["Created Date"])}</div></div>
+        </div>
+        <div className="fcard">
+          <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
+          <div><div className="k">Suivi</div><div className="v">{b.agentInitials}</div></div>
+        </div>
+        <div className="fcard">
+          <span className="fic"><svg viewBox="0 0 24 24"><path d="M4 20l4-1L20 7l-3-3L5 16z" /></svg></span>
+          <div><div className="k">Dernière modification</div><div className="v">{dmy(im["Modified Date"])}</div></div>
+        </div>
+      </div>
+
+      <div className="fh2">Source de l&apos;immeuble</div>
+      <div className="fcards" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div className="fcard">
+          <span className="fic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" /></svg></span>
+          <div><div className="k">Source</div><div className="v">{String(im.source ?? "—")}</div></div>
+        </div>
+        <ApporteurCard b={b} />
+      </div>
+
+      <div className="fh2">Historique des échanges ({b.suivis.length})</div>
+      <AddSuiviButton b={b} />
+      {(tousSuivis ? b.suivis : b.suivis.slice(0, 3)).map((s, i) => (
+        <div className="hitem" key={i}>
+          <div className="hav">
+            <span className="ava">{b.agentInitials}</span>
+            {s.canal && (
+              <span className={`canal${s.canal === "E-mail" ? " mail" : ""}`}>
+                <svg viewBox="0 0 24 24">{s.canal === "E-mail" ? I.mail : I.phone}</svg>
+              </span>
+            )}
+          </div>
+          <div className="hb">
+            {s.motif && s.relance ? (
+              <div className="hfrise">
+                <span className="d">{s.date}</span>
+                <span className="mid"><span className="lbl">{s.motif}</span></span>
+                <span className="d">{s.relance}</span>
+                <span className="warn-ic">ⓘ</span>
+              </div>
+            ) : (
+              <div className="hd">{s.date}</div>
+            )}
+            {s.notes && <div className="htext">{s.notes}</div>}
+          </div>
+        </div>
+      ))}
+      {b.suivis.length > 3 && (
+        <button className="fadd" type="button" style={{ margin: "6px auto 0", display: "block" }}
+          onClick={() => setTousSuivis((v) => !v)}>
+          {tousSuivis ? "Réduire l'historique" : `Voir les ${b.suivis.length - 3} échanges précédents`}
+        </button>
+      )}
+      {b.suivis.length === 0 && <div className="fempty">Aucun échange enregistré.</div>}
+    </>
+  );
+}
+
+/** Apporteur d'affaire — cliquable pour le renseigner (retour MAV #7). */
+/** Apporteur d'affaire : sélection ou création d'un contact (retour #31). */
+function ApporteurCard({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const [ouvert, setOuvert] = useState(false);
+  const nom = typeof b.im.apporteur_nom === "string" ? (b.im.apporteur_nom as string) : "";
+  return (
+    <>
+      <button
+        type="button"
+        className={`fcard${nom ? "" : " off"}`}
+        style={{ textAlign: "left", font: "inherit", cursor: "pointer" }}
+        disabled={pending}
+        onClick={() => setOuvert(true)}
+      >
+        <span className="fic"><svg viewBox="0 0 24 24">{I.user}</svg></span>
+        <div><div className="k">Apporteur</div><div className="v">{nom || "Non"}</div></div>
+      </button>
+      {ouvert && (
+        <ContactPicker
+          titre="Sélectionner un apporteur"
+          libelleValider="Modifier l'apporteur"
+          valeurActuelle={nom || undefined}
+          onAnnuler={() => setOuvert(false)}
+          onValider={(c) => {
+            setOuvert(false);
+            start(() => setApporteur(String(b.im._id), c.nom, c.id));
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Propriétaire — mise en page reprise du BO (retour MAV #34) : cadre doré
+ *  avec le nom en pastille, vignettes Profil / Motif de la vente, puis
+ *  l'identité (entreprise, téléphone, e-mail) en cases copiables. */
+/**
+ * Le bouton qui fait changer un immeuble de mains (retour #288).
+ *
+ * En deux temps, et c'est voulu : on choisit d'abord la personne, puis on dit
+ * pourquoi. Le motif n'est pas de la paperasse — c'est lui qui, relu dans six
+ * mois, distingue « vendu à » d'une correction de saisie, et c'est la seule
+ * chose que l'historique gardera de ce clic.
+ */
+function ChangerProprietaire({ b }: { b: BienData }) {
+  const [picker, setPicker] = useState(false);
+  const [cible, setCible] = useState<{ id: string; nom: string } | null>(null);
+  const [motif, setMotif] = useState<string>(MOTIFS_CHANGEMENT_PROPRIETAIRE[0]);
+  /** « Autre » : le motif se tape à la main (#309). */
+  const [autre, setAutre] = useState(false);
+  const [pending, start] = useTransition();
+  const c = b.proprietaire;
+  const ancienNom = c ? `${String(c["prénom"] ?? "")} ${String(c.nom ?? "")}`.trim() : "";
+
+  return (
+    <>
+      <button type="button" className="pr-chg" onClick={() => setPicker(true)}
+        title="Rattacher cet immeuble à un autre propriétaire">
+        <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
+        Changer de propriétaire
+      </button>
+
+      {picker && (
+        <ContactPicker
+          titre="Nouveau propriétaire de l'immeuble"
+          libelleValider="Choisir ce propriétaire"
+          valeurActuelle={ancienNom || undefined}
+          onAnnuler={() => setPicker(false)}
+          onValider={(ct) => { setPicker(false); setCible({ id: ct.id, nom: ct.nom }); }}
+        />
+      )}
+
+      {cible && createPortal(
+        <div className="modal-ov">
+          <div className="modal att" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="mod-x" title="Fermer" aria-label="Fermer"
+              onClick={() => setCible(null)}>✕</button>
+            <div className="tr-head">
+              <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
+              Changer de propriétaire
+            </div>
+            <div className="tr-body">
+              <div className="att-bien">
+                {ancienNom ? <><span>{ancienNom} →</span> <b>{cible.nom}</b></> : <b>{cible.nom}</b>}
+              </div>
+              {/* Retour #309 — « là j'ai qu'une option pour le changement de
+                  propriétaire ; en l'occurrence je veux qu'il y ait aussi une
+                  option Autre dans laquelle je peux indiquer ce que je veux à
+                  la main. »
+                  Le champ était DÉJÀ libre — un `input` avec sa liste de
+                  suggestions — mais rien ne le disait : une case préremplie
+                  « Immeuble vendu » se lit comme un choix imposé, et la liste
+                  ne s'ouvrait qu'en devinant qu'elle existait. Un menu montre
+                  les motifs, et « Autre » ouvre franchement la saisie. */}
+              <label className="att-ch">
+                <span>Motif</span>
+                <select value={autre ? "Autre" : motif}
+                  onChange={(e) => {
+                    if (e.target.value === "Autre") { setAutre(true); setMotif(""); }
+                    else { setAutre(false); setMotif(e.target.value); }
+                  }}>
+                  {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m}>{m}</option>)}
+                  <option value="Autre">Autre — à préciser</option>
+                </select>
+              </label>
+              {autre && (
+                <label className="att-ch">
+                  <span>Précisez</span>
+                  <input autoFocus value={motif} placeholder="Ce que vous voulez inscrire au dossier"
+                    onChange={(e) => setMotif(e.target.value)} />
+                </label>
+              )}
+              <p className="att-note">
+                Le motif reste au dossier : c&apos;est lui qui, relu dans six mois, dit
+                si l&apos;immeuble a été vendu ou si l&apos;on a simplement corrigé une saisie.
+                L&apos;ancien propriétaire garde ce bien dans son historique.
+              </p>
+            </div>
+            <div className="tr-foot">
+              <button type="button" className="vf-annuler" onClick={() => setCible(null)}>Annuler</button>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="vf-go" disabled={pending || !motif.trim()}
+                onClick={() => start(async () => {
+                  await changerProprietaire({
+                    immeubleId: String(b.im._id),
+                    nouveauId: cible.id, nouveauNom: cible.nom,
+                    ancienId: c ? String(c._id) : null, ancienNom,
+                    motif: motif.trim(),
+                  });
+                  setCible(null);
+                })}>
+                <span className="ch">›</span> {pending ? "Enregistrement…" : "Changer le propriétaire"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function ProprioSection({ b, espace, compteActif }: {
+  b: BienData; espace?: Espace | null; compteActif?: boolean;
+}) {
+  /* Le taux d'honoraires du bien : l'espace vendeur s'en sert pour dire ce que
+     le prix net du propriétaire donne en HAI. */
+  const honosEnBase = typeof b.im.honos_ht === "number" ? b.im.honos_ht as number : 0;
+  const nvEnBase = typeof b.im.prix_nv === "number" ? b.im.prix_nv as number : 0;
+  const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
+  const c = b.proprietaire;
+  const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const nomComplet = c ? `${S2(c["prénom"]) ?? ""} ${S2(c.nom) ?? ""}`.trim() : "";
+  const profil = c && Array.isArray(c.Types) ? (c.Types as string[]).join(" · ") : undefined;
+  const motif = S2(b.im.Motif_vente);
+  /* Profil et motif se saisissent depuis la fiche, et se signalent en rouge
+     tant qu'ils manquent (#71). Le profil est un texte libre porté par le
+     contact, le motif un choix du référentiel porté par l'immeuble. */
+  const profil0 = (c ? S2(c.profil) : undefined) ?? S2(b.im.profil_vendeur) ?? "";
+  const [profilTxt, setProfilTxt] = useState(profil0);
+  const [motifSel, setMotifSel] = useState(motif ?? "");
+  /* Retour #213 : ces deux cases se remplissent AUSSI depuis « ce qui reste à
+     saisir », sur la page Dossiers. La base était bien à jour, mais l'état
+     local restait sur ce qu'il avait lu au montage : l'onglet montrait
+     l'ancienne valeur et donnait à croire que rien n'avait été enregistré. On
+     se recale donc sur la fiche dès qu'elle change — sans écraser une frappe
+     en cours, dont la valeur ne correspond plus à ce qui a été lu. */
+  const [vu, setVu] = useState({ profil: profil0, motif: motif ?? "" });
+  if (vu.profil !== profil0 || vu.motif !== (motif ?? "")) {
+    setVu({ profil: profil0, motif: motif ?? "" });
+    if (profilTxt === vu.profil) setProfilTxt(profil0);
+    if (motifSel === vu.motif) setMotifSel(motif ?? "");
+  }
+  const [, start] = useTransition();
+  const entreprise = c ? S2(c.entreprise_nom) : undefined;
+  const tel = c ? S2(c.portable_formatted) ?? S2(c.portable) ?? S2(c.fixe_formatted) : undefined;
+  const mail = c ? S2(c.email) : undefined;
+
+  return (
+    <>
+      <div className="pr-cadre">
+        <div className="pr-titre">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2" /><circle cx="12" cy="9.6" r="2.9" /><path d="M6.6 18.6c.9-2.6 2.9-3.8 5.4-3.8s4.5 1.2 5.4 3.8" /></svg>
+          Propriétaire
+        </div>
+        {c ? (
+          <Link className="pr-chip" href={`/contact/${String(c._id)}`}>
+            <svg viewBox="0 0 24 24">{I.user}</svg>
+            {(nomComplet || "—").toUpperCase()}
+          </Link>
+        ) : (
+          <span className="pr-chip off">Aucun propriétaire lié</span>
+        )}
+        <ChangerProprietaire b={b} />
+      </div>
+
+      <div className="pr-duo">
+        <div className={`pr-case${profilTxt.trim() ? "" : " vide-req"}`}>
+          <span className="pr-ic">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+          </span>
+          <div>
+            <div className="k">Profil</div>
+            <input className="pr-in" value={profilTxt} placeholder={profil ?? "À renseigner"}
+              onChange={(e) => setProfilTxt(e.target.value)}
+              onBlur={() => profilTxt !== profil0 && start(() =>
+                updateContact(String(c?._id ?? ""), { profil: profilTxt || undefined }))} />
+          </div>
+        </div>
+        <div className={`pr-case${motifSel ? "" : " vide-req"}`}>
+          <span className="pr-ic">
+            <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 3 9v2H9v-2a5 5 0 0 1 3-9zM10 18h4" /></svg>
+          </span>
+          <div>
+            <div className="k">Motif de la vente</div>
+            <select className="pr-in" value={motifSel}
+              onChange={(e) => {
+                setMotifSel(e.target.value);
+                start(() => updateBien(String(b.im._id), { Motif_vente: e.target.value || undefined }));
+              }}>
+              <option value="">À renseigner</option>
+              {MOTIFS_VENTE.map((m) => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {c && (
+        <>
+          <div className="pr-nom">{(nomComplet || "—").toUpperCase()}</div>
+          {entreprise && (
+            <div className="pr-case large">
+              <span className="pr-ic">
+                <svg viewBox="0 0 24 24"><path d="M3 20V9l6 3V9l6 3V4h6v16z" /></svg>
+              </span>
+              <div><div className="k">Entreprise</div><div className="v">{entreprise}</div></div>
+            </div>
+          )}
+          <div className="pr-duo">
+            {tel ? <Copiable valeur={tel} type="tel" /> : <span className="pr-case vide">Pas de téléphone</span>}
+            {mail ? <Copiable valeur={mail} type="mail" /> : <span className="pr-case vide">Pas d&apos;e-mail</span>}
+          </div>
+        </>
+      )}
+
+      {/* Retour #310 — « je veux que l'espace vendeur soit dans l'onglet
+          propriétaire. » Il parle de la personne, pas du prix : son accès, son
+          compte, l'adresse à laquelle on lui envoie le lien. */}
+      <div className="fh2">Espace vendeur</div>
+      <EspaceVendeur
+        immeubleId={String(b.im._id)} espace={espace} tauxHonos={tauxHonos}
+        proprietaireId={c ? String(c._id) : undefined}
+        proprietaireEmail={mail}
+        compteActif={compteActif}
+      />
+
+      <div className="fh2" style={{ marginTop: 20 }}>Immeubles appartenant au même propriétaire</div>
+      {b.autresBiens.length === 0 && <div className="fempty">Aucun autre immeuble.</div>}
+      {b.autresBiens.map((a) => (
+        <a href={`/bien/${a.id}`} key={a.id}>
+          <Row>
+            <div className="grow"><div className="t">{a.label}</div></div>
+            <span className="badge-o">{a.statut}</span>
+          </Row>
+        </a>
+      ))}
+    </>
+  );
+}
+
+type PropsOnglet = { b: BienData; tab?: string; onTab?: (t: string) => void };
+
+function EmplacementSection({ b, tab, onTab }: PropsOnglet) {
+  return (
+    <>
+      {/* Le titre de section fait partie du cadre doré de l'onglet Adresse
+          (comme dans le BO) : pas de bandeau séparé ici. */}
+      <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} tab={tab} onTab={onTab} />
+    </>
+  );
+}
+
+function LocatifSection({ b, tab, onTab }: PropsOnglet) {
+  const im = b.im;
+  const lots = b.lots;
+  const pct = (a?: unknown, m?: unknown) =>
+    typeof a === "number" && typeof m === "number" && a > 0 && m > a
+      ? `+${Math.round(((m - a) / a) * 100)} %`
+      : undefined;
+  return (
+    <>
+      <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} tab={tab} onTab={onTab} />
+    </>
+  );
+}
+
+function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
+  return (
+    <>
+      <SectTitle
+        icon={I.tech}
+        title="Etat technique"
+        chips={
+          <>
+            <span className="fchip">Construit en {String(b.im.year_constru ?? "n.c.")}</span>
+            {euros(b.im.fin_travaux) && <span className="fchip">{euros(b.im.fin_travaux)} de travaux</span>}
+          </>
+        }
+      />
+      <TechniqueTabs key={`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`} b={b} tab={tab} onTab={onTab} />
+    </>
+  );
+}
+
+/**
+ * Description et prix, en deux onglets (retour #303).
+ *
+ * MAV : « pour Descriptif et Prix, c'est en deux onglets sur le BO actuel, je
+ * veux que tu fasses de même. » Ce sont deux travaux distincts — on fixe un
+ * prix, ou on rédige une annonce — et les tenir sur un seul écran obligeait à
+ * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
+ * sous-entrées, comme pour l'emplacement ou l'état locatif.
+ */
+function PrixSection({ b, espace, tab, onTab }: {
+  b: BienData; espace?: Espace | null;
+  tab?: string; onTab?: (t: string) => void;
+}) {
+  const courant = tab ?? ONGLETS_PRIX[0].key;
+  return (
+    <>
+      <SectTitle icon={I.info} title="Description et prix" />
+      <div className="fsub-nav">
+        {ONGLETS_PRIX.map((o) => (
+          <button key={o.key} type="button" className={courant === o.key ? "on" : undefined}
+            onClick={() => onTab?.(o.key)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {courant === "descriptif" ? (
+        <DescriptifForm b={b} />
+      ) : (
+        <PrixEcran b={b} espace={espace} />
+      )}
+    </>
+  );
+}
+
+/**
+ * L'action qui fait avancer le dossier, au pied du rail (retour #285).
+ *
+ * MAV : « en bas à droite de la sidebar il y a écrit Réactiver, mais ce bouton
+ * n'est fait que pour les biens qui sont actuellement en attente. Par ailleurs,
+ * une fois réactivé le cas échéant, il faut pouvoir cliquer sur le bouton OK
+ * pour vendre afin de pouvoir passer à la suite. »
+ *
+ * Le bouton était en dur : il proposait de réactiver un dossier qui tournait
+ * déjà, et une fois le dossier réveillé il proposait de le réactiver encore.
+ * Il porte maintenant la MÊME action que la carte du dashboard — un dossier ne
+ * doit pas avancer différemment selon l'écran d'où on le regarde.
+ */
+function ActionRail({ b }: { b: BienData }) {
+  const immeubleId = String(b.im._id);
+  const [pending, start] = useTransition();
+  const [moyen, setMoyen] = useState(false);
+  const router = useRouter();
+
+  const enAttente = !!b.standby && b.standby !== "Traité";
+  const st = (() => {
+    const n = parseInt(String(b.im.Statut ?? "").split(" ")[0], 10) || 0;
+    /* Même règle qu'au dashboard : un bien estimé est au moins « à
+       transformer », quel que soit le statut resté en base. */
+    const estime = typeof b.im.prix_hai_estim === "number" || !!b.im.date_last_est
+      || b.estimations.length > 0;
+    return estime && n > 0 && n < 3 ? 3 : n;
+  })();
+
+  const suite: { label: string; next: number } | null =
+    st === 1 ? { label: "Contacté", next: 2 }
+    : st === 2 ? { label: "Estimer", next: 3 }
+    : st === 3 ? { label: "OK pour vendre", next: 4 }
+    : st === 7 || st === 8 ? { label: "Programmer le compromis", next: 9 }
+    : null;
+
+  /* Rien à proposer : mieux vaut un pied de rail vide qu'un bouton qui ment.
+     C'est le cas des dossiers commercialisés, sous compromis ou vendus, dont
+     l'étape suivante se joue ailleurs (offre, acte). */
+  if (!enAttente && !suite) return null;
+
+  const cliquer = () => {
+    if (pending) return;
+    if (enAttente) { start(async () => { await reactiver(immeubleId); }); return; }
+    /* « Contacté » demande d'abord PAR QUEL MOYEN, comme au dashboard : c'est
+       cette réponse qui alimente les statistiques par canal. */
+    if (suite!.next === 2) { setMoyen(true); return; }
+    start(async () => { await setStatut(immeubleId, suite!.next); });
+  };
+
+  return (
+    <>
+      <button
+        className="kgo green" type="button" disabled={pending}
+        style={pending ? { opacity: 0.5 } : undefined}
+        onClick={cliquer}
+      >
+        {enAttente ? (
+          <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
+        ) : (
+          <svg viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-10" /></svg>
+        )}
+        {enAttente ? "Réactiver" : suite!.label}
+      </button>
+      {moyen && (
+        <ModaleMoyenContact
+          onAnnuler={() => setMoyen(false)}
+          onConfirmer={(m) => {
+            setMoyen(false);
+            start(async () => {
+              await addSuivi({
+                immeubleId, agentId: "",
+                contactId: b.proprietaire ? String(b.proprietaire._id) : undefined,
+                canaux: [m], notes: "",
+              });
+              await setStatut(immeubleId, 2);
+              router.push(`/bien/${immeubleId}?ecran=locatif`);
+            });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function AddSuiviButton({ b }: { b: BienData }) {
+  const [open, setOpen] = useState(false);
+  const c = b.proprietaire;
+  return (
+    <>
+      <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un suivi</button>
+      {open && (
+        <SuiviModal
+          immeubleId={String(b.im._id)}
+          agentId={String(b.im.AGENT ?? "")}
+          objet={`${b.ville} - ${b.adresse}`}
+          contactNom={c ? `${c["prénom"] ?? ""} ${c.nom ?? ""}`.trim() : undefined}
+          contactId={c ? String(c._id) : undefined}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function PrixForm({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const [nv, setNv] = useState(typeof b.im.prix_nv === "number" ? String(b.im.prix_nv) : "");
+  const [honos, setHonos] = useState(typeof b.im.prix_honos_ttc === "number" ? String(b.im.prix_honos_ttc) : "");
+  const hai = (parseFloat(nv) || 0) + (parseFloat(honos) || 0);
+  return (
+    <div className="frow" style={{ gap: 10, flexWrap: "wrap" }}>
+      <label style={{ fontSize: 12.5 }}>Net vendeur<br />
+        <input className="min" type="number" style={{ width: 140 }} value={nv} onChange={(e) => setNv(e.target.value)} />
+      </label>
+      <label style={{ fontSize: 12.5 }}>Honoraires TTC<br />
+        <input className="min" type="number" style={{ width: 130 }} value={honos} onChange={(e) => setHonos(e.target.value)} />
+      </label>
+      <div style={{ fontSize: 12.5 }}>Prix HAI<br /><b style={{ fontSize: 15 }}>{hai > 0 ? `${Math.round(hai).toLocaleString("fr-FR")} €` : "—"}</b></div>
+      <span className="sp" style={{ flex: 1 }} />
+      <button
+        className="kgo"
+        type="button"
+        disabled={pending || hai <= 0}
+        style={pending ? { opacity: 0.5 } : undefined}
+        onClick={() =>
+          start(async () => {
+            await updateBien(String(b.im._id), {
+              prix_nv: parseFloat(nv) || undefined,
+              prix_honos_ttc: parseFloat(honos) || undefined,
+            });
+          })
+        }
+      >
+        <span className="ch">›</span> Enregistrer
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Le descriptif du bien (retour #232).
+ *
+ * MAV : « le descriptif, je veux que tu le fasses automatiquement avec l'état
+ * locatif et l'emplacement […] je veux qu'on puisse le modifier à la main au
+ * besoin. Quand on a modifié à la main et qu'on modifie l'état locatif ou
+ * l'emplacement, qui aurait donc dû modifier le descriptif entre deux
+ * dossiers, tu le précises et tu dis qu'il faut modifier le descriptif ou du
+ * moins le vérifier […] donc il faut toujours un bouton pour repasser au
+ * descriptif automatique. »
+ *
+ * Le texte est donc rédigé par la fiche tant que personne n'y touche. Dès
+ * qu'on le corrige, on garde en mémoire l'automatique du jour : c'est le seul
+ * moyen de savoir plus tard si l'écart vient d'une reformulation ou d'un
+ * immeuble qui a changé. Voir lib/bo/descriptif.ts.
+ */
+function DescriptifForm({ b }: { b: BienData }) {
+  const [pending, start] = useTransition();
+  const source = useMemo(
+    () => ({ im: b.im, lots: b.lots, parcelles: b.parcelles }),
+    [b.im, b.lots, b.parcelles],
+  );
+  const auto = useMemo(() => descriptifAuto(source), [source]);
+  const enregistre = typeof b.im.descriptif === "string" ? (b.im.descriptif as string) : "";
+  const [txt, setTxt] = useState(enregistre || auto);
+  const [aLaMain, setALaMain] = useState(!!enregistre.trim());
+  const aVerifier = descriptifAVerifier(source);
+
+  const sauver = (valeur: string) =>
+    start(async () => {
+      /* On enregistre le texte ET l'automatique du jour : c'est ce témoin qui
+         permettra de dire, au prochain dossier, que la fiche a bougé depuis. */
+      await updateBien(String(b.im._id), { descriptif: valeur, descriptif_auto: auto });
+    });
+
+  /* Retour #303 — « l'enregistrement, tu le fais pas en dessous du cadre de
+     texte mais bien sur la barre sticky en bas. Par contre laisse bien le
+     "reprendre le texte automatique" sous la barre du texte. »
+     Le gros bouton vert sous le champ était le seul de la fiche à ne pas être
+     dans la barre collée : on le cherchait après avoir fait défiler la page,
+     et on quittait l'onglet sans enregistrer. Le retour au texte automatique,
+     lui, appartient au champ — c'est une action SUR le texte, pas sur la
+     fiche. */
+  const modifie = txt !== (enregistre || auto);
+
+  return (
+    <div className="frow" style={{ display: "block" }}>
+      {aVerifier && (
+        <div className="dsc-alerte">
+          <b>L&apos;état locatif ou l&apos;emplacement ont changé depuis que ce texte a été écrit.</b>
+          <span>Relisez-le pour vérifier qu&apos;il décrit toujours le bien, ou reprenez le texte automatique.</span>
+        </div>
+      )}
+      <textarea
+        className="min"
+        rows={12}
+        style={{ width: "100%", fontSize: 13 }}
+        value={txt}
+        onChange={(e) => { setTxt(e.target.value); setALaMain(true); }}
+        placeholder="Descriptif de l'immeuble…"
+      />
+      <div className="dsc-pied">
+        {/* Retour #315 — « mets plutôt : texte généré automatiquement, si vous
+            le modifiez à la main il ne suivra plus les changements de la
+            fiche. » L'ancienne formule ne se lisait qu'APRÈS avoir modifié le
+            texte : elle constatait au lieu de prévenir. Dite d'avance, elle
+            fait choisir en connaissance de cause. */}
+        <span className="fine">
+          {aLaMain
+            ? "Texte modifié à la main : il ne suit plus les changements de la fiche."
+            : "Texte généré automatiquement depuis l'état locatif et l'emplacement — si vous le modifiez à la main, il ne suivra plus les changements de la fiche."}
+        </span>
+        {txt.trim() !== auto.trim() && (
+          <button type="button" className="fadd"
+            onClick={() => { setTxt(auto); setALaMain(true); }}>
+            Reprendre le texte automatique
+          </button>
+        )}
+      </div>
+      <BarreEnregistrer
+        modifie={modifie} pending={pending}
+        onEnregistrer={() => sauver(txt)}
+        onAnnuler={() => { setTxt(enregistre || auto); setALaMain(!!enregistre.trim()); }}
+      >
+        {modifie
+          ? "Ce texte part au vendeur, dans le dossier et dans l'annonce — modifications non enregistrées"
+          : "Ce texte part au vendeur, dans le dossier et dans l'annonce"}
+      </BarreEnregistrer>
+    </div>
+  );
+}
+
+function PhotosSection({ b }: { b: BienData }) {
+  /* Retour #199 — l'en-tête annonçait « 1 photos » sur un immeuble dont la
+     galerie était vide : il comptait la capture de carte prise dans
+     Emplacement, que la grille écarte depuis le retour #179. Les compteurs
+     comptent maintenant exactement ce que l'écran montre — même ensemble,
+     même source. */
+  const photos = b.photos.filter((p) => !HORS_GALERIE.has(String(p.type)));
+  const compte = (t: string) => photos.filter((p) => p.type === t).length;
+  return (
+    <>
+      <SectTitle
+        icon={I.cam}
+        title="Photos"
+        chips={
+          <>
+            <span className="fchip">{photos.length} photo{photos.length > 1 ? "s" : ""}</span>
+            <span className="fchip">{photos.filter((p) => p.dossier).length} au dossier</span>
+            <span className="fchip">{compte("Extérieur")} extérieure{compte("Extérieur") > 1 ? "s" : ""}</span>
+            <span className="fchip">{compte("Parties communes")} des PC</span>
+            <span className="fchip">{compte("Lot")} des lots</span>
+          </>
+        }
+      />
+      <PhotosEcran b={b} />
+    </>
+  );
+}
+
+function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur }: {
+  b: BienData;
+  onNeuve: () => void;
+  onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
+  /** Identifiant de l'estimation en train de s'ouvrir, le cas échéant. */
+  enCours: string | null;
+  /** Ce qui a empêché la dernière ouverture, s'il y a lieu. */
+  erreur: string | null;
+}) {
+  const immeubleId = String(b.im._id);
+  const [aSupprimer, setASupprimer] = useState<Record<string, unknown> | null>(null);
+  return (
+    <>
+      <SectTitle icon={I.calc} title="Estimations" chips={<span className="fchip gold">{euros(b.im.prix_hai_estim) ?? euros(b.im.prix_hai)} HAI</span>} />
+      <MenuEstimer b={b} onNeuve={onNeuve} onOuvrir={onOuvrir} />
+      {erreur && <div className="dif-avis"><b>Ouverture impossible.</b>{erreur}</div>}
+      {b.estimations.map((e) => {
+        const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
+        const isApp = String(e._id).startsWith("app_");
+        const eid = String(e._id);
+        return (
+          <Row key={eid}>
+            <div className="grow">
+              {/* Cliquer sur le titre ouvre l'estimation telle qu'elle était,
+                  en lecture seule : c'est ce que fait le BO. Le bouton de
+                  droite, lui, sert à la renvoyer (retour #98). */}
+              <div className="t">
+                <button type="button" className="lienclair" onClick={() => onOuvrir("lecture", eid)}>
+                  {String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? ""}
+                </button>
+              </div>
+              <div className="s">
+                {dmy(e["Created Date"])}
+                {" · "}
+                <button type="button" className="lienclair sous" onClick={() => onOuvrir("lecture", eid)}>
+                  consulter
+                </button>
+                {isApp && (
+                  <> · <Link href={`/bien/${immeubleId}/estimation/${eid}/imprimer`} target="_blank">version imprimable</Link></>
+                )}
+                {enCours === eid && " · ouverture…"}
+              </div>
+            </div>
+            {/* Le statut est une information — il n'a ni bordure ni picto.
+                L'action, elle, porte l'avion : les deux ne se confondent plus
+                même quand elles disent le même mot (retour #126). */}
+            <span className={st === "Envoyée" ? "badge-g" : st === "PDF manquant" ? "badge-r" : "badge-o"}>{st}</span>
+            <button type="button" className="fbtn avec-picto" onClick={() => onOuvrir("reprise", eid)}>
+              <Avion /> {st === "Envoyée" ? "Renvoyer" : "Envoyer"}
+            </button>
+            <button
+              type="button" className="fbtn danger icone" title="Supprimer l'estimation"
+              onClick={() => setASupprimer(e)}
+            ><Corbeille /></button>
+          </Row>
+        );
+      })}
+      {b.estimations.length === 0 && <div className="fempty">Aucune estimation.</div>}
+      {aSupprimer && (
+        <SupprimerEstimation
+          immeubleId={immeubleId}
+          e={aSupprimer}
+          onFermer={() => setASupprimer(null)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Confirmation de suppression d'une estimation (retour #126).
+ *
+ * Une estimation jamais envoyée ne coûte rien à jeter — c'est le cas que MAV
+ * visait. Une estimation déjà partie chez le propriétaire est autre chose :
+ * c'est une pièce du dossier, et l'écran le dit avant de laisser faire.
+ */
+function SupprimerEstimation({ immeubleId, e, onFermer }: {
+  immeubleId: string;
+  e: Record<string, unknown>;
+  onFermer: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
+  const envoyee = String(e.Statut ?? "").includes("Envoyée");
+  return createPortal(
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
+        <div className="modal-h">
+          Supprimer cette estimation ?
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <p style={{ margin: "0 0 10px" }}>
+            <b>{String(e.titre ?? "Estimation")}</b>
+            {euros(e.prix_hai) ? ` · ${euros(e.prix_hai)}` : ""} — créée le {dmy(e["Created Date"])}.
+          </p>
+          {envoyee ? (
+            <div className="dif-avis">
+              <b>Cette estimation a été envoyée au propriétaire.</b>
+              La supprimer efface du dossier le chiffre qu&apos;il a reçu, et le PDF
+              qui l&apos;accompagnait.
+            </div>
+          ) : (
+            <p style={{ margin: 0, color: "var(--gray-txt)", fontSize: 13 }}>
+              Elle n&apos;a jamais été envoyée : rien ne part du dossier. Le dossier PDF
+              généré, s&apos;il y en a un, est retiré du coffre avec elle.
+            </p>
+          )}
+          {erreur && <div className="dif-avis" style={{ marginTop: 10 }}>{erreur}</div>}
+        </div>
+        <div className="modal-f">
+          <button type="button" className="fadd" onClick={onFermer}>Annuler</button>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button" className="fbtn danger avec-picto" disabled={pending}
+            onClick={() => start(async () => {
+              try {
+                await supprimerEstimation(immeubleId, String(e._id));
+                onFermer();
+              } catch (err) {
+                setErreur(err instanceof Error ? err.message : String(err));
+              }
+            })}
+          >
+            <Corbeille /> {pending ? "Suppression…" : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * « Estimer » ouvre un menu au lieu de partir droit sur une page blanche
+ * (retour #99) : neuf fois sur dix ce qu'on veut, c'est renvoyer celle qui
+ * existe déjà, pas en refaire une.
+ */
+function MenuEstimer({ b, onNeuve, onOuvrir }: {
+  b: BienData;
+  onNeuve: () => void;
+  onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const recentes = b.estimations.slice(0, 5);
+
+  return (
+    <div className="estm">
+      <button type="button" className="fbtn" onClick={() => setOuvert((v) => !v)} aria-expanded={ouvert}>
+        + Estimer <span className="chev">{ouvert ? "˄" : "˅"}</span>
+      </button>
+      {ouvert && (
+        <>
+          <button type="button" className="estm-fond" aria-label="Fermer" onClick={() => setOuvert(false)} />
+          <div className="estm-menu">
+            {/* Boutons et non liens : l'estimation s'ouvre DANS la page, on ne
+                quitte pas la fiche (retour #125). */}
+            <button type="button" className="estm-it neuf"
+              onClick={() => { setOuvert(false); onNeuve(); }}>
+              <b>Nouvelle estimation</b>
+              <span>Repartir des données de la fiche et refaire le calcul.</span>
+            </button>
+            {recentes.length > 0 && <div className="estm-sep">Renvoyer une estimation existante</div>}
+            {recentes.map((e) => (
+              <button key={String(e._id)} type="button" className="estm-it"
+                onClick={() => { setOuvert(false); onOuvrir("reprise", String(e._id)); }}>
+                <b>{String(e.titre ?? "Estimation")} · {euros(e.prix_hai) ?? "—"}</b>
+                <span>
+                  {dmy(e["Created Date"])} · {String(e.Statut ?? "").replace(/^\d+ - /, "")}{" "}
+                  — rien n&apos;est recalculé.
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MandatsSection({ b, ouvert, onRevenir }: {
+  b: BienData;
+  /** Le mandat déjà ouvert dans cet écran, s'il y en a un. */
+  ouvert?: string;
+  /** Le ramener à l'écran, sans passer par la navigation. */
+  onRevenir?: () => void;
+}) {
+  return (
+    <>
+      <SectTitle icon={I.brief} title="Mandats" />
+      <AddMandatButton b={b} />
+      {b.mandats.map((m) => {
+        const st = String(m.Statut ?? "");
+        /* #174 — « je suis ressorti du mandat pour faire des modifications
+           dans le bien et je ne peux donc plus y accéder depuis la page
+           mandat ». On y était déjà : le lien pointait sur l'adresse
+           courante, et un lien vers la page où l'on se trouve ne fait rien.
+           Quand c'est le mandat ouvert, on rouvre l'écran au lieu de
+           naviguer. */
+        const estOuvert = ouvert === String(m._id);
+        const titre = `${String(m.Type ?? "Vente")} ${String(m.Type_exclu ?? "")} ${m.numero ? `· #${m.numero}` : "· Pas de numéro"}`;
+        return (
+          <Row key={m._id as string}>
+            <div className="grow">
+              <div className="t">
+                {estOuvert ? (
+                  <button type="button" className="lnk-plat" onClick={onRevenir}
+                    title="Revenir au mandat en cours">{titre}</button>
+                ) : (
+                  <Link href={`/bien/${String(b.im._id)}/mandat/${String(m._id)}`} style={{ color: "inherit" }}>
+                    {titre}
+                  </Link>
+                )}
+              </div>
+              <div className="s">{dmy(m.date_effet)} → {dmy(m.date_fin)} · honos {euros(m.honos_ttc) ?? "n.c."}</div>
+            </div>
+            <span className={st === "En cours" ? "badge-g" : ["Expiré", "Annulé"].includes(st) ? "badge-r" : "badge-o"}>{st}</span>
+            {typeof m.pdf_signed === "string" && m.pdf_signed && (
+              <a className="fbtn" href={(m.pdf_signed as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
+            )}
+          </Row>
+        );
+      })}
+      {b.mandats.length === 0 && <div className="fempty">Aucun mandat.</div>}
+    </>
+  );
+}
+
+function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => void }) {
+  /* L'heure est lue une fois, à l'affichage de l'écran : appeler `Date.now()`
+     en pleine composition rendrait le rendu non idempotent. */
+  const [maintenant] = useState(() => Date.now());
+  return (
+    <>
+      <SectTitle icon={I.pdf} title="Dossiers" />
+      {/* #182 — ce qui manque, en tête, avec de quoi le remplir sur place. */}
+      <ManquesDossier b={b} onAller={onAller} />
+      <AddDossierButton b={b} />
+      {b.dossiers.map((d, i) => {
+        /* Retour #321 — le PDF se fabrique après l'enregistrement, et l'agent
+           qui a fermé la modale entre-temps voyait une ligne sans bouton PDF :
+           rien ne distinguait « ça travaille » de « ça a raté ». Un dossier
+           enregistré depuis moins de cinq minutes et encore sans PDF est
+           annoncé comme en cours — passé ce délai, ce n'est plus de l'attente,
+           c'est un échec, et la ligne reste muette comme avant. */
+        const enCours =
+          !(typeof d.pdf === "string" && d.pdf) &&
+          maintenant - new Date(String(d["Created Date"] ?? "")).getTime() < 5 * 60_000;
+        return (
+        <Row key={d._id as string}>
+          <div className="grow">
+            <div className="t">
+              Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}
+              {enCours && <span className="badge-encours">PDF en préparation…</span>}
+            </div>
+            <div className="s">
+              {dmy(d["Created Date"])} · {euros(d.prix_hai)} HAI
+              {typeof d.surface === "number" && <> · {Math.round(d.surface as number)} m² · {String(d.occupation ?? "?")} % · {String(d.renta_actuelle ?? "?")} %</>}
+              {String(d._id).startsWith("app_") && (
+                <> · <Link href={`/bien/${String(b.im._id)}/dossier/${String(d._id)}/imprimer`} target="_blank">version imprimable</Link></>
+              )}
+            </div>
+          </div>
+          {typeof d.pdf === "string" && d.pdf && (
+            <a className="fbtn" href={(d.pdf as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
+          )}
+        </Row>
+        );
+      })}
+      {b.dossiers.length === 0 && <div className="fempty">Aucun dossier.</div>}
+    </>
+  );
+}
+
+function NotesSection({ b }: { b: BienData }) {
+  const [notes, setNotes] = useState(String(b.im.notes ?? ""));
+  const [pending, start] = useTransition();
+  const dirty = notes !== String(b.im.notes ?? "");
+  return (
+    <>
+      <SectTitle icon={I.note} title="Notes" />
+      <div style={{ fontSize: 12, color: "var(--gray-lt)", marginBottom: 8 }}>
+        Mémos internes : contacts, historique, références comparables (vente, date, surface, €/m², adresse)…
+      </div>
+      <textarea
+        className="min"
+        rows={16}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder={"ex.\nVente\n880 000 €\n24/06/2019\n253 m²\nsoit 3 478 €/m²\n7 Avenue DE PARIS 94800 VILLEJUIF"}
+        style={{ fontFamily: "var(--font-body)", lineHeight: 1.55 }}
+      />
+      <div style={{ display: "flex", marginTop: 10 }}>
+        <span style={{ flex: 1 }} />
+        <button
+          className="kgo"
+          type="button"
+          disabled={!dirty || pending}
+          style={!dirty || pending ? { opacity: 0.5 } : undefined}
+          onClick={() => start(() => updateBien(String(b.im._id), { notes }))}
+        >
+          <span className="ch">›</span> Enregistrer
+        </button>
+      </div>
+    </>
+  );
+}
+
+/* ============ Retour #327 · le menu Acheteurs et ses cinq écrans ============
+   MAV : « si tu regardes bien, là, dans le menu Acheteurs on a de nombreux
+   sous-menus. Je te mets les captures correspondantes et tu reproduis trait
+   pour trait. »
+
+   Le BO range sous « Acheteurs » cinq entrées qui sont les cinq étapes d'une
+   commercialisation : on cherche les acquéreurs, on lance la campagne, on suit
+   les propositions, on programme les visites, on reçoit les offres. Chaque
+   entrée ouvre un écran bâti pareil — un titre encadré au centre, ses
+   compteurs, un bouton d'action dessous, puis les cartes.
+
+   Notre version repliait tout cela en deux onglets maison. Le pli n'était pas
+   qu'esthétique : « Propositions, visites et offres » mettait sur une même
+   page trois listes qui ne se lisent pas au même moment de la vie du bien. */
+
+const TITRE_ACHETEURS: Record<string, { titre: string; icon: React.ReactNode }> = {
+  acheteurs: { titre: "Acheteurs", icon: I.users },
+  commercialisations: { titre: "Commercialisations", icon: I.antenne },
+  propositions: { titre: "Propositions", icon: I.avion },
+  visites: { titre: "Visites", icon: I.voiture },
+  offres: { titre: "Offres", icon: I.marteau },
+};
+
+/** L'en-tête encadré du BO : picto, titre, et ses compteurs juste dessous. */
+function TitreAcheteurs({ cle, badges }: { cle: string; badges?: React.ReactNode }) {
+  const t = TITRE_ACHETEURS[cle];
+  return (
+    <div className="acx-titre">
+      <span className="acx-titre-h">
+        <svg viewBox="0 0 24 24">{t.icon}</svg>
+        {t.titre}
+      </span>
+      {badges && <span className="acx-titre-b">{badges}</span>}
+    </div>
+  );
+}
+
+/** Les cinq entrées du rail, avec leurs mentions et leurs « + ». */
+function SousMenuAcheteurs({
+  b, sect, setSect,
+}: {
+  b: BienData;
+  sect: SectionKey;
+  setSect: (s: SectionKey) => void;
+}) {
+  const [ajout, setAjout] = useState<"proposition" | "visite" | "offre" | null>(null);
+  const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
+  const confirmees = b.visites.filter((v) => String(v.Statut ?? "") === "Confirmée").length;
+  const aTraiter = b.offres.filter((o) => ["En cours", "Contre offre"].includes(String(o.Statut ?? ""))).length;
+
+  const ligne = (
+    cle: SectionKey, label: string, icon: React.ReactNode,
+    mention: React.ReactNode, plus: (() => void) | undefined, n: number | null,
+  ) => (
+    <button type="button" className={`srow2 sub acx-sub${sect === cle ? " on" : ""}`}
+      onClick={() => setSect(cle)}>
+      <span className="sic2"><svg viewBox="0 0 24 24">{icon}</svg></span>
+      {label}
+      <span className="right">
+        {mention}
+        {plus && (
+          <span className="acx-plus" role="button" tabIndex={0}
+            title={`Ajouter : ${label.toLowerCase()}`}
+            onClick={(e) => { e.stopPropagation(); plus(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); plus(); } }}>+</span>
+        )}
+        {n !== null && <span className="ncount">{n}</span>}
+      </span>
+    </button>
+  );
+
+  return (
+    <>
+      {ligne("acheteurs", "Acheteurs", I.users, null, undefined, b.propositions.total)}
+      {/* Les campagnes vivent dans le vivier acquéreurs, chargé à la demande :
+         le rail ne peut pas les compter sans le charger pour chaque fiche. On
+         n'affiche donc pas de compteur ici plutôt qu'un zéro qui mentirait. */}
+      {ligne("commercialisations", "Commercialisations", I.megaphone, null, undefined, null)}
+      {ligne("propositions", "Propositions", I.avion, null,
+        () => setAjout("proposition"), b.propositions.total)}
+      {ligne("visites", "Visites", I.voiture,
+        confirmees > 0 ? <span className="acx-mention">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : null,
+        () => setAjout("visite"), b.visites.length)}
+      {ligne("offres", "Offres", I.marteau,
+        aTraiter > 0 ? <span className="acx-mention rouge">{aTraiter} à traiter</span> : null,
+        () => setAjout("offre"), b.offres.length)}
+
+      {ajout === "proposition" && <ModaleProposition bien={bien} onFermer={() => setAjout(null)} />}
+      {ajout === "visite" && <ModaleVisite bien={bien} onFermer={() => setAjout(null)} />}
+      {ajout === "offre" && <ModaleOffre bien={bien} onFermer={() => setAjout(null)} />}
+    </>
+  );
+}
+
+/**
+ * Le vivier acquéreurs, chargé à l'ouverture de l'écran.
+ *
+ * 1 900 recherches et leurs contacts : hors de question de les charger avec
+ * chaque fiche. Deux des cinq écrans en ont besoin, ils partagent donc ce
+ * crochet — et l'état ne se pose que dans les rappels de la promesse, jamais
+ * pendant l'effet lui-même.
+ */
+function useVivier(immeubleId: string) {
+  const [ach, setAch] = useState<AcheteursData | null>(null);
+  const [erreur, setErreur] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    chargerAcheteurs(immeubleId)
+      .then((d) => { if (vivant) setAch(d); })
+      .catch(() => { if (vivant) setErreur(true); });
+    return () => { vivant = false; };
+  }, [immeubleId]);
+  return { ach, erreur, chargement: !ach && !erreur };
+}
+
+/** Écran 1 — le matching et son historique. */
+function AcheteursSection({ b }: { b: BienData }) {
+  const { ach, erreur, chargement } = useVivier(String(b.im._id));
+  return (
+    <>
+      <TitreAcheteurs cle="acheteurs" />
+      {chargement && <div className="fempty">Chargement du vivier acquéreurs…</div>}
+      {erreur && <div className="fempty">Le vivier acquéreurs n&apos;a pas pu être chargé.</div>}
+      {ach && <Acheteurs b={b} d={ach} />}
+    </>
+  );
+}
+
+/** Écran 2 — les campagnes déjà lancées. */
+function EcranCommercialisations({ b, onCommercialiser }: {
+  b: BienData;
+  onCommercialiser: () => void;
+}) {
+  const { ach, erreur, chargement } = useVivier(String(b.im._id));
+  const rows = ach?.commercialisations ?? [];
+  return (
+    <>
+      <TitreAcheteurs cle="commercialisations" />
+      {/* Retour #346 — « il faut qu'on puisse lancer une commercialisation ici,
+          ça ne fonctionne pas, ça me redirige vers la page acheteur ».
+          Une commercialisation part bien d'un matching — c'est lui qui désigne
+          à qui on écrit — mais le bouton se contentait de changer d'onglet et
+          laissait l'agent devant un deuxième bouton à trouver. Il pose
+          maintenant un drapeau que l'écran Acheteurs lit à l'arrivée pour
+          ouvrir la fenêtre de lancement : un clic, une fenêtre. */}
+      <button className="acx-add" type="button"
+        onClick={() => {
+          try {
+            sessionStorage.setItem(`ach:${String(b.im._id)}:lancer`, "true");
+          } catch {
+            /* Navigation privée, stockage refusé : on bascule quand même, le
+               bouton de l'écran Acheteurs prend le relais. */
+          }
+          onCommercialiser();
+        }}>
+        + Commercialiser
+      </button>
+      {chargement && <div className="fempty">Chargement des commercialisations…</div>}
+      {erreur && <div className="fempty">Les commercialisations n&apos;ont pas pu être chargées.</div>}
+      {ach && rows.length === 0 && <div className="fempty">Aucune commercialisation lancée sur cet immeuble.</div>}
+      {rows.map((c) => {
+        const props = Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0;
+        return (
+          <div key={String(c._id)} className="acx-comm">
+            <span className="acx-comm-pic"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
+            <div className="acx-comm-c">
+              <div className="acx-comm-t">Commercialisation du {dmy(c["Created Date"])}</div>
+              <div className="acx-comm-p">
+                {typeof c.DOSSIER === "string" && c.DOSSIER && <span className="fchip">Dossier</span>}
+                {typeof c.MANDAT === "string" && c.MANDAT && <span className="fchip">Mandat</span>}
+                {typeof c.wetransfer_link === "string" && c.wetransfer_link && (
+                  <a className="fchip" href={c.wetransfer_link as string} target="_blank" rel="noreferrer">Lien du dossier</a>
+                )}
+              </div>
+            </div>
+            <div className="acx-comm-r">
+              <div>{props} proposition{props > 1 ? "s" : ""}</div>
+              <div className={c.prop_sent === true ? "vert" : "orange"}>
+                {c.prop_sent === true ? "E-mails envoyés" : "E-mails à envoyer"}
+              </div>
+              <div className={c.prop_sms_sent === true ? "vert" : "orange"}>
+                {c.prop_sms_sent === true ? "SMS envoyés" : "SMS à envoyer"}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Écran 3 — les propositions du bien. */
+function EcranPropositions({ b }: { b: BienData }) {
+  const [ajout, setAjout] = useState(false);
+  const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
+  const ouvertes = b.propositions.rows.filter((p) => !String(p.Statut ?? "").startsWith("Refus")).length;
+  const traitees = b.propositions.rows.length - ouvertes;
+  return (
+    <>
+      <TitreAcheteurs cle="propositions" badges={
+        <>
+          <span className="acx-b rouge">{ouvertes} à traiter</span>
+          <span className="acx-b vert">{traitees} traitées</span>
+        </>
+      } />
+      <button className="acx-add" type="button" onClick={() => setAjout(true)}>
+        + Créer une nouvelle proposition
+      </button>
+      {b.propositions.rows.map((p) => (
+        <Row key={p._id as string}>
+          <div className="grow">
+            <div className="t">Proposition du {dmy(p.date_envoi ?? p["Created Date"])}</div>
+            <div className="s">
+              {String(p.mail_adresse ?? "—")} · {String(p.Source_proposition ?? "")}
+              {p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}
+            </div>
+          </div>
+          <PropositionActions b={b} p={p} />
+          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
+      {ajout && <ModaleProposition bien={bien} onFermer={() => setAjout(false)} />}
+    </>
+  );
+}
+
+/** Écran 4 — les visites. */
+function EcranVisites({ b }: { b: BienData }) {
+  const confirmees = b.visites.filter((v) => String(v.Statut ?? "") === "Confirmée").length;
+  return (
+    <>
+      <TitreAcheteurs cle="visites" badges={
+        confirmees > 0 ? <span className="acx-b vert">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : undefined
+      } />
+      <div className="acx-add-zone"><AddVisiteButton b={b} /></div>
+      {b.visites.map((v) => (
+        <Row key={v._id as string}>
+          <div className="grow">
+            <div className="t">Visite du {dmy(v.date)}{v.visiteur_nom ? ` — ${String(v.visiteur_nom)}` : ""}</div>
+            <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
+          </div>
+          <VisiteActions b={b} v={v} />
+          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
+    </>
+  );
+}
+
+/** Écran 5 — les offres. */
+function EcranOffres({ b }: { b: BienData }) {
+  const aTraiter = b.offres.filter((o) => ["En cours", "Contre offre"].includes(String(o.Statut ?? ""))).length;
+  return (
+    <>
+      <TitreAcheteurs cle="offres" badges={
+        aTraiter > 0 ? <span className="acx-b rouge">{aTraiter} à traiter</span> : undefined
+      } />
+      <div className="acx-add-zone"><AddOffreButton b={b} /></div>
+      {b.offres.map((o) => (
+        <Row key={o._id as string}>
+          <div className="grow">
+            <div className="t">Offre du {dmy(o.date)}{o.acheteur_nom ? ` — ${String(o.acheteur_nom)}` : ""}</div>
+            <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
+          </div>
+          <OffreActions b={b} o={o} />
+          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}
+    </>
+  );
+}
+
+/** Relance, refus motivé et réactivation d'une proposition. */
+/* Les motifs de refus réellement utilisés dans le back-office, relevés sur les
+   propositions existantes. Ils couvrent l'écrasante majorité des cas ; « Autre »
+   ouvre la saisie libre pour le reste. Un menu vaut mieux qu'un champ vide :
+   il rend les motifs comparables d'une affaire à l'autre. */
+const MOTIFS_REFUS = [
+  "Pas intéressé",
+  "N'est plus en recherche",
+  "Budget insuffisant",
+  "Secteur qui ne correspond pas",
+  "Rendement insuffisant",
+  "Doublon — dossier déjà envoyé",
+  "Mise à jour du dossier — nouvel envoi",
+  "Ancienne commercialisation",
+  "Autre — à préciser",
+];
+
+/** La fenêtre de refus d'une proposition : un motif choisi, ou écrit. */
+function ModaleRefus({ onFermer, onRefuser, pending }: {
+  onFermer: () => void;
+  onRefuser: (motif: string) => void;
+  pending: boolean;
+}) {
+  const [motif, setMotif] = useState(MOTIFS_REFUS[0]);
+  const [libre, setLibre] = useState("");
+  const autre = motif === "Autre — à préciser";
+  const valeur = autre ? libre.trim() : motif;
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Refuser la proposition
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <span className="mlab">Motif du refus</span>
+          <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
+            {MOTIFS_REFUS.map((m) => <option key={m}>{m}</option>)}
+          </select>
+          {autre && (
+            <>
+              <span className="mlab">Préciser</span>
+              <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
+                placeholder="Ce que l'acquéreur a répondu" />
+            </>
+          )}
+          <div className="asst-note">
+            Le motif s&apos;affiche sur la ligne de la proposition et reste consultable :
+            c&apos;est lui qui évite de renvoyer le même dossier à quelqu&apos;un qui
+            l&apos;a déjà refusé.
+          </div>
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <button className="kgo" type="button" disabled={pending || (autre && !valeur)}
+            onClick={() => onRefuser(valeur)}>
+            <span className="ch">›</span> Marquer refusée
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> }) {
+  const [pending, start] = useTransition();
+  const [refus, setRefus] = useState(false);
+  const immeubleId = String(b.im._id);
+  const id = String(p._id);
+  const refusee = String(p.Statut ?? "").startsWith("Refus");
+  /* Depuis quand la proposition attend : c'est ce qui dit s'il faut relancer.
+     Le bouton se teinte au-delà de dix jours plutôt que de rester neutre —
+     « faire régulièrement les relances » suppose de voir lesquelles le
+     méritent sans ouvrir chaque ligne. */
+  /* L'instant se fige au montage : lire l'horloge pendant le rendu rend le
+     composant impur — un même rendu pourrait donner deux résultats. Même
+     traitement que les badges « en cours » de la section Dossiers. */
+  const [maintenant] = useState(() => Date.now());
+  const depuis = (() => {
+    const d = new Date(String(p.date_last_relance ?? p.date_envoi ?? p["Created Date"] ?? ""));
+    if (Number.isNaN(+d)) return undefined;
+    return Math.floor((maintenant - +d) / 86400000);
+  })();
+  const aRelancer = depuis !== undefined && depuis >= 10;
+  return (
+    <span className="mrow" style={{ gap: 4 }}>
+      {refusee ? (
+        <button className="fadd" type="button" disabled={pending}
+          onClick={() => start(() => setPropositionStatut(immeubleId, id, "reactiver"))}>Réactiver</button>
+      ) : (
+        <>
+          <button className={`fadd${aRelancer ? " arelancer" : ""}`} type="button" disabled={pending}
+            title={depuis === undefined ? undefined
+              : depuis === 0 ? "Envoyée aujourd'hui"
+              : `Sans nouvelle depuis ${depuis} jour${depuis > 1 ? "s" : ""}`}
+            onClick={() => start(() => setPropositionStatut(immeubleId, id, "relancer"))}>
+            Relancer{aRelancer ? ` · ${depuis} j` : ""}
+          </button>
+          {/* Le motif de refus se choisit dans une fenêtre, plus dans un
+              `prompt()` du navigateur : c'est la même famille que les alertes
+              retirées au #333, et un champ libre ne rend aucun motif
+              comparable d'une affaire à l'autre. */}
+          <button className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+            onClick={() => setRefus(true)}>Refuser</button>
+        </>
+      )}
+      {refus && (
+        <ModaleRefus
+          pending={pending}
+          onFermer={() => setRefus(false)}
+          onRefuser={(motif) => {
+            setRefus(false);
+            start(() => setPropositionStatut(immeubleId, id, "refuser", motif || undefined));
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+function Pipeline({ b }: { b: BienData }) {
+  return (
+    <>
+      <div className="fh2">Dernières propositions</div>
+      {b.propositions.rows.map((p) => (
+        <Row key={p._id as string}>
+          <div className="grow">
+            <div className="t">{String(p.mail_adresse ?? "Proposition")}</div>
+            <div className="s">Envoyée le {dmy(p.date_envoi)} · {String(p.Source_proposition ?? "")}{p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}</div>
+          </div>
+          <PropositionActions b={b} p={p} />
+          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
+      <div className="fh2" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        Visites <span style={{ flex: 1 }} /> <AddVisiteButton b={b} />
+      </div>
+      {b.visites.map((v) => (
+        <Row key={v._id as string}>
+          <div className="grow">
+            <div className="t">Visite du {dmy(v.date)}{v.visiteur_nom ? ` — ${String(v.visiteur_nom)}` : ""}</div>
+            <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
+          </div>
+          <VisiteActions b={b} v={v} />
+          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
+      <div className="fh2" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        Offres <span style={{ flex: 1 }} /> <AddOffreButton b={b} />
+      </div>
+      {b.offres.map((o) => (
+        <Row key={o._id as string}>
+          <div className="grow">
+            <div className="t">Offre du {dmy(o.date)}{o.acheteur_nom ? ` — ${String(o.acheteur_nom)}` : ""}</div>
+            <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
+          </div>
+          <OffreActions b={b} o={o} />
+          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+        </Row>
+      ))}
+      {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}
+    </>
+  );
+}
