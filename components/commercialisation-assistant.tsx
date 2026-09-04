@@ -1,15 +1,19 @@
 "use client";
 
 // Assistant de commercialisation — reprend l'enchaînement du BO :
-// Dossier → Mandat → Acheteurs → E-mails → SMS. Rien n'est envoyé par
-// l'outil : il prépare le message et les destinataires, l'agent envoie
-// (doctrine de validation humaine avant tout envoi).
-import { useMemo, useState, useTransition } from "react";
+// Dossier → Mandat → Acheteurs → E-mails → SMS.
+//
+// Doctrine §7.1, inchangée : l'outil PRÉPARE, l'agent ENVOIE. Les e-mails
+// partent du client de messagerie de l'agent ; les SMS peuvent maintenant
+// partir d'ici par Twilio, mais seulement derrière un bouton et une
+// confirmation qui rappelle le nombre de destinataires et de segments
+// facturés. Aucun envoi automatique, jamais.
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier } from "@/lib/format";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -97,6 +101,41 @@ export function AssistantCommercialisation({
     });
 
   const copier = (txt: string) => navigator.clipboard?.writeText(txt);
+
+  /* L'état du pont Twilio, demandé à l'ouverture de l'étape SMS. On ne le
+     devine pas côté navigateur : les identifiants ne descendent jamais ici. */
+  const [pont, setPont] = useState<{ configure: boolean; message: string; plafond: number } | null>(null);
+  const [envoi, setEnvoi] = useState<string | null>(null);
+  useEffect(() => {
+    if (etape !== "SMS" || pont) return;
+    let vivant = true;
+    etatEnvoiSms().then((e) => { if (vivant) setPont(e); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [etape, pont]);
+
+  /* Doctrine §7.1 : l'application prépare, l'agent envoie. D'où la
+     confirmation qui rappelle le nombre exact de destinataires et de segments
+     facturés — c'est le dernier moment où l'erreur de ciblage coûte zéro. */
+  const envoyerLesSms = () =>
+    commId && start(async () => {
+      const nb = dest.telephones.length;
+      const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
+      if (!confirm(
+        `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?\n\n` +
+        `Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. ` +
+        "Un SMS parti ne se rattrape pas.",
+      )) return;
+      const r = await envoyerSmsCommercialisation({
+        immeubleId: String(b.im._id), commId, texte: sms, numeros: dest.telephones,
+      });
+      if (r.ok) {
+        setSmsEnvoyes(true);
+        setEnvoi(`${r.envoyes} SMS envoyés (${r.segments} segments).`
+          + (r.echecs && r.echecs.length ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.numero} — ${x.raison}`).join(" · ")}` : ""));
+      } else {
+        setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
+      }
+    });
 
   return (
     <div className="asst">
@@ -281,6 +320,17 @@ export function AssistantCommercialisation({
             Numéros normalisés au format international et dédoublonnés. Les saisies inexploitables
             ont été écartées plutôt qu&apos;envoyées telles quelles.
           </div>
+          {/* L'envoi direct par Twilio. Il ne remplace pas le marquage manuel :
+              beaucoup d'envois se font encore depuis le téléphone de l'agent,
+              et il faut pouvoir dire « c'est fait » sans passer par ici. */}
+          {pont && (
+            <div className={pont.configure ? "asst-note" : "dif-simu"}>
+              {!pont.configure && <b>Envoi automatique indisponible</b>}
+              {pont.message}
+              {pont.configure && ` Plafond par envoi : ${pont.plafond} numéros.`}
+            </div>
+          )}
+          {envoi && <div className="asst-ok">{envoi}</div>}
           <div className="wnav">
             <span className="sp" style={{ flex: 1 }} />
             <button
@@ -290,7 +340,14 @@ export function AssistantCommercialisation({
                 setSmsEnvoyes(true);
               })}
             >{smsEnvoyes ? "SMS marqués envoyés ✓" : "Marquer les SMS comme envoyés"}</button>
-            <button className="kgo" type="button" onClick={fermer}><span className="ch">›</span> Terminer</button>
+            {pont?.configure && (
+              <button className="kgo" type="button"
+                disabled={pending || smsEnvoyes || dest.telephones.length === 0}
+                onClick={envoyerLesSms}>
+                <span className="ch">›</span> Envoyer les {dest.telephones.length} SMS
+              </button>
+            )}
+            <button className="fadd" type="button" onClick={fermer}>Terminer</button>
           </div>
         </div>
       )}

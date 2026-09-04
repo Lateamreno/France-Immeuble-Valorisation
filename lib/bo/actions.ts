@@ -3857,6 +3857,63 @@ export async function createCommercialisation(input: CommercialisationInput) {
   return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
 }
 
+/** L'état du pont Twilio, pour que l'écran sache s'il peut envoyer. */
+export async function etatEnvoiSms() {
+  const { etatSms, PLAFOND_SMS } = await import("./sms");
+  return { ...etatSms(), plafond: PLAFOND_SMS };
+}
+
+/**
+ * Envoie les SMS d'une commercialisation, et marque la ligne.
+ *
+ * Doctrine §7.1 : l'application prépare, l'agent envoie. Cette fonction n'est
+ * appelée que depuis un bouton, jamais par un automatisme — il n'y a
+ * volontairement pas de file d'attente ni de rattrapage silencieux.
+ *
+ * Le marquage « SMS envoyés » n'est posé QUE si au moins un message est
+ * réellement parti. Marquer un envoi qui a échoué ferait croire le travail
+ * fait, et personne ne le refait jamais.
+ */
+export async function envoyerSmsCommercialisation(input: {
+  immeubleId: string;
+  commId: string;
+  texte: string;
+  numeros: string[];
+}) {
+  if (!input.texte.trim()) return { ok: false as const, message: "Le message est vide." };
+  if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
+  try {
+    const { envoyerSms } = await import("./sms");
+    const r = await envoyerSms(input.numeros, input.texte);
+    if (r.simulation) {
+      return {
+        ok: false as const,
+        simulation: true as const,
+        message:
+          `Mode simulation : ${input.numeros.length} numéros et ${r.segments} segments préparés, ` +
+          "rien n'est parti. Renseignez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM.",
+      };
+    }
+    if (r.envoyes > 0) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_commercialisation",
+        p_id: input.commId,
+        p_patch: {
+          prop_sms_sent: true,
+          sms_envoyes: r.envoyes,
+          sms_segments: r.segments,
+          sms_date: new Date().toISOString(),
+          "Modified Date": new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+    }
+    revalidatePath(`/bien/${input.immeubleId}`);
+    return { ok: r.envoyes > 0, envoyes: r.envoyes, echecs: r.echecs, segments: r.segments };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Marque les e-mails ou les SMS d'une commercialisation comme envoyés. */
 export async function markCommercialisationSent(
   immeubleId: string,
