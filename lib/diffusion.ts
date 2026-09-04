@@ -165,6 +165,8 @@ export type LotAnnonce = {
   surface_carrez?: number;
   statut: "occupe" | "libre";
   type_bail?: string;
+  /** Date d'effet du bail en cours (ISO). Voir `dateBail` plus bas. */
+  date_signature_bail?: string;
   loyer_mensuel_hc?: number;
   loyer_marche_estime?: number;
   dpe_lot?: string;
@@ -269,6 +271,31 @@ function classeEnergie(v: unknown): string | undefined {
 
 const LIBRE = new Set(["Vide", "", "n.c."]);
 
+/**
+ * La date du bail en cours sur un lot.
+ *
+ * Le contrat Plein Bail appelle ce champ `date_signature_bail`. Le BO ne stocke
+ * PAS de date de signature : `bo_bail` n'a que `date_start`, la date d'effet.
+ * Sur un bail d'habitation les deux coïncident presque toujours, et c'est bien
+ * l'ancienneté de l'occupation que l'acquéreur cherche à lire — on envoie donc
+ * `date_start`, plutôt que de laisser la case vide.
+ *
+ * Un lot peut porter plusieurs baux successifs : on retient le plus récent
+ * encore actif, et à défaut le plus récent tout court.
+ */
+function dateBail(lotId: string, baux: Record<string, unknown>[]): string | undefined {
+  const siens = baux.filter((x) => {
+    const lots = x.LOTs;
+    return Array.isArray(lots) && lots.includes(lotId);
+  });
+  if (!siens.length) return undefined;
+  const actifs = siens.filter((x) => x.activ === true);
+  const pool = actifs.length ? actifs : siens;
+  const debuts = pool.map((x) => S(x.date_start)).filter(Boolean) as string[];
+  if (!debuts.length) return undefined;
+  return debuts.sort().at(-1);
+}
+
 /** Plafond du plan partenaire de France Immeuble. */
 export const MAX_PHOTOS = 15;
 
@@ -344,6 +371,7 @@ export function chargeUtile(
       surface_carrez: N(l.surface_carrez),
       statut: loue ? "occupe" : "libre",
       type_bail: loue ? TYPE_BAIL[bail] : undefined,
+      date_signature_bail: loue ? dateBail(String(l._id), b.baux) : undefined,
       loyer_mensuel_hc: loue ? N(l.loyer) : undefined,
       /* Le loyer de marché part sur TOUS les lots. Plein Bail ne s'en sert
          que pour les lots libres — son `loyer_annuel_hc_potentiel` garde le
