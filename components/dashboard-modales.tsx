@@ -74,6 +74,8 @@ export type ContactBref = {
   tel?: string;
   email?: string;
   initiales?: string;
+  /** Couleur de l'agent (#344), pour la pastille d'initiales. */
+  initialesCouleur?: string;
   nbImmeubles?: number;
   nbRecherches?: number;
 };
@@ -97,7 +99,7 @@ export function FicheContact({ c, onClose }: { c: ContactBref; onClose: () => vo
       <div className="fcont-h">
         <span className="fcont-av">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6" /><path d="M4.5 20c.8-4.2 3.9-6 7.5-6s6.7 1.8 7.5 6" /></svg>
-          {c.initiales && <b>{c.initiales}</b>}
+          {c.initiales && <b style={c.initialesCouleur ? { background: c.initialesCouleur } : undefined}>{c.initiales}</b>}
         </span>
         <div className="fcont-id">
           <div className="n">{c.nom || "—"}</div>
@@ -140,7 +142,7 @@ export function FicheContact({ c, onClose }: { c: ContactBref; onClose: () => vo
 export function ModaleTransfert({
   bien, agents, peutTransferer, onAnnuler, onTransferer,
 }: {
-  bien: { ville: string; adresse: string; contact?: string; photoUrl?: string; initiales?: string; statut?: string; note?: string };
+  bien: { ville: string; adresse: string; contact?: string; photoUrl?: string; initiales?: string; initialesCouleur?: string; statut?: string; note?: string };
   agents: { id: string; name: string }[];
   /** Un agent ne transfère que ses propres biens ; l'admin transfère tout. */
   peutTransferer: boolean;
@@ -177,7 +179,7 @@ export function ModaleTransfert({
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={bien.photoUrl} alt="" />
                 : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
-              {bien.initiales && <b>{bien.initiales}</b>}
+              {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
             </span>
             <div className="tr-info">
               <div className="tr-t">

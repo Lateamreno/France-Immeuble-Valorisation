@@ -455,52 +455,6 @@ function ResumeLocatif({ b }: { b: BienData }) {
   );
 }
 
-/**
- * Le récapitulatif : les loyers, les travaux, le prix au m² avant et après
- * travaux, et le rendement d'aujourd'hui face à celui d'après.
- *
- * Le prix au m² « après travaux » est celui que l'acquéreur calcule vraiment :
- * il achète l'immeuble ET le chantier. L'afficher à côté du prix au m² brut
- * évite de refaire l'addition de tête à chaque fois.
- */
-function Recapitulatif({ hai, ctx }: { hai: number; ctx: ContexteRendement }) {
-  const r = rendements(hai, ctx);
-  const m2 = ctx.surface > 0 ? Math.round(hai / ctx.surface) : undefined;
-  const m2Travaux = ctx.surface > 0 ? Math.round((hai + ctx.travaux) / ctx.surface) : undefined;
-  const gain = r.actuel.brut !== undefined && r.potentiel.brut !== undefined
-    ? Math.round((r.potentiel.brut - r.actuel.brut) * 10) / 10
-    : undefined;
-
-  const ligne = (label: string, valeur: string, aide?: string) => (
-    <div className="px-recap-l" key={label}>
-      <span>{label}</span>
-      <b>{valeur}</b>
-      {aide && <i>{aide}</i>}
-    </div>
-  );
-
-  return (
-    <>
-      <div className="fsub" style={{ marginTop: 18 }}>Récapitulatif</div>
-      <div className="px-recap">
-        {ligne("Loyers encaissés", `${group(ctx.loyers)} €/an`,
-          ctx.loyers > 0 ? `${group(Math.round(ctx.loyers / 12))} €/mois` : undefined)}
-        {ligne("Loyers au potentiel", `${group(ctx.loyersMax)} €/an`,
-          ctx.loyersMax > ctx.loyers ? `+ ${group(ctx.loyersMax - ctx.loyers)} € à aller chercher` : "tout est au marché")}
-        {ligne("Charges non récupérables", `${group(ctx.charges)} €/an`)}
-        {ligne("Travaux à prévoir", ctx.travaux > 0 ? `${group(ctx.travaux)} €` : "aucun")}
-        {ligne("Prix au m²", m2 !== undefined ? `${group(m2)} €/m²` : "n.c.")}
-        {ligne("Prix au m² travaux compris", m2Travaux !== undefined ? `${group(m2Travaux)} €/m²` : "n.c.",
-          ctx.travaux > 0 && m2 !== undefined && m2Travaux !== undefined
-            ? `+ ${group(m2Travaux - m2)} €/m²` : undefined)}
-        {ligne("Rendement brut actuel", r.actuel.brut !== undefined ? `${fr1(r.actuel.brut)} %` : "n.c.")}
-        {ligne("Rendement brut après travaux", r.potentiel.brut !== undefined ? `${fr1(r.potentiel.brut)} %` : "n.c.",
-          gain !== undefined ? `${gain >= 0 ? "+" : ""}${fr1(gain)} pt` : undefined)}
-      </div>
-    </>
-  );
-}
-
 export function PrixEcran({ b, espace }: {
   b: BienData; espace?: Espace | null;
 }) {
@@ -560,6 +514,33 @@ export function PrixEcran({ b, espace }: {
     }
   }
 
+  /* Le taux d'occupation des pastilles de synthèse (#338). Il se compte en
+     SURFACE et non en nombre de lots : douze caves libres et un plateau de
+     bureaux loué, ce n'est pas 8 % d'occupation. C'est la même définition que
+     celle des rendements plus bas — deux chiffres qui se contrediraient à
+     l'écran seraient pires que pas de chiffre du tout. */
+  const occupationPct = ctx.surface > 0 ? (ctx.surfaceOccupee / ctx.surface) * 100 : 0;
+
+  /* Retour #337 — « t'as pas mis la charge des honoraires ; si le mandat est
+     signé tu reprends l'info depuis le mandat, et s'il n'y a pas de mandat tu
+     écris "Mandat non signé". »
+     C'est le mandat qui tranche, pas la fiche : la charge des honoraires est
+     une clause signée. Le champ de l'immeuble, lui, n'était qu'une copie —
+     et une copie qui se désynchronise ment sur un point qui engage l'agence
+     (et qui, sur un lot préemptable, doit rester charge vendeur, §8.2). */
+  const chargeHonos = useMemo(() => {
+    const signes = b.mandats.filter(
+      (m) => String(m.Type ?? "Vente") === "Vente"
+        && (m.date_signature || m.pdf_signed)
+        && String(m.Statut ?? "") !== "Annulé",
+    );
+    const recent = [...signes].sort((x, y) =>
+      String(y.date_signature ?? y["Created Date"] ?? "").localeCompare(
+        String(x.date_signature ?? x["Created Date"] ?? "")))[0];
+    const v = S(recent?.Charge_hono);
+    return v ? { texte: `Charge ${v.toLowerCase()}`, mandat: true } : { texte: "Mandat non signé", mandat: false };
+  }, [b.mandats]);
+
   /* Le prix de la molette ne touche à rien : il sert à voir. */
   const [hai, setHai] = useState(prixEnBase);
   const nv = Math.round(hai / (1 + tauxHonos / 100));
@@ -600,6 +581,20 @@ export function PrixEcran({ b, espace }: {
           <span className="fchip"><b>{euros(prixEnBase)}</b> HAI</span>
           <span className="fchip"><b>{euros(nvEnBase)}</b> net vendeur</span>
         </div>
+        {/* Retour #338 — « la surface Carrez, l'occupation en %, le nombre de
+            lots totaux, les loyers HC annuel actuel et potentiels dans
+            l'encadré au début dans des pastilles en dessous de celles du prix.
+            Ces infos seront sur la même ligne. »
+            Elles remplacent le Récapitulatif, retiré au même retour : ces cinq
+            chiffres sont ceux qu'on cherche en ouvrant l'écran, ils n'ont pas à
+            attendre trois sections plus bas. */}
+        <div className="blor-chips synth">
+          <span className="fchip"><b>{group(Math.round(ctx.surface))}</b> m² Carrez</span>
+          <span className="fchip"><b>{Math.round(occupationPct)}</b> % occupé</span>
+          <span className="fchip"><b>{b.lots.length}</b> lot{b.lots.length > 1 ? "s" : ""}</span>
+          <span className="fchip"><b>{euros(Math.round(ctx.loyers))}</b> HC/an</span>
+          <span className="fchip"><b>{euros(Math.round(ctx.loyersMax))}</b> HC/an potentiel</span>
+        </div>
       </div>
 
       <div className="px-hd">
@@ -630,7 +625,6 @@ export function PrixEcran({ b, espace }: {
       </div>
 
       <ResumeLocatif b={b} />
-      <Recapitulatif hai={hai} ctx={ctx} />
 
       <div className="fsub" style={{ marginTop: 18 }}>Marge de négociation</div>
       <div className="px-cards">
@@ -658,8 +652,13 @@ export function PrixEcran({ b, espace }: {
           <span className="px-ic"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z" /><path d="M8 11h8M8 14h5" /></svg></span>
           <span>
             <b>Charge honoraires</b>
-            {/* Non modifiable : c'est le mandat qui tranche. */}
-            <i className="fige" title="Déterminé par le mandat">{S(im.prix_Charge_honos) || "n.c."}</i>
+            {/* Non modifiable, et lue du MANDAT SIGNÉ (#337) : c'est une clause
+                signée, pas une case de la fiche. Sans mandat signé, on le dit
+                plutôt que d'afficher une valeur qui n'engage personne. */}
+            <i className={chargeHonos.mandat ? "fige" : "fige requis"}
+               title={chargeHonos.mandat ? "Repris du mandat signé" : "Aucun mandat de vente signé sur ce bien"}>
+              {chargeHonos.texte}
+            </i>
           </span>
         </div>
         <Bascule

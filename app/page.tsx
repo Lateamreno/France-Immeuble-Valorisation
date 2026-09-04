@@ -41,7 +41,7 @@ export default async function DashboardPage({
     <>
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
         agent={agentName} agentSlug={slug} recherche={q}
-        agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0] }))} />
+        agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color }))} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}

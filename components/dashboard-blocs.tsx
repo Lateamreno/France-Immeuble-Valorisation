@@ -100,7 +100,7 @@ function Card({
               </span>
               {fiche && (
                 <FicheContact
-                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText }}
+                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText, initialesCouleur: c.rvCouleur }}
                   onClose={() => setFiche(false)}
                 />
               )}
@@ -287,7 +287,7 @@ function Card({
 
       {transfert && (
         <ModaleTransfert
-          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, note: c.note }}
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
           agents={agents}
           peutTransferer={peutTransferer}
           onAnnuler={() => setTransfert(false)}
@@ -359,7 +359,7 @@ function Vignette({ c }: { c: KCard }) {
     <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
       <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
         repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
-      {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
+      {c.rv && <span className="rv" style={c.rvCouleur ? { background: c.rvCouleur } : undefined}>{c.rvText ?? "RV"}</span>}
     </div>
   );
 }

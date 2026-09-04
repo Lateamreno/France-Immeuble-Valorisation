@@ -23,8 +23,8 @@ export function TopBar({
   vue?: "cours" | "attente";
   agent?: string;
   agentSlug?: string;
-  /** Agents réels du BO (table agentfi). */
-  agents?: { slug: string; name: string }[];
+  /** Agents réels du BO (table agentfi), avec leur couleur `color_main`. */
+  agents?: { slug: string; name: string; couleur?: string }[];
   /** Ce qui filtre déjà le dashboard, pour que la case le montre (#306). */
   recherche?: string;
 }) {
@@ -34,6 +34,8 @@ export function TopBar({
      case, sinon elle affiche une recherche qui ne s'applique plus. */
   const [vu, setVu] = useState(recherche);
   if (vu !== recherche) { setVu(recherche); setQ(recherche); }
+
+  const couleurAgent = agents.find((a) => a.slug === agentSlug)?.couleur;
 
   const queue = (v: string) =>
     `/?agent=${agentSlug}${v === "attente" ? "&vue=attente" : ""}`;
@@ -85,12 +87,21 @@ export function TopBar({
           En attente{enAttente > 0 && <span className="cnt">{enAttente}</span>}
         </button>
       </div>
+      {/* Retour #344 — « les couleurs du fond de bouton du "suivi par" ce sont
+          les couleurs enregistrées dans la base en HEX ». Le sélecteur était
+          d'un orange fixe : on ne voyait pas de qui on lisait le portefeuille.
+          Il prend maintenant la couleur `color_main` de l'agent choisi, et ne
+          retombe sur l'orange de la charte que pour « tous les agents », qui
+          n'appartient à personne. */}
       <select
         className="agentbtn"
         value={agentSlug}
         onChange={(e) => router.push(`/?agent=${e.target.value}`)}
         aria-label="Filtrer par agent"
-        style={{ cursor: "pointer", appearance: "none" }}
+        style={{
+          cursor: "pointer", appearance: "none",
+          ...(couleurAgent ? { background: couleurAgent } : null),
+        }}
       >
         {agents.map(({ slug, name }) => (
           <option key={slug} value={slug}>

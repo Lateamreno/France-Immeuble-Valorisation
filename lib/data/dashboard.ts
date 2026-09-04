@@ -15,8 +15,13 @@ export type KCard = {
    *  la vignette affiche « à remplacer ». */
   facadeRue?: boolean;
   rv?: boolean;
-  /** Texte du badge orange (initiales de l'agent, ex. « RV », « MAV »). */
+  /** Texte du badge (initiales de l'agent, ex. « RV », « MAV »). */
   rvText?: string;
+  /* Retour #344 — « les pastilles qui indiquent les INITIALES, il faut que ce
+     soit aux couleurs de l'agent ». La couleur `color_main` de la base, pas
+     l'orange de la charte : c'est elle qui permet de balayer un tableau et de
+     voir à qui appartient chaque ligne sans lire les initiales. */
+  rvCouleur?: string;
   /** Ligne statut mandat (rouge) : « Mandat à signer », « Mandat expiré »… */
   statusMandat?: string;
   /** Chip date + note grise (MAJUSCULES conservées telles quelles). */

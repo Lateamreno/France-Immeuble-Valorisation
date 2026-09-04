@@ -511,6 +511,7 @@ export async function getDashboardLive(
       facadeRue: estFacadeRue(im.photo_main_compressed),
       rv: true,
       rvText: agent.initials,
+      rvCouleur: agent.color,
       history: !!suivi,
       statutNum: statutOf(im),
       contactId: typeof im.PROPRIETAIRE === "string" ? (im.PROPRIETAIRE as string) : undefined,
@@ -1353,13 +1354,21 @@ export async function listRecherches(): Promise<ListCard[]> {
   for (const c of await parIds("contact", acheteurIds)) contacts.set(String(c._id), c);
   return rows.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
+    /* Retour #343 — « sur une recherche il y a écrit FI, ça correspond à quoi ?
+       Normalement c'est les initiales du commercial. »
+       C'était le repli de `initialsOf` quand la recherche n'a pas de `SUIVI` :
+       68 des 1 950 recherches du miroir sont dans ce cas. « FI » se lisait
+       comme un agent nommé FI. On retombe donc d'abord sur le commercial du
+       CONTACT — celui qui suit l'acquéreur suit forcément sa recherche — et,
+       à défaut seulement, sur un tiret qui dit franchement qu'on ne sait pas. */
+    const suivi = r.SUIVI ?? c?.SUIVI;
     const prix =
       typeof r.prix_min === "number" || typeof r.prix_max === "number"
         ? `${euros(r.prix_min) ?? "0 €"} à ${euros(r.prix_max) ?? "∞"}`
         : "";
     return {
       id: String(r._id),
-      avatar: initialsOf(r.SUIVI), avatarCouleur: couleurOf(r.SUIVI),
+      avatar: suivi ? initialsOf(suivi) : "—", avatarCouleur: couleurOf(suivi),
       title: [Array.isArray(r.dpts) ? (r.dpts as string[]).join(", ") : String(r.dpts ?? ""), String(r.Cible ?? "")].filter(Boolean).join(" · ") || "Recherche",
       sub: c ? contactLabel(c) : undefined,
       grade: gradeOf(c),
@@ -2635,8 +2644,13 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
 
     return {
       id: String(r._id),
-      agent: initialsOf(r.SUIVI),
-      agentCouleur: couleurOf(r.SUIVI),
+      /* Retour #343 — « FI » était le repli de `initialsOf` sur les 68
+         recherches du miroir qui n'ont pas de `SUIVI` : ça se lisait comme un
+         agent nommé FI. On retombe sur le commercial du CONTACT — celui qui
+         suit l'acquéreur suit sa recherche — puis sur un tiret, qui dit
+         franchement qu'on ne sait pas. */
+      agent: r.SUIVI ?? c?.SUIVI ? initialsOf(r.SUIVI ?? c?.SUIVI) : "—",
+      agentCouleur: couleurOf(r.SUIVI ?? c?.SUIVI),
       lieux: lieux.length ? lieux : ["France entière"],
       destinations: Array.isArray(r.Destinations) ? (r.Destinations as string[]) : [],
       cible: TITRES_CIBLE[String(r.Cible ?? "")] ?? S2(r.Cible),

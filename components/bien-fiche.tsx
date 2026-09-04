@@ -123,6 +123,12 @@ const I = {
   voiture: <><path d="M4.5 13.5 6.4 8.6A2 2 0 0 1 8.3 7.3h7.4a2 2 0 0 1 1.9 1.3l1.9 4.9" /><rect x="3" y="13.2" width="18" height="4.6" rx="1.4" /><circle cx="7" cy="19.4" r="1.3" /><circle cx="17" cy="19.4" r="1.3" /></>,
   marteau: <><path d="m11 4 6.5 6.5-2.2 2.2L8.8 6.2z" /><path d="m9.4 11.4 3.2 3.2-6.1 6.1-3.2-3.2z" /><path d="M15 15.5h6" /></>,
   antenne: <><circle cx="12" cy="12" r="2.4" /><path d="M7.8 7.8a5.9 5.9 0 0 0 0 8.4M16.2 7.8a5.9 5.9 0 0 1 0 8.4M4.6 4.6a10.4 10.4 0 0 0 0 14.8M19.4 4.6a10.4 10.4 0 0 1 0 14.8" /></>,
+  /* Retour #340 — « Commercialisation, mets-moi un picto mégaphone pour que je
+     fasse la différence avec Diffusion. » Les deux portaient l'antenne : deux
+     entrées voisines, deux dessins identiques, aucune chance de les
+     distinguer d'un coup d'œil. Le mégaphone dit l'off-market — on va
+     chercher des gens — quand l'antenne dit la vitrine publique. */
+  megaphone: <><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1Z" /><path d="M17 9.2a4 4 0 0 1 0 5.6M19.6 6.6a7.7 7.7 0 0 1 0 10.8" /></>,
 };
 
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
@@ -280,6 +286,13 @@ export function BienFiche({
     }
   };
   const majSous = (k: SectionKey) => (t: string) => setSous((p) => ({ ...p, [k]: t }));
+  /* Les deux groupes du rail qui n'ont pas d'écran à eux. Ils s'ouvrent quand
+     l'écran en cours leur appartient — donc jamais deux à la fois, et jamais
+     en même temps que les sous-onglets d'une section (#339). */
+  const CLES_DOCS: SectionKey[] = ["estimations", "mandats", "dossiers", "tous-docs"];
+  const CLES_ACH: SectionKey[] = ["acheteurs", "commercialisations", "propositions", "visites", "offres"];
+  const groupeDocs = CLES_DOCS.includes(sect);
+  const groupeAch = CLES_ACH.includes(sect);
   const im = b.im;
 
   /**
@@ -531,11 +544,20 @@ export function BienFiche({
               </span>
             </button>
           )}
-          <div className="srow2" style={{ cursor: "default" }}>
+          {/* Retour #339 — « quand on clique sur un menu qui a des sous-menus,
+              ça ne referme pas les sous-menus ». Documents et Acheteurs
+              restaient dépliés en permanence : on lisait onze entrées pour en
+              atteindre une. Ils suivent maintenant la règle des autres —
+              le groupe qui contient l'écran en cours est ouvert, les autres
+              sont fermés — et leur en-tête est cliquable pour y revenir. */}
+          <button type="button" className={`srow2 sgroupe${groupeDocs ? " ouvert" : ""}`}
+            aria-expanded={groupeDocs}
+            onClick={() => setSect(groupeDocs ? "suivi" : "estimations")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.folder}</svg></span>
             Documents
-          </div>
-          {docSub.map((s) => (
+            <span className="right"><span className="chev">{groupeDocs ? "˄" : "˅"}</span></span>
+          </button>
+          {groupeDocs && docSub.map((s) => (
             <button key={s.key} type="button" className={`srow2 sub${sect === s.key ? " on" : ""}`} onClick={() => setSect(s.key)}>
               <span className="sic2"><svg viewBox="0 0 24 24">{s.icon}</svg></span>
               {s.label}
@@ -546,7 +568,10 @@ export function BienFiche({
               acheteurs, parce que c'est elle qui les amène. */}
           <button type="button" className={`srow2${sect === "diffusion" ? " on" : ""}`} onClick={() => setSect("diffusion")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
-            Diffusion
+            {/* Retour #340 — « écris Diffusion en ligne, ce sera plus parlant » :
+                la diffusion marketplace ne se confond plus avec la
+                commercialisation off-market du menu Acheteurs. */}
+            Diffusion en ligne
             <span className="right">
               {typeof im.pb_listing_id === "string" && im.pb_listing_id ? (
                 im.pb_a_resynchroniser === true
@@ -565,11 +590,14 @@ export function BienFiche({
               les étapes qui en découlent. Les « + » ouvrent les mêmes modales
               que la barre du bas (#333 à #335) : on programme une visite d'ici
               sans quitter le bien. */}
-          <div className="srow2" style={{ cursor: "default" }}>
+          <button type="button" className={`srow2 sgroupe${groupeAch ? " ouvert" : ""}`}
+            aria-expanded={groupeAch}
+            onClick={() => setSect(groupeAch ? "suivi" : "acheteurs")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
             Acheteurs
-          </div>
-          <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />
+            <span className="right"><span className="chev">{groupeAch ? "˄" : "˅"}</span></span>
+          </button>
+          {groupeAch && <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />}
           <button type="button" className={`srow2${sect === "notes" ? " on" : ""}`} onClick={() => setSect("notes")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
             Notes
@@ -1811,7 +1839,7 @@ function SousMenuAcheteurs({
       {/* Les campagnes vivent dans le vivier acquéreurs, chargé à la demande :
          le rail ne peut pas les compter sans le charger pour chaque fiche. On
          n'affiche donc pas de compteur ici plutôt qu'un zéro qui mentirait. */}
-      {ligne("commercialisations", "Commercialisations", I.antenne, null, undefined, null)}
+      {ligne("commercialisations", "Commercialisations", I.megaphone, null, undefined, null)}
       {ligne("propositions", "Propositions", I.avion, null,
         () => setAjout("proposition"), b.propositions.total)}
       {ligne("visites", "Visites", I.voiture,
