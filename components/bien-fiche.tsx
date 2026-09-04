@@ -2084,8 +2084,9 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
             </>
           )}
           <div className="asst-note">
-            Le motif s'affiche sur la ligne de la proposition et reste consultable :
-            c'est lui qui évite de renvoyer le même dossier à quelqu'un qui l'a déjà refusé.
+            Le motif s&apos;affiche sur la ligne de la proposition et reste consultable :
+            c&apos;est lui qui évite de renvoyer le même dossier à quelqu&apos;un qui
+            l&apos;a déjà refusé.
           </div>
         </div>
         <div className="modal-f">
@@ -2111,10 +2112,14 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
      Le bouton se teinte au-delà de dix jours plutôt que de rester neutre —
      « faire régulièrement les relances » suppose de voir lesquelles le
      méritent sans ouvrir chaque ligne. */
+  /* L'instant se fige au montage : lire l'horloge pendant le rendu rend le
+     composant impur — un même rendu pourrait donner deux résultats. Même
+     traitement que les badges « en cours » de la section Dossiers. */
+  const [maintenant] = useState(() => Date.now());
   const depuis = (() => {
     const d = new Date(String(p.date_last_relance ?? p.date_envoi ?? p["Created Date"] ?? ""));
     if (Number.isNaN(+d)) return undefined;
-    return Math.floor((Date.now() - +d) / 86400000);
+    return Math.floor((maintenant - +d) / 86400000);
   })();
   const aRelancer = depuis !== undefined && depuis >= 10;
   return (
