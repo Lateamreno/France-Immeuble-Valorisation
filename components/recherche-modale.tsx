@@ -22,7 +22,6 @@
  */
 
 import { useEffect, useState, useTransition } from "react";
-import type { RechercheCard } from "@/lib/bubble/server";
 import { ContactPicker } from "@/components/contact-picker";
 import { DESTINATIONS } from "@/components/carte-recherche";
 import { CIBLES } from "@/lib/referentiels";
@@ -96,11 +95,34 @@ function Cases({
 
 export type RetourModale = { id: string; creation: boolean };
 
+/**
+ * Ce dont la modale a besoin pour se préremplir — rien de plus.
+ *
+ * Une `RechercheCard` de l'écran Recherches satisfait ce type. L'écran
+ * Acheteurs, lui, n'a que la ligne brute du miroir : il compose ce petit objet
+ * plutôt que de rappeler le serveur pour reconstruire une carte complète, dont
+ * il n'utiliserait que sept champs (#347).
+ */
+export type DepartRecherche = {
+  id: string;
+  destinations: string[];
+  lieux: string[];
+  commentaire?: string;
+  contact?: { id: string; nom: string };
+  brut: {
+    cible?: string;
+    prixMin?: number; prixMax?: number;
+    surfaceMin?: number; surfaceMax?: number;
+    occupMin?: number; occupMax?: number;
+    renta?: number;
+  };
+};
+
 export function ModaleRechercheEdition({
   depart, contactImpose, agentId, onFermer, onEnregistre,
 }: {
   /** La recherche à modifier (#330) ; absente, on en crée une (#332). */
-  depart?: RechercheCard;
+  depart?: DepartRecherche;
   /** Sur une fiche contact, l'acquéreur est déjà connu. */
   contactImpose?: { id: string; nom: string };
   agentId?: string;

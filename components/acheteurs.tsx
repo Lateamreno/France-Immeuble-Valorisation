@@ -16,6 +16,7 @@ import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
 import { saveMatch } from "@/lib/bo/actions";
 import { AssistantCommercialisation } from "@/components/commercialisation-assistant";
+import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 
 const NOTES = ["A", "B", "C", "D"];
 /** Un nombre à la française : la virgule décimale, et pas de zéro inutile. */
@@ -42,6 +43,11 @@ type Resultat = {
 
 export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
   const [ouvrir, setOuvrir] = useState(false);
+  /* Le drapeau posé par « + Commercialiser » de l'écran Commercialisations
+     (#346). On l'efface en le lisant : il ne vaut que pour cette arrivée,
+     sinon revenir sur l'onglet rouvrirait la fenêtre indéfiniment. */
+  const [lancer, setLancer] = useMemoire<boolean>(`ach:${String(b.im._id)}:lancer`, false);
+  if (lancer) { setLancer(false); setOuvrir(true); }
   /* Retour #329 — « j'ai commencé une commercialisation et quand je me suis
      baladé dans le BO elle avait disparue et je ne peux pas y revenir en
      cliquant simplement sur le matching. […] même un truc pas enregistré
@@ -56,6 +62,52 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
   const [resultat, setResultat] = useMemoire<Resultat | null>(`${memo}:resultat`, null);
 
   const abandonner = () => { oublier(`${memo}:`); setResultat(null); };
+
+  /* Rouvrir un matching enregistré (#347).
+     Tout ce qu'il faut est déjà chargé côté écran — les recherches et les
+     contacts du vivier — donc on reconstitue les acquéreurs À PARTIR DES
+     IDENTIFIANTS RETENUS (`RECHERCHEs_FINAL`) sans repasser par le réseau.
+     C'est la sélection telle qu'elle a été arrêtée ce jour-là, pas un nouveau
+     matching : rejouer les critères donnerait un autre résultat dès qu'une
+     recherche a bougé depuis, et ferait disparaître les ajouts manuels. */
+  const rouvrir = (m: Record<string, unknown>) => {
+    const ids = new Set(
+      (Array.isArray(m.RECHERCHEs_FINAL) ? (m.RECHERCHEs_FINAL as unknown[]) : []).map(String),
+    );
+    const acquereurs = d.recherches
+      .filter((x) => ids.has(String(x._id)))
+      .map((x) => carte(x, d.contacts, true));
+    oublier(`${memo}:`);
+    setResultat({
+      matchId: S(m._id),
+      criteres: {
+        immeubleId: String(b.im._id),
+        prix: typeof m.in_prix === "number" ? (m.in_prix as number) : undefined,
+        surface: typeof m.in_surface === "number" ? (m.in_surface as number) : undefined,
+        occupation: typeof m.in_occup === "number" ? (m.in_occup as number) : undefined,
+        renta: typeof m.in_renta === "number" ? (m.in_renta as number) : undefined,
+        travaux: typeof m.in_travaux === "number" ? (m.in_travaux as number) : undefined,
+        ville: S(m.in_ville) || undefined,
+        departement: S(m.in_dpt) || undefined,
+        cibles: Array.isArray(m.in_Cibles) ? (m.in_Cibles as string[]) : [],
+        destinations: Array.isArray(m.in_Destinations) ? (m.in_Destinations as string[]) : [],
+        /* La région n'est pas figée dans la ligne du matching — elle a été
+           introduite après (#332). On la reprend des critères courants du
+           bien : c'est la même, un immeuble ne déménage pas. */
+        region: d.criteres.region,
+      },
+      filtres: {
+        notes: Array.isArray(m.in_Notes) ? (m.in_Notes as string[]) : [],
+        exclureDejaVus: m.in_proposed === true,
+        exclureAgents: m.in_agents === true,
+        mandatObligatoire: m.in_man_only === true,
+      },
+      source: (S(m.Source_mode) || "from_imm") as Source,
+      dossierId: S(m.in_DOSSIER) || undefined,
+      estimationId: S(m.in_ESTIMATION) || undefined,
+      acquereurs,
+    });
+  };
 
   if (resultat) {
     return (
@@ -75,7 +127,7 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
         </button>
       </div>
 
-      <Historique d={d} />
+      <Historique d={d} onRouvrir={rouvrir} />
 
       {ouvrir && (
         <ModaleMatching
@@ -90,7 +142,14 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
 
 /* ---------- Historique des matchings et commercialisations ---------- */
 
-function Historique({ d }: { d: AcheteursData }) {
+function Historique({ d, onRouvrir }: {
+  d: AcheteursData;
+  /* Retour #347 — « il faut que je puisse avoir accès au matching et que je
+     puisse le modifier ». Les cartes de l'historique étaient inertes : le
+     travail de tri fait un jour ne se reprenait jamais, il fallait relancer un
+     matching et refaire les exclusions à la main. */
+  onRouvrir: (m: Record<string, unknown>) => void;
+}) {
   if (d.matchs.length === 0 && d.commercialisations.length === 0) {
     return <div className="fempty">Aucun matching lancé sur cet immeuble.</div>;
   }
@@ -99,10 +158,13 @@ function Historique({ d }: { d: AcheteursData }) {
   return (
     <>
       {d.matchs.map((m) => (
-        <div key={S(m._id)} className="mt-h">
+        <button key={S(m._id)} type="button" className="mt-h ouvrable"
+          title="Rouvrir ce matching pour le modifier"
+          onClick={() => onRouvrir(m)}>
           <div className="mt-h-t">
             Matching du {dmy(m["Created Date"])}
             <span className="mt-src">à partir d&apos;un{src(m) === "estimation" ? "e" : ""} {src(m)}</span>
+            <span className="mt-ouvrir">Rouvrir ↗</span>
           </div>
           <div className="mt-crit">
             {[
@@ -124,7 +186,7 @@ function Historique({ d }: { d: AcheteursData }) {
             <b>{S(m.mails_count) || 0}</b> emails · <b>{S(m.tels_count) || 0}</b> téléphones
             <span className="mt-n">{S(m.recherches_count) || 0} recherches retenues</span>
           </div>
-        </div>
+        </button>
       ))}
 
       {d.commercialisations.map((c) => (
@@ -423,6 +485,41 @@ function Resultats({
   const [q, setQ] = useState("");
   const [pending, start] = useTransition();
   const [matchId, setMatchId] = useMemoire<string | undefined>(`${memo}:matchId`, r.matchId);
+  /* La recherche qu'on est en train de corriger sans quitter le matching
+     (#347). Volontairement HORS mémoire d'écran : une fenêtre ouverte n'est
+     pas un travail à retrouver, contrairement au tri des acquéreurs. */
+  const [rechercheOuverte, setRechercheOuverte] = useState<string | null>(null);
+  /* La modale se préremplit de la ligne brute du miroir, déjà chargée dans le
+     vivier : pas d'aller-retour serveur pour rouvrir une recherche. */
+  const departRecherche = useMemo((): DepartRecherche | null => {
+    if (!rechercheOuverte) return null;
+    const x = d.recherches.find((r) => String(r._id) === rechercheOuverte);
+    if (!x) return null;
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+    const liste = (k: string) => (Array.isArray(x[k]) ? (x[k] as unknown[]).map(String) : []);
+    const c = d.contacts.get(String(x.ACHETEUR ?? ""));
+    return {
+      id: rechercheOuverte,
+      destinations: liste("Destinations"),
+      /* Villes et départements sont deux listes en base ; la modale les
+         resépare sur la forme du code, comme l'écran Recherches. */
+      lieux: [
+        ...liste("villes").filter((v) => !/^\d{13}x\d+$/.test(v)),
+        ...liste("dpts").filter((v) => /^\d{2,3}[AB]?$/.test(v)),
+      ],
+      commentaire: S(x.commentaire) || undefined,
+      contact: c
+        ? { id: String(c._id), nom: `${S(c["prénom"])} ${S(c.nom)}`.trim() || S(c.email) || "Contact" }
+        : undefined,
+      brut: {
+        cible: S(x.Cible) || undefined,
+        prixMin: n(x.prix_min), prixMax: n(x.prix_max),
+        surfaceMin: n(x.surface_min), surfaceMax: n(x.surface_max),
+        occupMin: n(x.occup_min), occupMax: n(x.occup_max),
+        renta: n(x.renta),
+      },
+    };
+  }, [rechercheOuverte, d]);
   const [assistant, setAssistant] = useMemoire<boolean>(`${memo}:assistant`, false);
   const ciblees = useMemo(
     () => [...r.acquereurs, ...ajoutees].filter((a) => !retirees.has(a.rechercheId)),
@@ -544,9 +641,18 @@ function Resultats({
             onRetirer={() => setRetireesL((l) => [...new Set([...l, a.rechercheId])])}
             onRemettre={() => setRetireesL((l) => l.filter((x) => x !== a.rechercheId))}
             onAjouter={() => setAjoutees([...ajoutees, { ...a, auto: false }])}
+            onModifierRecherche={() => setRechercheOuverte(a.rechercheId)}
           />
         ))}
       </div>
+      {rechercheOuverte && departRecherche && (
+        <ModaleRechercheEdition
+          depart={departRecherche}
+          agentId={String(b.im.AGENT ?? "") || undefined}
+          onFermer={() => setRechercheOuverte(null)}
+          onEnregistre={() => setRechercheOuverte(null)}
+        />
+      )}
       {liste.length > 300 && (
         <div className="fempty">300 acquéreurs affichés sur {liste.length} — affinez les filtres pour voir les suivants.</div>
       )}
@@ -563,26 +669,71 @@ function Tribouton({ label, v, set }: { label: string; v: Tri; set: (v: Tri) => 
   );
 }
 
+/**
+ * Une coordonnée et son bouton de copie (#342).
+ *
+ * L'écriture dans le presse-papiers peut être refusée — page non sécurisée,
+ * permission retirée : on ne prétend donc pas avoir copié tant que la promesse
+ * n'a pas abouti, et un échec se dit au lieu de passer pour un succès.
+ */
+function Coordonnee({ valeur, vide, quoi }: { valeur?: string; vide: string; quoi: string }) {
+  const [etat, setEtat] = useState<"" | "ok" | "ko">("");
+  if (!valeur) return <span className="off">{vide}</span>;
+  return (
+    <span className="ac-coord">
+      {valeur}
+      <button
+        type="button" className="ac-copie"
+        title={etat === "ok" ? `${quoi} est copié` : etat === "ko" ? "Copie refusée par le navigateur" : `Copier — ${valeur}`}
+        onClick={() => {
+          navigator.clipboard.writeText(valeur)
+            .then(() => setEtat("ok"))
+            .catch(() => setEtat("ko"));
+        }}
+      >{etat === "ok" ? "✓" : etat === "ko" ? "!" : "⧉"}</button>
+    </span>
+  );
+}
+
 function CarteAcquereur({
-  a, vue, retiree, onRetirer, onRemettre, onAjouter,
+  a, vue, retiree, onRetirer, onRemettre, onAjouter, onModifierRecherche,
 }: {
   a: Acquereur; vue: Vue; retiree: boolean;
   onRetirer: () => void; onRemettre: () => void; onAjouter: () => void;
+  /** Ouvre la recherche pour la corriger sans quitter le matching (#347). */
+  onModifierRecherche: () => void;
 }) {
   const [details, setDetails] = useState(false);
   return (
     <div className={`ac-c${retiree ? " off" : ""}`}>
       <div className="ac-h">
         {a.note && <span className={`note n${a.note}`}>{a.note}</span>}
-        <span className="ac-nom">{a.nom}</span>
+        {/* Retour #342 — « c'est vachement bien que sur les vignettes tu aies
+            un lien pour la fiche, c'est beaucoup mieux que de cliquer n'importe
+            où sur la vignette. Tu peux reproduire ce schéma partout où il y a
+            la vignette. » Ici le nom porte le lien, et lui seul : le reste de
+            la carte reste cliquable pour ses propres boutons. */}
+        {a.contactId
+          ? <a className="ac-nom lienfiche" href={`/contact/${a.contactId}`} target="_blank" rel="noreferrer">{a.nom} ↗</a>
+          : <span className="ac-nom">{a.nom}</span>}
         {a.auto && <span className="ac-auto">Matchée automatiquement</span>}
+        <span className="sp" />
+        {/* Retour #347 — « tout en ayant accès à leur recherche ou leur contact
+            pour pouvoir modifier à la volée ». Le crayon ouvre la recherche
+            sans faire perdre le tri en cours. */}
+        <button type="button" className="ac-crayon" title="Modifier cette recherche"
+          onClick={onModifierRecherche}>✎</button>
       </div>
       <div className="ac-s">{a.secteur}</div>
       {a.cible && <div className="ac-s">{a.cible}{a.destinations.length > 0 ? ` · ${a.destinations.join(", ")}` : ""}</div>}
       <div className="ac-crit">{a.criteres || "Aucun critère borné"}</div>
+      {/* Retour #342 — « fais en sorte de mettre le bouton de copie à côté du
+          téléphone et du mail, c'est mieux ». Copier une adresse pour la
+          coller dans un autre outil est le geste le plus fréquent de l'écran ;
+          il ne devrait pas demander de sélectionner du texte à la souris. */}
       <div className="ac-canaux">
-        <span className={a.email ? "" : "off"}>{a.email ?? "pas d'e-mail"}</span>
-        <span className={a.telephone ? "" : "off"}>{a.telephone ?? "pas de téléphone"}</span>
+        <Coordonnee valeur={a.email} vide="pas d'e-mail" quoi="L'adresse" />
+        <Coordonnee valeur={a.telephone} vide="pas de téléphone" quoi="Le numéro" />
       </div>
       {details && a.commentaire && <div className="ac-com">{a.commentaire}</div>}
       <div className="ac-f">

@@ -1900,10 +1900,23 @@ function EcranCommercialisations({ b, onCommercialiser }: {
   return (
     <>
       <TitreAcheteurs cle="commercialisations" />
-      {/* Une commercialisation part d'un matching : c'est lui qui désigne à qui
-          on écrit. Le bouton renvoie donc là où le geste commence, plutôt que
-          d'ouvrir un formulaire qui redemanderait tout. */}
-      <button className="acx-add" type="button" onClick={onCommercialiser}>
+      {/* Retour #346 — « il faut qu'on puisse lancer une commercialisation ici,
+          ça ne fonctionne pas, ça me redirige vers la page acheteur ».
+          Une commercialisation part bien d'un matching — c'est lui qui désigne
+          à qui on écrit — mais le bouton se contentait de changer d'onglet et
+          laissait l'agent devant un deuxième bouton à trouver. Il pose
+          maintenant un drapeau que l'écran Acheteurs lit à l'arrivée pour
+          ouvrir la fenêtre de lancement : un clic, une fenêtre. */}
+      <button className="acx-add" type="button"
+        onClick={() => {
+          try {
+            sessionStorage.setItem(`ach:${String(b.im._id)}:lancer`, "true");
+          } catch {
+            /* Navigation privée, stockage refusé : on bascule quand même, le
+               bouton de l'écran Acheteurs prend le relais. */
+          }
+          onCommercialiser();
+        }}>
         + Commercialiser
       </button>
       {chargement && <div className="fempty">Chargement des commercialisations…</div>}

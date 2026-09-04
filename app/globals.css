@@ -1940,6 +1940,40 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .ac-com { margin-top: 7px; padding: 7px 9px; border-radius: 4px; background: #faf9f6; font-size: 12px; color: var(--slate); white-space: pre-wrap; }
 .ac-f { display: flex; gap: 6px; margin-top: 9px; }
 
+/* Retour #347 — la carte d'un matching enregistré devient cliquable : elle
+   rouvre le tri tel qu'il a été arrêté. Comme c'est un <button>, il faut lui
+   rendre l'apparence d'un bloc de texte que le navigateur lui retire. */
+button.mt-h {
+  display: block; width: 100%; text-align: left;
+  font: inherit; color: inherit; cursor: pointer;
+}
+button.mt-h.ouvrable:hover { border-color: var(--gold-bo); background: #fffdf7; }
+.mt-ouvrir {
+  margin-left: auto; font-family: var(--font-body); font-size: 11.5px;
+  font-weight: 600; color: var(--gold-bo); white-space: nowrap;
+}
+
+/* Le crayon de la carte acquéreur : ouvrir la recherche sans perdre le tri. */
+.ac-crayon {
+  flex: none; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  width: 22px; height: 22px; line-height: 1; cursor: pointer;
+  font-size: 12px; color: var(--gray-txt);
+}
+.ac-crayon:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+.ac-h .sp { flex: 1; }
+
+/* Retour #342 — le nom porte le lien vers la fiche, et chaque coordonnée son
+   bouton de copie. Le picto reste discret : c'est un outil, pas un ornement. */
+.ac-nom.lienfiche { color: var(--slate); text-decoration: none; }
+.ac-nom.lienfiche:hover { color: var(--gold-bo); text-decoration: underline; }
+.ac-coord { display: inline-flex; align-items: center; gap: 5px; }
+.ac-copie {
+  border: 0; background: none; padding: 0 2px; cursor: pointer;
+  font-size: 11px; color: var(--gray-lt); line-height: 1;
+}
+.ac-copie:hover { color: var(--gold-bo); }
+
+
 /* --- Assistant de commercialisation --- */
 .asst { border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .asst-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-lt); }
