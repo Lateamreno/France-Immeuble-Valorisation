@@ -156,3 +156,17 @@ export const libelleDepartement = (code: string) => {
   const d = PAR_CODE.get(code.trim().toUpperCase());
   return d ? `${d.code} — ${d.nom}` : code;
 };
+
+/**
+ * Les départements d'une région.
+ *
+ * Sert à la modale de recherche (#341) : le miroir Bubble ne stocke que des
+ * VILLES et des DÉPARTEMENTS sur une recherche — il n'a pas de champ région.
+ * Choisir « Île-de-France » se traduit donc, à l'enregistrement, par les huit
+ * départements qui la composent. C'est aussi ce que fait le moteur de matching,
+ * qui raisonne au département : on ne crée pas une notion que rien ne saurait
+ * comparer ensuite.
+ */
+export function departementsDe(region: string): string[] {
+  return DEPARTEMENTS.filter((d) => d.region === region).map((d) => d.code);
+}

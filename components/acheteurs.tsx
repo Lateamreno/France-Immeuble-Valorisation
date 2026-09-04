@@ -509,7 +509,12 @@ function Resultats({
       ],
       commentaire: S(x.commentaire) || undefined,
       contact: c
-        ? { id: String(c._id), nom: `${S(c["prénom"])} ${S(c.nom)}`.trim() || S(c.email) || "Contact" }
+        ? {
+            id: String(c._id),
+            nom: `${S(c["prénom"])} ${S(c.nom)}`.trim() || S(c.email) || "Contact",
+            tel: S(c.portable) || S(c.fixe) || undefined,
+            email: S(c.email) || undefined,
+          }
         : undefined,
       brut: {
         cible: S(x.Cible) || undefined,

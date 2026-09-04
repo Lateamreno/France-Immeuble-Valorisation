@@ -26,6 +26,12 @@
   --dark: #424247;        /* sidebar, texte bottom bar */
   --slate: #44525f;       /* titres, boutons, valeurs */
   --slate-2: #4e5b67;     /* en-têtes de colonnes */
+  /* Fond clair des puces et vignettes. Il existait en repli de --slate-2
+     (`var(--slate-2, #eef1f4)`), qui ne s'applique JAMAIS puisque la
+     variable est définie : cinq blocs affichaient donc du texte sombre sur
+     un fond sombre. Le repli qui ne se déclenche pas est le pire des
+     défauts : il se lit comme une intention, et il ment. */
+  --puce-fond: #eef1f4;
   --gray-txt: #6c7781;    /* notes, labels */
   --gray-lt: #b9bdc2;     /* adresses, placeholders */
   --red: #d60000;
@@ -1945,6 +1951,95 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
    méritent sans ouvrir chaque ligne. */
 .fadd.arelancer { border-color: #e8c48a; background: #fffaf0; color: #8a5300; }
 .fadd.arelancer:hover { background: #fef4e2; }
+
+/* ====== Modale de recherche, refondue (retour #341) ======================
+   « Fais la modale un peu moins grande, je veux voir la totalité des infos
+   quand je suis en 100 % de zoom. Là c'est beaucoup trop monotone : ajoute de
+   la structure, des pictos et de la couleur. » */
+.modal.rmod { max-width: 960px; width: 96vw; }
+.rmod-b { max-height: 74vh; overflow-y: auto; }
+.rmod-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; align-items: start; }
+.rmod-col { min-width: 0; }
+
+/* L'en-tête de section : le picto porte la couleur, le filet porte la
+   séparation. C'est ce qui remplace quatorze étiquettes empilées. */
+.rmod-sect {
+  display: flex; align-items: center; gap: 8px;
+  margin: 16px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-lt);
+  font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--slate);
+}
+.rmod-col > .rmod-sect:first-child { margin-top: 4px; }
+.rmod-ic {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 5px; background: var(--gold-bo-lt, #fbf7ea);
+}
+.rmod-ic svg { width: 14px; height: 14px; fill: none; stroke: var(--gold-bo); stroke-width: 1.7; }
+.rmod-ic.rouge { background: #fbf2f1; }
+.rmod-ic.rouge svg { stroke: var(--red); }
+
+/* La carte du client, en tête de modale : sa vignette, son nom cliquable vers
+   sa fiche, ses coordonnées copiables. */
+.rmod-cli {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 13px; margin-bottom: 4px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fbfbfa;
+}
+.rmod-av {
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px;
+  border-radius: 50%; background: var(--slate); color: #fff;
+  font-family: var(--font-title); font-size: 13px; font-weight: 700;
+}
+.rmod-cli-c { flex: 1; min-width: 0; }
+.rmod-cli-n {
+  display: block; font-family: var(--font-title); font-size: 14px; font-weight: 700;
+  color: var(--slate); text-decoration: none;
+}
+a.rmod-cli-n:hover { color: var(--gold-bo); text-decoration: underline; }
+.rmod-cli-co { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 2px; font-size: 12px; color: var(--gray-txt); }
+.rmod-cli-co .off { color: var(--gray-lt); font-style: italic; }
+.rmod-co { display: inline-flex; align-items: center; gap: 5px; }
+.rmod-co button {
+  border: 0; background: none; padding: 0 2px; cursor: pointer;
+  font-size: 11px; color: var(--gray-lt); line-height: 1;
+}
+.rmod-co button:hover { color: var(--gold-bo); }
+
+/* Le choix multiple à prédiction : étiquettes au-dessus, champ dessous, liste
+   flottante. */
+.rmx { position: relative; margin-bottom: 2px; }
+.rmx-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
+.rmx-champ { position: relative; }
+.rmx-liste {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 3px);
+  max-height: 210px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 5px; background: #fff;
+  box-shadow: 0 8px 22px rgba(20, 24, 28, .13);
+}
+.rmx-o {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 7px 11px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; color: var(--slate);
+}
+.rmx-o:hover { background: #f6f7f5; }
+.rmx-o b {
+  flex: none; min-width: 26px; font-family: var(--font-mono, monospace);
+  font-size: 11.5px; color: var(--gold-bo);
+}
+
+.rmod-excl-b {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  margin-top: 16px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 5px; background: #fff;
+  cursor: pointer; font-family: var(--font-title); font-size: 12.5px;
+  font-weight: 600; color: var(--slate);
+}
+.rmod-excl-b:hover { border-color: #e3c9c5; background: #fdf9f9; }
+.rmod-excl-b .ch { margin-left: auto; color: var(--gray-lt); }
+
+@media (max-width: 900px) {
+  .rmod-cols { grid-template-columns: 1fr; }
+}
+
 
 
 /* Retour #347 — la carte d'un matching enregistré devient cliquable : elle
@@ -4982,7 +5077,7 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .rm-mots .min { flex: 1; min-width: 170px; }
 .rm-mot {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 6px 3px 9px; border-radius: 4px; background: var(--slate-2, #eef1f4);
+  padding: 3px 6px 3px 9px; border-radius: 4px; background: var(--puce-fond);
   border: 1px solid var(--border); font-size: 12px; color: var(--slate);
 }
 .rm-mot button { background: none; border: none; padding: 0; cursor: pointer; color: var(--gray-lt); font-size: 12px; }
@@ -5017,7 +5112,7 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .apr.on { border-color: var(--green); background: #f5fbf7; }
 .apr img, .apr-vide {
   flex: 0 0 auto; width: 62px; height: 44px; object-fit: cover;
-  border-radius: 3px; background: var(--slate-2, #eef1f4);
+  border-radius: 3px; background: var(--puce-fond);
 }
 .apr-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
 .apr-txt b { font-size: 13px; color: var(--slate); }
@@ -5039,7 +5134,7 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
   padding: 7px 11px; border: 1px solid var(--border); border-radius: 5px; background: #fff;
   font-size: 12.5px;
 }
-.px-loc-ic { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: var(--slate-2, #eef1f4); }
+.px-loc-ic { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: var(--puce-fond); }
 .px-loc-ic svg { width: 14px; height: 14px; fill: none; stroke: var(--slate); stroke-width: 1.7; }
 .px-loc-l b { color: var(--slate); font-weight: 600; }
 .px-loc-n { color: var(--gray-lt); font-size: 11.5px; }
@@ -5100,7 +5195,7 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
   display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
   padding: 10px 13px; border: 1px solid var(--border); border-radius: 5px; background: #fff;
 }
-.acx-comm-pic { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 4px; background: var(--slate-2, #eef1f4); }
+.acx-comm-pic { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 4px; background: var(--puce-fond); }
 .acx-comm-pic svg { width: 18px; height: 18px; fill: none; stroke: var(--slate); stroke-width: 1.6; }
 .acx-comm-c { flex: 1; min-width: 0; }
 .acx-comm-t { font-size: 13px; font-weight: 600; color: #8a6d1f; }
@@ -5118,7 +5213,7 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .arp-bien:hover { border-color: var(--green); background: #f5fbf7; }
 .arp-bien img, .arp-vide {
   flex: 0 0 auto; width: 52px; height: 38px; object-fit: cover;
-  border-radius: 3px; background: var(--slate-2, #eef1f4);
+  border-radius: 3px; background: var(--puce-fond);
 }
 .arp-bien span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .arp-bien b { font-size: 12.5px; color: var(--slate); }
