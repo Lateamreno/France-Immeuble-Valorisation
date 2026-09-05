@@ -3937,13 +3937,21 @@ export async function setPropositionStatut(
   propositionId: string,
   action: "relancer" | "refuser" | "reactiver",
   motif?: string,
+  /** Ce que la personne a dit en refusant, dans ses mots. Le motif range le
+   *  refus dans une catégorie comparable ; les précisions gardent la phrase,
+   *  qui est souvent la seule chose exploitable six mois plus tard. */
+  precisions?: string,
 ) {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> =
     action === "relancer"
       ? { date_last_relance: now, Statut: "Envoyée" }
       : action === "refuser"
-        ? { Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now, stop_relances_yn: true }
+        ? {
+            Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now,
+            stop_relances_yn: true,
+            ...(precisions?.trim() ? { commentaire: precisions.trim() } : {}),
+          }
         : { Statut: "Envoyée", motif_refus: null, date_fin: null, stop_relances_yn: false };
   await rpc("bo_patch_doc", {
     p_table: "bo_proposition",

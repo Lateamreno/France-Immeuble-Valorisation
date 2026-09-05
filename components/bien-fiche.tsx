@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
@@ -38,6 +38,12 @@ import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
+import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
+import {
+  couperRelances, departRechercheDeProposition, envoyerRelances, marquerRelances,
+  noterRetour, propositionsARelancer,
+} from "@/lib/bo/relances-actions";
+import { messageRelance, objetRelance, PLAFOND_RELANCES } from "@/lib/bo/relances";
 import { Copier, copierTexte } from "@/components/copier";
 import { EspaceVendeur, PrixEcran } from "@/components/prix";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
@@ -1956,6 +1962,7 @@ function EcranCommercialisations({ b, onCommercialiser }: {
 /** Écran 3 — les propositions du bien. */
 function EcranPropositions({ b }: { b: BienData }) {
   const [ajout, setAjout] = useState(false);
+  const [salve, setSalve] = useState(false);
   const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
   const ouvertes = b.propositions.rows.filter((p) => !String(p.Statut ?? "").startsWith("Refus")).length;
   const traitees = b.propositions.rows.length - ouvertes;
@@ -1967,9 +1974,18 @@ function EcranPropositions({ b }: { b: BienData }) {
           <span className="acx-b vert">{traitees} traitées</span>
         </>
       } />
-      <button className="acx-add" type="button" onClick={() => setAjout(true)}>
-        + Créer une nouvelle proposition
-      </button>
+      <div className="acx-add-zone" style={{ gap: 8 }}>
+        <button className="acx-add" type="button" onClick={() => setAjout(true)}>
+          + Créer une nouvelle proposition
+        </button>
+        {/* « Tu feras attention qu'on puisse faire régulièrement les relances
+            avec le bouton adapté » : ici, c'est le geste par IMMEUBLE — on
+            rouvre une affaire et on relance tous ceux qui n'ont pas répondu,
+            d'un coup. La relance hebdomadaire par client, elle, a son écran. */}
+        <button className="acx-add" type="button" onClick={() => setSalve(true)}>
+          ↻ Relancer tous ceux en attente
+        </button>
+      </div>
       {b.propositions.rows.map((p) => (
         <Row key={p._id as string}>
           <div className="grow">
@@ -1985,7 +2001,135 @@ function EcranPropositions({ b }: { b: BienData }) {
       ))}
       {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
       {ajout && <ModaleProposition bien={bien} onFermer={() => setAjout(false)} />}
+      {salve && <ModaleRelanceImmeuble b={b} onFermer={() => setSalve(false)} />}
     </>
+  );
+}
+
+/**
+ * Relancer d'un coup tous ceux qui n'ont pas répondu sur CET immeuble.
+ *
+ * La fenêtre commence par afficher la liste : le nombre est presque toujours
+ * une surprise, et un envoi groupé qu'on n'a pas relu est un envoi qu'on
+ * regrette. On peut retirer quelqu'un du lot avant de partir, et le message
+ * reste modifiable — même règle que l'écran Relances.
+ */
+function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => void }) {
+  const [pending, start] = useTransition();
+  const [liste, setListe] = useState<Awaited<ReturnType<typeof propositionsARelancer>> | null>(null);
+  const [retires, setRetires] = useState<Set<string>>(new Set());
+  const [rapport, setRapport] = useState<string | null>(null);
+  const immeubleId = String(b.im._id);
+  const libelle = [b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble";
+  const agent = { nom: b.agentNom, tel: b.agentTel };
+
+  useEffect(() => {
+    let vivant = true;
+    propositionsARelancer(immeubleId)
+      .then((l) => { if (vivant) setListe(l); })
+      .catch(() => { if (vivant) setListe([]); });
+    return () => { vivant = false; };
+  }, [immeubleId]);
+
+  const retenus = (liste ?? []).filter((p) => !retires.has(p.id));
+  /* Chaque destinataire reçoit le message d'un seul dossier : c'est la relance
+     par immeuble. Le groupage par personne, lui, vit sur l'écran Relances. */
+  const envois = retenus.map((p) => {
+    const c = {
+      contactId: p.contactId ?? p.id, nom: p.nom, email: p.email ?? "",
+      joursMax: p.jours ?? 0,
+      immeubles: [{
+        propositionId: p.id, immeubleId, libelle, prix: b.prix, jours: p.jours, autresIds: [],
+      }],
+    };
+    return {
+      contactId: c.contactId, email: c.email,
+      objet: objetRelance(c), corps: messageRelance(c, agent),
+      propositionIds: [p.id],
+    };
+  });
+
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Relancer les propositions en attente
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          {!liste && <div className="fempty">Lecture des propositions…</div>}
+          {liste && liste.length === 0 && (
+            <div className="fempty">
+              Personne à relancer sur ce bien : tout le monde a répondu, ou l&apos;envoi
+              date de moins de sept jours.
+            </div>
+          )}
+          {liste && liste.length > 0 && (
+            <>
+              <div className="asst-note">
+                <b>{retenus.length}</b> personne{retenus.length > 1 ? "s" : ""} sans réponse
+                sur <b>{libelle}</b>. Les messages partent de la boîte de
+                {" "}{b.agentNom ?? "l'agent"}, un à un, et ne sont marqués relancés que
+                s&apos;ils partent vraiment.
+              </div>
+              <div className="rlz-lignes" style={{ padding: 0, maxHeight: 300, overflowY: "auto" }}>
+                {liste.map((p) => {
+                  const off = retires.has(p.id);
+                  return (
+                    <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
+                      <span>{p.nom}</span>
+                      <span className="rlz-prix">{p.email}</span>
+                      <span className="rlz-j">{p.jours === undefined ? "date inconnue" : `${p.jours} j`}</span>
+                      <span className="sp" style={{ flex: 1 }} />
+                      <button type="button" className="rlz-x" onClick={() => setRetires((s) => {
+                        const n = new Set(s);
+                        if (n.has(p.id)) n.delete(p.id); else n.add(p.id);
+                        return n;
+                      })}>{off ? "remettre" : "retirer"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {rapport && <div className="rlz-rapport" style={{ marginTop: 12 }}>{rapport}</div>}
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+          <span className="sp" style={{ flex: 1 }} />
+          {retenus.length > 0 && (
+            <>
+              <button className="fadd" type="button" disabled={pending}
+                title="Marquer relancées sans rien envoyer — quand l'envoi s'est fait ailleurs"
+                onClick={() => start(async () => {
+                  await marquerRelances(retenus.map((p) => p.id));
+                  setRapport(`${retenus.length} proposition${retenus.length > 1 ? "s" : ""} marquée${retenus.length > 1 ? "s" : ""} relancée${retenus.length > 1 ? "s" : ""}.`);
+                  setListe(await propositionsARelancer(immeubleId));
+                })}>
+                Marquer relancées
+              </button>
+              <button className="kgo" type="button" disabled={pending}
+                onClick={() => start(async () => {
+                  setRapport(null);
+                  try {
+                    const r = await envoyerRelances(envois, String(b.im.AGENT ?? "") || undefined);
+                    setRapport(
+                      `${r.envoyes} relance${r.envoyes > 1 ? "s" : ""} envoyée${r.envoyes > 1 ? "s" : ""}`
+                      + (r.echecs ? ` · ${r.echecs} échec${r.echecs > 1 ? "s" : ""} : ${r.journal.slice(0, 2).join(" · ")}` : "")
+                      + (r.restants ? ` · ${r.restants} au-delà du plafond de ${PLAFOND_RELANCES}` : ""),
+                    );
+                  } catch (e) {
+                    setRapport(e instanceof Error ? e.message : "L'envoi a échoué.");
+                  }
+                  setListe(await propositionsARelancer(immeubleId));
+                })}>
+                <span className="ch">›</span> Envoyer {Math.min(retenus.length, PLAFOND_RELANCES)} relance{retenus.length > 1 ? "s" : ""}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2054,10 +2198,80 @@ const MOTIFS_REFUS = [
   "Autre — à préciser",
 ];
 
-/** La fenêtre de refus d'une proposition : un motif choisi, ou écrit. */
+/* Les retours qu'on note le plus souvent, dans les mots de MAV : « étudie le
+   dossier », « souhaite plus d'éléments », « va visiter le 12 ». Ce sont des
+   AMORCES, pas un menu fermé — on clique et on complète. Un champ vide devant
+   quelqu'un qui vient de raccrocher, c'est un retour qui ne s'écrit jamais. */
+const RETOURS_RAPIDES = [
+  "Étudie le dossier",
+  "Souhaite plus d'éléments",
+  "Va visiter le ",
+  "Rappelle la semaine prochaine",
+  "En attente de son financement",
+  "Prix trop élevé pour lui",
+];
+
+/**
+ * La fenêtre de retour : ce que l'acquéreur a répondu.
+ *
+ * Noter un retour REMET LA PENDULE À ZÉRO côté relance — on ne rappelle pas
+ * quelqu'un qui vient de répondre. C'est la raison d'être de cette fenêtre :
+ * sans elle, « il étudie le dossier » se fait relancer le lundi suivant.
+ */
+function ModaleRetour({ initial, onFermer, onNoter, pending }: {
+  initial?: string;
+  onFermer: () => void;
+  onNoter: (texte: string) => void;
+  pending: boolean;
+}) {
+  const [texte, setTexte] = useState(initial ?? "");
+  const zone = useRef<HTMLTextAreaElement>(null);
+  /* Après un clic sur une amorce, le curseur va à la FIN : « Va visiter le »
+     appelle une date, et un curseur resté au début la ferait taper devant. */
+  const poser = (r: string) => {
+    setTexte(r);
+    const t = zone.current;
+    if (t) requestAnimationFrame(() => { t.focus(); t.setSelectionRange(r.length, r.length); });
+  };
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Retour de l&apos;acquéreur
+          <button type="button" onClick={onFermer}>✕</button>
+        </div>
+        <div className="modal-b">
+          <span className="mlab">Formulations fréquentes</span>
+          <div className="prop-chips">
+            {RETOURS_RAPIDES.map((r) => (
+              <button key={r} type="button" onClick={() => poser(r)}>{r.trim()}</button>
+            ))}
+          </div>
+          <span className="mlab">Ce qu&apos;il a dit</span>
+          <textarea className="min" rows={4} value={texte} autoFocus ref={zone}
+            onChange={(e) => setTexte(e.target.value)}
+            placeholder="Étudie le dossier, va visiter le 12…" />
+          <div className="asst-note">
+            Le retour se lit sur la ligne de la proposition et <b>repousse la relance</b> :
+            on ne rappelle pas quelqu&apos;un qui vient de répondre.
+          </div>
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <button className="kgo" type="button" disabled={pending} onClick={() => onNoter(texte)}>
+            <span className="ch">›</span> Enregistrer le retour
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** La fenêtre de refus d'une proposition : un motif choisi, et ses mots. */
 function ModaleRefus({ onFermer, onRefuser, pending }: {
   onFermer: () => void;
-  onRefuser: (motif: string) => void;
+  onRefuser: (motif: string, precisions: string) => void;
   pending: boolean;
 }) {
   const [motif, setMotif] = useState(MOTIFS_REFUS[0]);
@@ -2066,7 +2280,7 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
   const valeur = autre ? libre.trim() : motif;
   return (
     <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
           Refuser la proposition
           <button type="button" onClick={onFermer}>✕</button>
@@ -2076,13 +2290,13 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
           <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
             {MOTIFS_REFUS.map((m) => <option key={m}>{m}</option>)}
           </select>
-          {autre && (
-            <>
-              <span className="mlab">Préciser</span>
-              <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
-                placeholder="Ce que l'acquéreur a répondu" />
-            </>
-          )}
+          {/* Le texte libre est toujours disponible, plus seulement sur
+              « Autre » : un refus motivé « budget insuffisant » ne dit pas
+              « il monte à 900 k€ », qui est pourtant la seule chose utile
+              la fois suivante. */}
+          <span className="mlab">{autre ? "Préciser" : "Ses mots (facultatif)"}</span>
+          <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
+            placeholder="Ce que l'acquéreur a répondu" />
           <div className="asst-note">
             Le motif s&apos;affiche sur la ligne de la proposition et reste consultable :
             c&apos;est lui qui évite de renvoyer le même dossier à quelqu&apos;un qui
@@ -2093,8 +2307,50 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending || (autre && !valeur)}
-            onClick={() => onRefuser(valeur)}>
+            onClick={() => onRefuser(valeur, autre ? "" : libre.trim())}>
             <span className="ch">›</span> Marquer refusée
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Juste après un refus : la recherche de l'acquéreur mérite-t-elle d'être
+ * corrigée ?
+ *
+ * MAV : « quand on clique sur refus on demande si on veut modifier la recherche
+ * et ça ouvre la modale recherche si on dit oui. » Le refus est le seul moment
+ * où l'on apprend quelque chose de précis sur ce que le client veut ; trois
+ * minutes plus tard on est passé à autre chose et le critère reste faux.
+ */
+function ModaleApresRefus({ motif, onNon, onOui, pending }: {
+  motif?: string;
+  onNon: () => void;
+  onOui: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="modal-ov" onClick={onNon}>
+      <div className="modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          Refus enregistré
+          <button type="button" onClick={onNon}>✕</button>
+        </div>
+        <div className="modal-b">
+          <div className="asst-note">
+            {motif ? <>Motif retenu : <b>{motif}</b>. </> : null}
+            Voulez-vous corriger sa recherche dans la foulée ? C&apos;est maintenant
+            qu&apos;on sait pourquoi le dossier ne lui allait pas — dans dix minutes,
+            le critère restera faux et il recevra le même type de bien.
+          </div>
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onNon}>Non, plus tard</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <button className="kgo" type="button" disabled={pending} onClick={onOui}>
+            <span className="ch">›</span> Ouvrir sa recherche
           </button>
         </div>
       </div>
@@ -2105,9 +2361,15 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
 function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> }) {
   const [pending, start] = useTransition();
   const [refus, setRefus] = useState(false);
+  const [retour, setRetour] = useState(false);
+  /* L'enchaînement du refus : la question, puis la recherche si l'on dit oui. */
+  const [apres, setApres] = useState<string | null>(null);
+  const [recherche, setRecherche] = useState<DepartRecherche | null>(null);
+  const [creerPour, setCreerPour] = useState<{ id: string; nom: string } | null>(null);
   const immeubleId = String(b.im._id);
   const id = String(p._id);
   const refusee = String(p.Statut ?? "").startsWith("Refus");
+  const coupe = p.stop_relances_yn === true;
   /* Depuis quand la proposition attend : c'est ce qui dit s'il faut relancer.
      Le bouton se teinte au-delà de dix jours plutôt que de rester neutre —
      « faire régulièrement les relances » suppose de voir lesquelles le
@@ -2136,6 +2398,22 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
             onClick={() => start(() => setPropositionStatut(immeubleId, id, "relancer"))}>
             Relancer{aRelancer ? ` · ${depuis} j` : ""}
           </button>
+          {/* Le retour de l'acquéreur : « étudie le dossier », « va visiter le
+              12 ». Il se note en deux clics ou il ne se note jamais — et il
+              repousse la relance, ce qui est tout l'intérêt. */}
+          <button className="fadd" type="button" disabled={pending}
+            title={p.commentaire ? String(p.commentaire) : "Noter ce que l'acquéreur a répondu"}
+            onClick={() => setRetour(true)}>Retour{p.commentaire ? " ✓" : ""}</button>
+          {/* La coupure des relances est la demande de LA PERSONNE — « ne me
+              relancez plus là-dessus » — pas un réglage d'agence. Elle se pose
+              et se retire d'un clic, sans passer par un refus. */}
+          <button className={`fadd${coupe ? " arelancer" : ""}`} type="button" disabled={pending}
+            title={coupe
+              ? "Les relances sont coupées sur cette proposition — cliquer pour les rétablir"
+              : "Ne plus faire remonter cette proposition dans les relances"}
+            onClick={() => start(() => couperRelances(id, !coupe, immeubleId))}>
+            {coupe ? "Relances coupées" : "Couper"}
+          </button>
           {/* Le motif de refus se choisit dans une fenêtre, plus dans un
               `prompt()` du navigateur : c'est la même famille que les alertes
               retirées au #333, et un champ libre ne rend aucun motif
@@ -2144,14 +2422,49 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
             onClick={() => setRefus(true)}>Refuser</button>
         </>
       )}
+      {retour && (
+        <ModaleRetour
+          pending={pending}
+          initial={p.commentaire ? String(p.commentaire) : undefined}
+          onFermer={() => setRetour(false)}
+          onNoter={(texte) => {
+            setRetour(false);
+            start(() => noterRetour(id, texte, immeubleId));
+          }}
+        />
+      )}
       {refus && (
         <ModaleRefus
           pending={pending}
           onFermer={() => setRefus(false)}
-          onRefuser={(motif) => {
+          onRefuser={(motif, precisions) => {
             setRefus(false);
-            start(() => setPropositionStatut(immeubleId, id, "refuser", motif || undefined));
+            start(async () => {
+              await setPropositionStatut(immeubleId, id, "refuser", motif || undefined, precisions);
+              setApres(motif || null);
+            });
           }}
+        />
+      )}
+      {apres !== null && (
+        <ModaleApresRefus
+          motif={apres || undefined}
+          pending={pending}
+          onNon={() => setApres(null)}
+          onOui={() => start(async () => {
+            const d = await departRechercheDeProposition(id);
+            setApres(null);
+            if (d?.recherche) setRecherche(d.recherche);
+            else if (d?.contact) setCreerPour({ id: d.contact.id, nom: d.contact.nom });
+          })}
+        />
+      )}
+      {(recherche || creerPour) && (
+        <ModaleRechercheEdition
+          depart={recherche ?? undefined}
+          contactImpose={creerPour ?? undefined}
+          onFermer={() => { setRecherche(null); setCreerPour(null); }}
+          onEnregistre={() => { setRecherche(null); setCreerPour(null); }}
         />
       )}
     </span>

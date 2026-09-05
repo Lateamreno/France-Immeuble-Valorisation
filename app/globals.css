@@ -1952,6 +1952,102 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .fadd.arelancer { border-color: #e8c48a; background: #fffaf0; color: #8a5300; }
 .fadd.arelancer:hover { background: #fef4e2; }
 
+/* ====== Écran Relances : une carte par CLIENT, pas par immeuble ==========
+   C'est la règle de lecture de tout l'écran, et elle justifie sa mise en page :
+   la personne en tête, ses dossiers en attente dessous, un seul message. */
+.rlz-h { display: flex; align-items: flex-end; gap: 20px; margin-bottom: 18px; flex-wrap: wrap; }
+.rlz-t { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--slate); margin: 0; }
+.rlz-s { margin: 4px 0 0; font-size: 13px; color: var(--gray-lt); max-width: 62ch; line-height: 1.55; }
+.rlz-fen {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--gray-lt);
+}
+.rlz-fen select {
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 6px 9px; font: inherit; font-size: 12.5px; color: var(--slate); cursor: pointer;
+}
+
+.rlz-tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.rlz-tuile { border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 12px 14px; }
+.rlz-tuile b { display: block; font-family: var(--font-title); font-size: 22px; color: var(--slate); }
+.rlz-tuile span { display: block; margin-top: 2px; font-size: 12px; color: var(--gray-lt); }
+.rlz-tuile.vert b { color: var(--green, #2e7d4f); }
+
+.rlz-arr {
+  border: 1px solid #e6dcb8; background: #fbf8ee; color: #5f5322;
+  border-radius: 5px; padding: 11px 14px; margin-bottom: 16px;
+  font-size: 12.5px; line-height: 1.6;
+}
+
+.rlz-c { border: 1px solid var(--line); border-radius: 7px; background: #fff; margin-bottom: 12px; }
+.rlz-c-h { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-bottom: 1px solid var(--line-lt); flex-wrap: wrap; }
+.rlz-av {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 50%; background: var(--slate); color: #fff;
+  font-family: var(--font-title); font-size: 12px; font-weight: 700;
+}
+.rlz-c-id { min-width: 0; }
+.rlz-c-id a { display: block; font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); text-decoration: none; }
+.rlz-c-id a:hover { color: var(--gold-bo); text-decoration: underline; }
+.rlz-c-id span { display: block; font-size: 12px; color: var(--gray-lt); }
+.rlz-age {
+  margin-left: auto; font-size: 12px; color: var(--gray-txt);
+  border: 1px solid var(--line); border-radius: 12px; padding: 3px 10px; white-space: nowrap;
+}
+.rlz-age.chaud { border-color: #e8c48a; background: #fffaf0; color: #8a5300; }
+
+.rlz-lignes { padding: 4px 14px 8px; }
+.rlz-l { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line-lt); font-size: 12.5px; }
+.rlz-l:last-child { border-bottom: 0; }
+.rlz-l a { color: var(--slate); text-decoration: none; }
+.rlz-l a:hover { color: var(--gold-bo); text-decoration: underline; }
+.rlz-l.off { opacity: .45; }
+.rlz-l.off a { text-decoration: line-through; }
+.rlz-prix { color: var(--gray-txt); }
+.rlz-j { color: var(--gray-lt); font-size: 11.5px; }
+.rlz-x {
+  border: 1px solid var(--line); border-radius: 3px; background: #fff;
+  padding: 2px 8px; font: inherit; font-size: 11px; color: var(--gray-txt); cursor: pointer;
+}
+.rlz-x:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+.rlz-x.rouge:hover { border-color: #e6b3b3; color: var(--red); }
+
+.rlz-msg { padding: 4px 14px 12px; border-top: 1px solid var(--line-lt); }
+.rlz-c-f { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line-lt); background: #fbfbfa; border-radius: 0 0 7px 7px; }
+
+/* La barre « tout relancer » : elle reste sous la main pendant qu'on descend
+   la liste, c'est le geste du lundi matin. */
+.rlz-bar {
+  position: sticky; top: 0; z-index: 4;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 11px 14px; margin-bottom: 12px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: #fbfbfa; font-size: 12.5px; color: var(--gray-txt);
+}
+.rlz-bar b { color: var(--slate); }
+.rlz-rapport {
+  padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px;
+  border: 1px solid #cfe3d6; border-radius: 6px; background: #f3f9f5; color: #2c5c42;
+}
+.rlz-dest { display: flex; flex-wrap: wrap; gap: 6px; }
+.rlz-dest span {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border: 1px solid var(--line); border-radius: 20px;
+  background: #fff; font-size: 11.5px; color: var(--gray-txt);
+}
+.rlz-dest span i { font-style: normal; font-weight: 700; color: var(--slate); }
+.rlz-dest span.pl { border-style: dashed; color: var(--gray-lt); }
+
+/* Les amorces de retour : on clique, puis on complète. */
+.prop-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.prop-chips button {
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: 20px;
+  background: #fff; font: inherit; font-size: 11.5px; font-weight: 500;
+  color: var(--gray-txt); cursor: pointer;
+}
+.prop-chips button:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+
+
 /* ====== Modale de recherche, refondue (retour #341) ======================
    « Fais la modale un peu moins grande, je veux voir la totalité des infos
    quand je suis en 100 % de zoom. Là c'est beaucoup trop monotone : ajoute de
