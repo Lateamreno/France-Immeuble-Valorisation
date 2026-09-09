@@ -22,6 +22,7 @@ import {
   compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
+import { ModaleDpe } from "@/components/dpe-modale";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -422,6 +423,9 @@ const PLURIEL: Record<string, string> = {
 
 export function LotsEditor({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
+  /* Le recensement ADEME (#DPE) : une fenêtre de consultation, hors de la
+     mémoire d'écran — une fenêtre ouverte n'est pas un travail à retrouver. */
+  const [dpe, setDpe] = useState(false);
   /* Le montant des travaux du lot est une valeur de la ligne comme une autre :
      il attend le bouton Enregistrer, il ne part plus tout seul (#90). */
   const travauxDuLot = useMemo(() => {
@@ -1159,6 +1163,14 @@ export function LotsEditor({ b }: { b: BienData }) {
         <button className="ltb lbl gold" type="button" onClick={exporter}>
           <svg viewBox="0 0 24 24"><path d="M12 4v12M8 12l4 4 4-4M4 20h16" /></svg> Télécharger
         </button>
+        {/* Le recensement des DPE publiés par l'ADEME à cette adresse. Il vit
+            ici, à côté du tableau des lots, parce que c'est là qu'on se pose la
+            question — et il n'écrit rien dans la colonne DPE : c'est une
+            fenêtre de consultation, l'agent rattache s'il veut. */}
+        <button className="ltb lbl gold" type="button" onClick={() => setDpe(true)}
+          title="Recenser les DPE publiés par l'ADEME à cette adresse">
+          <svg viewBox="0 0 24 24"><path d="M4 20h16M7 20V9l5-5 5 5v11M10 20v-5h4v5" /></svg> DPE ADEME
+        </button>
         <span className="sp" style={{ flex: 1 }} />
         <button className="ltb annul" type="button" onClick={annuler} disabled={dirty.size === 0 || pending}>
           Annuler
@@ -1168,6 +1180,28 @@ export function LotsEditor({ b }: { b: BienData }) {
           <span className="ch">›</span> Enregistrer{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </button>
       </div>
+
+      {dpe && (
+        <ModaleDpe
+          immeubleId={immeubleId}
+          adresse={[
+            [S(b.im.adresse_numero_rue), S(b.im.adresse_rue)].filter(Boolean).join(" "),
+            [S(b.im.adresse_zipcode), S(b.im.adresse_ville)].filter(Boolean).join(" "),
+          ].filter(Boolean).join(", ")}
+          agent={b.agentNom}
+          /* Les lots tels qu'ils sont À L'ÉCRAN, saisie en cours comprise : si
+             l'agent vient de corriger une surface, c'est celle-là qui doit
+             servir au rapprochement, pas celle d'avant. */
+          lots={rows.map((r) => ({
+            id: r.id,
+            libelle: libelleLot(r),
+            etage: r.etage === "" ? undefined : Number(r.etage),
+            surface: r.surface_carrez === "" ? undefined
+              : Number(String(r.surface_carrez).replace(",", ".")) || undefined,
+          }))}
+          onFermer={() => setDpe(false)}
+        />
+      )}
 
       {/* Retour #254 — le détail des travaux du lot, demandé au moment où on
           saisit le montant : c'est le seul moment où l'agent l'a en tête. */}

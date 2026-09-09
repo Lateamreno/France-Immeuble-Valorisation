@@ -2038,6 +2038,83 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .rlz-dest span i { font-style: normal; font-weight: 700; color: var(--slate); }
 .rlz-dest span.pl { border-style: dashed; color: var(--gray-lt); }
 
+/* ====== Recensement des DPE (ADEME) =====================================
+   Une fenêtre de CONSULTATION : elle recense, elle n'écrit pas dans les lots.
+   Seule la liste déroulante de droite touche quelque chose, et sur un clic. */
+.modal.dpem { max-width: 980px; width: 96vw; }
+.dpem-src {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; margin-bottom: 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--puce-fond, #eef1f4);
+}
+.dpem-src b { font-size: 13.5px; color: var(--slate); }
+.dpem-src span { font-size: 11.5px; color: var(--gray-lt); line-height: 1.5; }
+
+.dpem-bilan { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.dpem-chiffre { display: flex; align-items: baseline; gap: 6px; }
+.dpem-chiffre b { font-family: var(--font-title); font-size: 21px; color: var(--slate); }
+.dpem-chiffre span { font-size: 12px; color: var(--gray-lt); }
+.dpem-lettres { display: flex; gap: 5px; flex-wrap: wrap; }
+/* Le badge en flèche de la fiche est découpé au `clip-path` : il avale tout ce
+   qui dépasse de la lettre. Ici on veut lire « E 10 », donc pastille pleine. */
+.dpem-part {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 21px; padding: 0 4px 0 8px; border-radius: 11px;
+  font-family: var(--font-title); font-size: 11.5px; font-weight: 700; color: #fff;
+  background: var(--gray-lt);
+}
+.dpem-part i {
+  display: inline-grid; place-items: center; min-width: 17px; height: 15px; padding: 0 4px;
+  border-radius: 9px; background: rgba(255, 255, 255, .82);
+  font-style: normal; font-size: 10.5px; font-weight: 700; color: #333;
+}
+.dpem-part.dA { background: #319b3f; } .dpem-part.dB { background: #52ac3a; }
+.dpem-part.dC { background: #8fbe2a; } .dpem-part.dD { background: #f0d000; color: #4a4a2a; }
+.dpem-part.dE { background: #f2a52c; } .dpem-part.dF { background: #e8722b; }
+.dpem-part.dG { background: #d62f2f; }
+
+/* Le libellé du bouton ne doit pas se casser en deux lignes dans la barre. */
+.ltools .ltb.lbl { white-space: nowrap; }
+.dpem-rien { font-size: 12px; color: var(--gray-lt); }
+.dpem-quand { font-size: 11.5px; color: var(--gray-lt); }
+
+.dpem-liste { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.dpem-l {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border-bottom: 1px solid var(--line-lt); font-size: 12.5px;
+}
+.dpem-l:last-child { border-bottom: 0; }
+.dpem-l:nth-child(even) { background: #fbfbfa; }
+/* Un DPE périmé se lit encore, mais il ne fait plus foi : on l'atténue plutôt
+   que de le masquer — le masquer ferait croire qu'il n'a jamais existé. */
+.dpem-l.perime { opacity: .62; }
+.dpem-ges { font-size: 11px; color: var(--gray-lt); white-space: nowrap; }
+.dpem-m2 { font-weight: 600; color: var(--slate); white-space: nowrap; }
+.dpem-sit { color: var(--gray-txt); }
+.dpem-meta { font-size: 11.5px; color: var(--gray-lt); }
+.dpem-coll {
+  display: inline-block; padding: 1px 6px; margin-right: 5px; border-radius: 3px;
+  background: #e8eef5; color: #35506b; font-size: 10.5px; font-weight: 600;
+}
+.dpem-per { color: var(--red); font-weight: 600; }
+.dpem-lien { font-size: 11.5px; color: var(--gray-lt); text-decoration: none; white-space: nowrap; }
+.dpem-lien:hover { color: var(--gold-bo); text-decoration: underline; }
+.dpem-lot {
+  max-width: 210px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px;
+  background: #fff; font: inherit; font-size: 11.5px; color: var(--gray-txt);
+}
+.dpem-lot:hover { border-color: var(--gold-bo); }
+
+.dpem-vide { padding: 16px 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.dpem-vide p { margin: 0 0 9px; font-size: 13px; color: var(--gray-txt); line-height: 1.6; max-width: 74ch; }
+.dpem-vide p:last-child { margin-bottom: 0; }
+.dpem-vide .kgo { margin-top: 4px; }
+.dpem-note { margin: 10px 0 0; font-size: 11.5px; color: var(--gray-lt); line-height: 1.55; max-width: 84ch; }
+.dpem-err {
+  padding: 9px 12px; margin: 10px 0; border: 1px solid #e6b3b3; border-radius: 5px;
+  background: #fdf5f5; color: var(--red); font-size: 12.5px; line-height: 1.5;
+}
+
 /* Les amorces de retour : on clique, puis on complète. */
 .prop-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .prop-chips button {
