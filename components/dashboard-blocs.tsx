@@ -142,57 +142,62 @@ function Card({
             </div>
           )}
 
-          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
-
           {c.wait && (
             <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
                 <span className="lbl">{c.wait.motif}</span>
                 {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
-                <span className="ar">▾</span>
+                {/* La flèche déroule et replie le dernier suivi (retour #349).
+                    Elle était décorative et se contentait d'être dans le lien
+                    de la carte : cliquer dessus ouvrait donc la fiche. Sans
+                    suivi à montrer, elle redevient un simple ornement plutôt
+                    qu'un bouton qui ne fait rien. */}
+                {c.noteComplete ? (
+                  <span className={`ar act${note ? " on" : ""}`} role="button" tabIndex={0}
+                    title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault(); e.stopPropagation(); setNote((v) => !v);
+                    }}>
+                    ▾
+                  </span>
+                ) : (
+                  <span className="ar">▾</span>
+                )}
               </span>
               <span className="d">{c.wait.to}</span>
             </div>
           )}
 
-          {(c.adresseComplete || c.perf || c.prix || c.fee) && (
-            <div className="krow3">
-              {/* MAV : « à la place du début de l'adresse tu vas me mettre juste
-                  une icône Google Maps qui m'emmène sur l'adresse ». Le texte
-                  était tronqué au tiers dans une colonne — il situait mal ; un
-                  plan situe mieux.
+          {/* Posé après la frise : sur une carte en attente le suivi se lit
+              sous elle, et sur les autres cartes (qui n'ont pas de frise) il
+              reste collé sous la note, exactement comme avant. */}
+          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
 
-                  Un `span` et non un `<a>` : la carte entière est déjà un lien
-                  vers la fiche, et un lien dans un lien est du HTML invalide
-                  que les navigateurs défont comme ils veulent. Même façon de
-                  faire que le chevron de la note, juste au-dessus. */}
-              {c.adresseComplete && (
-                <span className="kmaps" role="button" tabIndex={0}
-                  title={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
-                  onClick={(e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    window.open(
-                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
-                      "_blank", "noopener,noreferrer",
-                    );
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault(); e.stopPropagation();
-                    window.open(
-                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
-                      "_blank", "noopener,noreferrer",
-                    );
-                  }}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" />
-                    <circle cx="12" cy="10" r="2.6" />
-                  </svg>
-                </span>
-              )}
+          {(c.perf || c.prix || c.fee) && (
+            <div className="krow3">
+              {/* Le rendement, coloré face à celui du secteur (demande MAV).
+                  Sens inverse de la pastille de prix à droite : un rendement
+                  AU-DESSUS du secteur est vert. Pas de référence utilisable,
+                  pas de couleur — la pastille reste neutre plutôt que de
+                  mentir. */}
               {c.perf?.renta !== undefined && (
-                <span className="kperf" title="Rendement brut actuel">
+                <span
+                  className={`kperf ${
+                    c.perf.rentaEcart === undefined || c.perf.rentaEcart === 0 ? ""
+                      : c.perf.rentaEcart > 0 ? "kdec" : "ksur"
+                  }`}
+                  title={
+                    "Rendement brut actuel"
+                    + (c.perf.rentaRef !== undefined
+                      ? ` — secteur ${c.perf.rentaRef.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`
+                        + (c.perf.rentaEcart
+                          ? ` (${c.perf.rentaEcart > 0 ? "+" : ""}${c.perf.rentaEcart.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt)`
+                          : " (au niveau du secteur)")
+                      : "")
+                  }>
                   {c.perf.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
                 </span>
               )}
@@ -275,6 +280,32 @@ function Card({
         {c.history && (
           <button className={`kbtn${hist ? " on" : ""}`} type="button" aria-label="Historique" onClick={() => setHist((v) => !v)}>
             <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></svg>
+          </button>
+        )}
+        {/* Le plan, descendu de la ligne du prix jusqu'ici (retour #348 : « le
+            picto Google Map tu peux le mettre à côté du picto historique comme
+            ça il dénote pas »). Il devient un `kbtn` comme les autres : même
+            taille, même cadre, même écart — c'est la rangée qui les tient, on
+            ne règle plus rien à la main.
+
+            Et il redevient un vrai `<button>` : cette rangée est en dehors du
+            lien de la carte, contrairement à la ligne du prix. Plus besoin
+            d'arrêter la propagation du clic. */}
+        {c.adresseComplete && (
+          <button
+            className="kbtn"
+            type="button"
+            aria-label={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            title={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            onClick={() => window.open(
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
+              "_blank", "noopener,noreferrer",
+            )}
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.6" />
+            </svg>
           </button>
         )}
         {c.redIcons && (

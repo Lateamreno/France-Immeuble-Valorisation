@@ -71,7 +71,28 @@ export type KCard = {
    * prix affiché ET une estimation. Une carte qui n'a rien n'affiche rien —
    * pas de tiret, pas de case vide.
    */
-  perf?: { renta?: number; estim?: number; estimLe?: string; ecartEstim?: number };
+  perf?: {
+    renta?: number;
+    /**
+     * Rendement du secteur (`ref_renta_all` de la dernière estimation) et
+     * écart du bien à ce rendement, en points, arrondi au dixième.
+     *
+     * MAV : « la renta tu la mets en vert ou en rouge si c'est plus ou moins
+     * la renta du secteur ». Attention au sens : ici le VERT est au-DESSUS du
+     * secteur — l'inverse de la pastille de prix juste à droite, où le vert
+     * est en dessous. Les deux sont pourtant cohérentes : vert = bonne
+     * nouvelle pour qui achète.
+     *
+     * Sur 567 biens comparables, 230 sont au-dessus, 316 en dessous et 21 pile
+     * dessus. La couleur manque quand le bien n'a pas de rendement (1 237 cas)
+     * ou quand la référence est aberrante (19 cas hors 2–20 %).
+     */
+    rentaRef?: number;
+    rentaEcart?: number;
+    estim?: number;
+    estimLe?: string;
+    ecartEstim?: number;
+  };
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
   action?: { label: string; kind?: "green"; next?: number };
   /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */

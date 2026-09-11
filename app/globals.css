@@ -342,15 +342,9 @@ button { font-family: inherit; cursor: pointer; }
 .krow3 .kprice { margin-left: auto; }
 .krow3 .kfee + .kprice { margin-left: 0; }
 
-.kmaps {
-  flex: none; display: inline-grid; place-items: center;
-  width: 24px; height: 24px; border-radius: 5px;
-  border: 1px solid var(--line); background: #fff;
-  color: var(--gray-lt); cursor: pointer;
-}
-.kmaps svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; }
-.kmaps:hover { border-color: var(--gold-bo); color: var(--gold-bo); background: #fffdf7; }
-.kmaps:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 1px; }
+/* `.kmaps` a vécu : le plan est descendu dans la rangée d'actions (retour
+   #348) et n'est plus qu'un `.kbtn` parmi les autres — taille, cadre et écart
+   viennent de la rangée, il n'y a plus de réglage propre à lui. */
 
 .kperf {
   flex: none;
@@ -394,6 +388,15 @@ button { font-family: inherit; cursor: pointer; }
   background: transparent;
 }
 .kwait .mid .ar { position: absolute; left: 50%; transform: translateX(-50%); top: 9px; color: var(--red); font-size: 10px; }
+/* La flèche qui déroule le dernier suivi (retour #349). Le chevron fait 10 px :
+   on lui donne une vraie zone de clic autour, sinon il faut viser. */
+.kwait .mid .ar.act {
+  top: 4px; padding: 4px 9px; line-height: 1; cursor: pointer;
+  border-radius: 4px; transition: transform .12s ease, background .12s ease;
+}
+.kwait .mid .ar.act:hover { background: rgba(0, 0, 0, .05); }
+.kwait .mid .ar.act.on { transform: translateX(-50%) rotate(180deg); }
+.kwait .mid .ar.act:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 1px; }
 
 /* rangée d'actions */
 .kact {

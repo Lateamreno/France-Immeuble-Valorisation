@@ -493,10 +493,10 @@ export async function getDashboardLive(
      carte, et paginée à l'en-tête `Range` : PostgREST plafonne une réponse à
      1 000 lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a
      l'air complète est le pire des défauts (leçon du lot « relances »). */
-  const estimByIm = new Map<string, { prix: number; le: string }>();
+  const estimByIm = new Map<string, { prix: number; le: string; rentaRef?: number }>();
   if (USE_SB && ims.length > 0) {
     const idList = ims.map((i) => `"${i._id}"`).join(",");
-    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,px:data->>prix_hai,cd:data->>Created Date`
+    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,px:data->>prix_hai,rr:data->>ref_renta_all,cd:data->>Created Date`
       + `&data->>IMMEUBLE=in.(${idList})&data->>prix_hai=not.is.null&order=id`;
     for (let d = 0; d < 20000; d += 1000) {
       const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
@@ -507,14 +507,24 @@ export async function getDashboardLive(
         cache: "no-store",
       }).catch(() => null);
       if (!res?.ok) break;
-      const lot = (await res.json()) as { im?: string; px?: string; cd?: string }[];
+      const lot = (await res.json()) as { im?: string; px?: string; rr?: string; cd?: string }[];
       for (const r of lot) {
         const v = Number(r.px);
         if (!r.im || !Number.isFinite(v) || v <= 0) continue;
         const le = String(r.cd ?? "");
         const vu = estimByIm.get(r.im);
         if (vu && le <= vu.le) continue;
-        estimByIm.set(r.im, { prix: v, le });
+        /* `ref_renta_all` = rendement du secteur au moment de l'estimation.
+           854 estimations sur 858 le portent, mais 22 valent 0 et 3 dépassent
+           20 % : une saisie manquante ou une virgule mal placée. Hors de la
+           fourchette 2–20 %, on ne colore pas — mieux vaut pas de couleur
+           qu'une couleur fausse. */
+        const rr = Number(r.rr);
+        estimByIm.set(r.im, {
+          prix: v,
+          le,
+          rentaRef: Number.isFinite(rr) && rr >= 2 && rr <= 20 ? rr : undefined,
+        });
       }
       if (lot.length < 1000) break;
     }
@@ -578,6 +588,43 @@ export async function getDashboardLive(
       })),
     };
 
+    /* L'adresse complète part vers Google Maps ; le picto remplace le texte
+       sur la carte (demande MAV). Sans voie ni ville, pas de lien : un plan
+       ouvert sur « France » ne sert personne.
+
+       Posé AVANT l'aiguillage « en attente » : ce bloc s'exécutait après, et
+       les cartes à réactiver sortaient donc sans plan ni pastilles — c'est le
+       retour #349, « sur les immeubles à réactiver il faut également afficher
+       le rendement et l'écart ». Un bien en pause reste un bien qu'on juge. */
+    const adrPleine = [im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville]
+      .filter(Boolean).join(" ").trim();
+    if (im.adresse_rue && im.adresse_ville) card.adresseComplete = adrPleine;
+
+    /* Les pastilles de performance. On n'en pose aucune si le chiffre manque :
+       une case vide se lirait comme un zéro. */
+    const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+    const renta = nb(im.fin_renta_ba);
+    const hai = nb(im.prix_hai);
+    const est = estimByIm.get(id);
+    const ecartEstim = hai && est ? Math.round((hai / est.prix - 1) * 100) : undefined;
+    /* Le rendement face à celui du secteur (demande MAV). L'écart est arrondi
+       au dixième de point — la précision réellement affichée sur la pastille —
+       pour qu'un bien annoncé « 6,5 % » contre un secteur à « 6,5 % » ne se
+       colore pas sur une différence qu'on ne voit pas. */
+    const rentaEcart = renta !== undefined && est?.rentaRef !== undefined
+      ? Math.round((renta - est.rentaRef) * 10) / 10
+      : undefined;
+    if (renta !== undefined || ecartEstim !== undefined) {
+      card.perf = {
+        renta,
+        rentaRef: renta !== undefined ? est?.rentaRef : undefined,
+        rentaEcart,
+        estim: est?.prix,
+        estimLe: est?.le ? dmy(est.le) : undefined,
+        ecartEstim,
+      };
+    }
+
     if (enAttente && suivi) {
       const debut = new Date(String(suivi.date_start ?? suivi["Created Date"] ?? ""));
       const relance = typeof suivi.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
@@ -594,6 +641,13 @@ export async function getDashboardLive(
       };
       card.prix = euros(im.prix_hai);
       card.action = { label: "Réactiver", kind: "green" };
+      /* La flèche au milieu de la frise déroule le dernier suivi (retour #349 :
+         « quand on clique sur la flèche vers le bas ça devrait afficher le
+         dernier suivi […]. Là actuellement ça ouvre la fiche »). Le texte doit
+         donc voyager jusqu'à la carte, ce qu'il ne faisait pas. */
+      if (typeof suivi.notes === "string" && suivi.notes.trim()) {
+        card.noteComplete = suivi.notes as string;
+      }
       return card;
     }
 
@@ -621,29 +675,6 @@ export async function getDashboardLive(
     }
 
     if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);
-
-    /* L'adresse complète part vers Google Maps ; le picto remplace le texte
-       sur la carte (demande MAV). Sans voie ni ville, pas de lien : un plan
-       ouvert sur « France » ne sert personne. */
-    const adrPleine = [im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville]
-      .filter(Boolean).join(" ").trim();
-    if (im.adresse_rue && im.adresse_ville) card.adresseComplete = adrPleine;
-
-    /* Les deux pastilles de performance. On n'en pose aucune si le chiffre
-       manque : une case vide se lirait comme un zéro. */
-    const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
-    const renta = nb(im.fin_renta_ba);
-    const hai = nb(im.prix_hai);
-    const est = estimByIm.get(id);
-    const ecartEstim = hai && est ? Math.round((hai / est.prix - 1) * 100) : undefined;
-    if (renta !== undefined || ecartEstim !== undefined) {
-      card.perf = {
-        renta,
-        estim: est?.prix,
-        estimLe: est?.le ? dmy(est.le) : undefined,
-        ecartEstim,
-      };
-    }
 
     if ([5, 6, 7].includes(st)) card.counts = countsByIm.get(id) ?? { prop: 0, vis: 0, off: 0 };
 
