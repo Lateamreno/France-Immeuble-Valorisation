@@ -44,6 +44,21 @@ export type AggLocatif = {
   carrezOcc: number;
   loyersAn: number;
   loyersMaxAn: number;
+  /**
+   * Les loyers des seuls lots QUI ONT UNE SURFACE.
+   *
+   * Les revenus comptent tout — un loyer de cave est un loyer, et il entre au
+   * rendement comme les autres. Mais le ratio au m² ne peut porter que sur les
+   * lots que la surface contient : une cave ou un parking pèsent zéro m² au
+   * dénominateur (retours #249/#250), et y verser leur loyer revient à
+   * répartir 200 € de caves sur les 193 m² des appartements.
+   *
+   * C'est exactement ce qui faisait diverger les deux pourcentages de l'avis de
+   * valeur : « sur-évalués +28 % » au résumé, « 36 % au-dessus du marché » dans
+   * l'analyse et le bilan. Le premier était juste.
+   */
+  loyersSurfAn: number;
+  loyersMaxSurfAn: number;
   occupation: number;
   destinations: string[];
   parDest: LigneDest[];
@@ -53,12 +68,18 @@ export type AggLocatif = {
 export function aggLocatif(lots: Record<string, unknown>[]): AggLocatif {
   const dests = [...new Set(lots.map((l) => String(l.Destination ?? "")).filter(Boolean))];
   const occ = lots.filter((l) => (num(l.loyer) ?? 0) > 0);
+  /* Le critère est la SURFACE elle-même, pas une liste de destinations : on
+     veut la garantie que numérateur et dénominateur portent sur les mêmes
+     lots. Un lot qui pèse zéro m² ne peut pas peser dans un prix au m². */
+  const avecSurface = lots.filter((l) => (num(l.surface_carrez) ?? 0) > 0);
   return {
     lots: lots.length,
     carrez: lots.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
     carrezOcc: occ.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0),
     loyersAn: lots.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12,
     loyersMaxAn: lots.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12,
+    loyersSurfAn: avecSurface.reduce((s, l) => s + (num(l.loyer) ?? 0), 0) * 12,
+    loyersMaxSurfAn: avecSurface.reduce((s, l) => s + (num(l.loyer_max) ?? num(l.loyer) ?? 0), 0) * 12,
     occupation: lots.length ? Math.round((occ.length / lots.length) * 100) : 0,
     destinations: dests,
     parDest: dests.map((d) => {
@@ -152,10 +173,13 @@ export function pistesPrix(agg: AggLocatif, refs: RefsMarche, travaux: number): 
 export const ecartRef = (v: number, ref: number) =>
   ref > 0 ? Math.round(((v - ref) / ref) * 100) : 0;
 
-/** Loyer actuel au m² : sur la surface LOUÉE, pas sur la surface totale. */
+/**
+ * Loyer actuel au m² : sur la surface LOUÉE, pas sur la surface totale — et
+ * avec les seuls loyers des lots qui portent cette surface.
+ */
 export const loyerM2Actuel = (agg: AggLocatif) =>
-  agg.carrezOcc > 0 ? agg.loyersAn / 12 / agg.carrezOcc : 0;
+  agg.carrezOcc > 0 ? agg.loyersSurfAn / 12 / agg.carrezOcc : 0;
 
 /** Loyer potentiel au m² : sur toute la surface, puisque tout serait loué. */
 export const loyerM2Potentiel = (agg: AggLocatif) =>
-  agg.carrez > 0 ? agg.loyersMaxAn / 12 / agg.carrez : 0;
+  agg.carrez > 0 ? agg.loyersMaxSurfAn / 12 / agg.carrez : 0;

@@ -363,6 +363,8 @@ export function EstimationWizard({
       carrezOcc: base.carrezOcc,
       loyersAn: base.loyersAn,
       loyersMaxAn: base.loyersMaxAn,
+      loyersSurfAn: base.loyersSurfAn,
+      loyersMaxSurfAn: base.loyersMaxSurfAn,
       occupation: base.occupation,
       destinations: base.destinations,
       dests: base.destinations,

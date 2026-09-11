@@ -17,7 +17,7 @@ ok(dateCivile("1964-12-15T23:00:00.000Z") === "16/12/1964",
 ok(dateCivile("1985-06-30T22:00:00.000Z") === "01/07/1985",
   `été : minuit parisien du 1er → 01/07/1985 (obtenu ${dateCivile("1985-06-30T22:00:00.000Z")})`);
 ok(dateCivile("1964-12-16") === "16/12/1964", "une date nue se lit telle quelle");
-ok(dateCivile("1964-12-15T23:00:00.000Z")?.endsWith("1964"), "l'année tient sur quatre chiffres");
+ok(dateCivile("1964-12-15T23:00:00.000Z")?.endsWith("1964") === true, "l'année tient sur quatre chiffres");
 ok(dmy("1964-12-15T23:00:00.000Z") === "16/12/64",
   "dmy reste sur deux chiffres — c'est pourquoi on ne s'en sert pas pour un état civil");
 ok(dateCivile(undefined) === undefined, "rien en entrée, rien en sortie");

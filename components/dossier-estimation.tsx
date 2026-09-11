@@ -500,18 +500,16 @@ function LigneBilan({ l, v, e, bon }: { l: string; v: string; e?: number; bon?: 
  */
 function ColonneBilan({ titre, c, secteur }: {
   titre: string;
-  c: { loyerM2: number; prixM2: number; brut: number; net: number; aem: number };
+  c: { prixM2: number; brut: number; net: number; aem: number };
   /* Surtout pas `ref` : React le confisque comme référence de composant. */
   secteur: { loyer: number; prix: number; renta: number };
 }) {
   const ec = (v: number, r: number) => (r > 0 ? Math.round(((v - r) / r) * 100) : undefined);
-  const eLoyer = ec(c.loyerM2, secteur.loyer);
   const ePrix = ec(c.prixM2, secteur.prix);
   const eRenta = ec(c.brut, secteur.renta);
   return (
     <div className="dos-bil-c">
       <div className="dos-bil-t">{titre}</div>
-      <LigneBilan l="Loyer au m²" v={`${fr1(c.loyerM2)} €/m²/mois`} e={eLoyer} bon={(eLoyer ?? 0) >= 0} />
       <LigneBilan l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
       <LigneBilan l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
       {/* #167 — le cadre débordait de la page. Le rendement net et le net acte

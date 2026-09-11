@@ -111,7 +111,11 @@ export function construireDossier(
     : num(e.ref_renta_all) ?? 0;
 
   /* --- Loyers pratiqués vs secteur : le verdict de la page 2 --- */
-  const surfaceM2 = lignes.filter((l) => !l.auLot).reduce((s, l) => s + l.surface, 0);
+  /* Le loyer au m² se calcule sur la surface LOUÉE et sur les seuls lots qui
+     portent une surface — même règle que `loyerM2Actuel` dans lib/bo/marche.ts.
+     Deux divisions différentes pour la même grandeur, c'est ce qui affichait
+     « +28 % » au résumé et « 36 % » dans l'analyse du même avis de valeur. */
+  const surfaceM2 = lignes.filter((l) => !l.auLot).reduce((s, l) => s + l.surfaceOcc, 0);
   const revenusM2 = lignes.filter((l) => !l.auLot).reduce((s, l) => s + l.revenus, 0);
   const loyerM2Actuel = surfaceM2 > 0 ? revenusM2 / 12 / surfaceM2 : 0;
   const ecartLoyers = refLoyer > 0 ? Math.round((loyerM2Actuel / refLoyer - 1) * 100) : 0;
@@ -228,8 +232,11 @@ export function construireDossier(
 
   function colonnes() {
     const AEM = 1.075; // acte en main : ~7,5 % de frais
+    /* Retour MAV : « enlève la ligne loyer au m² sur l'actuel comme le
+       potentiel, ça n'a pas d'intérêt pour l'acquéreur ». Ce qu'il achète, ce
+       sont un prix au m² et un rendement ; le loyer au m² se lit déjà dans
+       l'état locatif, page 2. */
     const col = (base: number, loyer: number) => ({
-      loyerM2: carrez > 0 ? loyer / 12 / carrez : 0,
       prixM2: carrez > 0 ? base / carrez : 0,
       brut: base > 0 ? (loyer / base) * 100 : 0,
       net: base > 0 ? ((loyer - charges) / base) * 100 : 0,
