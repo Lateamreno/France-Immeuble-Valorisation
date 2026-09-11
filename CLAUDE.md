@@ -343,6 +343,39 @@ Un `listing_lot` « prêt à vendre » → publication marketplace et/ou flux XM
 ### 7.4 Docusign (V2)
 Mandats, contrats de mission, protocoles de départ locataire.
 
+### 7.5 SMS — MailingVox, et lui seul
+
+Décidé le 11/09/26. **Les SMS partent de MailingVox ; les e-mails restent sur
+SendGrid.** MAV a MailingVox, et pour de la France métropolitaine c'est le bon
+outil : STOP opérateur, horaires légaux et prix au SMS y sont natifs. Twilio a
+servi de premier pont et n'a rien laissé derrière lui — tout tenait dans
+`lib/bo/sms.ts`.
+
+MailingVox a bien une API e-mail (pièces jointes, programmation, `email_reponse`
+qui ferait le `Reply-To` agent), **mais la route de masse reste SendGrid** :
+arbitrage de MAV, ne pas y revenir sans lui.
+
+- `POST https://v3.mailingvox.com/api/envoyer/sms`, toute la liste en **un**
+  appel. Réponse `{resultat: 1, id}` ou `{resultat: 0, erreurs: "24,38"}`.
+- Variables : `MAILINGVOX_KEY`, `MAILINGVOX_EXPEDITEUR` (11 caractères,
+  lettres et chiffres seulement), `MAILINGVOX_PLAFOND` (250), `MAILINGVOX_STOP`.
+- **Programmation, pas automatisme.** MAV : « ce que je veux faire c'est une
+  programmation ». Le contenu, la liste ET l'heure sont validés dans le même
+  geste ; la machine attend, elle ne décide de rien. La doctrine §7.1 tient.
+- **Horaires légaux** : lundi–samedi, 8 h – 22 h, hors jours fériés. MailingVox
+  reporte d'office un envoi programmé hors créneau, il ne l'annule pas.
+- **Deux pièges à trancher avec eux avant le premier envoi :**
+  - le **numéro STOP** — le BO écrivait 36111, leur documentation cite 36200.
+    Un message qui annonce le mauvais numéro ne fait pas remonter l'opposition ;
+  - l'**erreur 61** — un lien dans le corps peut bloquer la campagne, à faire
+    valider par leur service client (le lien transfer.it est concerné).
+- **Désinscrits** : `/api/stops` est lu avant chaque envoi, et
+  `/api/contacts/blacklist` reçoit nos oppositions. C'est légitime — MailingVox
+  est **sous-traitant** au sens du RGPD, pas un tiers : lui transmettre une
+  opposition est la seule façon de la faire respecter par l'outil qui envoie.
+  On ne pousse QUE des numéros, et QUE des oppositions — jamais une liste de
+  contacts, jamais une adresse e-mail (celles-là regardent SendGrid).
+
 ---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)

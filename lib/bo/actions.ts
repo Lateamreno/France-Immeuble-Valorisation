@@ -3858,10 +3858,10 @@ export async function createCommercialisation(input: CommercialisationInput) {
   return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
 }
 
-/** L'état du pont Twilio, pour que l'écran sache s'il peut envoyer. */
+/** L'état du pont MailingVox, pour que l'écran sache s'il peut envoyer. */
 export async function etatEnvoiSms() {
-  const { etatSms, PLAFOND_SMS } = await import("./sms");
-  return { ...etatSms(), plafond: PLAFOND_SMS };
+  const { etatSms, PLAFOND_SMS, NUMERO_STOP } = await import("./sms");
+  return { ...etatSms(), plafond: PLAFOND_SMS, numeroStop: NUMERO_STOP };
 }
 
 /**
@@ -3880,19 +3880,41 @@ export async function envoyerSmsCommercialisation(input: {
   commId: string;
   texte: string;
   numeros: string[];
+  /** Envoi PROGRAMMÉ (ISO). MAV : « ce que je veux faire c'est une
+   *  programmation » — la date est choisie dans le même geste que la
+   *  validation, la machine attend mais ne décide pas. */
+  quand?: string;
 }) {
   if (!input.texte.trim()) return { ok: false as const, message: "Le message est vide." };
   if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
+  const quand = input.quand ? new Date(input.quand) : undefined;
+  if (quand && Number.isNaN(quand.getTime())) {
+    return { ok: false as const, message: "La date d'envoi n'est pas lisible." };
+  }
   try {
     const { envoyerSms } = await import("./sms");
-    const r = await envoyerSms(input.numeros, input.texte);
+    /* Les numéros que MailingVox sait déjà désinscrits : la plateforme voit
+       toutes les campagnes, le BO ne voit que les siennes. Écarter ici coûte
+       une requête et évite d'écrire à quelqu'un qui a dit non. */
+    const { stopsMailingvox } = await import("./sms");
+    const stops = new Set((await stopsMailingvox().catch(() => [])).map((n) => n.replace(/^00/, "+")));
+    const retenus = input.numeros.filter((n) => !stops.has(n));
+    const ecartes = input.numeros.length - retenus.length;
+    if (retenus.length === 0) {
+      return { ok: false as const, message: "Tous les numéros ciblés se sont désinscrits (STOP)." };
+    }
+
+    const r = await envoyerSms(retenus, input.texte, {
+      quand,
+      nom: `Commercialisation ${input.commId}`.slice(0, 50),
+    });
     if (r.simulation) {
       return {
         ok: false as const,
         simulation: true as const,
         message:
-          `Mode simulation : ${input.numeros.length} numéros et ${r.segments} segments préparés, ` +
-          "rien n'est parti. Renseignez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM.",
+          `Mode simulation : ${retenus.length} numéros et ${r.segments} segments préparés, ` +
+          "rien n'est parti. Renseignez MAILINGVOX_KEY (et MAILINGVOX_EXPEDITEUR).",
       };
     }
     if (r.envoyes > 0) {
@@ -3903,13 +3925,23 @@ export async function envoyerSmsCommercialisation(input: {
           prop_sms_sent: true,
           sms_envoyes: r.envoyes,
           sms_segments: r.segments,
+          sms_campagne: r.campagne ?? null,
+          sms_programme_pour: r.programmePour ?? null,
           sms_date: new Date().toISOString(),
           "Modified Date": new Date().toISOString(),
         },
       }).catch(() => undefined);
     }
     revalidatePath(`/bien/${input.immeubleId}`);
-    return { ok: r.envoyes > 0, envoyes: r.envoyes, echecs: r.echecs, segments: r.segments };
+    return {
+      ok: r.envoyes > 0,
+      envoyes: r.envoyes,
+      echecs: r.echecs,
+      segments: r.segments,
+      ecartesStop: ecartes,
+      campagne: r.campagne,
+      programmePour: r.programmePour,
+    };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }

@@ -5,9 +5,14 @@
 //
 // Doctrine §7.1, inchangée : l'outil PRÉPARE, l'agent ENVOIE. Les e-mails
 // partent du client de messagerie de l'agent ; les SMS peuvent maintenant
-// partir d'ici par Twilio, mais seulement derrière un bouton et une
+// partir d'ici par MailingVox, mais seulement derrière un bouton et une
 // confirmation qui rappelle le nombre de destinataires et de segments
-// facturés. Aucun envoi automatique, jamais.
+// facturés.
+//
+// Une DATE peut être posée sur l'envoi SMS — MAV : « ce que je veux faire
+// c'est une programmation ». Ce n'est pas un envoi automatique : le contenu,
+// la liste ET l'heure sont validés dans le même geste ; la machine attend,
+// elle ne décide de rien.
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
@@ -99,6 +104,10 @@ export function AssistantCommercialisation({
   const [objet, setObjet] = useMemoire(`${memo}:objet`, objetCommercialisation(bienMail));
   const [message, setMessage] = useMemoire(`${memo}:message`, messageCommercialisation(bienMail, lien));
   const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b));
+  /* Retour MAV : « ce que je veux faire c'est une programmation ». Vide =
+     envoi immédiat. Le format est celui d'un `datetime-local`, donc lu dans
+     le fuseau du navigateur — celui de l'agent, qui est celui qu'il a en tête. */
+  const [quandSms, setQuandSms] = useMemoire(`${memo}:quand-sms`, "");
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
   const lots = paquets(dest.telephones, 50);
@@ -142,9 +151,9 @@ export function AssistantCommercialisation({
 
   const copier = (txt: string) => navigator.clipboard?.writeText(txt);
 
-  /* L'état du pont Twilio, demandé à l'ouverture de l'étape SMS. On ne le
-     devine pas côté navigateur : les identifiants ne descendent jamais ici. */
-  const [pont, setPont] = useState<{ configure: boolean; message: string; plafond: number } | null>(null);
+  /* L'état du pont MailingVox, demandé à l'ouverture de l'étape SMS. On ne le
+     devine pas côté navigateur : la clé ne descend jamais ici. */
+  const [pont, setPont] = useState<{ configure: boolean; message: string; plafond: number; numeroStop: string } | null>(null);
   const [envoi, setEnvoi] = useState<string | null>(null);
   useEffect(() => {
     if (etape !== "SMS" || pont) return;
@@ -160,17 +169,32 @@ export function AssistantCommercialisation({
     commId && start(async () => {
       const nb = dest.telephones.length;
       const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
+      const quand = quandSms ? new Date(quandSms) : undefined;
+      const differe = quand && !Number.isNaN(quand.getTime()) && quand.getTime() > Date.now();
       if (!confirm(
-        `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?\n\n` +
+        (differe
+          ? `Programmer ce SMS pour le ${quand!.toLocaleString("fr-FR")}, à ${nb} numéro${nb > 1 ? "s" : ""} ?`
+          : `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?`) + "\n\n" +
         `Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. ` +
-        "Un SMS parti ne se rattrape pas.",
+        (differe
+          ? "Une campagne programmée se modifie encore chez MailingVox, mais pas depuis ici."
+          : "Un SMS parti ne se rattrape pas."),
       )) return;
       const r = await envoyerSmsCommercialisation({
         immeubleId: String(b.im._id), commId, texte: sms, numeros: dest.telephones,
+        quand: quandSms ? new Date(quandSms).toISOString() : undefined,
       });
       if (r.ok) {
         setSmsEnvoyes(true);
-        setEnvoi(`${r.envoyes} SMS envoyés (${r.segments} segments).`
+        const ecartes = r.ecartesStop
+          ? ` ${r.ecartesStop} numéro${r.ecartesStop > 1 ? "s" : ""} écarté${r.ecartesStop > 1 ? "s" : ""} (désinscrits STOP).`
+          : "";
+        setEnvoi(
+          (r.programmePour
+            ? `${r.envoyes} SMS programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
+            : `${r.envoyes} SMS envoyés`)
+          + ` (${r.segments} segments).${ecartes}`
+          + (r.campagne ? ` Campagne MailingVox n°${r.campagne}.` : "")
           + (r.echecs && r.echecs.length ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.numero} — ${x.raison}`).join(" · ")}` : ""));
       } else {
         setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
@@ -359,11 +383,64 @@ export function AssistantCommercialisation({
           ))}
           <div className="asst-note">
             Numéros normalisés au format international et dédoublonnés. Les saisies inexploitables
-            ont été écartées plutôt qu&apos;envoyées telles quelles.
+            ont été écartées plutôt qu&apos;envoyées telles quelles. Les numéros déjà désinscrits
+            chez MailingVox sont retirés au moment de l&apos;envoi.
           </div>
-          {/* L'envoi direct par Twilio. Il ne remplace pas le marquage manuel :
-              beaucoup d'envois se font encore depuis le téléphone de l'agent,
-              et il faut pouvoir dire « c'est fait » sans passer par ici. */}
+
+          {/* La mention de désinscription. MailingVox refuse la campagne sans
+              elle (erreurs 24 et 38), et la CNIL l'impose. On le dit AVANT le
+              clic plutôt que de récupérer un code d'erreur après. */}
+          {!/\bstop\b/i.test(sms) && (
+            <div className="dif-simu">
+              <b>Mention « STOP » absente</b> — MailingVox refusera la campagne, et c&apos;est une
+              obligation CNIL. Ajoutez « STOP au {pont?.numeroStop ?? "36200"} » à la fin du message.
+            </div>
+          )}
+          {pont?.numeroStop && /\bstop au (\d{4,5})\b/i.test(sms)
+            && !sms.toLowerCase().includes(`stop au ${pont.numeroStop}`) && (
+            <div className="dif-simu">
+              <b>Numéro de désinscription différent</b> — le message annonce «&nbsp;
+              {/\bstop au (\d{4,5})\b/i.exec(sms)?.[1]}&nbsp;» alors que MailingVox route les STOP
+              vers le {pont.numeroStop}. Une opposition envoyée au mauvais numéro ne leur revient
+              pas, et on continue d&apos;écrire à quelqu&apos;un qui a dit non.
+            </div>
+          )}
+
+          {/* La programmation (demande MAV). Vide = envoi immédiat. */}
+          <span className="mlab">Envoyer</span>
+          <div className="asst-quand">
+            <label>
+              <input type="radio" name="quand-sms" checked={!quandSms}
+                onChange={() => setQuandSms("")} />
+              Tout de suite
+            </label>
+            <label>
+              <input type="radio" name="quand-sms" checked={!!quandSms}
+                onChange={() => {
+                  /* Par défaut, demain 8 h — l'heure que MAV a citée, et la
+                     première du créneau légal (8 h – 22 h). */
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  d.setHours(8, 0, 0, 0);
+                  const p = (n: number) => String(n).padStart(2, "0");
+                  setQuandSms(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T08:00`);
+                }} />
+              À une date choisie
+            </label>
+            {quandSms && (
+              <input className="min" type="datetime-local" value={quandSms}
+                onChange={(e) => setQuandSms(e.target.value)} />
+            )}
+          </div>
+          <div className="asst-note">
+            Les SMS marketing ne sont autorisés que du <b>lundi au samedi, de 8 h à 22 h</b>, hors
+            jours fériés. MailingVox reporte d&apos;office un envoi programmé hors de ces créneaux —
+            il ne l&apos;annule pas, il le décale.
+          </div>
+
+          {/* L'envoi direct par MailingVox. Il ne remplace pas le marquage
+              manuel : beaucoup d'envois se font encore depuis le téléphone de
+              l'agent, et il faut pouvoir dire « c'est fait » sans passer par ici. */}
           {pont && (
             <div className={pont.configure ? "asst-note" : "dif-simu"}>
               {!pont.configure && <b>Envoi automatique indisponible</b>}
@@ -385,7 +462,8 @@ export function AssistantCommercialisation({
               <button className="kgo" type="button"
                 disabled={pending || smsEnvoyes || dest.telephones.length === 0}
                 onClick={envoyerLesSms}>
-                <span className="ch">›</span> Envoyer les {dest.telephones.length} SMS
+                <span className="ch">›</span>{" "}
+                {quandSms ? "Programmer" : "Envoyer"} les {dest.telephones.length} SMS
               </button>
             )}
             <button className="fadd" type="button" onClick={fermer}>Terminer</button>
@@ -564,5 +642,8 @@ function smsParDefaut(b: BienData) {
     typeof im.fin_renta_ba === "number" ? `${im.fin_renta_ba} % brut` : "",
     euros(im.prix_hai) ?? "",
   ].filter(Boolean);
-  return `${bits.join(" · ")} — dossier sur demande. France Immeuble. STOP au 36111`;
+  /* Le numéro de désinscription : celui que MailingVox route. Il est
+     réglable côté serveur (`MAILINGVOX_STOP`) et l'écran signale la
+     divergence si ce littéral s'en écarte. */
+  return `${bits.join(" · ")} — dossier sur demande. France Immeuble. STOP au 36200`;
 }
