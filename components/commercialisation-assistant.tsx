@@ -461,11 +461,26 @@ function ChiffresDossier({ d, secteur }: { d: Record<string, unknown>; secteur: 
           {pct(renta)} brut
         </span>
       )}
-      {/* `renta_max` n'est PAS un rendement au potentiel locatif : sur le
-          dossier de Lille il vaut 8 % quand l'actuel vaut 9,2 %, parce qu'il
-          se calcule sur le prix travaux compris. L'afficher « au potentiel »
-          aurait annoncé une baisse comme une promesse — on ne l'affiche pas
-          tant qu'on n'a pas tranché ce qu'il mesure. */}
+      {/* MAV : « renta max en général on met la renta potentielle ». Les
+          chiffres lui donnent raison — sur 344 dossiers complets, 268 sont
+          compatibles avec un calcul « loyers de marché », et 202 sur 344 ont
+          un max au-dessus de l'actuel. Lille était l'exception.
+
+          Restent 25 dossiers où le max est INFÉRIEUR à l'actuel, et ce sont
+          de vraies anomalies de saisie (Amiens : loyers 84 000 € qui tombent
+          à 60 000 € au « max »). On ne les cache pas derrière le mot
+          « potentiel » : la pastille le dit. */}
+      {N(d.renta_max) !== undefined && renta !== undefined && N(d.renta_max) !== renta && (
+        N(d.renta_max)! > renta ? (
+          <span className="ac-v off">{pct(d.renta_max)} au potentiel</span>
+        ) : (
+          <span className="ac-p rouge"
+            title={`Le « potentiel » de ce dossier (${pct(d.renta_max)}) est SOUS le rendement actuel (${pct(renta)}) : `
+              + "les loyers de marché saisis sont inférieurs aux loyers en place. À vérifier dans l'état locatif."}>
+            {pct(d.renta_max)} « potentiel » — incohérent
+          </span>
+        )
+      )}
     </div>
   );
 }

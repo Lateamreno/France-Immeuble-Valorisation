@@ -14,6 +14,26 @@ import { synthese } from "./mandat";
 
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/**
+ * Une SURFACE, où le zéro vaut absence.
+ *
+ * Plein Bail refuse le zéro : `listing_lots_surface_carrez_check` impose
+ * `surface_carrez > 0`, et `surface_m2` impose `NULL OR > 0`. Un `NULL` passe,
+ * un `0` casse toute la publication — c'est l'erreur rencontrée sur Nanterre,
+ * « new row for relation "listing_lots" violates check constraint
+ * "listing_lots_surface_carrez_check" ».
+ *
+ * Et ce n'est pas un accident de saisie : le BO pose délibérément 0 sur les
+ * caves et les parkings, qui ne se comptent qu'au lot (§4 du contexte, et
+ * `DEST_AU_LOT`). Les 17 caves et parkings de Nanterre suffisaient donc à
+ * bloquer l'immeuble entier. Sémantiquement les deux bases sont d'accord :
+ * « pas de Carrez » n'est pas « zéro mètre carré ».
+ */
+const SURF = (v: unknown) => {
+  const n = N(v);
+  return n !== undefined && n > 0 ? n : undefined;
+};
 /** Le miroir Bubble stocke les numéros tantôt en texte, tantôt en nombre. */
 const T = (v: unknown) =>
   typeof v === "number" ? String(v) : typeof v === "string" && v.trim() ? v.trim() : undefined;
@@ -367,8 +387,8 @@ export function chargeUtile(
       designation: `Lot ${T(l.numero) ?? "?"}${S(l.Type_lot) ? ` — ${S(l.Type_lot)}` : ""}`,
       type_lot: typeLot(dest, S(l.Type_lot)),
       etage: N(l.etage),
-      surface_m2: N(l.surface_sol) ?? N(l.surface_carrez),
-      surface_carrez: N(l.surface_carrez),
+      surface_m2: SURF(l.surface_sol) ?? SURF(l.surface_carrez),
+      surface_carrez: SURF(l.surface_carrez),
       statut: loue ? "occupe" : "libre",
       type_bail: loue ? TYPE_BAIL[bail] : undefined,
       date_signature_bail: loue ? dateBail(String(l._id), b.baux) : undefined,
@@ -451,7 +471,10 @@ export function chargeUtile(
          celui de la marketplace le jour où nos deux formules divergent. */
     },
     prix: {
-      prix_eur: N(im.prix_hai),
+      /* Même piège qu'aux surfaces : `listings_prix_eur_check` impose
+         « NULL OR > 0 ». Un immeuble sans prix renseigné aurait envoyé 0 et
+         cassé la publication au même endroit. */
+      prix_eur: SURF(im.prix_hai),
       honoraires_charge: String(im.prix_Charge_honos ?? "Acheteur") === "Vendeur" ? "vendeur" : "acquereur",
       honoraires_eur: N(im.prix_honos_ttc),
       /* Obligation Hoguet : le barème doit être accessible depuis toute
