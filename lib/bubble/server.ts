@@ -480,53 +480,86 @@ export async function getDashboardLive(
     }
   }
 
-  /* Le PRIX ESTIMÉ de chaque bien, pour la pastille d'écart des cartes.
+  /* Les RÉFÉRENCES DE SECTEUR de chaque bien : prix au m² et rendement.
 
-     MAV a tranché : c'est l'écart au prix estimé, pas au prix du secteur.
+     MAV : « c'est l'écart du dernier prix (donc en gros si c'est l'estimation,
+     ou le prix voulu par le client ou le prix du dossier ou le prix après
+     baisse de prix) vs secteur ». Autrement dit le numérateur est le prix du
+     JOUR, quelle qu'en soit l'origine, et la référence est le SECTEUR.
 
-     La source est la DERNIÈRE ESTIMATION, et non le champ `prix_hai_estim` de
-     la fiche immeuble : ce champ ment. Au 19 boulevard Saint-Michel il porte
-     2 000 000 € quand l'estimation du bien dit 7 300 000 € — l'écart affiché
-     aurait été de +265 % sur un bien qui est exactement au prix estimé.
+     Le prix du jour n'a pas besoin d'être reconstitué : `prix_hai_m2` sur la
+     fiche immeuble suit `prix_hai` — vérifié sur les 680 biens actifs qui
+     portent les deux, zéro divergence.
 
-     Une seule requête groupée pour toutes les cartes affichées, jamais une par
-     carte, et paginée à l'en-tête `Range` : PostgREST plafonne une réponse à
+     La référence de secteur, elle, est relevée à chaque mouvement de prix dans
+     `bo_prix` (`in_ref_prix`, aux côtés du motif : « Prix estimé », « Baisse de
+     prix », « Prix de commercialisation »…) et à chaque estimation
+     (`ref_prix_all`). On garde la plus récente des deux : un bien dont le prix
+     a bougé après la dernière estimation a un relevé de secteur plus frais que
+     celle-ci.
+
+     Deux requêtes groupées pour toutes les cartes affichées, jamais une par
+     carte, et paginées à l'en-tête `Range` : PostgREST plafonne une réponse à
      1 000 lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a
      l'air complète est le pire des défauts (leçon du lot « relances »). */
-  const estimByIm = new Map<string, { prix: number; le: string; rentaRef?: number }>();
+  type RefSecteur = { prixM2?: number; prixM2Le?: string; renta?: number; rentaLe?: string };
+  const refByIm = new Map<string, RefSecteur>();
   if (USE_SB && ims.length > 0) {
     const idList = ims.map((i) => `"${i._id}"`).join(",");
-    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,px:data->>prix_hai,rr:data->>ref_renta_all,cd:data->>Created Date`
-      + `&data->>IMMEUBLE=in.(${idList})&data->>prix_hai=not.is.null&order=id`;
-    for (let d = 0; d < 20000; d += 1000) {
-      const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
-        headers: {
-          apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`,
-          Range: `${d}-${d + 999}`, "Range-Unit": "items",
-        },
-        cache: "no-store",
-      }).catch(() => null);
-      if (!res?.ok) break;
-      const lot = (await res.json()) as { im?: string; px?: string; rr?: string; cd?: string }[];
-      for (const r of lot) {
-        const v = Number(r.px);
-        if (!r.im || !Number.isFinite(v) || v <= 0) continue;
-        const le = String(r.cd ?? "");
-        const vu = estimByIm.get(r.im);
-        if (vu && le <= vu.le) continue;
-        /* `ref_renta_all` = rendement du secteur au moment de l'estimation.
-           854 estimations sur 858 le portent, mais 22 valent 0 et 3 dépassent
-           20 % : une saisie manquante ou une virgule mal placée. Hors de la
-           fourchette 2–20 %, on ne colore pas — mieux vaut pas de couleur
-           qu'une couleur fausse. */
-        const rr = Number(r.rr);
-        estimByIm.set(r.im, {
-          prix: v,
-          le,
-          rentaRef: Number.isFinite(rr) && rr >= 2 && rr <= 20 ? rr : undefined,
-        });
+
+    const lire = async (chemin: string) => {
+      const out: Record<string, string | undefined>[] = [];
+      for (let d = 0; d < 40000; d += 1000) {
+        const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
+          headers: {
+            apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`,
+            Range: `${d}-${d + 999}`, "Range-Unit": "items",
+          },
+          cache: "no-store",
+        }).catch(() => null);
+        if (!res?.ok) break;
+        const lot = (await res.json()) as Record<string, string | undefined>[];
+        out.push(...lot);
+        if (lot.length < 1000) break;
       }
-      if (lot.length < 1000) break;
+      return out;
+    };
+
+    /* Un prix de secteur sous 100 €/m² est une faute de saisie, pas un marché :
+       à Poincy la référence vaut 1 €/m², ce qui affichait +99 600 %. */
+    const prixSecteur = (v: unknown) => {
+      const x = Number(v);
+      return Number.isFinite(x) && x >= 100 ? x : undefined;
+    };
+    const poser = (im: string | undefined, le: string, ref: unknown) => {
+      const v = prixSecteur(ref);
+      if (!im || v === undefined) return;
+      const vu = refByIm.get(im) ?? {};
+      if (vu.prixM2 !== undefined && le <= (vu.prixM2Le ?? "")) return;
+      refByIm.set(im, { ...vu, prixM2: v, prixM2Le: le });
+    };
+
+    const [mouvements, estimations] = await Promise.all([
+      lire(`bo_prix?select=im:data->>in_IMMEUBLE,ref:data->>in_ref_prix,cd:data->>Created Date`
+        + `&data->>in_IMMEUBLE=in.(${idList})&data->>in_ref_prix=not.is.null&order=id`),
+      lire(`bo_estimation?select=im:data->>IMMEUBLE,rp:data->>ref_prix_all,rr:data->>ref_renta_all,cd:data->>Created Date`
+        + `&data->>IMMEUBLE=in.(${idList})&order=id`),
+    ]);
+
+    for (const r of mouvements) poser(r.im, String(r.cd ?? ""), r.ref);
+    for (const r of estimations) {
+      poser(r.im, String(r.cd ?? ""), r.rp);
+      /* `ref_renta_all` = rendement du secteur au moment de l'estimation.
+         854 estimations sur 858 le portent, mais 22 valent 0 et 3 dépassent
+         20 % : une saisie manquante ou une virgule mal placée. Hors de la
+         fourchette 2–20 %, on ne colore pas — mieux vaut pas de couleur
+         qu'une couleur fausse. */
+      const rr = Number(r.rr);
+      if (!r.im || !Number.isFinite(rr) || rr < 2 || rr > 20) continue;
+      const le = String(r.cd ?? "");
+      const vu = refByIm.get(r.im) ?? {};
+      if (vu.renta !== undefined && le <= (vu.rentaLe ?? "")) continue;
+      refByIm.set(r.im, { ...vu, renta: rr, rentaLe: le });
     }
   }
 
@@ -604,24 +637,35 @@ export async function getDashboardLive(
        une case vide se lirait comme un zéro. */
     const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
     const renta = nb(im.fin_renta_ba);
+    const ref = refByIm.get(id);
+
+    /* Le prix au m² DU JOUR : celui de la fiche, qui suit le dernier prix
+       posé, quelle qu'en soit l'origine. Le calcul de secours sert les huit
+       biens qui ont un prix et une surface mais pas le champ dérivé. */
+    const surface = nb(im.surface_carrez);
     const hai = nb(im.prix_hai);
-    const est = estimByIm.get(id);
-    const ecartEstim = hai && est ? Math.round((hai / est.prix - 1) * 100) : undefined;
+    const prixM2 = nb(im.prix_hai_m2) ?? (hai && surface ? hai / surface : undefined);
+    const ecartM2 = prixM2 !== undefined && ref?.prixM2 !== undefined
+      ? Math.round((prixM2 / ref.prixM2 - 1) * 100)
+      : undefined;
+
     /* Le rendement face à celui du secteur (demande MAV). L'écart est arrondi
        au dixième de point — la précision réellement affichée sur la pastille —
        pour qu'un bien annoncé « 6,5 % » contre un secteur à « 6,5 % » ne se
        colore pas sur une différence qu'on ne voit pas. */
-    const rentaEcart = renta !== undefined && est?.rentaRef !== undefined
-      ? Math.round((renta - est.rentaRef) * 10) / 10
+    const rentaEcart = renta !== undefined && ref?.renta !== undefined
+      ? Math.round((renta - ref.renta) * 10) / 10
       : undefined;
-    if (renta !== undefined || ecartEstim !== undefined) {
+
+    if (renta !== undefined || ecartM2 !== undefined) {
       card.perf = {
         renta,
-        rentaRef: renta !== undefined ? est?.rentaRef : undefined,
+        rentaRef: renta !== undefined ? ref?.renta : undefined,
         rentaEcart,
-        estim: est?.prix,
-        estimLe: est?.le ? dmy(est.le) : undefined,
-        ecartEstim,
+        prixM2,
+        prixM2Ref: ref?.prixM2,
+        prixM2RefLe: ref?.prixM2Le ? dmy(ref.prixM2Le) : undefined,
+        ecartM2,
       };
     }
 

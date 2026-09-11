@@ -89,9 +89,24 @@ export type KCard = {
      */
     rentaRef?: number;
     rentaEcart?: number;
-    estim?: number;
-    estimLe?: string;
-    ecartEstim?: number;
+    /**
+     * Prix au m² du bien AUJOURD'HUI, sa référence de secteur et l'écart.
+     *
+     * MAV : « c'est l'écart du dernier prix (donc en gros si c'est
+     * l'estimation, ou le prix voulu par le client ou le prix du dossier ou le
+     * prix après baisse de prix) vs secteur ». Le numérateur suit donc le prix
+     * affiché sur la carte, la référence est le dernier relevé de secteur —
+     * celui d'un mouvement de prix ou celui d'une estimation, le plus récent
+     * des deux.
+     *
+     * Négatif = décote (vert), positif = surcote (rouge). Sur 644 biens
+     * comparables : 442 décotes, 190 surcotes, 12 pile au prix du secteur.
+     * `prixM2RefLe` porte la date du relevé, qui dit ce que l'écart vaut.
+     */
+    prixM2?: number;
+    prixM2Ref?: number;
+    prixM2RefLe?: string;
+    ecartM2?: number;
   };
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
   action?: { label: string; kind?: "green"; next?: number };
