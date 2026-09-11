@@ -17,10 +17,21 @@
 /** La clé API MailingVox, lue de l'environnement. Jamais dans le dépôt. */
 const CLE = process.env.MAILINGVOX_KEY;
 
-/* L'expéditeur affiché. 11 caractères maximum, lettres et chiffres seulement :
-   MailingVox supprime d'office espaces, accents et caractères spéciaux, et
-   refuse un nom qui commence par plus de trois chiffres. Vide, le destinataire
-   voit un numéro court à cinq chiffres auquel il peut répondre. */
+/* L'expéditeur affiché.
+   
+   MAV le laisse VIDE, et il a deux bonnes raisons : « si on met un nom les
+   clients peuvent pas répondre », et « France Immeuble passe pas en
+   caractères » — onze places, ni espace ni accent, ça donnerait FRANCEIMMO.
+   Vide, le destinataire voit un numéro court à cinq chiffres AUQUEL IL PEUT
+   RÉPONDRE, et la réponse revient dans `/api/responses`. Sur un message de
+   prospection où l'on attend un retour, ça vaut mieux qu'un joli sigle muet.
+   
+   La signature se fait donc dans le TEXTE : « France Immeuble, … » en tête,
+   parce que c'est le début du message que la liste de conversations affiche
+   en aperçu. Voir `smsParDefaut` dans l'assistant.
+   
+   La variable reste lisible pour qui voudrait un nom d'expéditeur un jour —
+   les règles MailingVox sont vérifiées par `expediteurValide`. */
 const DE = process.env.MAILINGVOX_EXPEDITEUR;
 
 const BASE = "https://v3.mailingvox.com/api";
@@ -136,12 +147,15 @@ export function etatSms(): EtatSms {
     return { configure: true, expediteur: DE, message: `Prêt à envoyer depuis ${DE}.` };
   }
   /* Sans expéditeur, MailingVox met un numéro court à cinq chiffres — et le
-     destinataire peut RÉPONDRE. Ce n'est pas un défaut de configuration. */
+     destinataire peut RÉPONDRE. C'est le choix de MAV, pas un oubli de
+     configuration : l'écran ne doit donc surtout pas le présenter comme un
+     défaut à corriger. */
   return {
     configure: true,
     message:
-      "Prêt à envoyer. Sans MAILINGVOX_EXPEDITEUR, l'expéditeur sera un numéro court " +
-      "à cinq chiffres, auquel vos destinataires peuvent répondre.",
+      "Prêt à envoyer depuis un numéro court à cinq chiffres — vos destinataires " +
+      "peuvent répondre, et la réponse revient dans MailingVox. La signature se fait " +
+      "en tête de message.",
   };
 }
 

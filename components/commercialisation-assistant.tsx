@@ -20,8 +20,9 @@ import { dmy, euros, libelleDossier } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
+import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, genererEtatLocatif, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -109,8 +110,35 @@ export function AssistantCommercialisation({
      le fuseau du navigateur — celui de l'agent, qui est celui qu'il a en tête. */
   const [quandSms, setQuandSms] = useMemoire(`${memo}:quand-sms`, "");
 
+  /* Retour #359, option C : l'état locatif est GÉNÉRÉ depuis la fiche, et un
+     fichier déposé à la main reste possible à côté. Les deux vivent dans la
+     même case — on ne joint qu'un second document, c'est l'un ou l'autre. */
+  const [pj2, setPj2] = useMemoire<{ nom: string; octets?: number; path?: string; source: "genere" | "depose" } | null>(
+    `${memo}:pj2`, null,
+  );
+  const [pj2Erreur, setPj2Erreur] = useState<string | null>(null);
+  /* Le poids du dossier, mesuré par `PieceJointe`. Remonté ici pour que le
+     plafond porte sur le TOTAL, comme MAV l'a demandé. */
+  const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
+  const pesee = peserPiecesJointes([poidsDossier ?? undefined, pj2?.octets]);
+
   const dest = useMemo(() => destinataires(cibles), [cibles]);
   const lots = paquets(dest.telephones, 50);
+
+  /* Retour #360 — ce qu'il faut savoir avant d'appuyer : combien de personnes
+     recevront vraiment, quels doublons ont été fondus, quelles adresses sont
+     cassées et quelles fiches n'en ont aucune. Chaque ligne écartée porte
+     l'identifiant de son contact : sans ça on sait qu'il y a un problème sans
+     pouvoir le corriger. */
+  const controle = useMemo(() => controlerEnvoi(cibles.map((a) => ({
+    rechercheId: a.rechercheId, contactId: a.contactId, nom: a.nom, email: a.email,
+  }))), [cibles]);
+  const douteux = useMemo(
+    () => controle.adresses
+      .map((v) => ({ valeur: v, propose: domaineSuspect(v) }))
+      .filter((x): x is { valeur: string; propose: string } => !!x.propose),
+    [controle.adresses],
+  );
 
   // Alerte du BO : le prix du dossier peut avoir divergé de celui de la fiche.
   const doc = dossiers.find((x) => S(x._id) === dossier);
@@ -253,7 +281,52 @@ export function AssistantCommercialisation({
           {/* Et la pièce jointe elle-même, « pour qu'on puisse le vérifier
               avant envoi ». Pas de bouton pour la retirer : elle se change à
               la ligne du dessus, c'est le même geste en plus clair. */}
-          {doc && <PieceJointe d={doc} />}
+          {doc && <PieceJointe d={doc} onPoids={setPoidsDossier} />}
+
+          {/* Retour #359, option C — « on va sûrement générer automatiquement
+              dans l'état locatif actuel mais qu'on pourra aussi peut-être faire
+              de façon excel ». Les deux, donc, dans la même case : on ne joint
+              qu'UNE seconde pièce. */}
+          <span className="mlab">Seconde pièce jointe</span>
+          {pj2 ? (
+            <div className="asst-pj2">
+              <span className="asst-pj2-n">
+                {pj2.nom}
+                {pj2.octets ? ` — ${(pj2.octets / 1_048_576).toFixed(1)} Mo` : ""}
+                <i>{pj2.source === "genere" ? "généré depuis l'état locatif de la fiche" : "déposé à la main"}</i>
+              </span>
+              <button className="fadd" type="button" onClick={() => { setPj2(null); setPj2Erreur(null); }}>Retirer</button>
+            </div>
+          ) : (
+            <div className="mrow">
+              <button className="fadd" type="button" disabled={pending}
+                onClick={() => start(async () => {
+                  setPj2Erreur(null);
+                  const r = await genererEtatLocatif(String(b.im._id));
+                  if (r.ok) setPj2({ nom: r.nom, octets: r.octets, path: r.path, source: "genere" });
+                  else setPj2Erreur(r.message);
+                })}>
+                {pending ? "Génération…" : "Générer l'état locatif"}
+              </button>
+              <label className="fadd" style={{ cursor: "pointer" }}>
+                Déposer un fichier
+                <input type="file" style={{ display: "none" }}
+                  accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.odt,.txt"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setPj2Erreur(null);
+                    setPj2({ nom: f.name, octets: f.size, source: "depose" });
+                  }} />
+              </label>
+            </div>
+          )}
+          {pj2Erreur && <div className="dif-simu"><b>L&apos;état locatif n&apos;a pas pu être généré</b> — {pj2Erreur}</div>}
+
+          {/* Le plafond porte sur le TOTAL, dossier compris (demande MAV). */}
+          <div className={pesee.depasse ? "dif-simu" : "asst-note"}>
+            {pesee.depasse && <b>Pièces jointes trop lourdes</b>} {pesee.message}
+          </div>
 
           <span className="mlab">
             Lien de partage du dossier
@@ -338,17 +411,90 @@ export function AssistantCommercialisation({
       {etape === "E-mails" && (
         <div className="asst-b">
           <div className="asst-ok">✓ {creees} propositions créées.</div>
-          <span className="mlab">Destinataires ({dest.emails.length})</span>
-          <textarea className="min mono" rows={5} readOnly value={dest.emails.join("; ")} />
+
+          {/* Retour #360 : le compte, et ce qui n'y est pas. */}
+          <div className="asst-rec">
+            <span><b>{controle.personnes}</b> personne{controle.personnes > 1 ? "s" : ""} recevront l&apos;e-mail</span>
+            {controle.doublons.length > 0 && (
+              <span className="off">{controle.doublons.length} doublon{controle.doublons.length > 1 ? "s" : ""} fondu{controle.doublons.length > 1 ? "s" : ""}</span>
+            )}
+            {controle.invalides.length > 0 && (
+              <span className="rouge">{controle.invalides.length} adresse{controle.invalides.length > 1 ? "s" : ""} à corriger</span>
+            )}
+            {controle.sansAdresse.length > 0 && (
+              <span className="off">{controle.sansAdresse.length} sans e-mail</span>
+            )}
+          </div>
+
+          {controle.invalides.length > 0 && (
+            <div className="asst-anos">
+              <b>Ces adresses ne partiront pas</b>
+              {controle.invalides.map((l, i) => (
+                <div className="asst-ano" key={i}>
+                  {l.contactId
+                    ? <a href={`/contact/${l.contactId}`} target="_blank" rel="noreferrer">{l.nom} ↗</a>
+                    : <span>{l.nom}</span>}
+                  <code>{l.valeur}</code>
+                  <i>{l.raison}</i>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {douteux.length > 0 && (
+            <div className="asst-anos doute">
+              <b>Domaines qui ressemblent à une faute de frappe</b>
+              {douteux.map((d) => (
+                <div className="asst-ano" key={d.valeur}>
+                  <code>{d.valeur}</code>
+                  <i>vouliez-vous dire « @{d.propose} » ?</i>
+                </div>
+              ))}
+              <i className="asst-ano-n">
+                Ces adresses PARTIRONT : elles sont valides, elles n&apos;existent peut-être
+                simplement pas. À vérifier sur la fiche avant d&apos;envoyer.
+              </i>
+            </div>
+          )}
+
+          {controle.sansAdresse.length > 0 && (
+            <div className="asst-anos">
+              <b>Ciblés sans adresse e-mail</b>
+              {controle.sansAdresse.map((l, i) => (
+                <div className="asst-ano" key={i}>
+                  {l.contactId
+                    ? <a href={`/contact/${l.contactId}`} target="_blank" rel="noreferrer">{l.nom} ↗</a>
+                    : <span>{l.nom}</span>}
+                  <i>{l.raison}</i>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {controle.doublons.length > 0 && (
+            <div className="asst-anos">
+              <b>Une seule adresse pour plusieurs recherches</b>
+              {controle.doublons.map((d) => (
+                <div className="asst-ano" key={d.valeur}>
+                  <code>{d.valeur}</code>
+                  <i>{d.noms.join(" · ")} — un seul e-mail part</i>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <span className="mlab">Destinataires retenus ({controle.personnes})</span>
+          <textarea className="min mono" rows={5} readOnly value={controle.adresses.join("; ")} />
           <div className="mrow">
-            <button className="fadd" type="button" onClick={() => copier(dest.emails.join("; "))}>Copier les {dest.emails.length} adresses</button>
-            <a className="fadd" href={`mailto:?bcc=${encodeURIComponent(dest.emails.join(","))}&subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(message)}`}>
+            <button className="fadd" type="button" onClick={() => copier(controle.adresses.join("; "))}>Copier les {controle.personnes} adresses</button>
+            <a className="fadd" href={`mailto:?bcc=${encodeURIComponent(controle.adresses.join(","))}&subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(message)}`}>
               Ouvrir dans le client mail
             </a>
           </div>
           <div className="asst-note">
             Les adresses sont dédoublonnées : un acquéreur ayant plusieurs recherches ne reçoit qu&apos;un e-mail.
-            Utilisez la copie cachée.
+            Utilisez la copie cachée. L&apos;envoi en un bouton et la programmation attendent la route
+            de masse SendGrid — sous-domaine d&apos;envoi et <code>MASSE_SMTP_*</code>.
           </div>
           <div className="wnav">
             <span className="sp" style={{ flex: 1 }} />
@@ -571,7 +717,7 @@ function ChiffresDossier({ d, secteur }: { d: Record<string, unknown>; secteur: 
  * requête `HEAD` : c'est une info que seul le serveur qui l'héberge connaît,
  * et elle décide de la délivrabilité de la salve.
  */
-function PieceJointe({ d }: { d: Record<string, unknown> }) {
+function PieceJointe({ d, onPoids }: { d: Record<string, unknown>; onPoids?: (o: number | null) => void }) {
   const url = [d.pdf, d.FILE].map(S).find((u) => u.length > 0);
   const [poids, setPoids] = useState<number | null | undefined>(undefined);
 
@@ -582,11 +728,12 @@ function PieceJointe({ d }: { d: Record<string, unknown> }) {
     fetch(abs, { method: "HEAD" })
       .then((r) => {
         const l = Number(r.headers.get("content-length"));
-        if (vivant) setPoids(Number.isFinite(l) && l > 0 ? l : null);
+        const v = Number.isFinite(l) && l > 0 ? l : null;
+        if (vivant) { setPoids(v); onPoids?.(v); }
       })
-      .catch(() => { if (vivant) setPoids(null); });
+      .catch(() => { if (vivant) { setPoids(null); onPoids?.(null); } });
     return () => { vivant = false; };
-  }, [url]);
+  }, [url, onPoids]);
 
   if (!url) {
     return <div className="asst-note">Ce dossier n&apos;a pas de PDF rattaché : l&apos;e-mail partira sans pièce jointe.</div>;
@@ -636,8 +783,12 @@ function libelleMandat(m: Record<string, unknown>): string {
 
 function smsParDefaut(b: BienData) {
   const im = b.im;
+  /* « France Immeuble » EN TÊTE (demande MAV) : l'expéditeur est un numéro
+     court à cinq chiffres — choisi, pour que le client puisse répondre — donc
+     c'est le début du texte qui dit qui écrit. Et c'est précisément ce que la
+     liste de conversations affiche en aperçu. */
   const bits = [
-    `Immeuble à vendre ${b.ville || ""}`.trim(),
+    `France Immeuble — immeuble à vendre ${b.ville || ""}`.trim(),
     typeof im.surface_carrez === "number" ? `${Math.round(im.surface_carrez as number)} m²` : "",
     typeof im.fin_renta_ba === "number" ? `${im.fin_renta_ba} % brut` : "",
     euros(im.prix_hai) ?? "",
@@ -645,5 +796,5 @@ function smsParDefaut(b: BienData) {
   /* Le numéro de désinscription : celui que MailingVox route. Il est
      réglable côté serveur (`MAILINGVOX_STOP`) et l'écran signale la
      divergence si ce littéral s'en écarte. */
-  return `${bits.join(" · ")} — dossier sur demande. France Immeuble. STOP au 36200`;
+  return `${bits.join(" · ")} — dossier sur demande. STOP au 36200`;
 }

@@ -223,3 +223,28 @@ export const STATUTS_ESTIMATION = ["1 - PDF manquant", "2 - A envoyer", "3 - Env
 /** Ajoute une valeur héritée (venant de Bubble) en tête de liste si absente. */
 export const withCurrent = (current: unknown, list: string[]) =>
   typeof current === "string" && current && !list.includes(current) ? [current, ...list] : list;
+
+/**
+ * Les valeurs de `Type_bail` qui veulent dire « pas de bail en cours ».
+ *
+ * Partagée, et pas recopiée : elle vivait dans lib/diffusion.ts, et une
+ * seconde liste écrite de mémoire pour l'état locatif comptait « Vide » comme
+ * occupé — six lots du 55 rue Volant présentés comme loués dans un document
+ * destiné à des acquéreurs. Une notion, un seul endroit.
+ */
+export const BAUX_LIBRES = new Set(["Vide", "", "n.c."]);
+
+/**
+ * Un lot « rattaché à un lot » n'est ni loué ni libre : c'est une cave ou un
+ * parking qui suit l'appartement auquel il est attaché, sans loyer propre.
+ * Le compter parmi les occupés gonfle le taux d'occupation ; le compter parmi
+ * les libres fait croire à de la vacance à relouer.
+ */
+export const BAIL_RATTACHE = "Rattaché à un lot";
+
+export type SituationLot = "loue" | "libre" | "rattache";
+export const situationLot = (typeBail?: unknown): SituationLot => {
+  const v = String(typeBail ?? "").trim();
+  if (v === BAIL_RATTACHE) return "rattache";
+  return BAUX_LIBRES.has(v) ? "libre" : "loue";
+};

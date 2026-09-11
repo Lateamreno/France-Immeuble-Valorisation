@@ -2142,6 +2142,61 @@ export async function apercuPdfDossier(
   }
 }
 
+/**
+ * Fabrique l'ÉTAT LOCATIF en PDF et le range dans le coffre (retour #359).
+ *
+ * MAV a retenu l'option C : le document est généré depuis l'état locatif de la
+ * fiche — donc toujours à jour — et un fichier déposé à la main reste possible
+ * à côté. Ici, la branche automatique.
+ *
+ * Même chemin que le dossier : une page A4 imprimée par un Chromium sans
+ * écran. Ce n'est pas un détour — c'est ce qui garantit que le PDF envoyé est
+ * exactement ce que l'écran montre, sans second moteur de rendu à maintenir.
+ *
+ * GARDE-FOU §8.3 : la page source ne porte AUCUN nom de locataire. Le
+ * document part chez des acquéreurs.
+ */
+export async function genererEtatLocatif(immeubleId: string) {
+  try {
+    const { pdfDepuisUrl } = await import("./pdf");
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+    const url = `${proto}://${hote}/bien/${immeubleId}/etat-locatif/imprimer?nu=1`;
+
+    const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+
+    /* Horodaté : deux états locatifs du même immeuble à trois semaines
+       d'écart ne disent pas la même chose, et celui qu'on a envoyé doit
+       rester retrouvable tel qu'il était. */
+    const jour = new Date().toISOString().slice(0, 10);
+    const path = `etats-locatifs/${immeubleId}/${jour}.pdf`;
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/pdf",
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(pdf),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+    return {
+      ok: true as const,
+      path,
+      nom: `Etat-locatif-${jour}.pdf`,
+      octets: pdf.length,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[etat locatif]", message);
+    return { ok: false as const, message };
+  }
+}
+
 async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
   const { pdfDepuisUrl } = await import("./pdf");
   const { headers } = await import("next/headers");

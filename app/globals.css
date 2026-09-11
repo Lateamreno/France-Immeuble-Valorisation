@@ -7366,3 +7366,54 @@ body.hors-bo {
 .asst-quand label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate-2); cursor: pointer; }
 .asst-quand input[type="radio"] { accent-color: var(--gold-bo); }
 .asst-quand .min { width: auto; flex: none; }
+
+/* Retour #360 — les anomalies de destinataires, avant l'envoi.
+   Chaque ligne porte un lien vers la fiche à corriger : signaler un problème
+   sans dire où le corriger ne sert à rien. */
+.asst-rec .rouge { color: var(--red); font-weight: 700; }
+.asst-anos {
+  margin-top: 8px; padding: 9px 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--red);
+  border-radius: 4px; background: #fff6f5;
+}
+.asst-anos.doute { border-left-color: var(--orange, #d98b16); background: #fff8ec; }
+.asst-anos > b { display: block; font-size: 12px; color: var(--slate); margin-bottom: 5px; }
+.asst-ano {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 3px 0; font-size: 12px; color: var(--gray-lt);
+}
+.asst-ano a { color: var(--slate); font-weight: 600; text-decoration: none; }
+.asst-ano a:hover { text-decoration: underline; }
+.asst-ano code { font-size: 11.5px; background: #fff; border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; }
+.asst-ano i { font-style: normal; color: var(--gray-lt); }
+.asst-ano-n { display: block; margin-top: 6px; font-style: normal; font-size: 11.5px; color: #8a5300; line-height: 1.5; }
+
+/* État locatif imprimable (retour #359). Un A4 paysage : onze colonnes ne
+   tiennent pas en portrait, et couper le tableau en deux le rend illisible. */
+@page { size: A4; margin: 10mm; }
+.el-page { max-width: 277mm; margin: 0 auto; padding: 16px 20px 28px; background: #fff; color: #1b211f; }
+.el-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 2px solid #1b211f; padding-bottom: 10px; }
+.el-h h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+.el-adr { margin: 3px 0 0; font-size: 13px; color: #5c6763; }
+.el-marque { text-align: right; font-size: 11px; color: #5c6763; line-height: 1.5; }
+.el-marque b { display: block; font-size: 13px; color: #1b211f; }
+.el-synth { display: flex; flex-wrap: wrap; gap: 0; margin: 12px 0 14px; border: 1px solid #dee2dd; border-radius: 3px; }
+.el-synth > div { flex: 1; min-width: 96px; padding: 8px 12px; border-right: 1px solid #eaeeea; }
+.el-synth > div:last-child { border-right: 0; }
+.el-synth b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.el-synth span { display: block; font-size: 10.5px; color: #5c6763; margin-top: 1px; }
+.el-t { width: 100%; border-collapse: collapse; font-size: 11px; }
+.el-t th { text-align: left; padding: 6px 7px; border-bottom: 1.5px solid #1b211f; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: #5c6763; }
+.el-t td { padding: 5px 7px; border-bottom: 1px solid #eaeeea; }
+.el-t .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.el-t tr.libre td { color: #5c6763; }
+.el-t tfoot td { padding: 7px; border-top: 1.5px solid #1b211f; border-bottom: 0; font-weight: 700; }
+.el-pied { margin-top: 14px; font-size: 9.5px; color: #5c6763; line-height: 1.55; }
+
+/* La seconde pièce jointe (retour #359) : générée ou déposée, une seule case. */
+.asst-pj2 {
+  display: flex; align-items: center; gap: 10px; margin-top: 6px;
+  padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fbfcfd;
+}
+.asst-pj2-n { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--slate); }
+.asst-pj2-n i { display: block; font-style: normal; font-weight: 400; font-size: 11px; color: var(--gray-lt); margin-top: 1px; }

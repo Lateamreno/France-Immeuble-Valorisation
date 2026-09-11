@@ -11,8 +11,10 @@
 
 import type { BienData } from "./bubble/server";
 import { synthese } from "./mandat";
+import { BAUX_LIBRES } from "./referentiels";
 
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 /**
@@ -289,7 +291,9 @@ function classeEnergie(v: unknown): string | undefined {
   return /^[A-G]$/.test(s) ? s : undefined;
 }
 
-const LIBRE = new Set(["Vide", "", "n.c."]);
+/* La liste vit maintenant dans le référentiel : l'état locatif imprimable en
+   avait besoin, et une seconde copie écrite de mémoire s'était déjà trompée. */
+const LIBRE = BAUX_LIBRES;
 
 /**
  * La date du bail en cours sur un lot.
