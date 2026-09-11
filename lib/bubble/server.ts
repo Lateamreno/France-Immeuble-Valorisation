@@ -480,6 +480,43 @@ export async function getDashboardLive(
     }
   }
 
+  /* Le prix au m² du SECTEUR, pour la pastille de décote des cartes.
+     Il ne vit pas sur la fiche immeuble — le champ homonyme y existe encore
+     mais Bubble l'a marqué « [SUPPR] », on ne bâtit rien dessus — mais sur la
+     dernière estimation du bien. Une seule requête groupée pour toutes les
+     cartes affichées, jamais une par carte.
+
+     Paginée à l'en-tête `Range` : PostgREST plafonne une réponse à 1 000
+     lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a l'air
+     complète est le pire des défauts (leçon du lot « relances »). */
+  const refM2ByIm = new Map<string, number>();
+  if (USE_SB && ims.length > 0) {
+    const idList = ims.map((i) => `"${i._id}"`).join(",");
+    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,ref:data->>ref_prix_all,cd:data->>Created Date`
+      + `&data->>IMMEUBLE=in.(${idList})&data->>ref_prix_all=not.is.null&order=id`;
+    const recent = new Map<string, string>();
+    for (let d = 0; d < 20000; d += 1000) {
+      const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
+        headers: {
+          apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`,
+          Range: `${d}-${d + 999}`, "Range-Unit": "items",
+        },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!res?.ok) break;
+      const lot = (await res.json()) as { im?: string; ref?: string; cd?: string }[];
+      for (const r of lot) {
+        const v = Number(r.ref);
+        if (!r.im || !Number.isFinite(v) || v <= 0) continue;
+        const vu = recent.get(r.im);
+        if (vu !== undefined && String(r.cd ?? "") <= vu) continue;
+        recent.set(r.im, String(r.cd ?? ""));
+        refM2ByIm.set(r.im, v);
+      }
+      if (lot.length < 1000) break;
+    }
+  }
+
   const mkCard = (im: Record<string, unknown>): KCard => {
     const id = im._id as string;
     const st = statutOf(im);
@@ -581,6 +618,27 @@ export async function getDashboardLive(
     }
 
     if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);
+
+    /* L'adresse complète part vers Google Maps ; le picto remplace le texte
+       sur la carte (demande MAV). Sans voie ni ville, pas de lien : un plan
+       ouvert sur « France » ne sert personne. */
+    const adrPleine = [im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville]
+      .filter(Boolean).join(" ").trim();
+    if (im.adresse_rue && im.adresse_ville) card.adresseComplete = adrPleine;
+
+    /* Les deux pastilles de performance. On n'en pose aucune si le chiffre
+       manque : une case vide se lirait comme un zéro. */
+    const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+    const renta = nb(im.fin_renta_ba);
+    const m2 = nb(im.prix_hai_m2);
+    const refM2 = refM2ByIm.get(id);
+    if (renta !== undefined || m2 !== undefined) {
+      card.perf = {
+        renta,
+        m2,
+        ecartM2: m2 !== undefined && refM2 ? Math.round((m2 / refM2 - 1) * 100) : undefined,
+      };
+    }
 
     if ([5, 6, 7].includes(st)) card.counts = countsByIm.get(id) ?? { prop: 0, vis: 0, off: 0 };
 

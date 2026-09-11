@@ -156,11 +156,54 @@ function Card({
             </div>
           )}
 
-          {(c.adresse || c.prix || c.fee) && (
+          {(c.adresseComplete || c.perf || c.prix || c.fee) && (
             <div className="krow3">
-              {c.adresse && <span className="kaddr">{c.adresse}</span>}
+              {/* MAV : « à la place du début de l'adresse tu vas me mettre juste
+                  une icône Google Maps qui m'emmène sur l'adresse ». Le texte
+                  était tronqué au tiers dans une colonne — il situait mal ; un
+                  plan situe mieux.
+
+                  Un `span` et non un `<a>` : la carte entière est déjà un lien
+                  vers la fiche, et un lien dans un lien est du HTML invalide
+                  que les navigateurs défont comme ils veulent. Même façon de
+                  faire que le chevron de la note, juste au-dessus. */}
+              {c.adresseComplete && (
+                <span className="kmaps" role="button" tabIndex={0}
+                  title={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+                  onClick={(e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    window.open(
+                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
+                      "_blank", "noopener,noreferrer",
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault(); e.stopPropagation();
+                    window.open(
+                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
+                      "_blank", "noopener,noreferrer",
+                    );
+                  }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" />
+                    <circle cx="12" cy="10" r="2.6" />
+                  </svg>
+                </span>
+              )}
+              {c.perf?.renta !== undefined && (
+                <span className="kperf" title="Rendement brut actuel">
+                  {c.perf.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
+                </span>
+              )}
+              {c.perf?.ecartM2 !== undefined && (
+                <span className={`kperf ${c.perf.ecartM2 > 0 ? "ksur" : "kdec"}`}
+                  title={`Prix au m² : ${c.perf.m2?.toLocaleString("fr-FR")} € face au secteur`}>
+                  {c.perf.ecartM2 > 0 ? "+" : ""}{c.perf.ecartM2} %/m²
+                </span>
+              )}
               {c.fee && <span className="kfee">{c.fee}</span>}
-              {c.prix && <span className="kprice" style={!c.fee ? { marginLeft: "auto" } : undefined}>{c.prix}</span>}
+              {c.prix && <span className="kprice">{c.prix}</span>}
             </div>
           )}
         </div>

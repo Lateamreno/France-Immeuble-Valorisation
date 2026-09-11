@@ -40,6 +40,30 @@ export type KCard = {
   wait?: { from: string; to: string; motif: string; late?: boolean; pct?: number };
   prix?: string;
   fee?: string;
+  /**
+   * L'adresse complète, pour le lien Google Maps de la carte.
+   *
+   * MAV : « à la place du début de l'adresse tu vas me mettre juste une icône
+   * Google Maps qui m'emmène sur l'adresse, ce sera plus simple ». Le texte de
+   * l'adresse était de toute façon tronqué au tiers sur une carte de colonne —
+   * il servait moins à lire qu'à situer, et un plan situe mieux.
+   *
+   * `adresse` reste dans le modèle : la recherche du tableau de bord et les
+   * modales s'en servent, elles ne l'affichent simplement plus ici.
+   */
+  adresseComplete?: string;
+  /**
+   * Les deux chiffres qui disent si l'affaire vaut le détour.
+   *
+   * `renta` est le rendement brut ACTUEL du bien ; `ecartM2` son prix au m²
+   * face au prix au m² du secteur retenu à la dernière estimation — négatif
+   * pour une décote, positif pour une surcote (affichée en rouge).
+   *
+   * Les deux sont facultatifs et le restent : sur 426 immeubles actifs, 263
+   * seulement portent les deux. Une carte qui n'a rien n'affiche rien — pas de
+   * tiret, pas de case vide.
+   */
+  perf?: { renta?: number; m2?: number; ecartM2?: number };
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
   action?: { label: string; kind?: "green"; next?: number };
   /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */

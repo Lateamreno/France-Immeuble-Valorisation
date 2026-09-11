@@ -335,6 +335,40 @@ button { font-family: inherit; cursor: pointer; }
 .kfee + .kprice { margin-left: 0; }
 .kprice:only-child, .kaddr + .kprice { margin-left: auto; }
 
+/* Le picto Google Maps a remplacé le texte de l'adresse sur la carte, et les
+   deux pastilles disent en un coup d'œil si l'affaire vaut le détour :
+   rendement brut actuel, puis prix au m² face au secteur. Le prix reste calé à
+   droite — c'est lui que l'œil cherche en descendant une colonne. */
+.krow3 .kprice { margin-left: auto; }
+.krow3 .kfee + .kprice { margin-left: 0; }
+
+.kmaps {
+  flex: none; display: inline-grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 5px;
+  border: 1px solid var(--line); background: #fff;
+  color: var(--gray-lt); cursor: pointer;
+}
+.kmaps svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.kmaps:hover { border-color: var(--gold-bo); color: var(--gold-bo); background: #fffdf7; }
+.kmaps:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 1px; }
+
+.kperf {
+  flex: none;
+  font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .1px;
+  padding: 2px 7px; border-radius: 3px;
+  background: var(--puce-fond, #eef1f4); color: #35506b;
+  white-space: nowrap;
+}
+/* Décote en vert, surcote en rouge — même code que le bilan de l'avis de
+   valeur, où un prix au m² au-dessus du secteur s'affiche déjà en rouge.
+
+   Préfixées `k` : `.dec` tout court existe déjà pour l'écran Découpe, avec un
+   `padding: 16px 18px 40px` qui étirait la pastille en un pavé vert. Une
+   collision de nom ne prévient pas — elle se voit à l'écran, trois jours plus
+   tard, sur une carte qu'on ne regardait pas. */
+.kperf.kdec { background: #e9f4ed; color: #1f6b41; }
+.kperf.ksur { background: #fbeceb; color: #a8362c; }
+
 /* ligne "en attente" : date → motif → date */
 .kwait { display: flex; align-items: center; gap: 0; margin-top: 7px; }
 .kwait .d {
