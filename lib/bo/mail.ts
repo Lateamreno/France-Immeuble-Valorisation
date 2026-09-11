@@ -168,6 +168,21 @@ export async function envoyerEnMasse(m: {
   replyTo?: string;
   /** Et c'est sous son nom que le message part, si le sous-domaine est posé. */
   agent?: { nom?: string; email?: string };
+  /** Le dossier, l'état locatif… (retour #359). */
+  pieces?: { nom: string; contenu: Buffer; type?: string }[];
+  /**
+   * Envoi DIFFÉRÉ, en secondes Unix (retour #360).
+   *
+   * SendGrid sait retenir un message : l'en-tête `X-SMTPAPI` porte un
+   * `send_at`, et le relais le garde jusqu'à l'heure dite. Pas de file
+   * d'attente à tenir de notre côté, donc pas de tâche planifiée qui pourrait
+   * ne jamais se réveiller.
+   *
+   * DEUX LIMITES À CONNAÎTRE : SendGrid refuse au-delà de 72 heures, et un
+   * message déjà confié ne s'annule plus depuis ici. C'est pour ça que la
+   * confirmation à l'écran le dit avant le clic.
+   */
+  differeA?: number;
 }) {
   const c = MASSE();
   if (!masseConfiguree()) {
@@ -181,20 +196,29 @@ export async function envoyerEnMasse(m: {
 
   const vers = REDIRECT();
   const desabo = m.replyTo ?? expediteur;
+  const entetes: Record<string, string> = {};
+  if (desabo) {
+    entetes["List-Unsubscribe"] = `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`;
+    /* Dit aux messageries que le désabonnement est traité sans que le
+       destinataire ait à écrire quoi que ce soit d'autre. */
+    entetes["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+  }
+  if (m.differeA && m.differeA > Math.floor(Date.now() / 1000)) {
+    entetes["X-SMTPAPI"] = JSON.stringify({ send_at: Math.floor(m.differeA) });
+  }
+
   const info = await t.sendMail({
     from: expediteur,
     to: vers || m.to,
     replyTo: m.replyTo || undefined,
     subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
     text: vers ? `— Envoi de recette. Destinataire réel : ${m.to} —\n\n${m.text}` : m.text,
-    headers: desabo
-      ? {
-        "List-Unsubscribe": `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`,
-        /* Dit aux messageries que le désabonnement est traité sans que le
-           destinataire ait à écrire quoi que ce soit d'autre. */
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      }
-      : undefined,
+    attachments: m.pieces?.map((p) => ({
+      filename: p.nom,
+      content: p.contenu,
+      contentType: p.type,
+    })),
+    headers: Object.keys(entetes).length ? entetes : undefined,
   });
   return String(info.messageId ?? "");
 }

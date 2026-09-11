@@ -22,7 +22,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, genererEtatLocatif, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, genererEtatLocatif, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -117,6 +117,9 @@ export function AssistantCommercialisation({
     `${memo}:pj2`, null,
   );
   const [pj2Erreur, setPj2Erreur] = useState<string | null>(null);
+  /* Envoi des e-mails : date facultative, et compte rendu. */
+  const [quandMail, setQuandMail] = useMemoire(`${memo}:quand-mail`, "");
+  const [envoiMail, setEnvoiMail] = useState<string | null>(null);
   /* Le poids du dossier, mesuré par `PieceJointe`. Remonté ici pour que le
      plafond porte sur le TOTAL, comme MAV l'a demandé. */
   const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
@@ -414,7 +417,10 @@ export function AssistantCommercialisation({
 
           {/* Retour #360 : le compte, et ce qui n'y est pas. */}
           <div className="asst-rec">
-            <span><b>{controle.personnes}</b> personne{controle.personnes > 1 ? "s" : ""} recevront l&apos;e-mail</span>
+            <span>
+              <b>{controle.personnes}</b> personne{controle.personnes > 1 ? "s" : ""}{" "}
+              {controle.personnes > 1 ? "recevront" : "recevra"} l&apos;e-mail
+            </span>
             {controle.doublons.length > 0 && (
               <span className="off">{controle.doublons.length} doublon{controle.doublons.length > 1 ? "s" : ""} fondu{controle.doublons.length > 1 ? "s" : ""}</span>
             )}
@@ -496,8 +502,41 @@ export function AssistantCommercialisation({
             Utilisez la copie cachée. L&apos;envoi en un bouton et la programmation attendent la route
             de masse SendGrid — sous-domaine d&apos;envoi et <code>MASSE_SMTP_*</code>.
           </div>
+          {/* Retour #360 — « tout doit pouvoir s'envoyer d'ici d'un seul
+              bouton », et « qu'on puisse aussi programmer l'heure d'envoi et
+              le jour ». Vide = tout de suite. */}
+          <span className="mlab">Envoyer</span>
+          <div className="asst-quand">
+            <label>
+              <input type="radio" name="quand-mail" checked={!quandMail}
+                onChange={() => setQuandMail("")} />
+              Tout de suite
+            </label>
+            <label>
+              <input type="radio" name="quand-mail" checked={!!quandMail}
+                onChange={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  d.setHours(8, 0, 0, 0);
+                  const p = (n: number) => String(n).padStart(2, "0");
+                  setQuandMail(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T08:00`);
+                }} />
+              À une date choisie
+            </label>
+            {quandMail && (
+              <input className="min" type="datetime-local" value={quandMail}
+                onChange={(e) => setQuandMail(e.target.value)} />
+            )}
+          </div>
+          {quandMail && (
+            <div className="asst-note">
+              SendGrid ne retient un message que <b>72 heures</b>, et une salve déjà confiée ne
+              s&apos;annule plus depuis ici.
+            </div>
+          )}
+          {envoiMail && <div className="asst-ok">{envoiMail}</div>}
+
           <div className="wnav">
-            <span className="sp" style={{ flex: 1 }} />
             <button
               className="fadd" type="button" disabled={pending || mailsEnvoyes}
               onClick={() => commId && start(async () => {
@@ -505,7 +544,54 @@ export function AssistantCommercialisation({
                 setMailsEnvoyes(true);
                 setEtape("SMS");
               })}
-            >{mailsEnvoyes ? "E-mails marqués envoyés ✓" : "Marquer les e-mails comme envoyés"}</button>
+            >{mailsEnvoyes ? "E-mails marqués envoyés ✓" : "Marquer envoyés à la main"}</button>
+            <span className="sp" style={{ flex: 1 }} />
+            <button
+              className="kgo" type="button"
+              disabled={pending || mailsEnvoyes || controle.personnes === 0 || pesee.depasse}
+              onClick={() => commId && start(async () => {
+                const n = controle.personnes;
+                const d = quandMail ? new Date(quandMail) : undefined;
+                const differe = d && !Number.isNaN(d.getTime()) && d.getTime() > Date.now();
+                if (!confirm(
+                  (differe
+                    ? `Programmer cet e-mail pour le ${d!.toLocaleString("fr-FR")}, à ${n} personne${n > 1 ? "s" : ""} ?`
+                    : `Envoyer cet e-mail à ${n} personne${n > 1 ? "s" : ""} ?`)
+                  + "\n\n" + pesee.message
+                  + (differe
+                    ? "\nUne salve confiée à SendGrid ne s'annule plus depuis ici."
+                    : "\nUn e-mail parti ne se rattrape pas."),
+                )) return;
+                setEnvoiMail(null);
+                const r = await envoyerMailsCommercialisation({
+                  immeubleId: String(b.im._id), commId,
+                  objet, message,
+                  destinataires: controle.adresses,
+                  pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
+                  quand: differe ? d!.toISOString() : undefined,
+                  agentId: String(b.im.AGENT ?? "") || undefined,
+                });
+                if (r.ok) {
+                  setMailsEnvoyes(true);
+                  setEnvoiMail(
+                    (r.programmePour
+                      ? `${r.envoyes} e-mails programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
+                      : `${r.envoyes} e-mails envoyés`)
+                    + (r.pieces ? ` avec ${r.pieces} pièce${r.pieces > 1 ? "s" : ""} jointe${r.pieces > 1 ? "s" : ""}` : " sans pièce jointe")
+                    + "."
+                    + (r.echecs && r.echecs.length
+                      ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}`
+                      : ""),
+                  );
+                } else {
+                  setEnvoiMail(r.message ?? "L'envoi n'a pas abouti.");
+                }
+              })}
+            >
+              <span className="ch">›</span>{" "}
+              {quandMail ? "Programmer" : "Envoyer"}{" "}
+              {controle.personnes > 1 ? `les ${controle.personnes} e-mails` : "l'e-mail"}
+            </button>
           </div>
         </div>
       )}
@@ -609,7 +695,8 @@ export function AssistantCommercialisation({
                 disabled={pending || smsEnvoyes || dest.telephones.length === 0}
                 onClick={envoyerLesSms}>
                 <span className="ch">›</span>{" "}
-                {quandSms ? "Programmer" : "Envoyer"} les {dest.telephones.length} SMS
+                {quandSms ? "Programmer" : "Envoyer"}{" "}
+                {dest.telephones.length > 1 ? `les ${dest.telephones.length} SMS` : "le SMS"}
               </button>
             )}
             <button className="fadd" type="button" onClick={fermer}>Terminer</button>

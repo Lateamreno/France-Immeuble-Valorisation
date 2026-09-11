@@ -3913,6 +3913,177 @@ export async function createCommercialisation(input: CommercialisationInput) {
   return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
 }
 
+/**
+ * Envoie les e-mails d'une commercialisation, en un bouton (retour #360).
+ *
+ * MAV : « tout doit pouvoir s'envoyer d'ici d'un seul bouton », et
+ * « ce serait bien qu'on puisse aussi programmer l'heure d'envoi et le jour ».
+ *
+ * Doctrine §7.1 tenue : l'agent valide le contenu, la liste ET l'heure dans le
+ * même geste. La machine attend, elle ne décide de rien.
+ *
+ * Trois garde-fous appliqués ICI, côté serveur, et pas seulement à l'écran —
+ * un contrôle qui ne vit que dans le navigateur n'est pas un contrôle :
+ *   • le plafond du jour (§7.1) avant d'ouvrir la moindre connexion ;
+ *   • le poids des pièces jointes, 3 Mo au total ;
+ *   • la route de masse, refusée si elle n'est pas configurée — une salve ne
+ *     part jamais d'une boîte personnelle.
+ */
+export async function envoyerMailsCommercialisation(input: {
+  immeubleId: string;
+  commId: string;
+  objet: string;
+  message: string;
+  destinataires: string[];
+  /** Chemins dans le coffre (`bo-files`). */
+  pieces?: { nom: string; path: string }[];
+  /** Envoi différé (ISO). SendGrid retient le message jusqu'à l'heure dite. */
+  quand?: string;
+  /** L'agent qui signe. Son e-mail est résolu ICI : la fiche ne le descend pas
+   *  au navigateur, et c'est très bien ainsi — le `Reply-To` d'une salve n'a
+   *  rien à faire dans du code côté client. */
+  agentId?: string;
+}) {
+  try {
+    if (!input.objet.trim()) return { ok: false as const, message: "L'objet est vide." };
+    if (!input.message.trim()) return { ok: false as const, message: "Le message est vide." };
+
+    const { masseConfiguree, envoyerEnMasse } = await import("./mail");
+    if (!masseConfiguree()) {
+      return {
+        ok: false as const,
+        message:
+          "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / "
+          + "MASSE_SMTP_PASS, puis MASSE_DOMAINE ou MASSE_FROM). Une salve ne doit pas partir "
+          + "d'une boîte personnelle.",
+      };
+    }
+
+    const { controlerEnvoi, peserPiecesJointes, PLAFOND_PJ_OCTETS } = await import("./controle-envoi");
+    const controle = controlerEnvoi(input.destinataires.map((e, i) => ({
+      rechercheId: `d${i}`, nom: e, email: e,
+    })));
+    if (controle.adresses.length === 0) {
+      return { ok: false as const, message: "Aucune adresse valide à servir." };
+    }
+
+    /* Le plafond du jour d'abord : il ne sert à rien de refuser au 4 001ᵉ
+       message d'une salve déjà à moitié partie. */
+    /* `PLAFOND_JOUR` ne s'exporte PAS : `mails-actions` est un module
+       « use server », et y exporter autre chose qu'une fonction asynchrone
+       casse le build. Le quota le rend déjà. */
+    const { quotaDuJour } = await import("./mails-actions");
+    const q = await quotaDuJour();
+    if (q.envoyes + controle.adresses.length > q.plafond) {
+      return {
+        ok: false as const,
+        message:
+          `Plafond du jour : ${q.envoyes} message${q.envoyes > 1 ? "s" : ""} déjà parti${q.envoyes > 1 ? "s" : ""} `
+          + `sur ${q.plafond}, il en reste ${q.reste} et cette salve en demande `
+          + `${controle.adresses.length}. Étalez sur deux jours.`,
+      };
+    }
+
+    /* Les pièces jointes, tirées du coffre une seule fois pour toute la salve :
+       les retélécharger par destinataire multiplierait le trafic par deux cents
+       pour un contenu identique. */
+    const pieces: { nom: string; contenu: Buffer; type?: string }[] = [];
+    for (const p of input.pieces ?? []) {
+      if (!SB_KEY) break;
+      const res = await fetch(`${SB_URL}/storage/v1/object/bo-files/${p.path}`, {
+        headers: { Authorization: `Bearer ${SB_KEY}` },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
+      pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type: "application/pdf" });
+    }
+    const pesee = peserPiecesJointes(pieces.map((p) => p.contenu.length));
+    if (pesee.depasse) {
+      return {
+        ok: false as const,
+        message:
+          `${pesee.mo.toFixed(1)} Mo de pièces jointes pour un plafond de `
+          + `${(PLAFOND_PJ_OCTETS / 1_048_576).toFixed(0)} Mo. Retirez une pièce ou passez par le lien de partage.`,
+      };
+    }
+
+    const quand = input.quand ? new Date(input.quand) : undefined;
+    if (quand && Number.isNaN(quand.getTime())) {
+      return { ok: false as const, message: "La date d'envoi n'est pas lisible." };
+    }
+    const differe = quand && quand.getTime() > Date.now();
+    /* SendGrid refuse un `send_at` au-delà de 72 heures. Le dire ici plutôt
+       que de laisser le relais rejeter la salve message par message. */
+    if (differe && quand!.getTime() - Date.now() > 72 * 3600 * 1000) {
+      return {
+        ok: false as const,
+        message: "SendGrid ne retient un message que 72 heures : choisissez une date plus proche.",
+      };
+    }
+    const differeA = differe ? Math.floor(quand!.getTime() / 1000) : undefined;
+
+    /* Le Reply-To, c'est l'agent : la réponse doit lui revenir à LUI, quel que
+       soit l'expéditeur affiché (§7.1). Sans agent identifié, on laisse le
+       relais poser son expéditeur de service plutôt que d'inventer une
+       adresse. */
+    let agent: { nom?: string; email?: string } = {};
+    if (input.agentId) {
+      const { getAgentFiche } = await import("@/lib/bubble/server");
+      const a = await getAgentFiche(input.agentId).catch(() => null);
+      if (a) {
+        agent = {
+          nom: [a["prénom"], a.nom].filter(Boolean).join(" ").trim() || undefined,
+          email: typeof a.email === "string" && a.email.includes("@") ? a.email : undefined,
+        };
+      }
+    }
+    let envoyes = 0;
+    const echecs: { email: string; raison: string }[] = [];
+    for (const to of controle.adresses) {
+      try {
+        await envoyerEnMasse({
+          to, subject: input.objet, text: input.message,
+          replyTo: agent.email, agent, pieces, differeA,
+        });
+        envoyes += 1;
+      } catch (e) {
+        echecs.push({ email: to, raison: e instanceof Error ? e.message : String(e) });
+      }
+      /* Séquentiel et espacé : une rafale de connexions se fait limiter aussi
+         sûrement qu'un volume excessif (§7.1). */
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    if (envoyes > 0) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_commercialisation",
+        p_id: input.commId,
+        p_patch: {
+          prop_sent: true,
+          mails_envoyes: envoyes,
+          mails_programmes_pour: differe ? quand!.toISOString() : null,
+          mails_date: new Date().toISOString(),
+          "Modified Date": new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+    }
+
+    revalidatePath(`/bien/${input.immeubleId}`);
+    return {
+      ok: envoyes > 0,
+      envoyes,
+      echecs,
+      programmePour: differe ? quand!.toISOString() : undefined,
+      pieces: pieces.length,
+      message: envoyes === 0 ? "Aucun message n'est parti." : undefined,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[mails commercialisation]", message);
+    return { ok: false as const, message };
+  }
+}
+
 /** L'état du pont MailingVox, pour que l'écran sache s'il peut envoyer. */
 export async function etatEnvoiSms() {
   const { etatSms, PLAFOND_SMS, NUMERO_STOP } = await import("./sms");
