@@ -12,7 +12,7 @@ import { LIBELLE_STATUT, type Blocage, type ChargeUtile } from "@/lib/diffusion"
 import { BadgeDpe } from "@/components/pictos";
 import {
   apercuAnnonce, audienceAnnonce, deposerBrouillon, publierAnnonce, retirerAnnonce,
-  type Apercu, type Audience,
+  type Apercu, type Audience, type Branchement,
 } from "@/lib/bo/diffusion";
 
 /* ------------------------------------------------ Section de la fiche bien */
@@ -533,11 +533,13 @@ export type LigneDiffusion = {
 };
 
 export function ParcDiffusion({
-  lignes, configuree, vuesDisponibles,
+  lignes, configuree, vuesDisponibles, branchement,
 }: {
   lignes: LigneDiffusion[];
   configuree: boolean;
   vuesDisponibles: boolean;
+  /** Résultat du test de branchement, joué à l'ouverture de l'écran. */
+  branchement?: Branchement;
 }) {
   const enLigne = lignes.filter((l) => l.statut === "online" || l.statut === "sous_offre");
   const somme = (f: (l: LigneDiffusion) => number) => lignes.reduce((s, l) => s + f(l), 0);
@@ -557,6 +559,18 @@ export function ParcDiffusion({
           <b>Mode simulation</b>
           Le pont n&apos;est pas branché : les publications sont calculées mais pas envoyées, et
           les retombées ne peuvent pas être relevées.
+        </div>
+      )}
+
+      {/* Le test de branchement. Il ne lit ni n'écrit rien du catalogue — c'est
+          un « retombees » à liste vide — mais il tranche en une ligne entre un
+          jeton absent, un jeton refusé et une adresse qui ne répond pas l'API.
+          Sans lui, ces trois pannes se ressemblent toutes : « ça ne marche pas ». */}
+      {branchement && (
+        <div className={`dif-test${branchement.ok ? " ok" : ""}`}>
+          <b>{branchement.ok ? "Pont Plein Bail branché" : "Pont Plein Bail — test échoué"}</b>
+          <span>{branchement.message}</span>
+          {branchement.url && <code>{branchement.url}</code>}
         </div>
       )}
 

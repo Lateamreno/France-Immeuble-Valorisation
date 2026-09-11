@@ -15,8 +15,13 @@ export type KCard = {
    *  la vignette affiche « à remplacer ». */
   facadeRue?: boolean;
   rv?: boolean;
-  /** Texte du badge orange (initiales de l'agent, ex. « RV », « MAV »). */
+  /** Texte du badge (initiales de l'agent, ex. « RV », « MAV »). */
   rvText?: string;
+  /* Retour #344 — « les pastilles qui indiquent les INITIALES, il faut que ce
+     soit aux couleurs de l'agent ». La couleur `color_main` de la base, pas
+     l'orange de la charte : c'est elle qui permet de balayer un tableau et de
+     voir à qui appartient chaque ligne sans lire les initiales. */
+  rvCouleur?: string;
   /** Ligne statut mandat (rouge) : « Mandat à signer », « Mandat expiré »… */
   statusMandat?: string;
   /** Chip date + note grise (MAJUSCULES conservées telles quelles). */
@@ -35,6 +40,74 @@ export type KCard = {
   wait?: { from: string; to: string; motif: string; late?: boolean; pct?: number };
   prix?: string;
   fee?: string;
+  /**
+   * L'adresse complète, pour le lien Google Maps de la carte.
+   *
+   * MAV : « à la place du début de l'adresse tu vas me mettre juste une icône
+   * Google Maps qui m'emmène sur l'adresse, ce sera plus simple ». Le texte de
+   * l'adresse était de toute façon tronqué au tiers sur une carte de colonne —
+   * il servait moins à lire qu'à situer, et un plan situe mieux.
+   *
+   * `adresse` reste dans le modèle : la recherche du tableau de bord et les
+   * modales s'en servent, elles ne l'affichent simplement plus ici.
+   */
+  adresseComplete?: string;
+  /**
+   * Les deux chiffres qui disent si l'affaire vaut le détour.
+   *
+   * `renta` est le rendement brut ACTUEL du bien.
+   *
+   * `ecartEstim` est l'écart entre le prix AFFICHÉ et le prix ESTIMÉ — c'est
+   * la référence choisie par MAV : « oui c'est bien l'écart au prix estimé que
+   * je veux ». Négatif quand le bien s'affiche sous notre estimation (décote,
+   * vert), positif au-dessus (surcote, rouge), nul quand le prix est
+   * exactement celui qu'on a estimé — ce qui est le cas le plus fréquent.
+   *
+   * `estim` porte le prix estimé et `estimLe` sa date : sur 119 écarts non
+   * nuls, 114 reposent sur une estimation de plus de dix-huit mois. La date
+   * n'est pas un détail, elle dit ce que l'écart vaut.
+   *
+   * Tout est facultatif et le reste : sur 426 immeubles actifs, 321 ont un
+   * prix affiché ET une estimation. Une carte qui n'a rien n'affiche rien —
+   * pas de tiret, pas de case vide.
+   */
+  perf?: {
+    renta?: number;
+    /**
+     * Rendement du secteur (`ref_renta_all` de la dernière estimation) et
+     * écart du bien à ce rendement, en points, arrondi au dixième.
+     *
+     * MAV : « la renta tu la mets en vert ou en rouge si c'est plus ou moins
+     * la renta du secteur ». Attention au sens : ici le VERT est au-DESSUS du
+     * secteur — l'inverse de la pastille de prix juste à droite, où le vert
+     * est en dessous. Les deux sont pourtant cohérentes : vert = bonne
+     * nouvelle pour qui achète.
+     *
+     * Sur 567 biens comparables, 230 sont au-dessus, 316 en dessous et 21 pile
+     * dessus. La couleur manque quand le bien n'a pas de rendement (1 237 cas)
+     * ou quand la référence est aberrante (19 cas hors 2–20 %).
+     */
+    rentaRef?: number;
+    rentaEcart?: number;
+    /**
+     * Prix au m² du bien AUJOURD'HUI, sa référence de secteur et l'écart.
+     *
+     * MAV : « c'est l'écart du dernier prix (donc en gros si c'est
+     * l'estimation, ou le prix voulu par le client ou le prix du dossier ou le
+     * prix après baisse de prix) vs secteur ». Le numérateur suit donc le prix
+     * affiché sur la carte, la référence est le dernier relevé de secteur —
+     * celui d'un mouvement de prix ou celui d'une estimation, le plus récent
+     * des deux.
+     *
+     * Négatif = décote (vert), positif = surcote (rouge). Sur 644 biens
+     * comparables : 442 décotes, 190 surcotes, 12 pile au prix du secteur.
+     * `prixM2RefLe` porte la date du relevé, qui dit ce que l'écart vaut.
+     */
+    prixM2?: number;
+    prixM2Ref?: number;
+    prixM2RefLe?: string;
+    ecartM2?: number;
+  };
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
   action?: { label: string; kind?: "green"; next?: number };
   /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */

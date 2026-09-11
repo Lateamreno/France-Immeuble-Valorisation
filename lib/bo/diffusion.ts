@@ -20,12 +20,35 @@ import { BAREME_HONORAIRES, LIMITES, type VitrineSaisie } from "@/lib/vitrine";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-/* Plein Bail documente `PLEIN_BAIL_URL` / `PLEIN_BAIL_JETON`, le BO avait été
-   écrit sur `PLEINBAIL_URL` / `PLEINBAIL_TOKEN`. Les deux sont acceptés : une
-   variable mal nommée ne se voit pas — le pont reste simplement muet, et on
-   croit à une panne de réseau pendant une heure. */
-const PB_URL = process.env.PLEIN_BAIL_URL ?? process.env.PLEINBAIL_URL;
-const PB_TOKEN = process.env.PLEIN_BAIL_JETON ?? process.env.PLEINBAIL_TOKEN;
+/* Le nom de la variable a changé trois fois au fil des échanges avec Plein
+   Bail : `PLEINBAIL_URL` (première version du BO), `PLEIN_BAIL_URL` (leur
+   documentation), puis `PLEINBAIL_API_URL` (le contrat en vigueur). Les trois
+   sont acceptés, dans cet ordre de priorité — une variable mal nommée ne se
+   voit pas : le pont reste simplement muet, et on croit à une panne de réseau
+   pendant une heure.
+
+   L'adresse a par ailleurs une valeur par défaut, celle du contrat. Elle n'est
+   pas un secret et elle ne change pas d'un environnement à l'autre : la laisser
+   obligatoire, c'était garder le pont éteint pour un oubli de configuration
+   alors que le seul élément vraiment nécessaire est le jeton. */
+/* Pas d'`export` ici : ce module porte "use server", et une directive serveur
+   n'autorise que des exports de fonctions asynchrones. Une constante exportée
+   fait échouer le build — pas le typage, le BUILD. */
+const PB_URL_DEFAUT = "https://www.pleinbail.fr/api/partenaires/annonces";
+const PB_URL =
+  process.env.PLEINBAIL_API_URL ??
+  process.env.PLEIN_BAIL_URL ??
+  process.env.PLEINBAIL_URL ??
+  PB_URL_DEFAUT;
+/* Le jeton, lui, n'a pas de valeur par défaut et n'en aura jamais : il vaut
+   droit de publication sur tout le catalogue. Il ne vit que dans les variables
+   d'environnement, jamais dans le dépôt, et jamais derrière un préfixe
+   `NEXT_PUBLIC_` qui l'enverrait au navigateur. */
+const PB_TOKEN =
+  process.env.PLEINBAIL_API_JETON ??
+  process.env.PLEINBAIL_API_TOKEN ??
+  process.env.PLEIN_BAIL_JETON ??
+  process.env.PLEINBAIL_TOKEN;
 /* Barème d'honoraires publié — obligation de l'arrêté du 10 janvier 2017 sur
    tout support publicitaire, annonce en ligne comprise. La valeur par défaut
    est le PDF déjà publié par France Immeuble ; l'environnement peut la
@@ -35,6 +58,90 @@ const PB_BAREME = process.env.FI_BAREME_HONORAIRES_URL ?? BAREME_HONORAIRES;
 /** Le pont est-il branché, ou tourne-t-on à blanc ? */
 export async function diffusionConfiguree() {
   return !!(PB_URL && PB_TOKEN);
+}
+
+export type Branchement = {
+  ok: boolean;
+  /** Ce qu'on dit à l'écran. */
+  message: string;
+  /** L'adresse effectivement appelée, sans le jeton — pour le diagnostic. */
+  url?: string;
+  /** D'où vient le jeton : sert à retrouver une variable mal nommée. */
+  variable?: string;
+  /** Le code HTTP obtenu, quand il y en a un. */
+  code?: number;
+};
+
+/**
+ * Le test de branchement : est-ce que le jeton ouvre bien la porte ?
+ *
+ * On envoie `{ "action": "retombees", "references": [] }`. C'est l'appel le
+ * plus sûr du contrat : il ne lit rien, n'écrit rien, ne touche pas au
+ * catalogue, et sa réponse attendue est exactement `{"retombees":[],
+ * "inconnues":[]}`. Un jeton refusé répond 401, une adresse fausse répond 404
+ * ou du HTML — trois cas qu'on distingue ici plutôt que de les découvrir le
+ * jour d'une publication.
+ *
+ * On vérifie la FORME de la réponse et pas seulement le code HTTP : une
+ * passerelle mal configurée, une page de connexion, un portail captif
+ * répondent 200 avec du HTML. Un `res.ok` seul aurait dit « branché » sur
+ * chacun d'eux.
+ */
+export async function testerBranchement(): Promise<Branchement> {
+  const variable =
+    (process.env.PLEINBAIL_API_JETON && "PLEINBAIL_API_JETON") ||
+    (process.env.PLEINBAIL_API_TOKEN && "PLEINBAIL_API_TOKEN") ||
+    (process.env.PLEIN_BAIL_JETON && "PLEIN_BAIL_JETON") ||
+    (process.env.PLEINBAIL_TOKEN && "PLEINBAIL_TOKEN") ||
+    undefined;
+
+  if (!PB_TOKEN) {
+    return {
+      ok: false,
+      url: PB_URL,
+      message:
+        "Aucun jeton Plein Bail dans l'environnement. Attendu sous PLEINBAIL_API_JETON " +
+        "(PLEIN_BAIL_JETON et PLEINBAIL_TOKEN restent acceptés). Le BO tourne en simulation : " +
+        "la charge utile se calcule et se vérifie, rien ne part.",
+    };
+  }
+
+  try {
+    const res = await fetch(PB_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${PB_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "retombees", references: [] }),
+      cache: "no-store",
+    });
+    const texte = await res.text();
+
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, url: PB_URL, variable, code: res.status,
+        message: `Jeton refusé (${res.status}). La variable ${variable} est lue, mais Plein Bail ne l'accepte pas.` };
+    }
+    if (!res.ok) {
+      return { ok: false, url: PB_URL, variable, code: res.status,
+        message: `Plein Bail répond ${res.status} : ${texte.slice(0, 160)}` };
+    }
+
+    let j: unknown;
+    try {
+      j = JSON.parse(texte);
+    } catch {
+      return { ok: false, url: PB_URL, variable, code: res.status,
+        message: "Réponse 200 mais pas du JSON — l'adresse pointe probablement sur une page, pas sur l'API." };
+    }
+    const o = j as { retombees?: unknown; inconnues?: unknown };
+    if (!Array.isArray(o.retombees) || !Array.isArray(o.inconnues)) {
+      return { ok: false, url: PB_URL, variable, code: res.status,
+        message: `Réponse inattendue : ${texte.slice(0, 160)}. Attendu l'enveloppe {"retombees":[],"inconnues":[]}.` };
+    }
+    return { ok: true, url: PB_URL, variable, code: res.status,
+      message: `Branchement confirmé — enveloppe {retombees, inconnues} reçue, jeton lu depuis ${variable}.` };
+  } catch (e) {
+    return { ok: false, url: PB_URL, variable,
+      message: `Plein Bail injoignable : ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 async function rpc(fn: string, args: Record<string, unknown>) {

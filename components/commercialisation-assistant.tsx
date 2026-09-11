@@ -1,14 +1,19 @@
 "use client";
 
 // Assistant de commercialisation — reprend l'enchaînement du BO :
-// Dossier → Mandat → Acheteurs → E-mails → SMS. Rien n'est envoyé par
-// l'outil : il prépare le message et les destinataires, l'agent envoie
-// (doctrine de validation humaine avant tout envoi).
-import { useMemo, useState, useTransition } from "react";
+// Dossier → Mandat → Acheteurs → E-mails → SMS.
+//
+// Doctrine §7.1, inchangée : l'outil PRÉPARE, l'agent ENVOIE. Les e-mails
+// partent du client de messagerie de l'agent ; les SMS peuvent maintenant
+// partir d'ici par Twilio, mais seulement derrière un bouton et une
+// confirmation qui rappelle le nombre de destinataires et de segments
+// facturés. Aucun envoi automatique, jamais.
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
-import { dmy, euros } from "@/lib/format";
-import { createCommercialisation, markCommercialisationSent } from "@/lib/bo/actions";
+import { dmy, euros, libelleDossier } from "@/lib/format";
+import { oublier, useMemoire } from "@/lib/memoire";
+import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, markCommercialisationSent } from "@/lib/bo/actions";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -23,25 +28,37 @@ export function AssistantCommercialisation({
   cibles: Acquereur[];
   onFermer: () => void;
 }) {
-  const [etape, setEtape] = useState<Etape>("Dossier");
+  /* Retour #329 — « fais en sorte qu'on ne puisse pas perdre notre progression
+     quand on se balade dans les autres onglets du BO. » Une commercialisation,
+     c'est un e-mail rédigé, un SMS relu, un lien de partage collé : sortir de
+     la fiche pour vérifier un chiffre suffisait à tout perdre. Toute la saisie
+     de l'assistant passe donc par la mémoire d'écran, rangée sous le matching
+     auquel elle appartient — deux commercialisations ne se mélangent pas. */
+  const memo = `com:${matchId}`;
+  const [etape, setEtape] = useMemoire<Etape>(`${memo}:etape`, "Dossier");
   const [pending, start] = useTransition();
-  const [commId, setCommId] = useState<string>();
-  const [creees, setCreees] = useState(0);
-  const [mailsEnvoyes, setMailsEnvoyes] = useState(false);
-  const [smsEnvoyes, setSmsEnvoyes] = useState(false);
+  const [commId, setCommId] = useMemoire<string | undefined>(`${memo}:commId`, undefined);
+  const [creees, setCreees] = useMemoire(`${memo}:creees`, 0);
+  const [mailsEnvoyes, setMailsEnvoyes] = useMemoire(`${memo}:mails`, false);
+  const [smsEnvoyes, setSmsEnvoyes] = useMemoire(`${memo}:sms-envoyes`, false);
 
   const dossiers = b.dossiers;
-  const [dossier, setDossier] = useState(dossierId ?? S(dossiers[0]?._id));
+  const [dossier, setDossier] = useMemoire(`${memo}:dossier`, dossierId ?? S(dossiers[0]?._id));
   const mandats = b.mandats;
-  const [mandat, setMandat] = useState(S(mandats[0]?._id));
-  const [lien, setLien] = useState("");
+  const [mandat, setMandat] = useMemoire(`${memo}:mandat`, S(mandats[0]?._id));
+  const [lien, setLien] = useMemoire(`${memo}:lien`, "");
+
+  /* Sortir de l'assistant — « Fermer » comme « Terminer » — referme le
+     dossier : la mémoire de CETTE commercialisation est jetée, sinon la
+     suivante rouvrirait le message de la précédente. */
+  const fermer = () => { oublier(`${memo}:`); onFermer(); };
 
   const ville = b.ville || "l'immeuble";
   const prixHai = typeof b.im.prix_hai === "number" ? (b.im.prix_hai as number) : undefined;
 
-  const [objet, setObjet] = useState(`Immeuble à vendre à ${ville}`);
-  const [message, setMessage] = useState(messageParDefaut(b, lien));
-  const [sms, setSms] = useState(smsParDefaut(b));
+  const [objet, setObjet] = useMemoire(`${memo}:objet`, `Immeuble à vendre à ${ville}`);
+  const [message, setMessage] = useMemoire(`${memo}:message`, messageParDefaut(b, lien));
+  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b));
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
   const lots = paquets(dest.telephones, 50);
@@ -72,6 +89,10 @@ export function AssistantCommercialisation({
           contactId: a.contactId,
           email: a.email,
           telephone: a.telephone,
+          /* Le grade décide de la colonne du dashboard après l'envoi : A/B
+             seulement → « Commercialisés aux clients A et B », dès qu'un C, un
+             D ou un sans-grade est dedans → « à tous les clients ». */
+          note: a.note,
         })),
       });
       setCommId(res.commercialisationId);
@@ -81,12 +102,47 @@ export function AssistantCommercialisation({
 
   const copier = (txt: string) => navigator.clipboard?.writeText(txt);
 
+  /* L'état du pont Twilio, demandé à l'ouverture de l'étape SMS. On ne le
+     devine pas côté navigateur : les identifiants ne descendent jamais ici. */
+  const [pont, setPont] = useState<{ configure: boolean; message: string; plafond: number } | null>(null);
+  const [envoi, setEnvoi] = useState<string | null>(null);
+  useEffect(() => {
+    if (etape !== "SMS" || pont) return;
+    let vivant = true;
+    etatEnvoiSms().then((e) => { if (vivant) setPont(e); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [etape, pont]);
+
+  /* Doctrine §7.1 : l'application prépare, l'agent envoie. D'où la
+     confirmation qui rappelle le nombre exact de destinataires et de segments
+     facturés — c'est le dernier moment où l'erreur de ciblage coûte zéro. */
+  const envoyerLesSms = () =>
+    commId && start(async () => {
+      const nb = dest.telephones.length;
+      const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
+      if (!confirm(
+        `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?\n\n` +
+        `Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. ` +
+        "Un SMS parti ne se rattrape pas.",
+      )) return;
+      const r = await envoyerSmsCommercialisation({
+        immeubleId: String(b.im._id), commId, texte: sms, numeros: dest.telephones,
+      });
+      if (r.ok) {
+        setSmsEnvoyes(true);
+        setEnvoi(`${r.envoyes} SMS envoyés (${r.segments} segments).`
+          + (r.echecs && r.echecs.length ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.numero} — ${x.raison}`).join(" · ")}` : ""));
+      } else {
+        setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
+      }
+    });
+
   return (
     <div className="asst">
       <div className="asst-h">
         <span className="asst-t">Nouvelle commercialisation</span>
         <span className="sp" style={{ flex: 1 }} />
-        <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+        <button className="fadd" type="button" onClick={fermer}>Fermer</button>
       </div>
 
       <div className="asst-steps">
@@ -120,7 +176,7 @@ export function AssistantCommercialisation({
             <select className="min" value={dossier} onChange={(e) => setDossier(e.target.value)}>
               <option value="">Sans dossier</option>
               {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{S(x.titre) || "Dossier"} — {dmy(x["Created Date"])}</option>
+                <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
               ))}
             </select>
           )}
@@ -131,6 +187,29 @@ export function AssistantCommercialisation({
             Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
             auprès de {dest.emails.length} destinataires.
           </div>
+          {/* Retour #328 — l'écran demandait un lien de partage sans dire où
+              on le fabrique. C'est transfer.it que la maison utilise : le
+              dossier, les plans, les diagnostics et les photos y montent d'un
+              coup, et le lien revient se coller ici. */}
+          <a className="asst-tr" href="https://transfer.it/start" target="_blank" rel="noreferrer">
+            <span className="asst-tr-l" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M12 16V4M8 8l4-4 4 4" />
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              transfer<b>.it</b>
+            </span>
+            <span className="asst-tr-t">
+              <b>Déposer les pièces et récupérer le lien →</b>
+              Le dossier, les plans, les diagnostics, les photos — tout dans un seul envoi,
+              puis collez le lien ci-dessus.
+              <i>
+                RGPD : caviardez les baux avant de les déposer. Le nom, la profession et les
+                coordonnées d&apos;un locataire n&apos;ont rien à faire dans un dossier
+                d&apos;acquéreur.
+              </i>
+            </span>
+          </a>
           <div className="wnav"><span className="sp" style={{ flex: 1 }} />
             <button className="kgo" type="button" onClick={() => setEtape("Mandat")}><span className="ch">›</span> Continuer</button>
           </div>
@@ -241,6 +320,17 @@ export function AssistantCommercialisation({
             Numéros normalisés au format international et dédoublonnés. Les saisies inexploitables
             ont été écartées plutôt qu&apos;envoyées telles quelles.
           </div>
+          {/* L'envoi direct par Twilio. Il ne remplace pas le marquage manuel :
+              beaucoup d'envois se font encore depuis le téléphone de l'agent,
+              et il faut pouvoir dire « c'est fait » sans passer par ici. */}
+          {pont && (
+            <div className={pont.configure ? "asst-note" : "dif-simu"}>
+              {!pont.configure && <b>Envoi automatique indisponible</b>}
+              {pont.message}
+              {pont.configure && ` Plafond par envoi : ${pont.plafond} numéros.`}
+            </div>
+          )}
+          {envoi && <div className="asst-ok">{envoi}</div>}
           <div className="wnav">
             <span className="sp" style={{ flex: 1 }} />
             <button
@@ -250,7 +340,14 @@ export function AssistantCommercialisation({
                 setSmsEnvoyes(true);
               })}
             >{smsEnvoyes ? "SMS marqués envoyés ✓" : "Marquer les SMS comme envoyés"}</button>
-            <button className="kgo" type="button" onClick={onFermer}><span className="ch">›</span> Terminer</button>
+            {pont?.configure && (
+              <button className="kgo" type="button"
+                disabled={pending || smsEnvoyes || dest.telephones.length === 0}
+                onClick={envoyerLesSms}>
+                <span className="ch">›</span> Envoyer les {dest.telephones.length} SMS
+              </button>
+            )}
+            <button className="fadd" type="button" onClick={fermer}>Terminer</button>
           </div>
         </div>
       )}

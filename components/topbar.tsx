@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 
 // Barre haute — réplique : titre + recherche immeuble + filtres
@@ -13,6 +14,7 @@ export function TopBar({
   vue = "cours",
   agentSlug = "",
   agents = [],
+  recherche = "",
 }: {
   title?: string;
   enCours?: number;
@@ -21,12 +23,30 @@ export function TopBar({
   vue?: "cours" | "attente";
   agent?: string;
   agentSlug?: string;
-  /** Agents réels du BO (table agentfi). */
-  agents?: { slug: string; name: string }[];
+  /** Agents réels du BO (table agentfi), avec leur couleur `color_main`. */
+  agents?: { slug: string; name: string; couleur?: string }[];
+  /** Ce qui filtre déjà le dashboard, pour que la case le montre (#306). */
+  recherche?: string;
 }) {
   const router = useRouter();
+  const [q, setQ] = useState(recherche);
+  /* La case suit l'adresse : vider le filtre depuis le bandeau doit vider la
+     case, sinon elle affiche une recherche qui ne s'applique plus. */
+  const [vu, setVu] = useState(recherche);
+  if (vu !== recherche) { setVu(recherche); setQ(recherche); }
+
+  const couleurAgent = agents.find((a) => a.slug === agentSlug)?.couleur;
+
+  const queue = (v: string) =>
+    `/?agent=${agentSlug}${v === "attente" ? "&vue=attente" : ""}`;
   const va = (v: "cours" | "attente") =>
-    router.push(`/?agent=${agentSlug}${v === "attente" ? "&vue=attente" : ""}`);
+    router.push(`${queue(v)}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`);
+
+  /* Retour #306 — la recherche filtre le dashboard sur place. Elle passe donc
+     par l'adresse de CET écran, pas par un écran de résultats : les colonnes
+     restent, et avec elles l'étape où se trouve chaque dossier. */
+  const chercher = () =>
+    router.push(`${queue(vue)}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`);
 
   return (
     <div className="topbar">
@@ -40,15 +60,19 @@ export function TopBar({
       </div>
       <form
         className="search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const q = new FormData(e.currentTarget).get("q");
-          if (typeof q === "string" && q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`);
-        }}
+        onSubmit={(e) => { e.preventDefault(); chercher(); }}
       >
         <label className="in">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
-          <input name="q" placeholder="Recherchez un immeuble..." aria-label="Recherche immeuble" />
+          <input
+            name="q" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Ville, adresse ou nom du propriétaire…"
+            aria-label="Filtrer les immeubles du tableau de bord"
+          />
+          {q && (
+            <button type="button" className="raz" title="Effacer la recherche"
+              onClick={() => { setQ(""); router.push(queue(vue)); }}>✕</button>
+          )}
         </label>
         <button className="go" type="submit" aria-label="Rechercher">
           <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></svg>
@@ -63,12 +87,21 @@ export function TopBar({
           En attente{enAttente > 0 && <span className="cnt">{enAttente}</span>}
         </button>
       </div>
+      {/* Retour #344 — « les couleurs du fond de bouton du "suivi par" ce sont
+          les couleurs enregistrées dans la base en HEX ». Le sélecteur était
+          d'un orange fixe : on ne voyait pas de qui on lisait le portefeuille.
+          Il prend maintenant la couleur `color_main` de l'agent choisi, et ne
+          retombe sur l'orange de la charte que pour « tous les agents », qui
+          n'appartient à personne. */}
       <select
         className="agentbtn"
         value={agentSlug}
         onChange={(e) => router.push(`/?agent=${e.target.value}`)}
         aria-label="Filtrer par agent"
-        style={{ cursor: "pointer", appearance: "none" }}
+        style={{
+          cursor: "pointer", appearance: "none",
+          ...(couleurAgent ? { background: couleurAgent } : null),
+        }}
       >
         {agents.map(({ slug, name }) => (
           <option key={slug} value={slug}>

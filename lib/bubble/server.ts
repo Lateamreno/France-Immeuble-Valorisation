@@ -15,7 +15,9 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
-import { correspond } from "@/lib/bo/matching";
+import { correspond, type CriteresBien } from "@/lib/bo/matching";
+import { lireExclusionsDe } from "@/lib/bo/exclusions";
+import { codeDepartement, regionDe } from "@/lib/geo-fr";
 import { cache } from "react";
 
 const TOKEN = process.env.BUBBLE_API_TOKEN;
@@ -478,6 +480,89 @@ export async function getDashboardLive(
     }
   }
 
+  /* Les RÉFÉRENCES DE SECTEUR de chaque bien : prix au m² et rendement.
+
+     MAV : « c'est l'écart du dernier prix (donc en gros si c'est l'estimation,
+     ou le prix voulu par le client ou le prix du dossier ou le prix après
+     baisse de prix) vs secteur ». Autrement dit le numérateur est le prix du
+     JOUR, quelle qu'en soit l'origine, et la référence est le SECTEUR.
+
+     Le prix du jour n'a pas besoin d'être reconstitué : `prix_hai_m2` sur la
+     fiche immeuble suit `prix_hai` — vérifié sur les 680 biens actifs qui
+     portent les deux, zéro divergence.
+
+     La référence de secteur, elle, est relevée à chaque mouvement de prix dans
+     `bo_prix` (`in_ref_prix`, aux côtés du motif : « Prix estimé », « Baisse de
+     prix », « Prix de commercialisation »…) et à chaque estimation
+     (`ref_prix_all`). On garde la plus récente des deux : un bien dont le prix
+     a bougé après la dernière estimation a un relevé de secteur plus frais que
+     celle-ci.
+
+     Deux requêtes groupées pour toutes les cartes affichées, jamais une par
+     carte, et paginées à l'en-tête `Range` : PostgREST plafonne une réponse à
+     1 000 lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a
+     l'air complète est le pire des défauts (leçon du lot « relances »). */
+  type RefSecteur = { prixM2?: number; prixM2Le?: string; renta?: number; rentaLe?: string };
+  const refByIm = new Map<string, RefSecteur>();
+  if (USE_SB && ims.length > 0) {
+    const idList = ims.map((i) => `"${i._id}"`).join(",");
+
+    const lire = async (chemin: string) => {
+      const out: Record<string, string | undefined>[] = [];
+      for (let d = 0; d < 40000; d += 1000) {
+        const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
+          headers: {
+            apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`,
+            Range: `${d}-${d + 999}`, "Range-Unit": "items",
+          },
+          cache: "no-store",
+        }).catch(() => null);
+        if (!res?.ok) break;
+        const lot = (await res.json()) as Record<string, string | undefined>[];
+        out.push(...lot);
+        if (lot.length < 1000) break;
+      }
+      return out;
+    };
+
+    /* Un prix de secteur sous 100 €/m² est une faute de saisie, pas un marché :
+       à Poincy la référence vaut 1 €/m², ce qui affichait +99 600 %. */
+    const prixSecteur = (v: unknown) => {
+      const x = Number(v);
+      return Number.isFinite(x) && x >= 100 ? x : undefined;
+    };
+    const poser = (im: string | undefined, le: string, ref: unknown) => {
+      const v = prixSecteur(ref);
+      if (!im || v === undefined) return;
+      const vu = refByIm.get(im) ?? {};
+      if (vu.prixM2 !== undefined && le <= (vu.prixM2Le ?? "")) return;
+      refByIm.set(im, { ...vu, prixM2: v, prixM2Le: le });
+    };
+
+    const [mouvements, estimations] = await Promise.all([
+      lire(`bo_prix?select=im:data->>in_IMMEUBLE,ref:data->>in_ref_prix,cd:data->>Created Date`
+        + `&data->>in_IMMEUBLE=in.(${idList})&data->>in_ref_prix=not.is.null&order=id`),
+      lire(`bo_estimation?select=im:data->>IMMEUBLE,rp:data->>ref_prix_all,rr:data->>ref_renta_all,cd:data->>Created Date`
+        + `&data->>IMMEUBLE=in.(${idList})&order=id`),
+    ]);
+
+    for (const r of mouvements) poser(r.im, String(r.cd ?? ""), r.ref);
+    for (const r of estimations) {
+      poser(r.im, String(r.cd ?? ""), r.rp);
+      /* `ref_renta_all` = rendement du secteur au moment de l'estimation.
+         854 estimations sur 858 le portent, mais 22 valent 0 et 3 dépassent
+         20 % : une saisie manquante ou une virgule mal placée. Hors de la
+         fourchette 2–20 %, on ne colore pas — mieux vaut pas de couleur
+         qu'une couleur fausse. */
+      const rr = Number(r.rr);
+      if (!r.im || !Number.isFinite(rr) || rr < 2 || rr > 20) continue;
+      const le = String(r.cd ?? "");
+      const vu = refByIm.get(r.im) ?? {};
+      if (vu.renta !== undefined && le <= (vu.rentaLe ?? "")) continue;
+      refByIm.set(r.im, { ...vu, renta: rr, rentaLe: le });
+    }
+  }
+
   const mkCard = (im: Record<string, unknown>): KCard => {
     const id = im._id as string;
     const st = statutOf(im);
@@ -509,6 +594,7 @@ export async function getDashboardLive(
       facadeRue: estFacadeRue(im.photo_main_compressed),
       rv: true,
       rvText: agent.initials,
+      rvCouleur: agent.color,
       history: !!suivi,
       statutNum: statutOf(im),
       contactId: typeof im.PROPRIETAIRE === "string" ? (im.PROPRIETAIRE as string) : undefined,
@@ -535,6 +621,54 @@ export async function getDashboardLive(
       })),
     };
 
+    /* L'adresse complète part vers Google Maps ; le picto remplace le texte
+       sur la carte (demande MAV). Sans voie ni ville, pas de lien : un plan
+       ouvert sur « France » ne sert personne.
+
+       Posé AVANT l'aiguillage « en attente » : ce bloc s'exécutait après, et
+       les cartes à réactiver sortaient donc sans plan ni pastilles — c'est le
+       retour #349, « sur les immeubles à réactiver il faut également afficher
+       le rendement et l'écart ». Un bien en pause reste un bien qu'on juge. */
+    const adrPleine = [im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville]
+      .filter(Boolean).join(" ").trim();
+    if (im.adresse_rue && im.adresse_ville) card.adresseComplete = adrPleine;
+
+    /* Les pastilles de performance. On n'en pose aucune si le chiffre manque :
+       une case vide se lirait comme un zéro. */
+    const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+    const renta = nb(im.fin_renta_ba);
+    const ref = refByIm.get(id);
+
+    /* Le prix au m² DU JOUR : celui de la fiche, qui suit le dernier prix
+       posé, quelle qu'en soit l'origine. Le calcul de secours sert les huit
+       biens qui ont un prix et une surface mais pas le champ dérivé. */
+    const surface = nb(im.surface_carrez);
+    const hai = nb(im.prix_hai);
+    const prixM2 = nb(im.prix_hai_m2) ?? (hai && surface ? hai / surface : undefined);
+    const ecartM2 = prixM2 !== undefined && ref?.prixM2 !== undefined
+      ? Math.round((prixM2 / ref.prixM2 - 1) * 100)
+      : undefined;
+
+    /* Le rendement face à celui du secteur (demande MAV). L'écart est arrondi
+       au dixième de point — la précision réellement affichée sur la pastille —
+       pour qu'un bien annoncé « 6,5 % » contre un secteur à « 6,5 % » ne se
+       colore pas sur une différence qu'on ne voit pas. */
+    const rentaEcart = renta !== undefined && ref?.renta !== undefined
+      ? Math.round((renta - ref.renta) * 10) / 10
+      : undefined;
+
+    if (renta !== undefined || ecartM2 !== undefined) {
+      card.perf = {
+        renta,
+        rentaRef: renta !== undefined ? ref?.renta : undefined,
+        rentaEcart,
+        prixM2,
+        prixM2Ref: ref?.prixM2,
+        prixM2RefLe: ref?.prixM2Le ? dmy(ref.prixM2Le) : undefined,
+        ecartM2,
+      };
+    }
+
     if (enAttente && suivi) {
       const debut = new Date(String(suivi.date_start ?? suivi["Created Date"] ?? ""));
       const relance = typeof suivi.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
@@ -551,6 +685,13 @@ export async function getDashboardLive(
       };
       card.prix = euros(im.prix_hai);
       card.action = { label: "Réactiver", kind: "green" };
+      /* La flèche au milieu de la frise déroule le dernier suivi (retour #349 :
+         « quand on clique sur la flèche vers le bas ça devrait afficher le
+         dernier suivi […]. Là actuellement ça ouvre la fiche »). Le texte doit
+         donc voyager jusqu'à la carte, ce qu'il ne faisait pas. */
+      if (typeof suivi.notes === "string" && suivi.notes.trim()) {
+        card.noteComplete = suivi.notes as string;
+      }
       return card;
     }
 
@@ -1351,13 +1492,21 @@ export async function listRecherches(): Promise<ListCard[]> {
   for (const c of await parIds("contact", acheteurIds)) contacts.set(String(c._id), c);
   return rows.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
+    /* Retour #343 — « sur une recherche il y a écrit FI, ça correspond à quoi ?
+       Normalement c'est les initiales du commercial. »
+       C'était le repli de `initialsOf` quand la recherche n'a pas de `SUIVI` :
+       68 des 1 950 recherches du miroir sont dans ce cas. « FI » se lisait
+       comme un agent nommé FI. On retombe donc d'abord sur le commercial du
+       CONTACT — celui qui suit l'acquéreur suit forcément sa recherche — et,
+       à défaut seulement, sur un tiret qui dit franchement qu'on ne sait pas. */
+    const suivi = r.SUIVI ?? c?.SUIVI;
     const prix =
       typeof r.prix_min === "number" || typeof r.prix_max === "number"
         ? `${euros(r.prix_min) ?? "0 €"} à ${euros(r.prix_max) ?? "∞"}`
         : "";
     return {
       id: String(r._id),
-      avatar: initialsOf(r.SUIVI), avatarCouleur: couleurOf(r.SUIVI),
+      avatar: suivi ? initialsOf(suivi) : "—", avatarCouleur: couleurOf(suivi),
       title: [Array.isArray(r.dpts) ? (r.dpts as string[]).join(", ") : String(r.dpts ?? ""), String(r.Cible ?? "")].filter(Boolean).join(" · ") || "Recherche",
       sub: c ? contactLabel(c) : undefined,
       grade: gradeOf(c),
@@ -2514,6 +2663,17 @@ export type RechercheCard = {
   };
   /** Coordonnées brutes quand la fiche contact n'existe pas encore. */
   orphelin?: { email?: string; tel?: string };
+  /** Les valeurs telles qu'elles sont en base, pour la modale de modification
+   *  (retour #330). Les champs ci-dessus sont mis en forme pour la carte :
+   *  « Investissement locatif » ne se réenregistre pas, la base attend
+   *  « Investisseur », et « 400 000 € à 600 000 € » n'est pas un nombre. */
+  brut: {
+    cible?: string;
+    prixMin?: number; prixMax?: number;
+    surfaceMin?: number; surfaceMax?: number;
+    occupMin?: number; occupMax?: number;
+    renta?: number;
+  };
   /** Immeubles en mandat qui correspondent et qu'on ne lui a jamais envoyés. */
   aProposer: number;
   group: "en_cours" | "en_attente" | "archivees";
@@ -2527,6 +2687,8 @@ const TITRES_CIBLE: Record<string, string> = {
   Patrimonial: "Immeuble patrimonial",
 };
 
+const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
 /** Une fourchette en toutes lettres, ou rien si les deux bornes manquent. */
 function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
   const a = typeof min === "number" && min > 0 ? min : undefined;
@@ -2534,6 +2696,35 @@ function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
   if (a === undefined && b === undefined) return undefined;
   if (a !== undefined && b !== undefined) return `${fmt(a)} à ${fmt(b)}`;
   return a !== undefined ? `≥ ${fmt(a)}` : `≤ ${fmt(b!)}`;
+}
+
+/**
+ * Les caractéristiques d'un immeuble telles que le matching les lit.
+ *
+ * Retour #332 : `Destinations` porte TOUTES les destinations présentes, quand
+ * `Destination_principale` n'en donne qu'une. C'est la première qu'il faut —
+ * « dès qu'un immeuble contient de l'habitation il le reçoit », et c'est aussi
+ * elle que les exclusions interrogent. La principale ne sert plus que de
+ * secours pour les fiches anciennes qui n'ont pas la liste.
+ */
+export function critereBien(im: Record<string, unknown>): CriteresBien {
+  const toutes = Array.isArray(im.Destinations) ? (im.Destinations as unknown[]).map(String) : [];
+  return {
+    immeubleId: String(im._id),
+    prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+    surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
+    occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
+    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+    ville: S2(im.adresse_ville),
+    /* `adresse_dpt` quand la fiche l'a, sinon le code postal — mais pas une
+       coupe à deux caractères : 20… c'est la Corse, 974… La Réunion. */
+    departement: codeDepartement(S2(im.adresse_dpt), S2(im.adresse_zipcode)),
+    region: regionDe(S2(im.adresse_dpt), S2(im.adresse_zipcode)),
+    destinations: toutes.length
+      ? toutes
+      : typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
+    cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+  };
 }
 
 export async function listRecherchesBO(): Promise<RechercheCard[]> {
@@ -2556,6 +2747,9 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
   for (const c of await parIds("contact", rechs.map((r) => r.ACHETEUR))) {
     contacts.set(String(c._id), c);
   }
+  /* Ce que chaque recherche refuse explicitement (retour #332), en un seul
+     aller-retour pour les 1 900 recherches. */
+  const exclusions = await lireExclusionsDe(rechs.map((r) => String(r._id)));
 
   /* Le dédoublonnage demandé : un immeuble déjà envoyé à un acquéreur sur SA
      recherche marchand ne doit plus apparaître comme « à proposer » sur sa
@@ -2569,17 +2763,7 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
     dejaVuParContact.set(cid, set);
   }
 
-  const criteres = dispo.map((im) => ({
-    immeubleId: String(im._id),
-    prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
-    surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
-    occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
-    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
-    ville: S2(im.adresse_ville),
-    departement: S2(im.adresse_zipcode)?.slice(0, 2),
-    destinations: typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
-    cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
-  }));
+  const criteres = dispo.map(critereBien);
 
   return rechs.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
@@ -2588,7 +2772,8 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
 
     const aProposer = r.archived === true || r.standby === true
       ? 0
-      : criteres.filter((b) => !vus.has(b.immeubleId) && correspond(r, b)).length;
+      : criteres.filter((b) =>
+          !vus.has(b.immeubleId) && correspond(r, b, exclusions.get(String(r._id)))).length;
 
     const lieux = [
       ...(Array.isArray(r.villes) ? (r.villes as string[]) : []).filter((v) => !/^\d{13}x\d+$/.test(v)),
@@ -2597,8 +2782,13 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
 
     return {
       id: String(r._id),
-      agent: initialsOf(r.SUIVI),
-      agentCouleur: couleurOf(r.SUIVI),
+      /* Retour #343 — « FI » était le repli de `initialsOf` sur les 68
+         recherches du miroir qui n'ont pas de `SUIVI` : ça se lisait comme un
+         agent nommé FI. On retombe sur le commercial du CONTACT — celui qui
+         suit l'acquéreur suit sa recherche — puis sur un tiret, qui dit
+         franchement qu'on ne sait pas. */
+      agent: r.SUIVI ?? c?.SUIVI ? initialsOf(r.SUIVI ?? c?.SUIVI) : "—",
+      agentCouleur: couleurOf(r.SUIVI ?? c?.SUIVI),
       lieux: lieux.length ? lieux : ["France entière"],
       destinations: Array.isArray(r.Destinations) ? (r.Destinations as string[]) : [],
       cible: TITRES_CIBLE[String(r.Cible ?? "")] ?? S2(r.Cible),
@@ -2621,11 +2811,182 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
           }
         : undefined,
       orphelin: c ? undefined : { email: S2(r.email), tel: S2(r.phone) },
+      brut: {
+        cible: S2(r.Cible),
+        prixMin: nombre(r.prix_min), prixMax: nombre(r.prix_max),
+        surfaceMin: nombre(r.surface_min), surfaceMax: nombre(r.surface_max),
+        occupMin: nombre(r.occup_min), occupMax: nombre(r.occup_max),
+        renta: nombre(r.renta),
+      },
       aProposer,
       group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",
       date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
     } satisfies RechercheCard;
   });
+}
+
+/**
+ * Cherche un immeuble par son adresse, pour les modales d'actions rapides
+ * (retours #333 à #336).
+ *
+ * Sans mot-clé, on rend les immeubles en commercialisation : ce sont ceux
+ * qu'on propose, fait visiter et sur lesquels on reçoit des offres. Une modale
+ * qui s'ouvre sur une liste vide oblige à taper avant de comprendre ce qu'on
+ * attend d'elle.
+ */
+export async function chercherImmeublesBO(q: string) {
+  await loadInitials();
+  const mots = motsRecherche(q);
+  const carte = (im: Record<string, unknown>) => ({
+    id: String(im._id),
+    libelle: imLabel(im),
+    statut: S2(im.Statut)?.replace(/^\d+ - /, ""),
+    prix: euros(im.prix_hai) ?? undefined,
+    photoUrl: photoProxy(im.photo_main_compressed),
+  });
+
+  if (mots.length === 0) {
+    const ims = await fetchAll(
+      "immeuble",
+      [{ key: "archived", constraint_type: "equals", value: "false" }],
+      600,
+      { field: "Modified Date", desc: true },
+    ).catch(() => [] as Record<string, unknown>[]);
+    return ims
+      .filter((im) => { const r = statutOf(im); return r >= 5 && r <= 7; })
+      .slice(0, 25)
+      .map(carte);
+  }
+
+  if (!USE_SB) return [];
+  const p = new URLSearchParams({ select: "data", limit: "25" });
+  const f = filtreMots(["searchfield"], mots);
+  if (f) p.append(f[0], f[1]);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_immeuble?${p}`, {
+    headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  return ((await res.json()) as { data: Record<string, unknown> }[])
+    .map((r) => r.data).filter(Boolean).map(carte);
+}
+
+/* ------------------- Les biens à proposer à une recherche ------------------
+   Retour #331 : « les pastilles de notification qui s'affichent rouge dans une
+   recherche, c'est parce qu'un immeuble correspondant à la recherche n'a pas
+   encore été proposé à l'acquéreur. Si on clique sur la pastille on voit les
+   modales des biens concernés et on peut les sélectionner. »
+
+   La liste était calculée pour être comptée, jamais rendue : on ne voyait que
+   le chiffre. On la rend maintenant vraiment, avec de quoi décider — le prix,
+   la surface, le rendement, et le dernier dossier, qui est la pièce jointe de
+   l'e-mail qu'on s'apprête à écrire. */
+
+export type BienAProposer = {
+  id: string;
+  libelle: string;
+  ville?: string;
+  photoUrl?: string;
+  prix?: string;
+  surface?: string;
+  occupation?: string;
+  renta?: string;
+  destinations: string[];
+  statut?: string;
+  /** Le dernier dossier de vente : ce qu'on joindra à l'e-mail. */
+  dossier?: { id: string; version: string; pdf?: string };
+};
+
+export type APropositions = {
+  recherche: RechercheCard;
+  /** Le contact destinataire, quand la recherche en a un. */
+  contact?: { id: string; nom: string; email?: string; tel?: string };
+  biens: BienAProposer[];
+};
+
+export async function getAProposer(rechercheId: string): Promise<APropositions | null> {
+  await loadInitials();
+  const cartes = await listRecherchesBO();
+  const carte = cartes.find((c) => c.id === rechercheId);
+  if (!carte) return null;
+
+  const [r] = await parIds("recherche", [rechercheId]);
+  if (!r) return null;
+
+  const [ims, exclusions] = await Promise.all([
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000)
+      .catch(() => [] as Record<string, unknown>[]),
+    lireExclusionsDe([rechercheId]),
+  ]);
+
+  /* Le même dédoublonnage que la pastille : par PERSONNE, pas par recherche.
+     Un immeuble déjà envoyé sur sa recherche marchand ne réapparaît pas sur sa
+     recherche investisseur. */
+  const contactId = S2(r.ACHETEUR);
+  const soeurs = contactId
+    ? await fetchAll("recherche", [{ key: "ACHETEUR", constraint_type: "equals", value: contactId }], 200)
+        .catch(() => [r])
+    : [r];
+  const vus = new Set<string>();
+  for (const x of soeurs) {
+    for (const id of (Array.isArray(x.IMMEUBLEs_proposed) ? x.IMMEUBLEs_proposed : []) as unknown[]) vus.add(String(id));
+    for (const id of (Array.isArray(x.IMMEUBLES_hidden) ? x.IMMEUBLES_hidden : []) as unknown[]) vus.add(String(id));
+  }
+
+  const retenus = ims.filter((im) => {
+    const rang = statutOf(im);
+    if (rang < 5 || rang > 7) return false;
+    if (vus.has(String(im._id))) return false;
+    return correspond(r, critereBien(im), exclusions.get(rechercheId));
+  });
+
+  /* Le dernier dossier de chaque immeuble retenu, en un aller-retour. */
+  const dossiers = retenus.length
+    ? await fetchAll("dossier", [
+        { key: "IMMEUBLE", constraint_type: "in", value: retenus.map((im) => String(im._id)) },
+      ], 500).catch(() => [] as Record<string, unknown>[])
+    : [];
+  const dernier = new Map<string, Record<string, unknown>>();
+  for (const d of dossiers) {
+    const im = String(d.IMMEUBLE ?? "");
+    const p = dernier.get(im);
+    if (!p || Number(d.version ?? 0) > Number(p.version ?? 0)) dernier.set(im, d);
+  }
+
+  const contact = carte.contact
+    ? {
+        id: carte.contact.id,
+        nom: carte.contact.nom,
+        email: carte.contact.email,
+        tel: carte.contact.tel,
+      }
+    : undefined;
+
+  return {
+    recherche: carte,
+    contact,
+    biens: retenus.map((im) => {
+      const d = dernier.get(String(im._id));
+      return {
+        id: String(im._id),
+        libelle: imLabel(im),
+        ville: S2(im.adresse_ville),
+        photoUrl: photoProxy(im.photo_main_compressed),
+        prix: euros(im.prix_hai) ?? undefined,
+        surface: typeof im.surface_carrez === "number" && im.surface_carrez > 0
+          ? `${Math.round(im.surface_carrez as number).toLocaleString("fr-FR")} m²` : undefined,
+        occupation: typeof im.occupation_lots === "number"
+          ? `${Math.round(im.occupation_lots as number)} %` : undefined,
+        renta: typeof im.fin_renta_ba === "number" && im.fin_renta_ba > 0
+          ? `${(im.fin_renta_ba as number).toLocaleString("fr-FR")} %` : undefined,
+        destinations: Array.isArray(im.Destinations) ? (im.Destinations as unknown[]).map(String) : [],
+        statut: S2(im.Statut)?.replace(/^\d+ - /, ""),
+        dossier: d
+          ? { id: String(d._id), version: String(d.version ?? "?"), pdf: S2(d.pdf) }
+          : undefined,
+      } satisfies BienAProposer;
+    }).sort((a, b) => a.libelle.localeCompare(b.libelle, "fr")),
+  };
 }
 
 /* ============================ Écran Questions ============================

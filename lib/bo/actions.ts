@@ -2,7 +2,9 @@
 
 // Écritures du BO — uniquement vers Supabase (bo_*), jamais vers Bubble.
 // Passent par les RPC bo_insert_doc / bo_patch_doc (service_role).
+import { colonneApres } from "./colonnes";
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
+import { ecrireExclusions, lireExclusions } from "@/lib/bo/exclusions";
 import { after } from "next/server";
 import {
   filtreMots, getAgentFiche, getBien, getEstimation, getPrixSecteur, motsRecherche,
@@ -10,6 +12,7 @@ import {
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { netVendeurDepuisHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
+import { jourIso } from "@/lib/format";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -231,10 +234,16 @@ export async function changerProprietaire(input: {
     p_id: input.immeubleId,
     p_patch: { PROPRIETAIRE: input.nouveauId, "Modified Date": now },
   });
+  /* Piège de casse hérité de Bubble, et il coûte cher (retour #307) : sur un
+     CONTACT la liste s'appelle `IMMEUBLES` en capitales, alors que sur un
+     mandat, un suivi ou une offre elle s'écrit `IMMEUBLEs`. Écrire la seconde
+     graphie sur un contact crée un champ parallèle que rien ne lit : la fiche
+     annonçait « 0 immeuble » pour un propriétaire qui en avait un, et sa
+     vignette au mandat aussi. */
   await rpc("bo_append_ref", {
     p_table: "bo_contact",
     p_id: input.nouveauId,
-    p_key: "IMMEUBLEs",
+    p_key: "IMMEUBLES",
     p_value: input.immeubleId,
   });
   const depuis = input.ancienNom?.trim() ? ` (auparavant ${input.ancienNom.trim()})` : "";
@@ -1903,6 +1912,28 @@ export async function basculerDiffusionPhoto(
   refresh(immeubleId);
 }
 
+/**
+ * Fixe d'un coup les photos retenues pour le dossier de vente (retour #322).
+ *
+ * Tant que personne n'a coché, la sélection est implicite — « les seize
+ * premières » (voir `lib/bo/photos-dossier.ts`). Au premier clic de l'agent il
+ * faut la matérialiser en entier, sinon on écrirait une seule case cochée et
+ * les quinze autres photos sortiraient du dossier sans que personne l'ait
+ * demandé. On écrit donc les seize d'un coup, et on décoche explicitement le
+ * reste : ce qui est en base dit désormais exactement ce que le dossier
+ * imprimera.
+ */
+export async function fixerPhotosDossier(immeubleId: string, retenues: string[]) {
+  const garde = new Set(retenues);
+  const photos = await photosDe(immeubleId);
+  await Promise.all(
+    photos
+      .filter((p) => (p.show_in_doss === true) !== garde.has(String(p._id)))
+      .map((p) => patchPhoto(String(p._id), { show_in_doss: garde.has(String(p._id)) })),
+  );
+  refresh(immeubleId);
+}
+
 /** Modale « Associer » : rattache la photo à un lot, à la façade, aux parties
  *  communes, au cadastre ou à la carte. */
 export async function associerPhoto(
@@ -2417,7 +2448,14 @@ export async function deleteDocument(immeubleId: string, documentId: string) {
 export async function addVisite(
   immeubleId: string,
   agentId: string,
-  input: { date: string; visiteur?: string; commentaire_interne?: string; source?: string },
+  input: {
+    date: string; visiteur?: string; commentaire_interne?: string; source?: string;
+    /* Retour #334 — « toutes les modales de la sticky barre du bas viennent
+       compléter les fiches contact, propriétaire, biens etc. » Un nom de
+       visiteur en texte libre ne remonte sur aucune fiche : c'est le
+       rattachement qui fait exister la visite côté acquéreur. */
+    visiteurIds?: string[];
+  },
 ) {
   const id = newId();
   const now = new Date().toISOString();
@@ -2430,12 +2468,15 @@ export async function addVisite(
       date: new Date(input.date).toISOString(),
       Statut: "Confirmée",
       visiteur_nom: input.visiteur,
+      VISITEURs: input.visiteurIds?.length ? input.visiteurIds : undefined,
       commentaire_interne: input.commentaire_interne,
       source: input.source,
       "Created Date": now,
       "Modified Date": now,
     }),
   });
+  for (const c of input.visiteurIds ?? []) revalidatePath(`/contact/${c}`);
+  revalidatePath("/visites");
   refresh(immeubleId);
   return id;
 }
@@ -2460,11 +2501,15 @@ export async function addOffre(
   immeubleId: string,
   input: {
     acheteur?: string;
+    /* Retour #335 : l'offre doit apparaître sur la fiche de l'acquéreur. */
+    acheteurIds?: string[];
     prix_nv: number;
     honos_ht?: number;
     date_expiration?: string;
     commentaire?: string;
     source?: string;
+    /* Le PDF de l'offre, déjà déposé dans le coffre (#335). */
+    pdfUrl?: string;
   },
 ) {
   const id = newId();
@@ -2478,6 +2523,8 @@ export async function addOffre(
       Statut: "En cours",
       date: now,
       acheteur_nom: input.acheteur,
+      ACHETEURs: input.acheteurIds?.length ? input.acheteurIds : undefined,
+      pdf: input.pdfUrl,
       prix_nv: input.prix_nv,
       honos_ht: input.honos_ht,
       honos_ttc: honosTtc,
@@ -2489,6 +2536,8 @@ export async function addOffre(
       "Modified Date": now,
     }),
   });
+  for (const c of input.acheteurIds ?? []) revalidatePath(`/contact/${c}`);
+  revalidatePath("/offres");
   refresh(immeubleId);
   return id;
 }
@@ -2788,6 +2837,40 @@ export async function majMandants(
 
   await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: plat });
   await Promise.all(mandants.map((x) => renvoyerSurLeContact(x)));
+
+  /* Retour #308 — « dans le mandat j'ai changé de propriétaire, je suis passé à
+     Aaron VOCI, mais dans l'onglet Propriétaire il y a toujours écrit que c'est
+     Jean Pierre le test le propriétaire. C'est pas normal, ça devrait changer
+     automatiquement. »
+     Il a raison : celui qui signe le mandat de vente EST le propriétaire du
+     bien — c'est même ce que le mandat atteste. Laisser les deux se
+     contredire, c'est écrire à l'ancien vendeur et fonder un dossier sur un
+     nom que le document démentira.
+     On ne descend le lien que depuis le PREMIER mandant, et seulement quand la
+     fiche désigne quelqu'un d'autre : une indivision a plusieurs mandants pour
+     un seul propriétaire de référence, et rien ne justifierait de choisir le
+     deuxième. Le changement laisse la même trace horodatée que le bouton de la
+     fiche (#288) — un immeuble ne change pas de mains en silence. */
+  const premier = mandants[0];
+  if (immeubleId && premier?.contactId) {
+    const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+    const actuel = typeof im?.PROPRIETAIRE === "string" ? im.PROPRIETAIRE : "";
+    if (im && actuel !== premier.contactId) {
+      const ancien = actuel ? await bqOne("bo_contact", actuel).catch(() => null) : null;
+      await changerProprietaire({
+        immeubleId,
+        nouveauId: premier.contactId,
+        nouveauNom: [premier.prenom, premier.nom].filter(Boolean).join(" ")
+          || premier.societe?.nom || "le mandant",
+        ancienId: actuel || null,
+        ancienNom: ancien
+          ? `${String(ancien["prénom"] ?? "")} ${String(ancien.nom ?? "")}`.trim()
+          : undefined,
+        motif: "Mandant du mandat de vente",
+      });
+    }
+  }
+
   rafraichirMandat(mandatId, immeubleId);
 }
 
@@ -3439,7 +3522,7 @@ export async function mandantDepuisContact(id: string): Promise<MandantDepuisCon
     prenom: S3(c["prénom"]),
     nom: S3(c.nom),
     email: S3(c.email),
-    dateNaissance: S3(c.date_naissance)?.slice(0, 10),
+    dateNaissance: jourIso(c.date_naissance),
     lieuNaissance: texteGeo(c.lieu_naissance_geo),
     adresse: texteGeo(c.adresse_geo),
     fonction: S3(c.poste),
@@ -3677,8 +3760,10 @@ export type CommercialisationInput = {
   objet: string;
   message: string;
   smsTexte?: string;
-  /** Acquéreurs ciblés : une proposition sera créée pour chacun. */
-  cibles: { rechercheId: string; contactId?: string; email?: string; telephone?: string }[];
+  /** Acquéreurs ciblés : une proposition sera créée pour chacun.
+   *  `note` est le grade du contact (A/B/C/D) : c'est lui qui décide de la
+   *  colonne où l'immeuble atterrit sur le dashboard — voir `colonneApres`. */
+  cibles: { rechercheId: string; contactId?: string; email?: string; telephone?: string; note?: string }[];
 };
 
 /** Crée la commercialisation et une proposition par acquéreur ciblé.
@@ -3753,9 +3838,81 @@ export async function createCommercialisation(input: CommercialisationInput) {
     }).catch(() => undefined);
   }
 
+  /* L'immeuble change de colonne sur le dashboard. C'est le geste qui manquait :
+     on créait les propositions, et le bien restait en « Préparation mandat et
+     dossier » — donc le tableau de bord ne montrait jamais où en était
+     réellement la commercialisation. */
+  const im = await bqOne("immeuble", input.immeubleId).catch(() => null);
+  const cible = im ? colonneApres(String(im.Statut ?? ""), input.cibles.map((c) => c.note)) : null;
+  if (cible) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_immeuble",
+      p_id: input.immeubleId,
+      p_patch: { Statut: cible, "Modified Date": now },
+    }).catch(() => undefined);
+  }
+
+  revalidatePath("/", "layout");
   revalidatePath(`/bien/${input.immeubleId}`);
   revalidatePath("/propositions");
-  return { commercialisationId: commId, propositions: propositions.length };
+  return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
+}
+
+/** L'état du pont Twilio, pour que l'écran sache s'il peut envoyer. */
+export async function etatEnvoiSms() {
+  const { etatSms, PLAFOND_SMS } = await import("./sms");
+  return { ...etatSms(), plafond: PLAFOND_SMS };
+}
+
+/**
+ * Envoie les SMS d'une commercialisation, et marque la ligne.
+ *
+ * Doctrine §7.1 : l'application prépare, l'agent envoie. Cette fonction n'est
+ * appelée que depuis un bouton, jamais par un automatisme — il n'y a
+ * volontairement pas de file d'attente ni de rattrapage silencieux.
+ *
+ * Le marquage « SMS envoyés » n'est posé QUE si au moins un message est
+ * réellement parti. Marquer un envoi qui a échoué ferait croire le travail
+ * fait, et personne ne le refait jamais.
+ */
+export async function envoyerSmsCommercialisation(input: {
+  immeubleId: string;
+  commId: string;
+  texte: string;
+  numeros: string[];
+}) {
+  if (!input.texte.trim()) return { ok: false as const, message: "Le message est vide." };
+  if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
+  try {
+    const { envoyerSms } = await import("./sms");
+    const r = await envoyerSms(input.numeros, input.texte);
+    if (r.simulation) {
+      return {
+        ok: false as const,
+        simulation: true as const,
+        message:
+          `Mode simulation : ${input.numeros.length} numéros et ${r.segments} segments préparés, ` +
+          "rien n'est parti. Renseignez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM.",
+      };
+    }
+    if (r.envoyes > 0) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_commercialisation",
+        p_id: input.commId,
+        p_patch: {
+          prop_sms_sent: true,
+          sms_envoyes: r.envoyes,
+          sms_segments: r.segments,
+          sms_date: new Date().toISOString(),
+          "Modified Date": new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+    }
+    revalidatePath(`/bien/${input.immeubleId}`);
+    return { ok: r.envoyes > 0, envoyes: r.envoyes, echecs: r.echecs, segments: r.segments };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Marque les e-mails ou les SMS d'une commercialisation comme envoyés. */
@@ -3781,13 +3938,21 @@ export async function setPropositionStatut(
   propositionId: string,
   action: "relancer" | "refuser" | "reactiver",
   motif?: string,
+  /** Ce que la personne a dit en refusant, dans ses mots. Le motif range le
+   *  refus dans une catégorie comparable ; les précisions gardent la phrase,
+   *  qui est souvent la seule chose exploitable six mois plus tard. */
+  precisions?: string,
 ) {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> =
     action === "relancer"
       ? { date_last_relance: now, Statut: "Envoyée" }
       : action === "refuser"
-        ? { Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now, stop_relances_yn: true }
+        ? {
+            Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now,
+            stop_relances_yn: true,
+            ...(precisions?.trim() ? { commentaire: precisions.trim() } : {}),
+          }
         : { Statut: "Envoyée", motif_refus: null, date_fin: null, stop_relances_yn: false };
   await rpc("bo_patch_doc", {
     p_table: "bo_proposition",
@@ -3809,6 +3974,282 @@ export async function noterProposition(propositionId: string, contactId: string,
   });
   revalidatePath(`/contact/${contactId}`);
   revalidatePath("/propositions");
+}
+
+/**
+ * Dépose le PDF d'une offre dans le coffre du bien et rend son chemin
+ * (retour #335 : « n'oublie pas de rajouter le bouton pour ajouter l'offre en
+ * PDF »). L'offre signée est la pièce qui compte : elle doit vivre avec le
+ * bien, pas dans la boîte mail de l'agent.
+ */
+export async function deposerOffrePdf(immeubleId: string, fd: FormData): Promise<string> {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 25 * 1024 * 1024) throw new Error("Fichier trop lourd (25 Mo max)");
+  const path = `documents/${immeubleId}/offre-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  return `storage:${path}`;
+}
+
+/* ---------- Sélecteur d'immeuble pour les actions rapides (#333-#336) ------ */
+
+export type ImmeubleTrouve = {
+  id: string;
+  libelle: string;
+  statut?: string;
+  prix?: string;
+  photoUrl?: string;
+};
+
+/**
+ * Cherche un immeuble par son adresse.
+ *
+ * Les modales de la barre d'actions rapides partent de nulle part : proposer,
+ * faire visiter ou recevoir une offre suppose de désigner le bien. Sans mot-clé
+ * on rend les immeubles en commercialisation, les seuls qu'on propose vraiment
+ * — c'est le cas courant, et il évite une page blanche.
+ */
+export async function chercherImmeubles(q: string): Promise<ImmeubleTrouve[]> {
+  const { chercherImmeublesBO } = await import("@/lib/bubble/server");
+  return chercherImmeublesBO(q);
+}
+
+/* --------- Créer et modifier une recherche acquéreur (retours #330, #332) -- */
+
+export type SaisieRecherche = {
+  /** Absent = création (#332), présent = modification (#330). */
+  id?: string;
+  contactId?: string;
+  cible?: string;
+  destinations: string[];
+  villes: string[];
+  departements: string[];
+  prixMin?: number;
+  prixMax?: number;
+  surfaceMin?: number;
+  surfaceMax?: number;
+  occupMin?: number;
+  occupMax?: number;
+  renta?: number;
+  commentaire?: string;
+  /** Ce que la recherche refuse (retour #332) — voir lib/bo/exclusions.ts. */
+  exclusions: {
+    destinations: string[];
+    villes: string[];
+    departements: string[];
+    regions: string[];
+  };
+};
+
+/**
+ * Enregistre une recherche, créée ou modifiée (retours #330, #332).
+ *
+ * MAV : « il faut qu'en cliquant sur une recherche on puisse la modifier avec
+ * le popup qui s'ouvre » et « quand on clique sur créer une recherche il faut
+ * la modale de recherche qui va créer la recherche pour le client ». Une même
+ * modale sert les deux : c'est le même objet, avec ou sans identifiant.
+ *
+ * Les critères vont dans `bo_recherche`, que Bubble connaît ; les exclusions
+ * dans la table de l'application, qu'il n'écrase pas.
+ */
+export async function enregistrerRecherche(saisie: SaisieRecherche, agentId?: string) {
+  const now = new Date().toISOString();
+  const id = saisie.id ?? newId();
+  const doc = cleanPatch({
+    ACHETEUR: saisie.contactId || null,
+    Cible: saisie.cible || null,
+    Destinations: saisie.destinations,
+    villes: saisie.villes,
+    dpts: saisie.departements,
+    prix_min: saisie.prixMin ?? null,
+    prix_max: saisie.prixMax ?? null,
+    surface_min: saisie.surfaceMin ?? null,
+    surface_max: saisie.surfaceMax ?? null,
+    occup_min: saisie.occupMin ?? null,
+    occup_max: saisie.occupMax ?? null,
+    renta: saisie.renta ?? null,
+    commentaire: saisie.commentaire?.trim() || null,
+    date_modif: now,
+    "Modified Date": now,
+  });
+
+  if (saisie.id) {
+    await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: doc });
+  } else {
+    await rpc("bo_insert_doc", {
+      p_table: "bo_recherche",
+      p_id: id,
+      p_doc: {
+        ...doc,
+        SUIVI: agentId ?? null,
+        archived: false,
+        standby: false,
+        "Created By": agentId ?? null,
+        "Created Date": now,
+      },
+    });
+    /* La fiche du contact doit connaître sa recherche, sinon l'onglet
+       Recherches de la fiche reste vide (même piège de casse qu'au #288 : sur
+       un CONTACT, la liste s'appelle RECHERCHEs). */
+    if (saisie.contactId) {
+      await rpc("bo_append_ref", {
+        p_table: "bo_contact",
+        p_id: saisie.contactId,
+        p_key: "RECHERCHEs",
+        p_value: id,
+      }).catch(() => undefined);
+    }
+  }
+
+  await ecrireExclusions(id, {
+    destinations: saisie.exclusions.destinations,
+    villes: saisie.exclusions.villes,
+    departements: saisie.exclusions.departements,
+    regions: saisie.exclusions.regions,
+  });
+
+  revalidatePath("/recherches");
+  if (saisie.contactId) revalidatePath(`/contact/${saisie.contactId}`);
+  return id;
+}
+
+/** Les exclusions d'une recherche, pour remplir la modale de modification. */
+export async function chargerExclusions(rechercheId: string) {
+  return lireExclusions(rechercheId);
+}
+
+/* ------------- Proposer des biens depuis une recherche (retour #331) ------ */
+
+/** Charge les biens qu'on pourrait proposer à une recherche. */
+export async function chargerAProposer(rechercheId: string) {
+  const { getAProposer } = await import("@/lib/bubble/server");
+  return getAProposer(rechercheId);
+}
+
+export type IssueProposition =
+  /** L'e-mail est préparé, l'agent l'envoie : la proposition part « Envoyée ». */
+  | { mode: "envoyer"; objet: string; message: string; email?: string }
+  /** Le bien ne correspond pas : proposition créée puis refusée, avec le motif. */
+  | { mode: "ne_correspond_pas"; motifs: Record<string, string> }
+  /** On l'avait déjà envoyé hors de l'outil ; `retour` dit si l'acquéreur a répondu. */
+  | { mode: "deja_envoye"; retour?: { statut: string; commentaire?: string } };
+
+/**
+ * Traite d'un coup les biens cochés dans le panneau « à proposer » (#331).
+ *
+ * Les trois issues créent TOUTES une proposition — c'est le point : ce qui a
+ * été écarté doit laisser une trace, sinon le bien remonte demain dans la
+ * pastille et l'agent refait le même arbitrage. Ce qui les distingue, c'est le
+ * statut de départ et ce qu'on inscrit dessus.
+ *
+ * Rien n'est envoyé ici : l'e-mail est préparé et enregistré sur la
+ * proposition, l'agent l'envoie depuis le module Mails. Doctrine maison —
+ * validation humaine avant tout envoi.
+ */
+export async function traiterAProposer(
+  rechercheId: string,
+  immeubleIds: string[],
+  issue: IssueProposition,
+  agentId?: string,
+  /* Retour #333 : la modale d'actions rapides part d'une PERSONNE, pas d'une
+     recherche. Une proposition sans recherche reste une proposition — c'est le
+     bien et l'acquéreur qui comptent. */
+  acheteurImpose?: string,
+) {
+  if (immeubleIds.length === 0) return { crees: 0 };
+  const now = new Date().toISOString();
+  const [r] = rechercheId ? await bqIn("bo_recherche", [rechercheId]) : [];
+  const acheteurId = acheteurImpose || (r ? String(r.ACHETEUR ?? "") || null : null);
+
+  /* Le dernier dossier de chaque bien : c'est la pièce jointe de l'e-mail, et
+     la proposition doit dire laquelle est partie — sinon, six mois plus tard,
+     on ne sait plus quel prix l'acquéreur a vu. Un seul aller-retour pour tout
+     le lot. */
+  const dossierParImmeuble = new Map<string, Record<string, unknown>>();
+  if (SB_KEY) {
+    const filtre = `(${immeubleIds.map((i) => `"${i.replace(/"/g, "")}"`).join(",")})`;
+    const res = await fetch(
+      `${SB_URL}/rest/v1/bo_dossier?data->>IMMEUBLE=in.${encodeURIComponent(filtre)}&select=data&limit=500`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+    ).catch(() => null);
+    if (res?.ok) {
+      for (const { data: d } of (await res.json()) as { data: Record<string, unknown> }[]) {
+        if (!d) continue;
+        const im = String(d.IMMEUBLE ?? "");
+        const p = dossierParImmeuble.get(im);
+        if (!p || Number(d.version ?? 0) > Number(p.version ?? 0)) dossierParImmeuble.set(im, d);
+      }
+    }
+  }
+
+  let crees = 0;
+  for (const immeubleId of immeubleIds) {
+    const id = newId();
+    const dossier = dossierParImmeuble.get(immeubleId);
+
+    const base: Record<string, unknown> = {
+      IMMEUBLE: immeubleId,
+      DOSSIER: dossier ? String(dossier._id) : null,
+      ACHETEUR: acheteurId,
+      RECHERCHEs: rechercheId ? [rechercheId] : undefined,
+      AGENTs: agentId ? [agentId] : [],
+      Source_proposition: rechercheId ? "Recherche" : "Saisie directe",
+      date_modif: now,
+      stop_relances_yn: false,
+      "Created By": agentId ?? null,
+      "Created Date": now,
+      "Modified Date": now,
+    };
+
+    if (issue.mode === "envoyer") {
+      Object.assign(base, {
+        Statut: "Envoyée",
+        date_envoi: now,
+        mail_adresse: issue.email ?? null,
+        mail_subject: issue.objet,
+        mail_text: issue.message,
+      });
+    } else if (issue.mode === "ne_correspond_pas") {
+      const motif = issue.motifs[immeubleId]?.trim();
+      Object.assign(base, {
+        Statut: "Refusée (sans offre)",
+        motif_refus: motif || "Ne correspond pas à la recherche",
+        date_fin: now,
+        stop_relances_yn: true,
+      });
+    } else {
+      Object.assign(base, {
+        Statut: issue.retour?.statut ?? "Envoyée",
+        date_envoi: now,
+        commentaire: issue.retour?.commentaire?.trim() || null,
+        ...(issue.retour?.statut?.startsWith("Refus")
+          ? { date_fin: now, stop_relances_yn: true, motif_refus: issue.retour.commentaire ?? null }
+          : {}),
+      });
+    }
+
+    await rpc("bo_insert_doc", { p_table: "bo_proposition", p_id: id, p_doc: cleanPatch(base) });
+    crees++;
+  }
+
+  /* La recherche mémorise ce qui a été traité : ces biens sortent de la
+     pastille, quelle qu'ait été l'issue. C'est la raison d'être des trois
+     boutons — « ne correspond pas » aussi doit faire taire la notification. */
+  if (rechercheId) {
+    for (const immeubleId of immeubleIds) {
+      await rpc("bo_append_ref", {
+        p_table: "bo_recherche",
+        p_id: rechercheId,
+        p_key: "IMMEUBLEs_proposed",
+        p_value: immeubleId,
+      }).catch(() => undefined);
+    }
+  }
+
+  revalidatePath("/recherches");
+  revalidatePath("/propositions");
+  if (acheteurId) revalidatePath(`/contact/${acheteurId}`);
+  return { crees };
 }
 
 /** Charge le vivier acquéreurs à la demande : 1 900 recherches et leurs

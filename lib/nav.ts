@@ -28,6 +28,11 @@ export const NAV: NavItem[] = [
   { href: "/contacts", label: "Contacts" },
   { href: "/mandats", label: "Mandats" },
   { href: "/propositions", label: "Propositions" },
+  /* Les relances. Juste sous Propositions, parce que c'est la même matière
+     vue par l'autre bout : la proposition est ce qu'on a envoyé, la relance
+     est ce qu'on attend. Et surtout, l'écran raisonne PAR CLIENT quand tout
+     le reste du BO raisonne par immeuble — il lui fallait sa propre entrée. */
+  { href: "/relances", label: "Relances" },
   { href: "/questions", label: "Questions" },
   { href: "/visites", label: "Visites" },
   { href: "/offres", label: "Offres" },

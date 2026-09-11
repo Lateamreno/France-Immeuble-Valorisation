@@ -28,7 +28,7 @@ export function Puce({ label, valeur, euro }: { label: string; valeur?: string; 
 }
 
 export function CarteRecherche({
-  r, choisi, onCocher, onDetail,
+  r, choisi, onCocher, onDetail, onAProposer, onModifier,
   /** Sur la fiche contact, le nom de l'acquéreur est déjà dans l'en-tête. */
   sansContact = false,
   /** Mention posée à droite des destinations (« Mandat de recherche actif »). */
@@ -38,6 +38,10 @@ export function CarteRecherche({
   choisi?: boolean;
   onCocher?: (id: string) => void;
   onDetail: (r: RechercheCard) => void;
+  /** Retour #331 : la pastille ouvre les biens qu'on pourrait lui envoyer. */
+  onAProposer?: (r: RechercheCard) => void;
+  /** Retour #330 : cliquer la recherche ouvre la modale qui la modifie. */
+  onModifier?: (r: RechercheCard) => void;
   sansContact?: boolean;
   mention?: string;
 }) {
@@ -60,7 +64,7 @@ export function CarteRecherche({
           title={r.aProposer > 0
             ? `${r.aProposer} immeuble(s) en mandat correspondent et ne lui ont jamais été envoyés`
             : "Rien de nouveau à lui proposer"}
-          onClick={() => onDetail(r)}
+          onClick={() => (onAProposer ?? onDetail)(r)}
         >
           {r.aProposer}
         </button>
@@ -72,10 +76,24 @@ export function CarteRecherche({
 
       <div className="rc-corps">
         <div className="rc-ligne1">
-          <span className="rc-lieux">
-            {r.lieux.slice(0, 6).join(", ")}
-            {r.lieux.length > 6 && <i> +{r.lieux.length - 6}</i>}
-          </span>
+          {/* Retour #330 — « il faut qu'en cliquant sur une recherche on
+              puisse la modifier avec le popup qui s'ouvre. » La carte n'avait
+              aucune prise : on la lisait, on ne la corrigeait pas. C'est son
+              titre — le secteur — qui ouvre la modale ; le reste de la carte
+              garde ses gestes propres (la pastille, le contact, les détails). */}
+          {onModifier ? (
+            <button type="button" className="rc-lieux modif" onClick={() => onModifier(r)}
+              title="Modifier cette recherche">
+              {r.lieux.slice(0, 6).join(", ")}
+              {r.lieux.length > 6 && <i> +{r.lieux.length - 6}</i>}
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M14 6l4 4" /></svg>
+            </button>
+          ) : (
+            <span className="rc-lieux">
+              {r.lieux.slice(0, 6).join(", ")}
+              {r.lieux.length > 6 && <i> +{r.lieux.length - 6}</i>}
+            </span>
+          )}
           <span style={{ flex: 1 }} />
           {sansContact ? null : r.contact ? (
             <span className="rc-ct-zone">
@@ -156,7 +174,14 @@ export function CarteRecherche({
 }
 
 /** Le détail d'une recherche, en fenêtre. */
-export function ModaleRecherche({ detail, onClose }: { detail: RechercheCard; onClose: () => void }) {
+export function ModaleRecherche({
+  detail, onClose, onAProposer, onModifier,
+}: {
+  detail: RechercheCard;
+  onClose: () => void;
+  onAProposer?: (r: RechercheCard) => void;
+  onModifier?: (r: RechercheCard) => void;
+}) {
   return (
     <div className="modal-ov" onClick={onClose}>
       <div className="modal lieu-modal" onClick={(e) => e.stopPropagation()}>
@@ -183,10 +208,21 @@ export function ModaleRecherche({ detail, onClose }: { detail: RechercheCard; on
         </div>
         <div className="modal-f">
           <span style={{ flex: 1 }} />
-          {detail.aProposer > 0 && detail.contact && (
-            <Link className="savebar-go" href={`/acheteurs?recherche=${detail.id}`}>
-              <span className="ch">›</span> Voir les immeubles à proposer
-            </Link>
+          {onModifier && (
+            <button type="button" className="fadd" onClick={() => onModifier(detail)}>
+              Modifier la recherche
+            </button>
+          )}
+          {detail.aProposer > 0 && (
+            onAProposer ? (
+              <button type="button" className="savebar-go" onClick={() => onAProposer(detail)}>
+                <span className="ch">›</span> Voir les immeubles à proposer
+              </button>
+            ) : (
+              <Link className="savebar-go" href={`/acheteurs?recherche=${detail.id}`}>
+                <span className="ch">›</span> Voir les immeubles à proposer
+              </Link>
+            )
           )}
         </div>
       </div>

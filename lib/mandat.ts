@@ -266,25 +266,66 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
 const pluriel = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
 
 /**
+ * La nature de l'immeuble telle qu'on l'annonce : « mixte », « d'habitation »,
+ * « commercial », « de bureaux »… (retour #323).
+ *
+ * Les caves, parkings et annexes ne comptent pas : un immeuble d'habitation
+ * avec des caves n'est pas mixte pour autant, et l'écrire ferait fuir
+ * l'acquéreur qui ne cherche que du résidentiel.
+ */
+const NATURE_PAR_DESTINATION: Record<string, string> = {
+  Logement: "d'habitation",
+  Commerce: "commercial",
+  Bureau: "de bureaux",
+  Logistique: "logistique",
+};
+
+export function natureImmeuble(lots: Record<string, unknown>[]): string {
+  const natures = new Set(
+    lots
+      .map((l) => NATURE_PAR_DESTINATION[String(l.Destination ?? "")])
+      .filter(Boolean),
+  );
+  if (natures.size === 0) return "";
+  if (natures.size > 1) return "mixte";
+  return [...natures][0];
+}
+
+/**
  * Le descriptif que la loi attend dans un mandat : désignation du bien,
  * consistance, situation locative. Rédigé depuis l'état locatif, modifiable à
  * la main si l'agent veut le préciser (retour #103).
+ *
+ * `discret` (retour #323) retire de la première phrase l'adresse exacte et la
+ * référence cadastrale, et n'annonce que la nature de l'immeuble et sa ville.
+ * MAV : « dans la description on indique l'adresse et le cadastre de
+ * l'immeuble, pas besoin, et surtout ce sera préjudiciable pour les annonces
+ * en ligne ». Le mandat, lui, garde la désignation complète : c'est un acte,
+ * il doit dire quel bien il vise. La même fonction sert donc les deux usages
+ * — le contrat et l'annonce — sans que le texte diverge sur tout le reste.
  */
 export function descriptifLegal(
   im: Record<string, unknown>,
   lots: Record<string, unknown>[],
   refCadastre?: string,
   surfaceTerrain?: number,
+  discret = false,
 ): string {
   const s = synthese(lots);
   const adresse = adresseImmeuble(im);
   const phrases: string[] = [];
 
+  const nature = natureImmeuble(lots);
+  const ville = String(im.adresse_ville ?? "").trim();
+  const terrain = surfaceTerrain ? `, sur un terrain de ${group(surfaceTerrain)} m²` : "";
+
   phrases.push(
-    `Un immeuble de rapport situé ${adresse}` +
-      (refCadastre ? `, cadastré ${refCadastre}` : "") +
-      (surfaceTerrain ? `, sur un terrain de ${group(surfaceTerrain)} m²` : "") +
-      ".",
+    discret
+      ? `Un immeuble de rapport${nature ? ` ${nature}` : ""}${ville ? ` situé à ${ville}` : ""}${terrain}.`
+      : `Un immeuble de rapport situé ${adresse}` +
+        (refCadastre ? `, cadastré ${refCadastre}` : "") +
+        terrain +
+        ".",
   );
 
   if (s.lots > 0) {

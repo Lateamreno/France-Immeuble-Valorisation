@@ -102,9 +102,23 @@ function ChoixMateriau({ composant, valeur, ajouts, onChange }: {
 
   const enregistrer = () =>
     start(async () => {
-      const r = await ajouterTypologie(RUBRIQUE_MATERIAU(composant), texte, connus);
-      setMsg(r.ok ? `« ${texte.trim()} » ajouté aux matériaux ${composant}.` : r.message);
-      if (r.ok) { onChange(texte.trim()); setLibre(false); }
+      /* Retour #314 — « quand j'ai essayé d'ajouter un matériau qui n'existait
+         pas, ça m'a fait bugger la page complète. »
+         La cause était en base (voir la migration
+         `bo_refuser_reinsertion_cast_texte`), mais elle a révélé un défaut de
+         forme ici : une action qui rend déjà un message d'échec ne doit pas,
+         par ailleurs, laisser filer une exception. Un ajout refusé se dit dans
+         la ligne ; il ne fait pas tomber l'écran et vingt minutes de saisie
+         avec lui. Le matériau reste alors utilisé pour CE composant, même s'il
+         n'a pas rejoint le référentiel. */
+      try {
+        const r = await ajouterTypologie(RUBRIQUE_MATERIAU(composant), texte, connus);
+        setMsg(r.ok ? `« ${texte.trim()} » ajouté aux matériaux ${composant}.` : r.message);
+        if (r.ok) { onChange(texte.trim()); setLibre(false); }
+      } catch {
+        setMsg("Enregistrement au référentiel impossible — le matériau reste saisi sur ce composant.");
+        onChange(texte.trim());
+      }
     });
 
   return (
@@ -159,21 +173,34 @@ function LigneComposant({
   return (
       <div className={`cmp${pending ? " att" : ""}`}>
         <span className="cmp-ic"><svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg></span>
+        {/* Retour #314 — « j'aimerais que le dropdown de sélection d'état soit
+            plus proche de la sélection de matériaux, pour faciliter la
+            complétion de la chose. L'idéal serait que le début du dropdown
+            soit aligné au début du dropdown d'état général. »
+            L'état était rejeté à l'autre bout de la ligne, et les menus de
+            matériau démarraient chacun à une abscisse différente puisqu'ils
+            suivaient le nom du composant — « Façade » et « Menuiseries
+            extérieures » ne font pas la même longueur. Le nom, le matériau et
+            l'état ont donc chacun leur colonne de largeur fixe : les cinq
+            lignes s'alignent, et les deux menus qu'on remplit d'affilée sont
+            côte à côte. */}
         <span className="cmp-c">
-          <b>
-            {type}
+          <b className="cmp-l">
+            <span className="cmp-n">{type}</span>
             <span className="tiret">—</span>
-            <ChoixMateriau composant={type} valeur={materiau} ajouts={b.typologies} onChange={setMateriau} />
+            <span className="cmp-m">
+              <ChoixMateriau composant={type} valeur={materiau} ajouts={b.typologies} onChange={setMateriau} />
+            </span>
+            <select className={`min etat${etat ? "" : " requis"}`} value={etat} onChange={(e) => setEtat(e.target.value)}>
+              <option value="">Etat à préciser</option>
+              {[...new Set([etat, ...ETATS_COMPOSANT])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+            </select>
           </b>
           <span className={`cmp-tvx${tvx > 0 ? " on" : ""}`}>
             <svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg>
             {tvx > 0 ? `${euros(tvx)} de travaux` : "Pas de travaux"}
           </span>
         </span>
-        <select className={`min etat${etat ? "" : " requis"}`} value={etat} onChange={(e) => setEtat(e.target.value)}>
-          <option value="">Etat à préciser</option>
-          {[...new Set([etat, ...ETATS_COMPOSANT])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-        </select>
         {standard ? (
           <span className="chg-lock" title="Composant permanent : il se remplit, il ne se supprime pas">
             <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>

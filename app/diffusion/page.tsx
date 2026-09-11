@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { listDiffusion } from "@/lib/bubble/server";
-import { diffusionConfiguree, retombeesAnnonces } from "@/lib/bo/diffusion";
+import { diffusionConfiguree, retombeesAnnonces, testerBranchement } from "@/lib/bo/diffusion";
 import { ParcDiffusion, type LigneDiffusion } from "@/components/diffusion";
 import { Vitrine } from "@/components/vitrine";
 import { vitrineParDefaut } from "@/lib/vitrine";
@@ -15,9 +15,13 @@ export const dynamic = "force-dynamic";
  * qui existent vraiment plutôt qu'un zéro qui mentirait.
  */
 export default async function DiffusionPage() {
-  const [parc, configuree] = await Promise.all([
+  /* Le test de branchement se joue à l'ouverture de l'écran : c'est le seul
+     moment où quelqu'un regarde. Il ne touche pas au catalogue — voir
+     `testerBranchement` — donc le jouer systématiquement ne coûte rien. */
+  const [parc, configuree, branchement] = await Promise.all([
     listDiffusion().catch(() => []),
     diffusionConfiguree(),
+    testerBranchement().catch(() => undefined),
   ]);
 
   const retombees = await retombeesAnnonces(parc.map((p) => `FI:${p.immeubleId}`)).catch(() => []);
@@ -56,6 +60,7 @@ export default async function DiffusionPage() {
         lignes={lignes}
         configuree={configuree}
         vuesDisponibles={retombees.some((r) => typeof r.vues === "number")}
+        branchement={branchement}
       />
       <Vitrine initial={vitrineParDefaut(origine)} configuree={configuree} />
     </div>

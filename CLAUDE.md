@@ -14,6 +14,57 @@ Ce document est la source de vérité du projet. Avant toute session de code :
 3. Ne jamais élargir le périmètre d'un milestone sans validation explicite.
 4. Respecter les **garde-fous** de la section 8 comme des invariants non négociables (conformité Hoguet, RGPD locataires, doctrine préemption). Une violation de garde-fou est un bug bloquant, pas un arbitrage de style.
 5. À chaque fin de milestone : déployer sur preview Vercel, attendre validation humaine avant le milestone suivant.
+6. À chaque **lot de modifications livré**, produire le document avant / après (§0 bis). Ce n'est pas une option.
+
+---
+
+## 0 bis. Le document avant / après — à chaque lot livré
+
+> Règle générale de travail avec MAV, valable sur **tous** ses projets (une copie
+> vit dans son contexte permanent utilisateur). Elle est répétée ici parce que le
+> contexte utilisateur ne survit pas à un conteneur neuf, alors que ce fichier,
+> lui, est dans le dépôt.
+
+Dès qu'un **lot de modifications** est livré — plusieurs corrections d'un coup,
+qu'elles soient arrivées **en direct dans la conversation** ou **via l'outil de
+correction** (`bo_feedback`) — le travail n'est pas fini tant que le document
+n'est pas publié en **Artifact** et le lien donné. Sans le demander.
+
+Le document contient, dans cet ordre :
+
+1. **Le relevé** — une ligne par modification, dans la numérotation de MAV quand
+   elle existe, avec sa mention « vérifié ».
+2. **Les comparaisons avant / après** — des captures **réelles**, prises au
+   navigateur sur les **deux versions construites** : l'ancienne servie depuis un
+   worktree du commit d'avant, la nouvelle depuis le build courant, sur le même
+   écran et les mêmes données. Les deux commits sont cités dans le document.
+3. **Ce qu'il faut savoir** — les arbitrages pris sans lui, les vrais défauts
+   trouvés en chemin, ce qui reste en pause.
+
+Règles non négociables :
+
+- **Aucune capture fabriquée ni décorative.** Si un écran n'existait pas avant,
+  le volet « avant » est un **texte** qui dit ce que faisait l'ancienne version —
+  avec le libellé exact de l'alerte ou du message s'il y en avait un — jamais une
+  image de rien.
+- **Écarter les paires trompeuses** : deux captures identiques au pixel près (le
+  changement est un comportement, pas un dessin), ou une capture qui ne montre
+  pas ce dont parle la légende. Mieux vaut huit comparaisons vraies que douze
+  dont trois mentent.
+- **Pas de données personnelles inutiles** dans les captures : une liste qui
+  étale des e-mails et des téléphones sans rien démontrer n'y a pas sa place
+  (cohérent avec le §8.3).
+- **Un revirement de MAV se dit dans le document**, pas seulement dans le commit :
+  la ligne du relevé porte la mention, et la capture « après » est refaite.
+- Le document se **met à jour à la même adresse** quand un retour arrive après
+  coup — jamais un second lien.
+
+Recette éprouvée pour les captures (à reprendre telle quelle) : `git worktree add`
+sur le commit d'avant, `npm run build` puis `next start` sur deux ports distincts,
+puis puppeteer-core (`executablePath: "/opt/pw-browsers/chromium"`, `--no-sandbox`)
+qui cadre chaque scène sur le sélecteur qui compte. Les images partent en
+**data: URI base64** dans la page — la CSP des Artifacts bloque toute image
+externe. Nettoyer le worktree ensuite (`git worktree remove`), il pèse ~900 Mo.
 
 ---
 

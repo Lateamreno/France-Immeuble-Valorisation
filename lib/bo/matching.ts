@@ -16,8 +16,26 @@ export type CriteresBien = {
   travaux?: number;
   ville?: string;
   departement?: string;
+  /** TOUTES les destinations présentes dans l'immeuble, pas seulement la
+   *  principale : un immeuble d'habitation avec un commerce au pied intéresse
+   *  celui qui cherche du commerce, et gêne celui qui n'en veut pas (#332). */
   destinations?: string[];
+  /** La région du bien, pour les exclusions géographiques (#332). */
+  region?: string;
   cibles?: string[];
+};
+
+/**
+ * Ce qu'une recherche refuse (retour #332).
+ *
+ * Portée par `fi_recherche_exclusion` et jointe à la recherche avant le
+ * matching. Absente, elle ne refuse rien.
+ */
+export type ExclusionsRecherche = {
+  destinations: string[];
+  villes: string[];
+  departements: string[];
+  regions: string[];
 };
 
 export type FiltresMatch = {
@@ -137,7 +155,41 @@ function libelleCriteres(r: Record<string, unknown>) {
  * proposer (écran Recherches). Les filtres de campagne restent chez
  * `matcher` : ils décrivent un envoi, pas une correspondance.
  */
-export function correspond(r: Record<string, unknown>, bien: CriteresBien): boolean {
+/**
+ * Les exclusions rejettent-elles ce bien ? (retour #332)
+ *
+ * Elles s'appliquent APRÈS les critères et tranchent en dernier : c'est tout
+ * leur intérêt. Une destination exclue suffit à écarter le bien même si une
+ * autre de ses destinations était recherchée — « il veut QUE de l'habitation,
+ * on exclut le commerce ».
+ */
+function exclu(bien: CriteresBien, e: ExclusionsRecherche | undefined): boolean {
+  if (!e) return false;
+  const bas = (v: string) => v.trim().toLowerCase();
+  if (e.destinations.length > 0) {
+    const dests = (bien.destinations ?? []).map(bas);
+    if (e.destinations.map(bas).some((x) => dests.includes(x))) return true;
+  }
+  if (e.villes.length > 0 && bien.ville) {
+    const v = bas(bien.ville);
+    if (e.villes.map(bas).some((x) => x === v || x.includes(v) || v.includes(x))) return true;
+  }
+  if (e.departements.length > 0 && bien.departement) {
+    const d = bien.departement.replace(/^0/, "");
+    if (e.departements.map((x) => x.replace(/^0/, "")).includes(d)) return true;
+  }
+  if (e.regions.length > 0 && bien.region) {
+    const g = bas(bien.region);
+    if (e.regions.map(bas).includes(g)) return true;
+  }
+  return false;
+}
+
+export function correspond(
+  r: Record<string, unknown>,
+  bien: CriteresBien,
+  exclusions?: ExclusionsRecherche,
+): boolean {
   if (!dansFourchette(bien.prix, r.prix_min, r.prix_max)) return false;
   if (!dansFourchette(bien.surface, r.surface_min, r.surface_max)) return false;
   if (!dansFourchette(bien.occupation, r.occup_min, r.occup_max)) return false;
@@ -145,6 +197,7 @@ export function correspond(r: Record<string, unknown>, bien: CriteresBien): bool
   if (!geoOk(r, bien)) return false;
   if (!listeOk(bien.destinations ?? [], arr(r.Destinations))) return false;
   if (bien.cibles && bien.cibles.length > 0 && S(r.Cible) && !bien.cibles.includes(S(r.Cible))) return false;
+  if (exclu(bien, exclusions)) return false;
   return true;
 }
 
@@ -154,6 +207,8 @@ export function matcher(
   contacts: Map<string, Record<string, unknown>>,
   bien: CriteresBien,
   filtres: FiltresMatch,
+  /** Les exclusions par recherche (retour #332), quand l'appelant les a chargées. */
+  exclusions?: Map<string, ExclusionsRecherche>,
 ): Acquereur[] {
   const retenues = recherches.filter((r) => {
     if (r.archived === true || r.standby === true) return false;
@@ -167,7 +222,7 @@ export function matcher(
     if (filtres.exclureAgents && r.agent === true) return false;
     if (filtres.mandatObligatoire && arr(r.MANDATs).length === 0) return false;
 
-    return correspond(r, bien);
+    return correspond(r, bien, exclusions?.get(String(r._id)));
   });
 
   return retenues.map((r) => carte(r, contacts, true));

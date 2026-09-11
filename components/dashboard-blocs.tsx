@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -100,7 +100,7 @@ function Card({
               </span>
               {fiche && (
                 <FicheContact
-                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText }}
+                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText, initialesCouleur: c.rvCouleur }}
                   onClose={() => setFiche(false)}
                 />
               )}
@@ -142,25 +142,82 @@ function Card({
             </div>
           )}
 
-          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
-
           {c.wait && (
             <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
                 <span className="lbl">{c.wait.motif}</span>
                 {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
-                <span className="ar">▾</span>
+                {/* La flèche déroule et replie le dernier suivi (retour #349).
+                    Elle était décorative et se contentait d'être dans le lien
+                    de la carte : cliquer dessus ouvrait donc la fiche. Sans
+                    suivi à montrer, elle redevient un simple ornement plutôt
+                    qu'un bouton qui ne fait rien. */}
+                {c.noteComplete ? (
+                  <span className={`ar act${note ? " on" : ""}`} role="button" tabIndex={0}
+                    title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault(); e.stopPropagation(); setNote((v) => !v);
+                    }}>
+                    ▾
+                  </span>
+                ) : (
+                  <span className="ar">▾</span>
+                )}
               </span>
               <span className="d">{c.wait.to}</span>
             </div>
           )}
 
-          {(c.adresse || c.prix || c.fee) && (
+          {/* Posé après la frise : sur une carte en attente le suivi se lit
+              sous elle, et sur les autres cartes (qui n'ont pas de frise) il
+              reste collé sous la note, exactement comme avant. */}
+          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
+
+          {(c.perf || c.prix || c.fee) && (
             <div className="krow3">
-              {c.adresse && <span className="kaddr">{c.adresse}</span>}
+              {/* Le rendement, coloré face à celui du secteur (demande MAV).
+                  Sens inverse de la pastille de prix à droite : un rendement
+                  AU-DESSUS du secteur est vert. Pas de référence utilisable,
+                  pas de couleur — la pastille reste neutre plutôt que de
+                  mentir. */}
+              {c.perf?.renta !== undefined && (
+                <span
+                  className={`kperf ${
+                    c.perf.rentaEcart === undefined || c.perf.rentaEcart === 0 ? ""
+                      : c.perf.rentaEcart > 0 ? "kdec" : "ksur"
+                  }`}
+                  title={
+                    "Rendement brut actuel"
+                    + (c.perf.rentaRef !== undefined
+                      ? ` — secteur ${c.perf.rentaRef.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`
+                        + (c.perf.rentaEcart
+                          ? ` (${c.perf.rentaEcart > 0 ? "+" : ""}${c.perf.rentaEcart.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt)`
+                          : " (au niveau du secteur)")
+                      : "")
+                  }>
+                  {c.perf.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
+                </span>
+              )}
+              {/* L'écart du prix du jour au prix du SECTEUR, au m². Signé
+                  toujours, pour qu'on ne le confonde pas avec le rendement
+                  juste à gauche — et neutre à zéro, ce qui ne concerne que
+                  douze biens. */}
+              {c.perf?.ecartM2 !== undefined && (
+                <span
+                  className={`kperf ${c.perf.ecartM2 > 0 ? "ksur" : c.perf.ecartM2 < 0 ? "kdec" : ""}`}
+                  title={
+                    (c.perf.prixM2 ? `Prix au m² : ${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €` : "Prix au m²")
+                    + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €` : " face au secteur")
+                    + (c.perf.prixM2RefLe ? ` (relevé du ${c.perf.prixM2RefLe})` : "")
+                  }>
+                  {c.perf.ecartM2 > 0 ? "+" : ""}{c.perf.ecartM2} %
+                </span>
+              )}
               {c.fee && <span className="kfee">{c.fee}</span>}
-              {c.prix && <span className="kprice" style={!c.fee ? { marginLeft: "auto" } : undefined}>{c.prix}</span>}
+              {c.prix && <span className="kprice">{c.prix}</span>}
             </div>
           )}
         </div>
@@ -222,6 +279,32 @@ function Card({
         {c.history && (
           <button className={`kbtn${hist ? " on" : ""}`} type="button" aria-label="Historique" onClick={() => setHist((v) => !v)}>
             <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></svg>
+          </button>
+        )}
+        {/* Le plan, descendu de la ligne du prix jusqu'ici (retour #348 : « le
+            picto Google Map tu peux le mettre à côté du picto historique comme
+            ça il dénote pas »). Il devient un `kbtn` comme les autres : même
+            taille, même cadre, même écart — c'est la rangée qui les tient, on
+            ne règle plus rien à la main.
+
+            Et il redevient un vrai `<button>` : cette rangée est en dehors du
+            lien de la carte, contrairement à la ligne du prix. Plus besoin
+            d'arrêter la propagation du clic. */}
+        {c.adresseComplete && (
+          <button
+            className="kbtn"
+            type="button"
+            aria-label={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            title={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            onClick={() => window.open(
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
+              "_blank", "noopener,noreferrer",
+            )}
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.6" />
+            </svg>
           </button>
         )}
         {c.redIcons && (
@@ -287,7 +370,7 @@ function Card({
 
       {transfert && (
         <ModaleTransfert
-          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, note: c.note }}
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
           agents={agents}
           peutTransferer={peutTransferer}
           onAnnuler={() => setTransfert(false)}
@@ -359,7 +442,7 @@ function Vignette({ c }: { c: KCard }) {
     <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
       <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
         repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
-      {c.rv && <span className="rv">{c.rvText ?? "RV"}</span>}
+      {c.rv && <span className="rv" style={c.rvCouleur ? { background: c.rvCouleur } : undefined}>{c.rvText ?? "RV"}</span>}
     </div>
   );
 }
@@ -430,10 +513,72 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
   );
 }
 
-export function DashboardBlocs({ blocs, mock, agents }: { blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[] }) {
+/**
+ * Le dashboard filtré par la recherche de la barre haute (retour #306).
+ *
+ * MAV : « quand je fais une recherche, je veux juste que ça cache tous les
+ * immeubles qui ne correspondent pas à la recherche, que ce soit par nom de
+ * proprio, par ville ou par adresse. Je t'ai mis ce à quoi ça ressemble. »
+ *
+ * La barre partait sur un écran de résultats à part : on perdait les colonnes,
+ * donc l'étape où chaque dossier se trouve — et c'est justement ce qu'on
+ * cherche en tapant un nom. Les colonnes restent ; seules les cartes qui ne
+ * correspondent pas disparaissent, et les compteurs suivent.
+ *
+ * Mot à mot : « voci nanterre » trouve la carte de Nanterre de M. Voci, dans
+ * l'ordre qu'on veut. Chaque mot doit se retrouver quelque part — ville,
+ * adresse, contact — ce qui évite les faux positifs d'une recherche « ou ».
+ */
+function correspond(c: KCard, mots: string[]): boolean {
+  if (mots.length === 0) return true;
+  const foin = [
+    c.ville, c.adresse, c.contact, c.objet,
+    c.contactInfo?.nom, c.contactInfo?.email, c.contactInfo?.tel,
+  ]
+    .filter(Boolean).join(" ")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return mots.every((m) => foin.includes(m));
+}
+
+const decouper = (q: string) =>
+  q.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .split(/\s+/).map((x) => x.trim()).filter(Boolean);
+
+export function DashboardBlocs({ blocs, mock, agents, recherche = "" }: {
+  blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[];
+  /** Ce qui est tapé dans la barre haute (#306). */
+  recherche?: string;
+}) {
+  const mots = useMemo(() => decouper(recherche), [recherche]);
+
+  const vus = useMemo(() => {
+    if (mots.length === 0) return blocs;
+    return blocs.map((b) => {
+      const cols = b.cols.map((c) => {
+        const cards = c.cards.filter((x) => correspond(x, mots));
+        return { ...c, cards, count: cards.length };
+      }) as KBloc["cols"];
+      const total = cols.reduce((s, c) => s + c.cards.length, 0);
+      /* Les pastilles du bandeau comptent ce que l'écran montre, pas ce qu'il
+         montrerait sans filtre : un « 45 » à côté de deux cartes visibles
+         ferait douter du filtre. */
+      return { ...b, cols, nsq: total, nred: Math.min(b.nred, total), openDefault: total > 0 };
+    });
+  }, [blocs, mots]);
+
+  const trouves = vus.reduce((s, b) => s + b.cols.reduce((t, c) => t + c.cards.length, 0), 0);
+
   return (
     <div className="wrap">
-      {blocs.map((b) => (
+      {mots.length > 0 && (
+        <div className="dash-filtre">
+          {trouves === 0
+            ? <>Aucun immeuble ne correspond à <b>{recherche}</b>.</>
+            : <>{trouves} immeuble{trouves > 1 ? "s" : ""} {trouves > 1 ? "correspondent" : "correspond"} à <b>{recherche}</b> — les autres sont masqués.</>}
+          <Link className="dash-filtre-x" href="/">✕ Tout afficher</Link>
+        </div>
+      )}
+      {vus.map((b) => (
         <Bloc key={b.key} b={b} mock={mock} agents={agents} />
       ))}
     </div>

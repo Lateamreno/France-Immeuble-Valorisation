@@ -8,6 +8,7 @@
 // baisse. Rien n'est enregistré tant qu'on n'a pas validé.
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useDepartUrl } from "@/lib/etat-url";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
@@ -214,7 +215,20 @@ function ModalePrix({
  * remplie, avec le motif « Prix souhaité par le vendeur » : le prix passe par
  * le chemin habituel, avec son historique, pas par une porte dérobée.
  */
-function EspaceVendeur({
+/**
+ * Retour #310 — « je veux que l'espace vendeur soit dans l'onglet propriétaire. »
+ *
+ * C'est sa place : il ne parle pas du prix mais de la PERSONNE — son accès,
+ * son compte, son adresse e-mail, les pièces qu'elle dépose. Il occupait le
+ * haut de « Description et prix », où l'on vient pour fixer un prix, et
+ * repoussait le prix sous la ligne de flottaison.
+ *
+ * Il reprend le prix arrêté par le propriétaire, ce qui se fait dans l'autre
+ * onglet : quand `onReprendre` n'est pas fourni — c'est le cas depuis l'onglet
+ * Propriétaire — le bouton devient un renvoi vers l'écran du prix, qui sait le
+ * reprendre.
+ */
+export function EspaceVendeur({
   immeubleId, espace, tauxHonos, proprietaireId, proprietaireEmail, compteActif, onReprendre,
 }: {
   immeubleId: string;
@@ -224,7 +238,8 @@ function EspaceVendeur({
   proprietaireId?: string;
   proprietaireEmail?: string;
   compteActif?: boolean;
-  onReprendre: (nv: number) => void;
+  /** Absent depuis l'onglet Propriétaire : la reprise se fait sur le prix. */
+  onReprendre?: (nv: number) => void;
 }) {
   const [pending, start] = useTransition();
   const [jeton, setJeton] = useState(espace && !espace.revoque ? espace.jeton : null);
@@ -301,11 +316,15 @@ function EspaceVendeur({
             <b>{euros(prix)} net vendeur</b>
             <em>soit {euros(Math.round(prix * (1 + tauxHonos / 100)))} HAI</em>
           </div>
-          {aRepondu && (
+          {aRepondu && (onReprendre ? (
             <button type="button" className="espv-b go" onClick={() => onReprendre(prix)}>
               Reprendre ce prix
             </button>
-          )}
+          ) : (
+            <Link className="espv-b go" href={`/bien/${immeubleId}?ecran=prix&reprendre=1`}>
+              Reprendre ce prix →
+            </Link>
+          ))}
         </div>
       )}
       {espace?.prix_mot && (
@@ -350,8 +369,94 @@ function EspaceVendeur({
 
 /* ---------- Écran ---------- */
 
-export function PrixEcran({ b, espace, compteActif }: {
-  b: BienData; espace?: Espace | null; compteActif?: boolean;
+/* Depuis le retour #310, l'écran du prix ne s'occupe plus du compte client :
+   il est passé à l'onglet Propriétaire avec l'espace vendeur. Il garde
+   `espace` parce qu'il en reprend le prix arrêté par le propriétaire. */
+
+/* ============ Retour #311 · rendre l'écran du prix lisible d'un coup ========
+   MAV : « tu peux faire des pictos et organiser les informations pour que ce
+   soit plus compréhensible, pareil pour le prix, les honos et tout. Limite tu
+   fais un petit résumé d'état locatif, genre Bureau x — x m² — x loyer, avec
+   une ligne par type sur deux colonnes, et le récap dans lequel on met tous
+   les loyers, les travaux, le prix au m² après travaux et la renta après
+   travaux vs actuel — limite remettre les deux grilles de la détermination de
+   prix de l'estimation. »
+
+   L'écran donnait le prix et les rendements, mais rien de ce dont ils
+   découlent : on descendait dans l'état locatif pour savoir ce qui compose
+   les loyers, et on refaisait de tête le prix au m² travaux compris. Deux
+   blocs comblent ça — ce que l'immeuble contient, et ce que ça donne. */
+
+/* Pictos de destination, les mêmes que l'état locatif et l'estimation. */
+const IC_DEST: Record<string, React.ReactNode> = {
+  Logement: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
+  Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+  Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
+  Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
+  Cave: <><path d="M4 20.5V12a8 8 0 0 1 16 0v8.5" /><path d="M8.5 20.5V12a3.5 3.5 0 0 1 7 0v8.5" /><path d="M2.5 20.5h19" /></>,
+  Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
+  Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
+};
+
+/** Les destinations qui se comptent au lot, jamais au m² (retours #249/#250). */
+const AU_LOT = new Set(["Cave", "Parking"]);
+
+/**
+ * Le résumé de l'état locatif, une ligne par destination, sur deux colonnes.
+ *
+ * « Bureau 3 lots — 120 m² — 2 400 €/mois » : de quoi comprendre d'où viennent
+ * les loyers sans quitter l'écran du prix. Les caves et les parkings
+ * n'affichent pas de surface — un prix au m² de parking ne veut rien dire.
+ */
+function ResumeLocatif({ b }: { b: BienData }) {
+  const lignes = useMemo(() => {
+    const par = new Map<string, { lots: number; occ: number; surface: number; loyer: number; max: number }>();
+    for (const l of b.lots) {
+      const d = S(l.Destination) || "Autre";
+      const e = par.get(d) ?? { lots: 0, occ: 0, surface: 0, loyer: 0, max: 0 };
+      e.lots++;
+      if ((num(l.loyer) ?? 0) > 0) e.occ++;
+      e.surface += num(l.surface_carrez) ?? 0;
+      e.loyer += num(l.loyer) ?? 0;
+      e.max += num(l.loyer_max) ?? num(l.loyer) ?? 0;
+      par.set(d, e);
+    }
+    return [...par.entries()]
+      .map(([dest, v]) => ({ dest, ...v }))
+      .sort((a, z) => z.loyer - a.loyer || z.lots - a.lots);
+  }, [b.lots]);
+
+  if (lignes.length === 0) return null;
+  return (
+    <>
+      <div className="fsub" style={{ marginTop: 18 }}>Ce que l&apos;immeuble contient</div>
+      <div className="px-loc">
+        {lignes.map((l) => (
+          <div className="px-loc-l" key={l.dest}>
+            <span className="px-loc-ic"><svg viewBox="0 0 24 24">{IC_DEST[l.dest] ?? IC_DEST.Annexe}</svg></span>
+            <b>{l.dest}</b>
+            <span className="px-loc-n">{l.lots} lot{l.lots > 1 ? "s" : ""}</span>
+            {!AU_LOT.has(l.dest) && l.surface > 0 && (
+              <span className="px-loc-n">{group(l.surface)} m²</span>
+            )}
+            <span className="sp" />
+            <span className={`px-loc-v${l.loyer > 0 ? "" : " vide"}`}>
+              {l.loyer > 0 ? `${group(l.loyer)} €/mois` : "libre"}
+            </span>
+            {l.occ < l.lots && (
+              <span className="px-loc-o" title={`${l.lots - l.occ} lot(s) sans loyer`}>
+                {l.occ}/{l.lots}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function PrixEcran({ b, espace }: {
+  b: BienData; espace?: Espace | null;
 }) {
   const im = b.im;
   const immeubleId = String(im._id);
@@ -360,6 +465,12 @@ export function PrixEcran({ b, espace, compteActif }: {
   /* Le prix du propriétaire, quand l'agent choisit de le reprendre : il
      ouvre la fenêtre « Nouveau prix » déjà remplie, avec le bon motif. */
   const [duVendeur, setDuVendeur] = useState<number | null>(null);
+  /* Retour #310 — l'espace vendeur vit maintenant dans l'onglet Propriétaire ;
+     son bouton « Reprendre ce prix » renvoie donc ici, avec `?reprendre=1`.
+     On ouvre alors la fenêtre « Nouveau prix » déjà remplie du prix arrêté par
+     le propriétaire, exactement comme le bouton le faisait sur place. */
+  const demandeReprise = useDepartUrl<string>("reprendre", "");
+  const [repriseVue, setRepriseVue] = useState(false);
 
   /* Contexte de calcul : les mêmes entrées que l'estimation. */
   const ctx: ContexteRendement = useMemo(() => {
@@ -389,6 +500,46 @@ export function PrixEcran({ b, espace, compteActif }: {
   const honosEnBase = num(im.prix_honos_ttc) ?? num(dernier?.in_honos_ttc) ?? 0;
   const nvEnBase = Math.max(0, prixEnBase - honosEnBase);
   const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
+
+  /* On n'ouvre la fenêtre qu'une fois, et seulement s'il y a bien un prix de
+     propriétaire à reprendre : ajuster l'état pendant le rendu est la façon
+     prévue de réagir à une demande venue de l'adresse, et un effet ferait
+     apparaître l'écran du prix avant la fenêtre. */
+  const prixVendeur = espace?.prix_nv;
+  if (demandeReprise === "1" && !repriseVue) {
+    setRepriseVue(true);
+    if (prixVendeur !== undefined && prixVendeur !== null && !espace?.prix_repris) {
+      setDuVendeur(Math.round(prixVendeur * (1 + tauxHonos / 100)));
+      setModale(true);
+    }
+  }
+
+  /* Le taux d'occupation des pastilles de synthèse (#338). Il se compte en
+     SURFACE et non en nombre de lots : douze caves libres et un plateau de
+     bureaux loué, ce n'est pas 8 % d'occupation. C'est la même définition que
+     celle des rendements plus bas — deux chiffres qui se contrediraient à
+     l'écran seraient pires que pas de chiffre du tout. */
+  const occupationPct = ctx.surface > 0 ? (ctx.surfaceOccupee / ctx.surface) * 100 : 0;
+
+  /* Retour #337 — « t'as pas mis la charge des honoraires ; si le mandat est
+     signé tu reprends l'info depuis le mandat, et s'il n'y a pas de mandat tu
+     écris "Mandat non signé". »
+     C'est le mandat qui tranche, pas la fiche : la charge des honoraires est
+     une clause signée. Le champ de l'immeuble, lui, n'était qu'une copie —
+     et une copie qui se désynchronise ment sur un point qui engage l'agence
+     (et qui, sur un lot préemptable, doit rester charge vendeur, §8.2). */
+  const chargeHonos = useMemo(() => {
+    const signes = b.mandats.filter(
+      (m) => String(m.Type ?? "Vente") === "Vente"
+        && (m.date_signature || m.pdf_signed)
+        && String(m.Statut ?? "") !== "Annulé",
+    );
+    const recent = [...signes].sort((x, y) =>
+      String(y.date_signature ?? y["Created Date"] ?? "").localeCompare(
+        String(x.date_signature ?? x["Created Date"] ?? "")))[0];
+    const v = S(recent?.Charge_hono);
+    return v ? { texte: `Charge ${v.toLowerCase()}`, mandat: true } : { texte: "Mandat non signé", mandat: false };
+  }, [b.mandats]);
 
   /* Le prix de la molette ne touche à rien : il sert à voir. */
   const [hai, setHai] = useState(prixEnBase);
@@ -430,15 +581,21 @@ export function PrixEcran({ b, espace, compteActif }: {
           <span className="fchip"><b>{euros(prixEnBase)}</b> HAI</span>
           <span className="fchip"><b>{euros(nvEnBase)}</b> net vendeur</span>
         </div>
+        {/* Retour #338 — « la surface Carrez, l'occupation en %, le nombre de
+            lots totaux, les loyers HC annuel actuel et potentiels dans
+            l'encadré au début dans des pastilles en dessous de celles du prix.
+            Ces infos seront sur la même ligne. »
+            Elles remplacent le Récapitulatif, retiré au même retour : ces cinq
+            chiffres sont ceux qu'on cherche en ouvrant l'écran, ils n'ont pas à
+            attendre trois sections plus bas. */}
+        <div className="blor-chips synth">
+          <span className="fchip"><b>{group(Math.round(ctx.surface))}</b> m² Carrez</span>
+          <span className="fchip"><b>{Math.round(occupationPct)}</b> % occupé</span>
+          <span className="fchip"><b>{b.lots.length}</b> lot{b.lots.length > 1 ? "s" : ""}</span>
+          <span className="fchip"><b>{euros(Math.round(ctx.loyers))}</b> HC/an</span>
+          <span className="fchip"><b>{euros(Math.round(ctx.loyersMax))}</b> HC/an potentiel</span>
+        </div>
       </div>
-
-      <EspaceVendeur
-        immeubleId={immeubleId} espace={espace} tauxHonos={tauxHonos}
-        proprietaireId={typeof b.proprietaire?._id === "string" ? b.proprietaire._id : undefined}
-        proprietaireEmail={typeof b.proprietaire?.email === "string" ? b.proprietaire.email : undefined}
-        compteActif={compteActif}
-        onReprendre={(nvVoulu) => { setDuVendeur(Math.round(nvVoulu * (1 + tauxHonos / 100))); setModale(true); }}
-      />
 
       <div className="px-hd">
         <div className="fsub">Prix actuel</div>
@@ -461,10 +618,13 @@ export function PrixEcran({ b, espace, compteActif }: {
         </p>
       )}
 
+      {/* Les deux grilles de l'estimation, que MAV voulait retrouver ici. */}
       <div className="pxt-row">
         <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
         <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
       </div>
+
+      <ResumeLocatif b={b} />
 
       <div className="fsub" style={{ marginTop: 18 }}>Marge de négociation</div>
       <div className="px-cards">
@@ -492,8 +652,13 @@ export function PrixEcran({ b, espace, compteActif }: {
           <span className="px-ic"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z" /><path d="M8 11h8M8 14h5" /></svg></span>
           <span>
             <b>Charge honoraires</b>
-            {/* Non modifiable : c'est le mandat qui tranche. */}
-            <i className="fige" title="Déterminé par le mandat">{S(im.prix_Charge_honos) || "n.c."}</i>
+            {/* Non modifiable, et lue du MANDAT SIGNÉ (#337) : c'est une clause
+                signée, pas une case de la fiche. Sans mandat signé, on le dit
+                plutôt que d'afficher une valeur qui n'engage personne. */}
+            <i className={chargeHonos.mandat ? "fige" : "fige requis"}
+               title={chargeHonos.mandat ? "Repris du mandat signé" : "Aucun mandat de vente signé sur ce bien"}>
+              {chargeHonos.texte}
+            </i>
           </span>
         </div>
         <Bascule

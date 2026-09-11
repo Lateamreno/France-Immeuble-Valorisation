@@ -9,6 +9,8 @@ import { contactParEmail, createContact, createImmeuble, type ContactTrouve } fr
 import { DoublonContact } from "@/components/doublon-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
+import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
+import { ModaleRechercheEdition } from "@/components/recherche-modale";
 
 // Icônes des 7 entités (entité + petit « + », comme le BO).
 const IC: Record<string, React.ReactNode> = {
@@ -21,12 +23,17 @@ const IC: Record<string, React.ReactNode> = {
   Offre: <><path d="M11 4 4 11l3 3 5.5-5.5M9.5 10.5l5.5 5.5M12.5 13.5l3.5 3.5" /><path d="M17.5 5.5h4M19.5 3.5v4" /></>,
 };
 
-const VIA_FICHE = new Set(["Mandat", "Recherche", "Proposition", "Visite", "Offre"]);
+/* Le mandat reste le seul qui parte de la fiche : il se numérote au registre,
+   se rattache à un bien précis et engage l'agence — il ne se crée pas d'un
+   clic depuis un bandeau. Tous les autres ouvrent leur modale (#333 à #336). */
+const VIA_FICHE = new Set(["Mandat"]);
+
+type Ouverte = "Contact" | "Immeuble" | "Recherche" | "Proposition" | "Visite" | "Offre" | null;
 
 // Barre de création rapide fixe en bas — 7 cellules égales (réplique).
-// + Contact et + Immeuble sont actifs ; les autres se créent depuis les fiches.
 export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
-  const [modal, setModal] = useState<"Contact" | "Immeuble" | null>(null);
+  const [modal, setModal] = useState<Ouverte>(null);
+  const fermer = () => setModal(null);
   return (
     <>
       <div className="bottbar">
@@ -36,8 +43,15 @@ export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
             type="button"
             title={VIA_FICHE.has(label) ? `${label} : se crée depuis la fiche du bien` : `Créer : ${label}`}
             onClick={() => {
-              if (label === "Contact" || label === "Immeuble") setModal(label);
-              else alert(`« + ${label} » se crée depuis la fiche du bien concerné (section Mandats / Acheteurs).`);
+              /* Retours #333/#334/#335 — ces trois boutons affichaient une boîte
+                 d'alerte : « se crée depuis la fiche du bien ». C'était vrai, et
+                 c'était le problème : il fallait retrouver le bien avant de
+                 pouvoir noter une visite qu'on venait de faire. */
+              if (VIA_FICHE.has(label)) {
+                alert(`« + ${label} » se crée depuis la fiche du bien concerné (section Mandats).`);
+                return;
+              }
+              setModal(label as Ouverte);
             }}
           >
             <svg viewBox="0 0 24 24">{IC[label]}</svg>
@@ -45,8 +59,14 @@ export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
           </button>
         ))}
       </div>
-      {modal === "Contact" && <NewContactModal agents={agents} onClose={() => setModal(null)} />}
-      {modal === "Immeuble" && <NewImmeubleModal agents={agents} onClose={() => setModal(null)} />}
+      {modal === "Contact" && <NewContactModal agents={agents} onClose={fermer} />}
+      {modal === "Immeuble" && <NewImmeubleModal agents={agents} onClose={fermer} />}
+      {modal === "Recherche" && (
+        <ModaleRechercheEdition onFermer={fermer} onEnregistre={fermer} />
+      )}
+      {modal === "Proposition" && <ModaleProposition onFermer={fermer} />}
+      {modal === "Visite" && <ModaleVisite onFermer={fermer} />}
+      {modal === "Offre" && <ModaleOffre onFermer={fermer} />}
     </>
   );
 }

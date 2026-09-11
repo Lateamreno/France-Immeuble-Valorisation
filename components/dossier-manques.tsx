@@ -36,6 +36,11 @@ const parse = (s: string) => {
    partaient dans le patch de l'immeuble et disparaissaient sans bruit. */
 const HORS_EMPLACEMENT = new Set([
   "ref_cadastre", "profil_vendeur", "Motif_vente", "year_constru", "taxe_fonciere",
+  /* Retour #313 — l'état général du bâti et le nombre d'étages sont des
+     champs de l'IMMEUBLE, pas de l'emplacement : ils partent par
+     `updateBien`, et les étages en nombre plutôt qu'en texte — le dossier ne
+     les lit que comme nombre. */
+  "Etat", "nb_etage",
 ]);
 
 /**
@@ -177,10 +182,14 @@ function LigneManque({ m, b, ouvert, onOuvrir, onAller }: {
 
       const motif = vals.Motif_vente?.trim();
       const annee = parse(vals.year_constru ?? "");
+      const etatBati = vals.Etat?.trim();
+      const etages = parse(vals.nb_etage ?? "");
       const surImmeuble = {
         ...(motif ? { Motif_vente: motif } : {}),
         ...(annee !== undefined ? { year_constru: annee } : {}),
         ...(prof && !proprioId ? { profil_vendeur: prof } : {}),
+        ...(etatBati ? { Etat: etatBati } : {}),
+        ...(etages !== undefined ? { nb_etage: etages } : {}),
       };
       if (Object.keys(surImmeuble).length) await updateBien(immeubleId, surImmeuble);
 
