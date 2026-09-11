@@ -17,11 +17,18 @@ export const DESTINATIONS: { cle: string; titre: string; d: React.ReactNode }[] 
   { cle: "Bureau", titre: "Bureau", d: <path d="M4 20V8.6a1 1 0 0 1 .6-.9l6-2.6a1 1 0 0 1 1.4.9V20M12 20V11h7a1 1 0 0 1 1 1v8M7 10.5h1.6M7 13.6h1.6M7 16.7h1.6M15 14h2M15 17h2" /> },
 ];
 
-/** Une puce de critère : grisée avec son intitulé quand rien n'est renseigné. */
+/**
+ * Une puce de critère : grisée avec son intitulé quand rien n'est renseigné.
+ *
+ * Le marqueur « € » ne sort que sur une puce VIDE (retour #351 : « mets
+ * toujours les unités à la FIN des chiffres »). Rempli, le budget se lit déjà
+ * « 800 000 € à 2 000 000 € » : le € de tête en faisait un troisième, posé du
+ * mauvais côté.
+ */
 export function Puce({ label, valeur, euro }: { label: string; valeur?: string; euro?: boolean }) {
   return (
     <span className={`rc-puce${valeur ? " on" : ""}`}>
-      {euro && <b>€</b>}
+      {euro && !valeur && <b>€</b>}
       {valeur ?? label}
     </span>
   );

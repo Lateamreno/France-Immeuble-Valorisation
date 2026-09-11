@@ -1,4 +1,4 @@
-import { colonneApres } from "./colonnes";
+import { colonneApres } from "./colonnes.ts";
 const cas: [string, (string | undefined)[], string | null, string][] = [
   ["4 - OK pour vendre", ["A", "B"],        "5 - Commercialisé (A/B)",  "A et B seuls → deuxième colonne"],
   ["4 - OK pour vendre", ["A", "C"],        "6 - Commercialisé (all)",  "un C dedans → dernière colonne"],

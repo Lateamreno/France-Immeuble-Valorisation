@@ -35,6 +35,39 @@ const num = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
+/**
+ * Sépare les milliers pendant la frappe (retours #350, #351).
+ *
+ * MAV : « sur les budgets tu mets des écarts entre les milliers 1 000 000 »,
+ * et « sépare toujours les milliers ». On ne reformate que la partie entière :
+ * une décimale en cours de frappe (« 9, » avant le 2 de « 9,2 ») doit survivre
+ * au caractère suivant, sinon le champ se bat contre celui qui le remplit.
+ *
+ * L'espace posé est une espace insécable étroite, celle de `toLocaleString`
+ * française — et `num` ci-dessus la retire déjà, comme tout ce qui n'est ni
+ * chiffre ni séparateur.
+ */
+const grouperMilliers = (s: string) => {
+  const propre = s.replace(/[^\d.,]/g, "").replace(/\./g, ",");
+  const [ent = "", ...reste] = propre.split(",");
+  const groupe = ent.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return reste.length ? `${groupe},${reste.join("")}` : groupe;
+};
+
+/**
+ * La clé de comparaison d'un texte saisi : sans accent, sans ponctuation, et
+ * sans le pluriel final (retour #352).
+ *
+ * MAV : « la saisie de texte était sensible aux accents fais en sorte que ce
+ * ne soit pas le cas ». Et c'est aussi ce qui lui a fait croire que « Bureau »
+ * manquait aux destinations : il tapait « bureaux », et `startsWith` disait
+ * non. Le référentiel est au singulier, la tête ne l'est pas.
+ */
+export const clefTexte = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "")
+    .replace(/[sx]$/, "");
+
 /* Les pictos des sections (#341 : « ajoute de la structure, des pictos et de
    la couleur »). Dessinés au trait, comme le reste du rail : une modale n'a pas
    à introduire un deuxième vocabulaire graphique. */
@@ -84,6 +117,41 @@ function Copiable({ valeur, vide }: { valeur?: string; vide: string }) {
 
 
 /**
+ * Un montant, une surface, un pourcentage — milliers séparés et unité
+ * toujours lisible (retours #350, #351).
+ *
+ * MAV : « mets toujours les unités à la fin des chiffres même quand les cases
+ * sont remplies ». L'unité était un `placeholder`, donc elle disparaissait au
+ * premier caractère tapé : « 1000000 » ne disait plus si on lisait des euros
+ * ou des mètres carrés. Elle est maintenant posée à droite du champ, dans le
+ * même cadre, et elle reste.
+ *
+ * Le cadre est porté par l'enveloppe et non par l'`input` : sinon l'unité se
+ * retrouve à l'extérieur, et deux bordures côte à côte se lisent comme deux
+ * champs.
+ */
+function ChampChiffre({
+  valeur, onChange, unite, large,
+}: {
+  valeur: string;
+  onChange: (v: string) => void;
+  unite: string;
+  /** Les budgets tiennent plus de chiffres qu'un pourcentage. */
+  large?: boolean;
+}) {
+  return (
+    <span className={`rm-nb${large ? " large" : ""}${valeur ? " on" : ""}`}>
+      <input
+        inputMode="decimal"
+        value={valeur}
+        onChange={(e) => onChange(grouperMilliers(e.target.value))}
+      />
+      <i aria-hidden="true">{unite}</i>
+    </span>
+  );
+}
+
+/**
  * Un choix multiple à liste déroulante, avec prédiction (#341).
  *
  * MAV : « une liste déroulante choix multiples […] si on peut taper les régions
@@ -113,10 +181,12 @@ function ChoixMultiple({
 }) {
   const [saisie, setSaisie] = useState("");
   const [ouvert, setOuvert] = useState(false);
-  const q = saisie.trim().toLowerCase();
+  /* Comparaison à plat (#352) : « bureaux » trouve « Bureau », « ile de
+     france » trouve « Île-de-France », « seine saint » trouve le 93. */
+  const q = clefTexte(saisie);
   const propositions = options
     .filter((o) => !valeur.includes(o.cle))
-    .filter((o) => !q || o.cle.toLowerCase().startsWith(q) || o.nom.toLowerCase().includes(q))
+    .filter((o) => !q || clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).includes(q))
     .slice(0, 8);
   const nomDe = (c: string) => options.find((o) => o.cle === c)?.nom ?? c;
 
@@ -244,7 +314,9 @@ export function ModaleRechercheEdition({
   /* Les fourchettes se remplissent avec les valeurs en base : une modale de
      modification qui présente des cases vides oblige à tout retaper, et la
      moindre distraction efface un critère (#330). */
-  const dep = (v?: number) => (v === undefined ? "" : String(v));
+  /* Groupés dès l'ouverture : une modale de modification qui présente
+     « 1000000 » demande le même effort de lecture qu'une case vide (#351). */
+  const dep = (v?: number) => (v === undefined ? "" : grouperMilliers(String(v)));
   const [prixMin, setPrixMin] = useState(dep(depart?.brut.prixMin));
   const [prixMax, setPrixMax] = useState(dep(depart?.brut.prixMax));
   const [surfMin, setSurfMin] = useState(dep(depart?.brut.surfaceMin));
@@ -396,13 +468,13 @@ export function ModaleRechercheEdition({
             <div className="rmod-col">
               <Section titre="À quelles conditions" ic={IC.euro} />
               <div className="rm-grille">
-                <label>Budget de <input className="min" value={prixMin} onChange={(e) => setPrixMin(e.target.value)} placeholder="€" /></label>
-                <label>à <input className="min" value={prixMax} onChange={(e) => setPrixMax(e.target.value)} placeholder="€" /></label>
-                <label>Surface de <input className="min" value={surfMin} onChange={(e) => setSurfMin(e.target.value)} placeholder="m²" /></label>
-                <label>à <input className="min" value={surfMax} onChange={(e) => setSurfMax(e.target.value)} placeholder="m²" /></label>
-                <label>Occupation de <input className="min" value={occMin} onChange={(e) => setOccMin(e.target.value)} placeholder="%" /></label>
-                <label>à <input className="min" value={occMax} onChange={(e) => setOccMax(e.target.value)} placeholder="%" /></label>
-                <label>Rendement ≥ <input className="min" value={renta} onChange={(e) => setRenta(e.target.value)} placeholder="%" /></label>
+                <label>Budget de <ChampChiffre valeur={prixMin} onChange={setPrixMin} unite="€" large /></label>
+                <label>à <ChampChiffre valeur={prixMax} onChange={setPrixMax} unite="€" large /></label>
+                <label>Surface de <ChampChiffre valeur={surfMin} onChange={setSurfMin} unite="m²" /></label>
+                <label>à <ChampChiffre valeur={surfMax} onChange={setSurfMax} unite="m²" /></label>
+                <label>Occupation de <ChampChiffre valeur={occMin} onChange={setOccMin} unite="%" /></label>
+                <label>à <ChampChiffre valeur={occMax} onChange={setOccMax} unite="%" /></label>
+                <label>Rendement ≥ <ChampChiffre valeur={renta} onChange={setRenta} unite="%" /></label>
               </div>
               <p className="rm-aide">
                 Une case laissée vide veut dire <b>pas d&apos;exigence</b> — pas « zéro » :

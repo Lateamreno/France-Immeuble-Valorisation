@@ -1,4 +1,4 @@
-import { aggLocatif, ecartRef, loyerM2Actuel, loyerM2Potentiel } from "./marche";
+import { aggLocatif, ecartRef, loyerM2Actuel, loyerM2Potentiel } from "./marche.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };

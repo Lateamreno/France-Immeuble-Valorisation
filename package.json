@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "TZ=UTC node --import ./scripts/brancher-resolveur.mjs --test \"lib/**/*.test.mts\""
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",

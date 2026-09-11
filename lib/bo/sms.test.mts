@@ -1,4 +1,4 @@
-import { segments, etatSms, PLAFOND_SMS } from "./sms";
+import { segments, etatSms, PLAFOND_SMS } from "./sms.ts";
 const cas: [string, number, string][] = [
   ["Bonjour, un immeuble de rapport a Nanterre, 12 lots, 9,2% brut. Dossier sur demande.", 1, "court, GSM-7 → 1 segment"],
   ["a".repeat(160), 1, "160 caracteres pile → 1 segment"],

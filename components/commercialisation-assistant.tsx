@@ -12,6 +12,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier } from "@/lib/format";
+import {
+  messageCommercialisation, objetCommercialisation, type BienMail,
+} from "@/lib/bo/mail-commercialisation";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { createCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, markCommercialisationSent } from "@/lib/bo/actions";
 
@@ -53,11 +56,48 @@ export function AssistantCommercialisation({
      suivante rouvrirait le message de la précédente. */
   const fermer = () => { oublier(`${memo}:`); onFermer(); };
 
-  const ville = b.ville || "l'immeuble";
   const prixHai = typeof b.im.prix_hai === "number" ? (b.im.prix_hai as number) : undefined;
 
-  const [objet, setObjet] = useMemoire(`${memo}:objet`, `Immeuble à vendre à ${ville}`);
-  const [message, setMessage] = useMemoire(`${memo}:message`, messageParDefaut(b, lien));
+  /* Ce que l'objet et le corps ont besoin de savoir du bien (#357, #358).
+     Le rendement POTENTIEL n'est pas en base : on le déduit du rapport entre
+     les loyers de marché des lots et les loyers encaissés, appliqué au
+     rendement de la fiche. Passer par le rapport plutôt que par un nouveau
+     calcul évite de refabriquer la base de prix — et donc d'annoncer un
+     chiffre qui contredirait celui affiché sur la carte. */
+  const bienMail: BienMail = useMemo(() => {
+    const somme = (cle: string, repli?: string) => b.lots.reduce((t, l) => {
+      const v = typeof l[cle] === "number" ? (l[cle] as number)
+        : repli && typeof l[repli] === "number" ? (l[repli] as number) : 0;
+      return t + v;
+    }, 0);
+    const loyers = somme("loyer");
+    const loyersMax = somme("loyer_max", "loyer");
+    const renta = typeof b.im.fin_renta_ba === "number" ? b.im.fin_renta_ba : undefined;
+    return {
+      ville: b.ville,
+      codePostal: b.im.adresse_zipcode,
+      surfaceCarrez: b.im.surface_carrez,
+      prixHai,
+      /* La fiche ne remonte pas toujours `prix_hai_m2` : à Lille il est absent
+         et l'objet sortait sans prix au m². Le calcul de secours porte sur les
+         mêmes deux nombres que Bubble utilise. */
+      prixM2: typeof b.im.prix_hai_m2 === "number" ? b.im.prix_hai_m2
+        : prixHai && typeof b.im.surface_carrez === "number" && b.im.surface_carrez > 0
+          ? prixHai / b.im.surface_carrez
+          : undefined,
+      occupation: b.im.occupation_lots,
+      renta,
+      rentaPotentielle: renta !== undefined && loyers > 0
+        ? Math.round((renta * loyersMax / loyers) * 10) / 10
+        : undefined,
+      destinations: b.lots.map((l) => String(l.Destination ?? "")).filter(Boolean),
+      agentNom: b.agentNom,
+      agentTel: b.agentTel,
+    };
+  }, [b, prixHai]);
+
+  const [objet, setObjet] = useMemoire(`${memo}:objet`, objetCommercialisation(bienMail));
+  const [message, setMessage] = useMemoire(`${memo}:message`, messageCommercialisation(bienMail, lien));
   const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b));
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
@@ -176,40 +216,43 @@ export function AssistantCommercialisation({
             <select className="min" value={dossier} onChange={(e) => setDossier(e.target.value)}>
               <option value="">Sans dossier</option>
               {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
+                <option key={S(x._id)} value={S(x._id)}>{libelleDossierChiffre(x)}</option>
               ))}
             </select>
           )}
-          <span className="mlab">Lien de partage du dossier</span>
-          <input className="min" placeholder="https://… (dossier, photos, plans)" value={lien}
-            onChange={(e) => { setLien(e.target.value); setMessage(messageParDefaut(b, e.target.value)); }} />
-          <div className="asst-note">
-            Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
-            auprès de {dest.emails.length} destinataires.
-          </div>
-          {/* Retour #328 — l'écran demandait un lien de partage sans dire où
-              on le fabrique. C'est transfer.it que la maison utilise : le
-              dossier, les plans, les diagnostics et les photos y montent d'un
-              coup, et le lien revient se coller ici. */}
-          <a className="asst-tr" href="https://transfer.it/start" target="_blank" rel="noreferrer">
-            <span className="asst-tr-l" aria-hidden="true">
-              <svg viewBox="0 0 24 24" aria-hidden>
+          {/* Retour #355 — « à côté de la version et de la date tu mettras
+              aussi le prix HAI, la renta et le prix au m², en rouge ou vert
+              selon si c'est au-dessus ou en dessous du secteur ». Une liste
+              déroulante ne sait pas porter de couleur : les chiffres du
+              dossier RETENU se lisent donc juste en dessous, colorés. */}
+          {doc && <ChiffresDossier d={doc} secteur={b.secteur} />}
+          {/* Et la pièce jointe elle-même, « pour qu'on puisse le vérifier
+              avant envoi ». Pas de bouton pour la retirer : elle se change à
+              la ligne du dessus, c'est le même geste en plus clair. */}
+          {doc && <PieceJointe d={doc} />}
+
+          <span className="mlab">
+            Lien de partage du dossier
+            {/* Retour #354 — le grand encart transfer.it prenait le tiers de
+                l'étape pour dire une chose qui tient en un mot. Il devient un
+                picto à côté du titre. */}
+            <a className="asst-tr-mini" href="https://transfer.it/start" target="_blank" rel="noreferrer"
+              title="Déposer les pièces sur transfer.it et récupérer le lien">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 16V4M8 8l4-4 4 4" />
                 <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
               </svg>
-              transfer<b>.it</b>
-            </span>
-            <span className="asst-tr-t">
-              <b>Déposer les pièces et récupérer le lien →</b>
-              Le dossier, les plans, les diagnostics, les photos — tout dans un seul envoi,
-              puis collez le lien ci-dessus.
-              <i>
-                RGPD : caviardez les baux avant de les déposer. Le nom, la profession et les
-                coordonnées d&apos;un locataire n&apos;ont rien à faire dans un dossier
-                d&apos;acquéreur.
-              </i>
-            </span>
-          </a>
+              Créer un lien transfer.it
+            </a>
+          </span>
+          <input className="min" placeholder="https://… (dossier, photos, plans)" value={lien}
+            onChange={(e) => { setLien(e.target.value); setMessage(messageCommercialisation(bienMail, e.target.value)); }} />
+          <div className="asst-note">
+            Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
+            auprès de {dest.emails.length} destinataires. RGPD : caviardez les baux avant de les
+            déposer — le nom, la profession et les coordonnées d&apos;un locataire n&apos;ont rien à
+            faire dans un dossier d&apos;acquéreur.
+          </div>
           <div className="wnav"><span className="sp" style={{ flex: 1 }} />
             <button className="kgo" type="button" onClick={() => setEtape("Mandat")}><span className="ch">›</span> Continuer</button>
           </div>
@@ -225,9 +268,7 @@ export function AssistantCommercialisation({
             <select className="min" value={mandat} onChange={(e) => setMandat(e.target.value)}>
               <option value="">Sans mandat</option>
               {mandats.map((m) => (
-                <option key={S(m._id)} value={S(m._id)}>
-                  {S(m.Type) || "Mandat"} {m.numero ? `n°${S(m.numero)}` : "sans numéro"} — {S(m.Statut)}
-                </option>
+                <option key={S(m._id)} value={S(m._id)}>{libelleMandat(m)}</option>
               ))}
             </select>
           )}
@@ -256,7 +297,7 @@ export function AssistantCommercialisation({
           <span className="mlab">Message</span>
           <textarea className="min" rows={12} value={message} onChange={(e) => setMessage(e.target.value)} />
           <div className="mrow">
-            <button className="fadd" type="button" onClick={() => setMessage(messageParDefaut(b, lien))}>Générer le message par défaut</button>
+            <button className="fadd" type="button" onClick={() => { setObjet(objetCommercialisation(bienMail)); setMessage(messageCommercialisation(bienMail, lien)); }}>Régénérer l&apos;objet et le message</button>
             <button className="fadd" type="button" onClick={() => copier(message)}>Copier le message</button>
           </div>
           <div className="wnav">
@@ -355,37 +396,150 @@ export function AssistantCommercialisation({
   );
 }
 
+/* ---------- Ce que porte une ligne de dossier et de mandat ---------- */
+
+const N = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+const pct = (v: unknown) =>
+  N(v) === undefined ? undefined : `${N(v)!.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+
+/**
+ * Le libellé d'un dossier dans la liste déroulante (retour #355).
+ *
+ * MAV : « à côté de la version et de la date tu mettras aussi le prix HAI, la
+ * renta et le prix au m² ». Choisir entre « Dossier V1 » et « Dossier V2 »
+ * sans voir sur quels chiffres ils reposent, c'est choisir à l'aveugle — et
+ * c'est ce dossier-là qui part chez les acquéreurs.
+ */
+function libelleDossierChiffre(d: Record<string, unknown>): string {
+  const m2 = N(d.prix_hai) && N(d.surface) ? Math.round(N(d.prix_hai)! / N(d.surface)!) : undefined;
+  const bouts = [
+    euros(d.prix_hai),
+    pct(d.renta_actuelle),
+    m2 ? `${m2.toLocaleString("fr-FR")} €/m²` : undefined,
+  ].filter(Boolean);
+  return bouts.length ? `${libelleDossier(d)} · ${bouts.join(" · ")}` : libelleDossier(d);
+}
+
+/**
+ * Les chiffres du dossier retenu, colorés face au secteur (#355).
+ *
+ * Une `<option>` ne sait pas porter de couleur — aucun navigateur ne la
+ * stylera de façon fiable. Les chiffres se relisent donc sous la liste, où
+ * une pastille verte ou rouge veut dire quelque chose.
+ *
+ * Attention au sens, il n'est pas le même des deux côtés : sur le PRIX au m²,
+ * le vert est EN DESSOUS du secteur ; sur le RENDEMENT, il est AU-DESSUS.
+ * Les deux disent « bonne nouvelle pour qui achète », comme sur les cartes du
+ * tableau de bord.
+ */
+function ChiffresDossier({ d, secteur }: { d: Record<string, unknown>; secteur: Record<string, unknown> | null }) {
+  const prixM2 = N(d.prix_hai) && N(d.surface) ? N(d.prix_hai)! / N(d.surface)! : undefined;
+  const refPrix = N(secteur?.["0 - prix"]);
+  const renta = N(d.renta_actuelle);
+  const refRenta = N(secteur?.["0 - renta _%"]);
+
+  const couleur = (v?: number, ref?: number, vertEnDessous = true) => {
+    if (v === undefined || ref === undefined) return "";
+    const sous = v < ref;
+    if (Math.abs(v / ref - 1) < 0.005) return "";
+    return (vertEnDessous ? sous : !sous) ? " vert" : " rouge";
+  };
+
+  return (
+    <div className="asst-chiffres">
+      {euros(d.prix_hai) && <span className="ac-v">{euros(d.prix_hai)}</span>}
+      {prixM2 !== undefined && (
+        <span className={`ac-p${couleur(prixM2, refPrix, true)}`}
+          title={refPrix ? `Secteur : ${Math.round(refPrix).toLocaleString("fr-FR")} €/m²` : "Pas de prix de secteur relevé"}>
+          {Math.round(prixM2).toLocaleString("fr-FR")} €/m²
+        </span>
+      )}
+      {renta !== undefined && (
+        <span className={`ac-p${couleur(renta, refRenta, false)}`}
+          title={refRenta ? `Secteur : ${refRenta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "Pas de rendement de secteur relevé"}>
+          {pct(renta)} brut
+        </span>
+      )}
+      {/* `renta_max` n'est PAS un rendement au potentiel locatif : sur le
+          dossier de Lille il vaut 8 % quand l'actuel vaut 9,2 %, parce qu'il
+          se calcule sur le prix travaux compris. L'afficher « au potentiel »
+          aurait annoncé une baisse comme une promesse — on ne l'affiche pas
+          tant qu'on n'a pas tranché ce qu'il mesure. */}
+    </div>
+  );
+}
+
+/**
+ * La pièce jointe du dossier retenu (#355 : « qu'on puisse le vérifier avant
+ * envoi », #359 : « on devrait voir la PJ qui va être envoyée avec le poids »).
+ *
+ * Le poids n'est pas en base. Il se demande au fichier lui-même, par une
+ * requête `HEAD` : c'est une info que seul le serveur qui l'héberge connaît,
+ * et elle décide de la délivrabilité de la salve.
+ */
+function PieceJointe({ d }: { d: Record<string, unknown> }) {
+  const url = [d.pdf, d.FILE].map(S).find((u) => u.length > 0);
+  const [poids, setPoids] = useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!url) return;
+    let vivant = true;
+    const abs = url.startsWith("//") ? `https:${url}` : url;
+    fetch(abs, { method: "HEAD" })
+      .then((r) => {
+        const l = Number(r.headers.get("content-length"));
+        if (vivant) setPoids(Number.isFinite(l) && l > 0 ? l : null);
+      })
+      .catch(() => { if (vivant) setPoids(null); });
+    return () => { vivant = false; };
+  }, [url]);
+
+  if (!url) {
+    return <div className="asst-note">Ce dossier n&apos;a pas de PDF rattaché : l&apos;e-mail partira sans pièce jointe.</div>;
+  }
+  const abs = url.startsWith("//") ? `https:${url}` : url;
+  const mo = typeof poids === "number" ? poids / 1_048_576 : undefined;
+  return (
+    <a className={`asst-pj${mo !== undefined && mo > 3 ? " lourd" : ""}`} href={abs} target="_blank" rel="noreferrer">
+      <span className="asst-pj-i" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></svg>
+      </span>
+      <span className="asst-pj-t">
+        <b>{libelleDossier(d)} — ouvrir la pièce jointe</b>
+        {/* Trois états, pas deux : « en cours », « connu », et « refusé ». Le
+            serveur qui héberge le PDF peut très bien répondre sans autoriser
+            la lecture de l'en-tête depuis le navigateur — laisser « en cours
+            de lecture » pour toujours serait le pire des trois. */}
+        {poids === undefined ? "Lecture du poids…"
+          : poids === null ? "Poids non communiqué par l'hébergeur — ouvrez la pièce pour le vérifier."
+          : mo! > 3 ? `${mo!.toFixed(1)} Mo — au-delà de 3 Mo, la délivrabilité chute.`
+          : `${mo!.toFixed(1)} Mo`}
+      </span>
+    </a>
+  );
+}
+
+/**
+ * Le libellé d'un mandat dans la liste (retour #356).
+ *
+ * MAV : « à côté du numéro de mandat et du statut tu mettras le prix hai, le
+ * montant des honos en % et la date de signature ». La date retenue est
+ * `date_effet` — le miroir Bubble n'a pas de champ « signé le », et c'est
+ * elle que le mandat porte comme point de départ.
+ */
+function libelleMandat(m: Record<string, unknown>): string {
+  const tete = `${S(m.Type) || "Mandat"} ${m.numero ? `n°${S(m.numero)}` : "sans numéro"} — ${S(m.Statut)}`;
+  const bouts = [
+    euros(m.prix_hai),
+    N(m.honos_taux) !== undefined ? `${pct(m.honos_taux)} d'honoraires` : undefined,
+    dmy(m.date_effet) ? `effet ${dmy(m.date_effet)}` : undefined,
+  ].filter(Boolean);
+  return bouts.length ? `${tete} · ${bouts.join(" · ")}` : tete;
+}
+
 /* ---------- Messages par défaut, fusionnés depuis la fiche ---------- */
 
-function messageParDefaut(b: BienData, lien: string) {
-  const im = b.im;
-  const n = (v: unknown, s = "") => (typeof v === "number" ? `${Math.round(v).toLocaleString("fr-FR")}${s}` : null);
-  const lignes = [
-    n(im.surface_carrez, " m² Carrez"),
-    typeof im.nb_lots === "number" ? `${im.nb_lots} lots` : null,
-    n(im.occupation_lots, " % occupé"),
-    typeof im.fin_renta_ba === "number" ? `${im.fin_renta_ba} % de rendement brut` : null,
-    euros(im.prix_hai) ? `${euros(im.prix_hai)} honoraires inclus` : null,
-  ].filter(Boolean);
-
-  return [
-    "Bonjour,",
-    "",
-    `Nous commercialisons un immeuble de rapport à ${b.ville || "vendre"}${b.adresse ? ` — ${b.adresse}` : ""}.`,
-    "",
-    ...lignes.map((l) => `• ${l}`),
-    "",
-    typeof im.descriptif === "string" && im.descriptif ? String(im.descriptif) : "",
-    "",
-    lien ? `Le dossier complet est disponible ici : ${lien}` : "Le dossier complet est disponible sur demande.",
-    "",
-    "Ce bien correspond aux critères que vous nous avez communiqués. Je reste à votre disposition",
-    "pour organiser une visite ou vous transmettre des éléments complémentaires.",
-    "",
-    "Bien à vous,",
-    "France Immeuble",
-  ].filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
-}
 
 function smsParDefaut(b: BienData) {
   const im = b.im;
