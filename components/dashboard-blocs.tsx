@@ -196,10 +196,20 @@ function Card({
                   {c.perf.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
                 </span>
               )}
-              {c.perf?.ecartM2 !== undefined && (
-                <span className={`kperf ${c.perf.ecartM2 > 0 ? "ksur" : "kdec"}`}
-                  title={`Prix au m² : ${c.perf.m2?.toLocaleString("fr-FR")} € face au secteur`}>
-                  {c.perf.ecartM2 > 0 ? "+" : ""}{c.perf.ecartM2} %/m²
+              {/* L'écart au PRIX ESTIMÉ (choix de MAV). Signé toujours, pour
+                  qu'on ne le confonde pas avec le rendement juste à gauche —
+                  et neutre à zéro : un bien pile au prix estimé n'est ni une
+                  bonne ni une mauvaise nouvelle, mais le taire rendrait son
+                  absence ambiguë avec « pas d'estimation ». */}
+              {c.perf?.ecartEstim !== undefined && (
+                <span
+                  className={`kperf ${c.perf.ecartEstim > 0 ? "ksur" : c.perf.ecartEstim < 0 ? "kdec" : ""}`}
+                  title={
+                    `Prix affiché face au prix estimé`
+                    + (c.perf.estim ? ` de ${c.perf.estim.toLocaleString("fr-FR")} €` : "")
+                    + (c.perf.estimLe ? ` (estimation du ${c.perf.estimLe})` : "")
+                  }>
+                  {c.perf.ecartEstim > 0 ? "+" : ""}{c.perf.ecartEstim} %
                 </span>
               )}
               {c.fee && <span className="kfee">{c.fee}</span>}

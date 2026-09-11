@@ -480,21 +480,24 @@ export async function getDashboardLive(
     }
   }
 
-  /* Le prix au m² du SECTEUR, pour la pastille de décote des cartes.
-     Il ne vit pas sur la fiche immeuble — le champ homonyme y existe encore
-     mais Bubble l'a marqué « [SUPPR] », on ne bâtit rien dessus — mais sur la
-     dernière estimation du bien. Une seule requête groupée pour toutes les
-     cartes affichées, jamais une par carte.
+  /* Le PRIX ESTIMÉ de chaque bien, pour la pastille d'écart des cartes.
 
-     Paginée à l'en-tête `Range` : PostgREST plafonne une réponse à 1 000
-     lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a l'air
-     complète est le pire des défauts (leçon du lot « relances »). */
-  const refM2ByIm = new Map<string, number>();
+     MAV a tranché : c'est l'écart au prix estimé, pas au prix du secteur.
+
+     La source est la DERNIÈRE ESTIMATION, et non le champ `prix_hai_estim` de
+     la fiche immeuble : ce champ ment. Au 19 boulevard Saint-Michel il porte
+     2 000 000 € quand l'estimation du bien dit 7 300 000 € — l'écart affiché
+     aurait été de +265 % sur un bien qui est exactement au prix estimé.
+
+     Une seule requête groupée pour toutes les cartes affichées, jamais une par
+     carte, et paginée à l'en-tête `Range` : PostgREST plafonne une réponse à
+     1 000 lignes quoi qu'on écrive dans `limit`, et une liste tronquée qui a
+     l'air complète est le pire des défauts (leçon du lot « relances »). */
+  const estimByIm = new Map<string, { prix: number; le: string }>();
   if (USE_SB && ims.length > 0) {
     const idList = ims.map((i) => `"${i._id}"`).join(",");
-    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,ref:data->>ref_prix_all,cd:data->>Created Date`
-      + `&data->>IMMEUBLE=in.(${idList})&data->>ref_prix_all=not.is.null&order=id`;
-    const recent = new Map<string, string>();
+    const chemin = `bo_estimation?select=im:data->>IMMEUBLE,px:data->>prix_hai,cd:data->>Created Date`
+      + `&data->>IMMEUBLE=in.(${idList})&data->>prix_hai=not.is.null&order=id`;
     for (let d = 0; d < 20000; d += 1000) {
       const res = await fetch(`${SB_URL}/rest/v1/${chemin}`, {
         headers: {
@@ -504,14 +507,14 @@ export async function getDashboardLive(
         cache: "no-store",
       }).catch(() => null);
       if (!res?.ok) break;
-      const lot = (await res.json()) as { im?: string; ref?: string; cd?: string }[];
+      const lot = (await res.json()) as { im?: string; px?: string; cd?: string }[];
       for (const r of lot) {
-        const v = Number(r.ref);
+        const v = Number(r.px);
         if (!r.im || !Number.isFinite(v) || v <= 0) continue;
-        const vu = recent.get(r.im);
-        if (vu !== undefined && String(r.cd ?? "") <= vu) continue;
-        recent.set(r.im, String(r.cd ?? ""));
-        refM2ByIm.set(r.im, v);
+        const le = String(r.cd ?? "");
+        const vu = estimByIm.get(r.im);
+        if (vu && le <= vu.le) continue;
+        estimByIm.set(r.im, { prix: v, le });
       }
       if (lot.length < 1000) break;
     }
@@ -630,13 +633,15 @@ export async function getDashboardLive(
        manque : une case vide se lirait comme un zéro. */
     const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
     const renta = nb(im.fin_renta_ba);
-    const m2 = nb(im.prix_hai_m2);
-    const refM2 = refM2ByIm.get(id);
-    if (renta !== undefined || m2 !== undefined) {
+    const hai = nb(im.prix_hai);
+    const est = estimByIm.get(id);
+    const ecartEstim = hai && est ? Math.round((hai / est.prix - 1) * 100) : undefined;
+    if (renta !== undefined || ecartEstim !== undefined) {
       card.perf = {
         renta,
-        m2,
-        ecartM2: m2 !== undefined && refM2 ? Math.round((m2 / refM2 - 1) * 100) : undefined,
+        estim: est?.prix,
+        estimLe: est?.le ? dmy(est.le) : undefined,
+        ecartEstim,
       };
     }
 

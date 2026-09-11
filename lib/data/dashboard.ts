@@ -55,15 +55,23 @@ export type KCard = {
   /**
    * Les deux chiffres qui disent si l'affaire vaut le détour.
    *
-   * `renta` est le rendement brut ACTUEL du bien ; `ecartM2` son prix au m²
-   * face au prix au m² du secteur retenu à la dernière estimation — négatif
-   * pour une décote, positif pour une surcote (affichée en rouge).
+   * `renta` est le rendement brut ACTUEL du bien.
    *
-   * Les deux sont facultatifs et le restent : sur 426 immeubles actifs, 263
-   * seulement portent les deux. Une carte qui n'a rien n'affiche rien — pas de
-   * tiret, pas de case vide.
+   * `ecartEstim` est l'écart entre le prix AFFICHÉ et le prix ESTIMÉ — c'est
+   * la référence choisie par MAV : « oui c'est bien l'écart au prix estimé que
+   * je veux ». Négatif quand le bien s'affiche sous notre estimation (décote,
+   * vert), positif au-dessus (surcote, rouge), nul quand le prix est
+   * exactement celui qu'on a estimé — ce qui est le cas le plus fréquent.
+   *
+   * `estim` porte le prix estimé et `estimLe` sa date : sur 119 écarts non
+   * nuls, 114 reposent sur une estimation de plus de dix-huit mois. La date
+   * n'est pas un détail, elle dit ce que l'écart vaut.
+   *
+   * Tout est facultatif et le reste : sur 426 immeubles actifs, 321 ont un
+   * prix affiché ET une estimation. Une carte qui n'a rien n'affiche rien —
+   * pas de tiret, pas de case vide.
    */
-  perf?: { renta?: number; m2?: number; ecartM2?: number };
+  perf?: { renta?: number; estim?: number; estimLe?: string; ecartEstim?: number };
   /** Bouton principal. `next` = statut pipeline cible (écriture Supabase). */
   action?: { label: string; kind?: "green"; next?: number };
   /** Compteurs à droite de la rangée d'actions : propositions / visites / offres. */
