@@ -12,6 +12,7 @@ import {
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { netVendeurDepuisHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
+import { jourIso } from "@/lib/format";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -3521,7 +3522,7 @@ export async function mandantDepuisContact(id: string): Promise<MandantDepuisCon
     prenom: S3(c["prénom"]),
     nom: S3(c.nom),
     email: S3(c.email),
-    dateNaissance: S3(c.date_naissance)?.slice(0, 10),
+    dateNaissance: jourIso(c.date_naissance),
     lieuNaissance: texteGeo(c.lieu_naissance_geo),
     adresse: texteGeo(c.adresse_geo),
     fonction: S3(c.poste),

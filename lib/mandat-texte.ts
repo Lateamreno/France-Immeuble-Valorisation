@@ -26,7 +26,7 @@
 // Et un ajout qui ne coûte rien : l'encadré « Ce que vous gardez », en tête,
 // qui répond avant la première ligne à la question que le vendeur se pose.
 
-import { dmy, group } from "./format";
+import { dateCivile, dmy, group } from "./format";
 import {
   adresseImmeuble, modeVente, nomMandant, publicationWeb, regimeHonoraires, synthese,
   venteDirecteLocataire, REMISE_LOCATAIRE,
@@ -551,7 +551,7 @@ function identiteMandant(x: Mandant, req: <T>(v: T | undefined, quoi: string) =>
   }
   const bouts = [
     [x.qualite, x.prenom, x.nom].filter(Boolean).join(" ") || (req(undefined, "nom du mandant") as string),
-    x.dateNaissance ? `né(e) le ${dmy(x.dateNaissance)}` : undefined,
+    x.dateNaissance ? `né(e) le ${dateCivile(x.dateNaissance)}` : undefined,
     x.lieuNaissance ? `à ${x.lieuNaissance}` : undefined,
     `demeurant ${x.adresse ?? (req(undefined, `adresse de ${nomMandant(x)}`) as string)}`,
     x.fonction ? `agissant en qualité de ${x.fonction}` : undefined,

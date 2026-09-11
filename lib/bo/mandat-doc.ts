@@ -16,6 +16,7 @@
 
 import { dureeEnLettres, entierEnLettres, euroEnLettres, nombreAvecChiffre } from "@/lib/nombre-lettres";
 import { adresseImmeuble, lotOccupe, synthese, type Mandant } from "@/lib/mandat";
+import { dateCivile } from "@/lib/format";
 
 /* ------------------------------------------------------------ Formatage */
 
@@ -644,7 +645,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
       rang, role: "Personne physique",
       nom: req(nom, trous, `le nom du mandant ${i + 1}`),
       lignes: [
-        { k: "Date de naissance", v: S(x.dateNaissance) || A_COMPLETER },
+        { k: "Date de naissance", v: dateCivile(x.dateNaissance) || A_COMPLETER },
         { k: "Lieu de naissance", v: S(x.lieuNaissance) || A_COMPLETER },
         { k: "Adresse", v: req(S(x.adresse), trous, `l'adresse du mandant ${i + 1}`) },
       ],

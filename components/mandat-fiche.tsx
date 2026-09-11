@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
-import { dmy, euros, group } from "@/lib/format";
+import { dmy, euros, group, jourIso } from "@/lib/format";
 import { baremeTexte, plafondTaux, type Tranche } from "@/lib/bareme";
 import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
@@ -624,7 +624,7 @@ function CarteMandant({
         </Champ>
 
         <Champ label="Né(e) le">
-          <input className="mi" type="date" value={(x.dateNaissance ?? "").slice(0, 10)} disabled={locked}
+          <input className="mi" type="date" value={jourIso(x.dateNaissance) ?? ""} disabled={locked}
             onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
         </Champ>
         <Champ label="Lieu de naissance">

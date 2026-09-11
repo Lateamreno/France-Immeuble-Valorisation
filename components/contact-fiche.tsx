@@ -12,7 +12,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Copier } from "@/components/copier";
 import type { ContactData, FilMail, RechercheCard } from "@/lib/bubble/server";
-import { dmy } from "@/lib/format";
+import { dmy, jourIso } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
@@ -232,7 +232,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
   const [interagence, setInteragence] = useState(c.interagence === true);
   const [types, setTypes] = useState<string[]>(Array.isArray(c.Types) ? (c.Types as string[]) : []);
   const [note, setNote] = useState(S(c.Note));
-  const [naissance, setNaissance] = useState(S(c.date_naissance).slice(0, 10));
+  const [naissance, setNaissance] = useState(jourIso(c.date_naissance) ?? "");
   const [lieuNaissance, setLieuNaissance] = useState(geo(c.lieu_naissance_geo));
   const [adresse, setAdresse] = useState(geo(c.adresse_geo));
   const [entreprise, setEntreprise] = useState(S(c.entreprise_nom));
