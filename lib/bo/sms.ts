@@ -393,3 +393,100 @@ export async function noircirMailingvox(numeros: string[]): Promise<{ ajoutes: n
     return { ajoutes: 0, message: "Réponse MailingVox illisible." };
   }
 }
+
+/**
+ * Déclare nos trois adresses de réception chez MailingVox.
+ *
+ * MAV : « on peut récupérer les retours des gens quand ils répondent au SMS
+ * directement sur notre back-office ? » — c'est ici que ça se branche, et
+ * l'API le fait sans passer par leur interface (`/api/urls/edit`).
+ *
+ * À appeler une fois, depuis l'écran Réglages. Le secret de l'URL est le seul
+ * rempart : MailingVox ne signe pas ses appels, et une adresse de STOP ouverte
+ * à tous permettrait à n'importe qui de faire taire notre communication vers
+ * un client qui n'a rien demandé.
+ */
+export async function poserWebhooks(base: string): Promise<{ ok: boolean; message: string }> {
+  const secret = process.env.MAILINGVOX_WEBHOOK_SECRET?.trim();
+  if (!CLE) return { ok: false, message: "MAILINGVOX_KEY absente : rien à déclarer." };
+  if (!secret) {
+    return {
+      ok: false,
+      message:
+        "MAILINGVOX_WEBHOOK_SECRET absente. Sans elle les adresses de réception seraient "
+        + "ouvertes à tous — et un tiers pourrait inventer des STOP au nom de vos clients.",
+    };
+  }
+  const racine = base.replace(/\/+$/, "");
+  const url = (n: string) => `${racine}/api/mailingvox/${n}?cle=${encodeURIComponent(secret)}`;
+
+  const corps = new URLSearchParams({
+    key: CLE,
+    reponses: url("reponses"),
+    stops: url("stops"),
+    accuses: url("accuses"),
+  });
+  const res = await fetch(`${BASE}/urls/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: corps,
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return { ok: false, message: "MailingVox injoignable." };
+
+  try {
+    const j = (await res.json()) as { resultat?: unknown; erreurs?: unknown };
+    if (!j.resultat) return { ok: false, message: `MailingVox a refusé : ${direErreurs(j.erreurs)}.` };
+    return {
+      ok: true,
+      message:
+        "Réponses, STOP et accusés de réception seront poussés vers le back-office. "
+        + "Les réponses arrivent sur la fiche du bien concerné.",
+    };
+  } catch {
+    return { ok: false, message: "Réponse MailingVox illisible." };
+  }
+}
+
+export type SmsEntrant = {
+  id: string;
+  nature: "reponse" | "stop" | "accuse";
+  numero?: string;
+  texte?: string;
+  statut?: string;
+  campagne?: string;
+  contactId?: string;
+  recuLe: string;
+  lu: boolean;
+};
+
+/**
+ * Les réponses et les STOP reçus, les plus récents d'abord.
+ *
+ * Les ACCUSÉS sont écartés par défaut : il y en a un par destinataire et par
+ * changement d'état, ils noieraient les deux ou trois réponses qui comptent.
+ * Ils restent en base pour qui veut compter les non-délivrés.
+ */
+export async function smsEntrants(options: { limite?: number; avecAccuses?: boolean } = {}) {
+  const SB = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+  const K = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!K) return [] as SmsEntrant[];
+  const natures = options.avecAccuses ? "" : "&nature=in.(reponse,stop)";
+  const res = await fetch(
+    `${SB}/rest/v1/fi_sms_entrant?select=*${natures}&order=recu_le.desc&limit=${options.limite ?? 100}`,
+    { headers: { apikey: K, Authorization: `Bearer ${K}` }, cache: "no-store" },
+  ).catch(() => null);
+  if (!res?.ok) return [] as SmsEntrant[];
+  const lignes = (await res.json()) as Record<string, unknown>[];
+  return lignes.map((l) => ({
+    id: String(l.id),
+    nature: l.nature as SmsEntrant["nature"],
+    numero: (l.numero as string) ?? undefined,
+    texte: (l.texte as string) ?? undefined,
+    statut: (l.statut as string) ?? undefined,
+    campagne: (l.campagne as string) ?? undefined,
+    contactId: (l.contact_id as string) ?? undefined,
+    recuLe: String(l.recu_le),
+    lu: l.lu === true,
+  }));
+}

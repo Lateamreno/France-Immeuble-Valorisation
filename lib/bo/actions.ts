@@ -4084,6 +4084,36 @@ export async function envoyerMailsCommercialisation(input: {
   }
 }
 
+/**
+ * Déclare nos adresses de réception chez MailingVox (réponses, STOP, accusés).
+ *
+ * L'adresse publique du BO vient des en-têtes de la requête plutôt que d'une
+ * variable : c'est celle par laquelle on est réellement joignable, et elle est
+ * juste sur la preview comme en production sans rien à régler.
+ */
+export async function brancherRetoursSms() {
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  if (!hote || hote.startsWith("localhost")) {
+    return {
+      ok: false as const,
+      message:
+        "MailingVox doit pouvoir nous appeler : lancez-le depuis la preview ou la production, "
+        + "pas depuis un poste local.",
+    };
+  }
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const { poserWebhooks } = await import("./sms");
+  return poserWebhooks(`${proto}://${hote}`);
+}
+
+/** Les réponses SMS et les STOP reçus, pour l'écran. */
+export async function retoursSms(limite = 100) {
+  const { smsEntrants } = await import("./sms");
+  return smsEntrants({ limite });
+}
+
 /** L'état du pont MailingVox, pour que l'écran sache s'il peut envoyer. */
 export async function etatEnvoiSms() {
   const { etatSms, PLAFOND_SMS, NUMERO_STOP } = await import("./sms");
