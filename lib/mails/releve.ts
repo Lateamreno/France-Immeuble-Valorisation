@@ -1,9 +1,18 @@
-/* Relève IMAP de la boîte métier (tâche #57).
+/* Relève IMAP des boîtes de l'agence (tâche #57).
  *
- * Elle relit la boîte, fait passer chaque message par le moteur de
+ * Elle relit les boîtes, fait passer chaque message par le moteur de
  * reconnaissance (lib/bo/rattachement.ts) et range le résultat dans
  * `fi_mail_entrant` — notre table, pas le miroir `bo_mail` que Bubble réécrit
  * chaque nuit.
+ *
+ * PLUSIEURS BOÎTES, ET C'EST LE POINT. MAV demandait si les réponses aux
+ * e-mails pouvaient revenir dans le BO comme celles aux SMS. La route de masse
+ * pose `Reply-To` sur l'agent (§7.1) : la réponse ne revient donc PAS chez
+ * SendGrid, elle arrive dans la vraie boîte du commercial. Ne relever qu'une
+ * seule boîte — ce que faisait cette relève, sur les variables `IMAP_*` —
+ * laissait forcément tomber les réponses de l'autre agent. On relève
+ * maintenant toutes les boîtes connues (`fi_boite_agent` + variables
+ * `MAIL_n_*`), chacune avec son propre curseur.
  *
  * Deux principes tenus d'un bout à l'autre :
  *   • rejouable — l'identifiant du message est unique en base, relancer la
@@ -18,23 +27,62 @@ import {
   adresseSeule, estRetenu, reconnaitre,
   type Enveloppe, type Recherches, type Reference,
 } from "@/lib/bo/rattachement";
+import { toutesLesBoites } from "@/lib/mails/boites";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-/** Réglages de la boîte relevée. Mêmes noms que côté envoi, préfixe IMAP. */
-const CONF = () => ({
-  host: process.env.IMAP_HOST ?? process.env.SMTP_HOST?.replace(/^smtp/, "imap"),
-  port: Number(process.env.IMAP_PORT ?? 993),
-  user: process.env.IMAP_USER ?? process.env.SMTP_USER,
-  pass: process.env.IMAP_PASS ?? process.env.SMTP_PASS,
-  boite: process.env.IMAP_BOITE ?? "INBOX",
-});
+/** Une boîte à relever, telle que la relève en a besoin. */
+type ARelever = {
+  /** Clé du curseur en base : une adresse peut avoir plusieurs dossiers. */
+  cle: string;
+  adresse: string;
+  host: string; port: number; user: string; pass: string;
+  dossier: string;
+};
 
-/** La relève est-elle branchée ? Sinon l'écran le dit au lieu de rester vide. */
+/** Boîte de service héritée, déclarée en variables `IMAP_*`. */
+function boiteHeritee(): ARelever | undefined {
+  const host = process.env.IMAP_HOST ?? process.env.SMTP_HOST?.replace(/^smtp/, "imap");
+  const user = process.env.IMAP_USER ?? process.env.SMTP_USER;
+  const pass = process.env.IMAP_PASS ?? process.env.SMTP_PASS;
+  if (!host || !user || !pass) return undefined;
+  const dossier = process.env.IMAP_BOITE ?? "INBOX";
+  return {
+    cle: `${adresseSeule(user)}/${dossier}`,
+    adresse: adresseSeule(user),
+    host, port: Number(process.env.IMAP_PORT ?? 993), user, pass, dossier,
+  };
+}
+
+/**
+ * Toutes les boîtes à relever.
+ *
+ * Les boîtes des agents priment : ce sont elles qui reçoivent les réponses.
+ * La boîte de service héritée reste relevée tant qu'elle est déclarée, mais
+ * jamais deux fois si un agent l'a reprise à son nom.
+ */
+export async function boitesARelever(): Promise<ARelever[]> {
+  const agents = (await toutesLesBoites().catch(() => [])).map((b) => ({
+    cle: `${adresseSeule(b.adresse)}/INBOX`,
+    adresse: adresseSeule(b.adresse),
+    host: b.imap.host, port: b.imap.port, user: b.imap.user, pass: b.imap.pass,
+    dossier: b.dossiers?.reception ?? "INBOX",
+  }));
+  const heritee = boiteHeritee();
+  if (heritee && !agents.some((a) => a.adresse === heritee.adresse)) agents.push(heritee);
+  return agents;
+}
+
+/**
+ * La relève est-elle branchée ?
+ *
+ * Ne répond que pour les variables d'environnement — les boîtes en base
+ * demandent un aller-retour, et `relever()` le fait déjà. L'écran se fie au
+ * bilan, pas à cette réponse, qui n'est plus qu'un raccourci sans accès base.
+ */
 export function releveConfiguree() {
-  const c = CONF();
-  return !!(c.host && c.user && c.pass);
+  return !!boiteHeritee() || !!process.env.MAIL_1_PASS;
 }
 
 /* ---------------------------------------------------------- accès base --- */
@@ -137,6 +185,8 @@ export type Bilan = {
   doublons: number;
   dernierUid: number;
   erreurs: string[];
+  /** Le détail par boîte : sans lui, une boîte muette passe inaperçue. */
+  boites?: { adresse: string; lus: number; entres: number; erreurs: number }[];
 };
 
 const adresses = (a?: AddressObject | AddressObject[]) => {
@@ -148,32 +198,62 @@ const adresses = (a?: AddressObject | AddressObject[]) => {
 const corpsTexte = (m: ParsedMail) =>
   (m.text ?? "").trim() || (typeof m.html === "string" ? m.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
 
+/**
+ * Relève toutes les boîtes connues.
+ *
+ * Une boîte qui tombe (mot de passe changé, serveur muet) n'empêche pas les
+ * autres d'être relevées : son erreur est rangée dans le bilan et la suivante
+ * démarre. C'est le seul comportement acceptable dès qu'il y a deux agents.
+ */
 export async function relever(max = 100): Promise<Bilan> {
+  const boites = await boitesARelever();
+  const total: Bilan = {
+    configuree: boites.length > 0,
+    lus: 0, entres: 0, ignores: 0, doublons: 0, dernierUid: 0, erreurs: [], boites: [],
+  };
+  if (!boites.length) return total;
+
+  const r = recherchesSupabase();
+  for (const c of boites) {
+    const b = await releverUne(c, r, max).catch((e): Bilan => ({
+      configuree: true, lus: 0, entres: 0, ignores: 0, doublons: 0, dernierUid: 0,
+      erreurs: [e instanceof Error ? e.message : String(e)],
+    }));
+    total.lus += b.lus;
+    total.entres += b.entres;
+    total.ignores += b.ignores;
+    total.doublons += b.doublons;
+    total.dernierUid = Math.max(total.dernierUid, b.dernierUid);
+    total.erreurs.push(...b.erreurs.map((m) => `${c.adresse} — ${m}`));
+    total.boites!.push({ adresse: c.adresse, lus: b.lus, entres: b.entres, erreurs: b.erreurs.length });
+  }
+  return total;
+}
+
+async function releverUne(c: ARelever, r: Recherches, max: number): Promise<Bilan> {
   const bilan: Bilan = {
-    configuree: releveConfiguree(),
+    configuree: true,
     lus: 0, entres: 0, ignores: 0, doublons: 0, dernierUid: 0, erreurs: [],
   };
-  if (!bilan.configuree) return bilan;
-
-  const c = CONF();
-  const r = recherchesSupabase();
 
   /* On repart du dernier UID vu : relire toute la boîte à chaque passage
-     coûterait cher et n'apporterait rien. */
+     coûterait cher et n'apporterait rien. Le curseur porte l'adresse, pas
+     seulement le nom du dossier : deux boîtes ont toutes les deux un INBOX,
+     et les confondre ferait sauter les messages de la seconde. */
   const etats = await sb<{ boite: string; dernier_uid: number }>(
-    `fi_releve_etat?select=boite,dernier_uid&boite=eq.${encodeURIComponent(c.boite)}&limit=1`,
+    `fi_releve_etat?select=boite,dernier_uid&boite=eq.${encodeURIComponent(c.cle)}&limit=1`,
   );
   const depuis = etats[0]?.dernier_uid ?? 0;
   bilan.dernierUid = depuis;
 
   const client = new ImapFlow({
-    host: c.host!, port: c.port, secure: c.port === 993,
-    auth: { user: c.user!, pass: c.pass! },
+    host: c.host, port: c.port, secure: c.port === 993,
+    auth: { user: c.user, pass: c.pass },
     logger: false,
   });
 
   await client.connect();
-  const verrou = await client.getMailboxLock(c.boite);
+  const verrou = await client.getMailboxLock(c.dossier);
   try {
     /* `uid:*` renvoie toujours au moins le dernier message même quand il n'y
        a rien de neuf : le filtre sur `uid > depuis` reste indispensable. */
@@ -206,7 +286,7 @@ export async function relever(max = 100): Promise<Bilan> {
         const rec = await reconnaitre(env, r);
         if (!estRetenu(rec)) { bilan.ignores += 1; continue; }
 
-        const messageId = env.messageId ?? `imap-${c.boite}-${msg.uid}@france-immeuble`;
+        const messageId = env.messageId ?? `imap-${c.cle}-${msg.uid}@france-immeuble`;
         /* `on_conflict` est obligatoire : la contrainte d'unicité porte sur
            `message_id`, pas sur la clé primaire. Sans lui, PostgREST lève une
            erreur 23505 au lieu d'ignorer — et la relève plantait au deuxième
@@ -217,7 +297,7 @@ export async function relever(max = 100): Promise<Bilan> {
           body: JSON.stringify([{
             message_id: messageId,
             uid: msg.uid,
-            boite: c.boite,
+            boite: c.cle,
             de,
             de_nom: parse.from?.value?.[0]?.name || null,
             pour: env.pour,
@@ -260,7 +340,7 @@ export async function relever(max = 100): Promise<Bilan> {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify([{
-      boite: c.boite,
+      boite: c.cle,
       dernier_uid: bilan.dernierUid,
       derniere_le: new Date().toISOString(),
       dernier_message: bilan.erreurs.length
@@ -275,4 +355,5 @@ export async function relever(max = 100): Promise<Bilan> {
 }
 
 /** Adresse de la boîte relevée, pour l'afficher dans l'écran. */
-export const boiteRelevee = () => (CONF().user ? adresseSeule(CONF().user!) : undefined);
+/** Les adresses relevées, pour les afficher dans l'écran. */
+export const boitesRelevees = async () => (await boitesARelever()).map((b) => b.adresse);
