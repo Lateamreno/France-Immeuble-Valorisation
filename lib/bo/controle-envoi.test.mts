@@ -109,3 +109,17 @@ test("pièces jointes : un poids inconnu se dit, il ne se devine pas", () => {
   assert.match(r.message, /dont l'hébergeur ne donne pas le poids/);
   assert.equal(r.octets, 1_000_000);
 });
+
+test("pièces jointes : aucun poids connu ne donne pas « 0,0 Mo »", () => {
+  // Le dossier de Lille est hébergé chez Bubble, qui ne renvoie pas
+  // `content-length`. L'écran annonçait « 0.0 Mo de pièces jointes » — on
+  // aurait juré des fichiers vides.
+  const r = peserPiecesJointes([undefined, undefined]);
+  assert.ok(!r.message.includes("0,0 Mo"), r.message);
+  assert.ok(!r.message.includes("0.0 Mo"), r.message);
+  assert.match(r.message, /^2 pièces jointes dont l'hébergeur ne donne pas le poids\.$/);
+});
+
+test("pièces jointes : le poids s'écrit à la française", () => {
+  assert.match(peserPiecesJointes([1_500_000]).message, /^1,4 Mo/);
+});

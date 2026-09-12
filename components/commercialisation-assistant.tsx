@@ -123,7 +123,6 @@ export function AssistantCommercialisation({
   /* Le poids du dossier, mesuré par `PieceJointe`. Remonté ici pour que le
      plafond porte sur le TOTAL, comme MAV l'a demandé. */
   const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
-  const pesee = peserPiecesJointes([poidsDossier ?? undefined, pj2?.octets]);
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
   const lots = paquets(dest.telephones, 50);
@@ -146,6 +145,13 @@ export function AssistantCommercialisation({
   // Alerte du BO : le prix du dossier peut avoir divergé de celui de la fiche.
   const doc = dossiers.find((x) => S(x._id) === dossier);
   const prixDossier = typeof doc?.prix_hai === "number" ? (doc.prix_hai as number) : undefined;
+  /* Ne compter que les pièces qui EXISTENT : passer `undefined` pour une
+     seconde pièce absente la faisait compter comme « un fichier de poids
+     inconnu », et l'écran annonçait deux pièces quand il n'y en avait qu'une. */
+  const pesee = peserPiecesJointes([
+    ...(doc ? [poidsDossier ?? undefined] : []),
+    ...(pj2 ? [pj2.octets] : []),
+  ]);
   const man = mandats.find((x) => S(x._id) === mandat);
   const prixMandat = typeof man?.prix_hai === "number" ? (man.prix_hai as number) : undefined;
   const ecart =
@@ -349,7 +355,7 @@ export function AssistantCommercialisation({
             onChange={(e) => { setLien(e.target.value); setMessage(messageCommercialisation(bienMail, e.target.value)); }} />
           <div className="asst-note">
             Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
-            auprès de {dest.emails.length} destinataires. RGPD : caviardez les baux avant de les
+            auprès de {controle.personnes} destinataire{controle.personnes > 1 ? "s" : ""}. RGPD : caviardez les baux avant de les
             déposer — le nom, la profession et les coordonnées d&apos;un locataire n&apos;ont rien à
             faire dans un dossier d&apos;acquéreur.
           </div>
@@ -418,8 +424,10 @@ export function AssistantCommercialisation({
           {/* Retour #360 : le compte, et ce qui n'y est pas. */}
           <div className="asst-rec">
             <span>
-              <b>{controle.personnes}</b> personne{controle.personnes > 1 ? "s" : ""}{" "}
-              {controle.personnes > 1 ? "recevront" : "recevra"} l&apos;e-mail
+              <b>{controle.personnes}</b>
+              {` personne${controle.personnes > 1 ? "s" : ""} `}
+              {controle.personnes > 1 ? "recevront" : "recevra"}
+              {" l'e-mail"}
             </span>
             {controle.doublons.length > 0 && (
               <span className="off">{controle.doublons.length} doublon{controle.doublons.length > 1 ? "s" : ""} fondu{controle.doublons.length > 1 ? "s" : ""}</span>
@@ -492,15 +500,16 @@ export function AssistantCommercialisation({
           <span className="mlab">Destinataires retenus ({controle.personnes})</span>
           <textarea className="min mono" rows={5} readOnly value={controle.adresses.join("; ")} />
           <div className="mrow">
-            <button className="fadd" type="button" onClick={() => copier(controle.adresses.join("; "))}>Copier les {controle.personnes} adresses</button>
+            <button className="fadd" type="button" onClick={() => copier(controle.adresses.join("; "))}>{controle.personnes > 1 ? `Copier les ${controle.personnes} adresses` : "Copier l'adresse"}</button>
             <a className="fadd" href={`mailto:?bcc=${encodeURIComponent(controle.adresses.join(","))}&subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(message)}`}>
               Ouvrir dans le client mail
             </a>
           </div>
           <div className="asst-note">
-            Les adresses sont dédoublonnées : un acquéreur ayant plusieurs recherches ne reçoit qu&apos;un e-mail.
-            Utilisez la copie cachée. L&apos;envoi en un bouton et la programmation attendent la route
-            de masse SendGrid — sous-domaine d&apos;envoi et <code>MASSE_SMTP_*</code>.
+            Les adresses sont dédoublonnées : un acquéreur ayant plusieurs recherches ne reçoit
+            qu&apos;un e-mail. Le bouton d&apos;envoi ci-dessous passe par la route de masse :
+            sous-domaine dédié, réponse renvoyée à l&apos;agent, désabonnement en un clic. La copie
+            et le client mail restent là pour les cas particuliers — en copie cachée.
           </div>
           {/* Retour #360 — « tout doit pouvoir s'envoyer d'ici d'un seul
               bouton », et « qu'on puisse aussi programmer l'heure d'envoi et

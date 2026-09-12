@@ -178,11 +178,21 @@ export function peserPiecesJointes(tailles: (number | undefined)[]): VerdictPiec
   const depasse = octets > PLAFOND_PJ_OCTETS;
 
   if (tailles.length === 0) return { octets: 0, mo: 0, depasse: false, message: "Aucune pièce jointe." };
-  const debut = `${mo.toFixed(1)} Mo de pièces jointes`;
+  const mof = mo.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const debut = `${mof} Mo de pièces jointes`;
   if (inconnues > 0) {
+    /* Aucun poids connu : annoncer « 0,0 Mo » ferait croire à des pièces
+       vides. On dit ce qu'on sait — leur nombre — et rien de plus. */
+    const pluriel = inconnues > 1 ? "s" : "";
+    if (connues.length === 0) {
+      return {
+        octets, mo, depasse,
+        message: `${inconnues} pièce${pluriel} jointe${pluriel} dont l'hébergeur ne donne pas le poids.`,
+      };
+    }
     return {
       octets, mo, depasse,
-      message: `${debut}, plus ${inconnues} fichier${inconnues > 1 ? "s" : ""} dont l'hébergeur ne donne pas le poids.`,
+      message: `${debut}, plus ${inconnues} fichier${pluriel} dont l'hébergeur ne donne pas le poids.`,
     };
   }
   return {
