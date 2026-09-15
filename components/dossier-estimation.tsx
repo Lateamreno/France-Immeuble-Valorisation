@@ -132,7 +132,11 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
   const cRenta = (v: number) => (Math.abs(v - d.ref.renta) < 0.05 ? "or" : v > d.ref.renta ? "vert" : "rouge");
 
   const auM2 = d.lignes.filter((l) => !l.auLot);
-  const verdictLoyers = d.ecartLoyers < -3 ? "Sous-évalués" : d.ecartLoyers > 3 ? "Sur-évalués" : "Dans le marché";
+  /* Pas de surface louée → pas de loyer au m² → pas de verdict. On le dit,
+     plutôt que d'afficher un « −100 % » qui ferait croire à des loyers nuls. */
+  const verdictLoyers = d.ecartLoyers === null ? "Non mesurable"
+    : d.ecartLoyers < -3 ? "Sous-évalués" : d.ecartLoyers > 3 ? "Sur-évalués" : "Dans le marché";
+  const ecartLoyersTxt = d.ecartLoyers === null ? "sans surface" : `${d.ecartLoyers > 0 ? "+" : ""}${d.ecartLoyers} %`;
 
   return (
     <div className={`dos${nu ? " nu" : ""}`}>
@@ -167,7 +171,9 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           <div className="dos-cv-titre">ESTIMATION</div>
           <div className="dos-cv-3">
             {([
-              ["Surface", group(d.carrez), "m²"],
+              /* Une surface absente n'est pas une surface de zéro : les murs
+                 d'un hôtel s'estiment au revenu, la couverture le dit. */
+              ["Surface", d.carrez > 0 ? group(d.carrez) : "n.c.", d.carrez > 0 ? "m²" : ""],
               ["Revenus annuels", group(d.loyers), "€ HC/an"],
               ["Occupation", String(Math.round(d.occupation)), "%"],
             ] as const).map(([l, v, u]) => (
@@ -192,7 +198,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           <div><Ic d={I.cle} cls="dos-ic gd" /><span>Lots</span><Etoiles n={d.scores.lot} /></div>
           <div>
             <Ic d={I.piece} cls="dos-ic gd" /><span>Loyers</span>
-            <b className="dos-hd-v">{verdictLoyers}<br />{d.ecartLoyers > 0 ? "+" : ""}{d.ecartLoyers} %</b>
+            <b className="dos-hd-v">{verdictLoyers}<br />{ecartLoyersTxt}</b>
           </div>
           <Ic d={I.loupe} cls="dos-hd-big" />
         </div>
@@ -227,15 +233,17 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
             </tr>
           </thead>
           <tbody>
+            {/* Une surface absente s'écrit « n.c. », pas « 0 m² » — et le loyer
+                au m² qui en découlerait n'existe pas. */}
             {d.lignes.map((l) => (
               <tr key={l.dest}>
                 <td className="g">{l.label}</td>
                 <td>{l.lots}</td>
-                <td>{l.auLot ? "—" : m2(l.surface)}</td>
-                <td>{l.auLot ? "—" : m2(l.surfaceOcc)}</td>
+                <td>{l.auLot ? "—" : l.surface > 0 ? m2(l.surface) : "n.c."}</td>
+                <td>{l.auLot ? "—" : l.surface > 0 ? m2(l.surfaceOcc) : "n.c."}</td>
                 <td>{group(l.revenus)} €/an</td>
                 <td className={l.cher ? "rouge" : ""}>
-                  {fr1(l.loyerM2)} €/{l.auLot ? "lot" : "m²"}
+                  {l.auLot || l.surface > 0 ? `${fr1(l.loyerM2)} €/${l.auLot ? "lot" : "m²"}` : "—"}
                 </td>
               </tr>
             ))}
@@ -244,10 +252,10 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
                   (retour #149) : elle porte son mot, dans la même graisse. */}
               <td className="g">Total</td>
               <td>{d.total.lots}</td>
-              <td>{m2(d.total.surface)}</td>
-              <td>{m2(d.total.surfaceOcc)}</td>
+              <td>{d.total.surface > 0 ? m2(d.total.surface) : "n.c."}</td>
+              <td>{d.total.surface > 0 ? m2(d.total.surfaceOcc) : "n.c."}</td>
               <td>{group(d.total.revenus)} €/an</td>
-              <td>{fr1(d.total.loyerM2)} €/m²</td>
+              <td>{d.total.surface > 0 ? `${fr1(d.total.loyerM2)} €/m²` : "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -366,17 +374,21 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
                   c'est le rendement qui se compare. Sur la ligne Rendement,
                   l'inverse : le rendement et le prix sont en or, et ce sont
                   les deux prix au m² qui se comparent. */}
-              <tr className={lim === "m2" ? "" : "off"}>
-                <td className="g or">Prix au m²</td>
-                <td>{group(parM2.m2)} €/m²</td>
-                <td className="or">{group(parM2.m2Travaux)} €/m²</td>
-                <td className={cRenta(parM2.renta)}>{fr1(parM2.renta)} %</td>
-                <td className="p or">{group(parM2.prix)} €</td>
-              </tr>
+              {/* Sans surface, cette ligne dirait « 0 €/m² → 0 € » : une
+                  méthode qui n'existe pas ne s'affiche pas. */}
+              {d.carrez > 0 && (
+                <tr className={lim === "m2" ? "" : "off"}>
+                  <td className="g or">Prix au m²</td>
+                  <td>{group(parM2.m2)} €/m²</td>
+                  <td className="or">{group(parM2.m2Travaux)} €/m²</td>
+                  <td className={cRenta(parM2.renta)}>{fr1(parM2.renta)} %</td>
+                  <td className="p or">{group(parM2.prix)} €</td>
+                </tr>
+              )}
               <tr className={lim === "renta" ? "" : "off"}>
                 <td className="g or">Rendement</td>
-                <td className={cM2(parRenta.m2)}>{group(parRenta.m2)} €/m²</td>
-                <td className={cM2(parRenta.m2Travaux)}>{group(parRenta.m2Travaux)} €/m²</td>
+                <td className={d.carrez > 0 ? cM2(parRenta.m2) : ""}>{d.carrez > 0 ? `${group(parRenta.m2)} €/m²` : "—"}</td>
+                <td className={d.carrez > 0 ? cM2(parRenta.m2Travaux) : ""}>{d.carrez > 0 ? `${group(parRenta.m2Travaux)} €/m²` : "—"}</td>
                 <td className="or">{fr1(parRenta.renta)} %</td>
                 <td className="p or">{group(parRenta.prix)} €</td>
               </tr>
@@ -395,7 +407,7 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
             <div><span>Emplacement</span><Etoiles n={d.scores.emp} taille="gr" /></div>
             <div><span>Bâti</span><Etoiles n={d.scores.bati} taille="gr" /></div>
             <div><span>Lots</span><Etoiles n={d.scores.lot} taille="gr" /></div>
-            <div><span>Loyers</span><b>{verdictLoyers}<br />{d.ecartLoyers > 0 ? "+" : ""}{d.ecartLoyers} %</b></div>
+            <div><span>Loyers</span><b>{verdictLoyers}<br />{ecartLoyersTxt}</b></div>
           </div>
           <div className="dos-res-b">
             <p>L&apos;immeuble est {d.phrase.emp}, {d.phrase.bati} et loué à {Math.round(d.occupation)} %.</p>
