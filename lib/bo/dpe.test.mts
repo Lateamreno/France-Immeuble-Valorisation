@@ -1,7 +1,7 @@
 import {
   adresseInterrogeable, estPerime, libelleAdresse, lotsPlausibles, normaliserVoie,
   repartition, scoreRapprochement, situationDpe, trierDpe, variantesNumero, type Dpe,
-} from "./dpe";
+} from "./dpe.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };

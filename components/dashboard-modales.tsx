@@ -242,6 +242,109 @@ export function ModaleTransfert({
 }
 
 /**
+ * Archiver un dossier (retour #362).
+ *
+ * MAV : « le bouton archivage ne montre pas la liste déroulante qu'affiche le
+ * BO actuel mais une page du navigateur ». C'était un `prompt()` avec « Ne
+ * souhaite pas vendre » pré-rempli : un clic sur OK archivait la fiche sans
+ * qu'on ait rien choisi — sept fiches y sont passées en vingt-trois secondes.
+ *
+ * Même moule que le transfert : le bien rappelé, le motif dans une vraie liste
+ * (vide au départ, le bouton reste fermé tant qu'on n'a pas choisi), et la
+ * précision libre que le BO range dans `motif_archivage_txt`.
+ */
+export function ModaleArchivage({
+  bien, motifs, onAnnuler, onArchiver,
+}: {
+  bien: { ville: string; adresse: string; contact?: string; photoUrl?: string; initiales?: string; initialesCouleur?: string; note?: string };
+  motifs: readonly string[];
+  onAnnuler: () => void;
+  onArchiver: (motif: string, precision: string) => void;
+}) {
+  const [motif, setMotif] = useState("");
+  const [precision, setPrecision] = useState("");
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onAnnuler]);
+
+  return createPortal(
+    <div className="modal-ov">
+      <div className="modal tr" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+
+        <div className="tr-head">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
+          Archivage
+        </div>
+        <div className="tr-body">
+          <div className="tr-lab">
+            <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2" /></svg>
+            Immeuble
+          </div>
+          <div className="tr-bien">
+            <span className="tr-photo">
+              {bien.photoUrl
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={bien.photoUrl} alt="" />
+                : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
+              {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
+            </span>
+            <div className="tr-info">
+              <div className="tr-t">
+                {bien.ville} <span>- {bien.adresse}</span>
+                {bien.contact && (
+                  <span className="tr-c">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+                    {bien.contact}
+                  </span>
+                )}
+              </div>
+              {bien.note && <div className="tr-n">{bien.note}</div>}
+            </div>
+          </div>
+
+          <div className="tr-row">
+            <span className="tr-lab dim">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
+              Motif
+            </span>
+            <select className={`tr-sel${motif ? "" : " vide"}`} value={motif} onChange={(e) => setMotif(e.target.value)}>
+              <option value="" />
+              {motifs.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          <div className="tr-row">
+            <span className="tr-lab dim">
+              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
+              Précision
+            </span>
+            <input className="tr-sel" value={precision} placeholder="Facultatif — un mot pour la prochaine fois"
+              onChange={(e) => setPrecision(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && motif && !pending) start(() => onArchiver(motif, precision.trim())); }} />
+          </div>
+        </div>
+        <div className="tr-foot">
+          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+          <span style={{ flex: 1 }} />
+          {/* Fermé tant qu'aucun motif n'est choisi : archiver n'est pas un
+              geste par défaut, c'est le retour #362 tout entier. */}
+          <button type="button" className="vf-go" disabled={!motif || pending}
+            onClick={() => motif && start(() => onArchiver(motif, precision.trim()))}>
+            <span className="ch">›</span> Archiver
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
  * Mettre un dossier en attente (retours #139 et #141).
  *
  * MAV : « passer en "en attente car peu important" et du coup ils sont dans le

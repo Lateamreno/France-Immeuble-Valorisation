@@ -118,7 +118,13 @@ export function construireDossier(
   const surfaceM2 = lignes.filter((l) => !l.auLot).reduce((s, l) => s + l.surfaceOcc, 0);
   const revenusM2 = lignes.filter((l) => !l.auLot).reduce((s, l) => s + l.revenus, 0);
   const loyerM2Actuel = surfaceM2 > 0 ? revenusM2 / 12 / surfaceM2 : 0;
-  const ecartLoyers = refLoyer > 0 ? Math.round((loyerM2Actuel / refLoyer - 1) * 100) : 0;
+  /* Sans surface louée il n'y a pas de loyer au m², donc pas d'écart : les murs
+     de l'hôtel Belfast, qui n'ont aucune surface communiquée, sortaient
+     « Sous-évalués −100 % » — un zéro divisé, présenté au propriétaire comme
+     un verdict. `null` dit « non mesurable », et la page le montre ainsi. */
+  const ecartLoyers: number | null = refLoyer > 0 && surfaceM2 > 0
+    ? Math.round((loyerM2Actuel / refLoyer - 1) * 100)
+    : null;
 
   /* --- Facteur limitant : la méthode qui donne le prix le plus bas ---------
      Retour #278 : « c'est pas normal que le prix au m² HAI et le prix au m²
@@ -148,8 +154,10 @@ export function construireDossier(
   };
   parRenta.m2 = carrez > 0 ? parRenta.prix / carrez : 0;
   parRenta.m2Travaux = carrez > 0 ? (parRenta.prix + travaux) / carrez : 0;
+  /* Sans surface, la méthode au m² n'existe pas : son prix vaut zéro et
+     serait « le plus bas ». Seul le rendement peut alors limiter. */
   const limitant: "renta" | "m2" =
-    parRenta.prix > 0 && parRenta.prix <= parM2.prix ? "renta" : "m2";
+    carrez <= 0 || (parRenta.prix > 0 && parRenta.prix <= parM2.prix) ? "renta" : "m2";
 
   const sc = (v: unknown) => Math.min(5, Math.max(1, parseInt(S(v) || "3", 10) || 3));
   const scores = { emp: sc(e.Score_emp), bati: sc(e.Score_bati), lot: sc(e.Score_lot) };

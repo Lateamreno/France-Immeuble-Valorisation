@@ -169,12 +169,16 @@ export async function addSuivi(input: {
 
 /* ---------- Actions du menu « … » des cartes (retour MAV #3) ---------- */
 
-/** Archive un immeuble avec le motif du référentiel. */
-export async function archiverImmeuble(immeubleId: string, motif: string) {
+/** Archive un immeuble avec le motif du référentiel, et la précision libre
+ *  que le BO range dans `motif_archivage_txt` (retour #362). */
+export async function archiverImmeuble(immeubleId: string, motif: string, precision?: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
-    p_patch: { archived: true, Motif_archivage: motif, date_archivage: new Date().toISOString() },
+    p_patch: cleanPatch({
+      archived: true, Motif_archivage: motif, motif_archivage_txt: precision?.trim() || undefined,
+      date_archivage: new Date().toISOString(),
+    }),
   });
   refresh(immeubleId);
 }
@@ -2142,6 +2146,61 @@ export async function apercuPdfDossier(
   }
 }
 
+/**
+ * Fabrique l'ÉTAT LOCATIF en PDF et le range dans le coffre (retour #359).
+ *
+ * MAV a retenu l'option C : le document est généré depuis l'état locatif de la
+ * fiche — donc toujours à jour — et un fichier déposé à la main reste possible
+ * à côté. Ici, la branche automatique.
+ *
+ * Même chemin que le dossier : une page A4 imprimée par un Chromium sans
+ * écran. Ce n'est pas un détour — c'est ce qui garantit que le PDF envoyé est
+ * exactement ce que l'écran montre, sans second moteur de rendu à maintenir.
+ *
+ * GARDE-FOU §8.3 : la page source ne porte AUCUN nom de locataire. Le
+ * document part chez des acquéreurs.
+ */
+export async function genererEtatLocatif(immeubleId: string) {
+  try {
+    const { pdfDepuisUrl } = await import("./pdf");
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+    const url = `${proto}://${hote}/bien/${immeubleId}/etat-locatif/imprimer?nu=1`;
+
+    const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+
+    /* Horodaté : deux états locatifs du même immeuble à trois semaines
+       d'écart ne disent pas la même chose, et celui qu'on a envoyé doit
+       rester retrouvable tel qu'il était. */
+    const jour = new Date().toISOString().slice(0, 10);
+    const path = `etats-locatifs/${immeubleId}/${jour}.pdf`;
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/pdf",
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(pdf),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+    return {
+      ok: true as const,
+      path,
+      nom: `Etat-locatif-${jour}.pdf`,
+      octets: pdf.length,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[etat locatif]", message);
+    return { ok: false as const, message };
+  }
+}
+
 async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
   const { pdfDepuisUrl } = await import("./pdf");
   const { headers } = await import("next/headers");
@@ -3858,10 +3917,211 @@ export async function createCommercialisation(input: CommercialisationInput) {
   return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
 }
 
-/** L'état du pont Twilio, pour que l'écran sache s'il peut envoyer. */
+/**
+ * Envoie les e-mails d'une commercialisation, en un bouton (retour #360).
+ *
+ * MAV : « tout doit pouvoir s'envoyer d'ici d'un seul bouton », et
+ * « ce serait bien qu'on puisse aussi programmer l'heure d'envoi et le jour ».
+ *
+ * Doctrine §7.1 tenue : l'agent valide le contenu, la liste ET l'heure dans le
+ * même geste. La machine attend, elle ne décide de rien.
+ *
+ * Trois garde-fous appliqués ICI, côté serveur, et pas seulement à l'écran —
+ * un contrôle qui ne vit que dans le navigateur n'est pas un contrôle :
+ *   • le plafond du jour (§7.1) avant d'ouvrir la moindre connexion ;
+ *   • le poids des pièces jointes, 3 Mo au total ;
+ *   • la route de masse, refusée si elle n'est pas configurée — une salve ne
+ *     part jamais d'une boîte personnelle.
+ */
+export async function envoyerMailsCommercialisation(input: {
+  immeubleId: string;
+  commId: string;
+  objet: string;
+  message: string;
+  destinataires: string[];
+  /** Chemins dans le coffre (`bo-files`). */
+  pieces?: { nom: string; path: string }[];
+  /** Envoi différé (ISO). SendGrid retient le message jusqu'à l'heure dite. */
+  quand?: string;
+  /** L'agent qui signe. Son e-mail est résolu ICI : la fiche ne le descend pas
+   *  au navigateur, et c'est très bien ainsi — le `Reply-To` d'une salve n'a
+   *  rien à faire dans du code côté client. */
+  agentId?: string;
+}) {
+  try {
+    if (!input.objet.trim()) return { ok: false as const, message: "L'objet est vide." };
+    if (!input.message.trim()) return { ok: false as const, message: "Le message est vide." };
+
+    const { masseConfiguree, envoyerEnMasse } = await import("./mail");
+    if (!masseConfiguree()) {
+      return {
+        ok: false as const,
+        message:
+          "Route d'envoi en masse non configurée (MASSE_SMTP_HOST / MASSE_SMTP_USER / "
+          + "MASSE_SMTP_PASS, puis MASSE_DOMAINE ou MASSE_FROM). Une salve ne doit pas partir "
+          + "d'une boîte personnelle.",
+      };
+    }
+
+    const { controlerEnvoi, peserPiecesJointes, PLAFOND_PJ_OCTETS } = await import("./controle-envoi");
+    const controle = controlerEnvoi(input.destinataires.map((e, i) => ({
+      rechercheId: `d${i}`, nom: e, email: e,
+    })));
+    if (controle.adresses.length === 0) {
+      return { ok: false as const, message: "Aucune adresse valide à servir." };
+    }
+
+    /* Le plafond du jour d'abord : il ne sert à rien de refuser au 4 001ᵉ
+       message d'une salve déjà à moitié partie. */
+    /* `PLAFOND_JOUR` ne s'exporte PAS : `mails-actions` est un module
+       « use server », et y exporter autre chose qu'une fonction asynchrone
+       casse le build. Le quota le rend déjà. */
+    const { quotaDuJour } = await import("./mails-actions");
+    const q = await quotaDuJour();
+    if (q.envoyes + controle.adresses.length > q.plafond) {
+      return {
+        ok: false as const,
+        message:
+          `Plafond du jour : ${q.envoyes} message${q.envoyes > 1 ? "s" : ""} déjà parti${q.envoyes > 1 ? "s" : ""} `
+          + `sur ${q.plafond}, il en reste ${q.reste} et cette salve en demande `
+          + `${controle.adresses.length}. Étalez sur deux jours.`,
+      };
+    }
+
+    /* Les pièces jointes, tirées du coffre une seule fois pour toute la salve :
+       les retélécharger par destinataire multiplierait le trafic par deux cents
+       pour un contenu identique. */
+    const pieces: { nom: string; contenu: Buffer; type?: string }[] = [];
+    for (const p of input.pieces ?? []) {
+      if (!SB_KEY) break;
+      const res = await fetch(`${SB_URL}/storage/v1/object/bo-files/${p.path}`, {
+        headers: { Authorization: `Bearer ${SB_KEY}` },
+        cache: "no-store",
+      }).catch(() => null);
+      if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
+      pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type: "application/pdf" });
+    }
+    const pesee = peserPiecesJointes(pieces.map((p) => p.contenu.length));
+    if (pesee.depasse) {
+      return {
+        ok: false as const,
+        message:
+          `${pesee.mo.toFixed(1)} Mo de pièces jointes pour un plafond de `
+          + `${(PLAFOND_PJ_OCTETS / 1_048_576).toFixed(0)} Mo. Retirez une pièce ou passez par le lien de partage.`,
+      };
+    }
+
+    const quand = input.quand ? new Date(input.quand) : undefined;
+    if (quand && Number.isNaN(quand.getTime())) {
+      return { ok: false as const, message: "La date d'envoi n'est pas lisible." };
+    }
+    const differe = quand && quand.getTime() > Date.now();
+    /* SendGrid refuse un `send_at` au-delà de 72 heures. Le dire ici plutôt
+       que de laisser le relais rejeter la salve message par message. */
+    if (differe && quand!.getTime() - Date.now() > 72 * 3600 * 1000) {
+      return {
+        ok: false as const,
+        message: "SendGrid ne retient un message que 72 heures : choisissez une date plus proche.",
+      };
+    }
+    const differeA = differe ? Math.floor(quand!.getTime() / 1000) : undefined;
+
+    /* Le Reply-To, c'est l'agent : la réponse doit lui revenir à LUI, quel que
+       soit l'expéditeur affiché (§7.1). Sans agent identifié, on laisse le
+       relais poser son expéditeur de service plutôt que d'inventer une
+       adresse. */
+    let agent: { nom?: string; email?: string } = {};
+    if (input.agentId) {
+      const { getAgentFiche } = await import("@/lib/bubble/server");
+      const a = await getAgentFiche(input.agentId).catch(() => null);
+      if (a) {
+        agent = {
+          nom: [a["prénom"], a.nom].filter(Boolean).join(" ").trim() || undefined,
+          email: typeof a.email === "string" && a.email.includes("@") ? a.email : undefined,
+        };
+      }
+    }
+    let envoyes = 0;
+    const echecs: { email: string; raison: string }[] = [];
+    for (const to of controle.adresses) {
+      try {
+        await envoyerEnMasse({
+          to, subject: input.objet, text: input.message,
+          replyTo: agent.email, agent, pieces, differeA,
+        });
+        envoyes += 1;
+      } catch (e) {
+        echecs.push({ email: to, raison: e instanceof Error ? e.message : String(e) });
+      }
+      /* Séquentiel et espacé : une rafale de connexions se fait limiter aussi
+         sûrement qu'un volume excessif (§7.1). */
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    if (envoyes > 0) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_commercialisation",
+        p_id: input.commId,
+        p_patch: {
+          prop_sent: true,
+          mails_envoyes: envoyes,
+          mails_programmes_pour: differe ? quand!.toISOString() : null,
+          mails_date: new Date().toISOString(),
+          "Modified Date": new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+    }
+
+    revalidatePath(`/bien/${input.immeubleId}`);
+    return {
+      ok: envoyes > 0,
+      envoyes,
+      echecs,
+      programmePour: differe ? quand!.toISOString() : undefined,
+      pieces: pieces.length,
+      message: envoyes === 0 ? "Aucun message n'est parti." : undefined,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[mails commercialisation]", message);
+    return { ok: false as const, message };
+  }
+}
+
+/**
+ * Déclare nos adresses de réception chez MailingVox (réponses, STOP, accusés).
+ *
+ * L'adresse publique du BO vient des en-têtes de la requête plutôt que d'une
+ * variable : c'est celle par laquelle on est réellement joignable, et elle est
+ * juste sur la preview comme en production sans rien à régler.
+ */
+export async function brancherRetoursSms() {
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  if (!hote || hote.startsWith("localhost")) {
+    return {
+      ok: false as const,
+      message:
+        "MailingVox doit pouvoir nous appeler : lancez-le depuis la preview ou la production, "
+        + "pas depuis un poste local.",
+    };
+  }
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const { poserWebhooks } = await import("./sms");
+  return poserWebhooks(`${proto}://${hote}`);
+}
+
+/** Les réponses SMS et les STOP reçus, pour l'écran. */
+export async function retoursSms(limite = 100) {
+  const { smsEntrants } = await import("./sms");
+  return smsEntrants({ limite });
+}
+
+/** L'état du pont MailingVox, pour que l'écran sache s'il peut envoyer. */
 export async function etatEnvoiSms() {
-  const { etatSms, PLAFOND_SMS } = await import("./sms");
-  return { ...etatSms(), plafond: PLAFOND_SMS };
+  const { etatSms, PLAFOND_SMS, NUMERO_STOP } = await import("./sms");
+  return { ...etatSms(), plafond: PLAFOND_SMS, numeroStop: NUMERO_STOP };
 }
 
 /**
@@ -3880,19 +4140,41 @@ export async function envoyerSmsCommercialisation(input: {
   commId: string;
   texte: string;
   numeros: string[];
+  /** Envoi PROGRAMMÉ (ISO). MAV : « ce que je veux faire c'est une
+   *  programmation » — la date est choisie dans le même geste que la
+   *  validation, la machine attend mais ne décide pas. */
+  quand?: string;
 }) {
   if (!input.texte.trim()) return { ok: false as const, message: "Le message est vide." };
   if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
+  const quand = input.quand ? new Date(input.quand) : undefined;
+  if (quand && Number.isNaN(quand.getTime())) {
+    return { ok: false as const, message: "La date d'envoi n'est pas lisible." };
+  }
   try {
     const { envoyerSms } = await import("./sms");
-    const r = await envoyerSms(input.numeros, input.texte);
+    /* Les numéros que MailingVox sait déjà désinscrits : la plateforme voit
+       toutes les campagnes, le BO ne voit que les siennes. Écarter ici coûte
+       une requête et évite d'écrire à quelqu'un qui a dit non. */
+    const { stopsMailingvox } = await import("./sms");
+    const stops = new Set((await stopsMailingvox().catch(() => [])).map((n) => n.replace(/^00/, "+")));
+    const retenus = input.numeros.filter((n) => !stops.has(n));
+    const ecartes = input.numeros.length - retenus.length;
+    if (retenus.length === 0) {
+      return { ok: false as const, message: "Tous les numéros ciblés se sont désinscrits (STOP)." };
+    }
+
+    const r = await envoyerSms(retenus, input.texte, {
+      quand,
+      nom: `Commercialisation ${input.commId}`.slice(0, 50),
+    });
     if (r.simulation) {
       return {
         ok: false as const,
         simulation: true as const,
         message:
-          `Mode simulation : ${input.numeros.length} numéros et ${r.segments} segments préparés, ` +
-          "rien n'est parti. Renseignez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM.",
+          `Mode simulation : ${retenus.length} numéros et ${r.segments} segments préparés, ` +
+          "rien n'est parti. Renseignez MAILINGVOX_KEY (et MAILINGVOX_EXPEDITEUR).",
       };
     }
     if (r.envoyes > 0) {
@@ -3903,13 +4185,23 @@ export async function envoyerSmsCommercialisation(input: {
           prop_sms_sent: true,
           sms_envoyes: r.envoyes,
           sms_segments: r.segments,
+          sms_campagne: r.campagne ?? null,
+          sms_programme_pour: r.programmePour ?? null,
           sms_date: new Date().toISOString(),
           "Modified Date": new Date().toISOString(),
         },
       }).catch(() => undefined);
     }
     revalidatePath(`/bien/${input.immeubleId}`);
-    return { ok: r.envoyes > 0, envoyes: r.envoyes, echecs: r.echecs, segments: r.segments };
+    return {
+      ok: r.envoyes > 0,
+      envoyes: r.envoyes,
+      echecs: r.echecs,
+      segments: r.segments,
+      ecartesStop: ecartes,
+      campagne: r.campagne,
+      programmePour: r.programmePour,
+    };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }

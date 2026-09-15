@@ -1,4 +1,4 @@
-import { aRelancer, grouperParClient, joursDepuis, messageRelance, objetRelance, type PropositionRelance } from "./relances";
+import { aRelancer, grouperParClient, joursDepuis, messageRelance, objetRelance, type PropositionRelance } from "./relances.ts";
 
 const T0 = Date.parse("2026-09-04T12:00:00Z");
 const ilYA = (j: number) => new Date(T0 - j * 86400000).toISOString();

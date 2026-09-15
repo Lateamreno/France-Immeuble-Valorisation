@@ -1,4 +1,4 @@
-import { dateCivile, dmy, jourIso } from "./format";
+import { dateCivile, dmy, jourIso } from "./format.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };

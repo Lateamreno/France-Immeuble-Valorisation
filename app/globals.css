@@ -1931,6 +1931,12 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
 .mt-note .note { filter: grayscale(1); opacity: .55; }
 .mt-note.on { border-color: var(--slate); color: var(--slate); font-weight: 600; }
 .mt-note.on .note { filter: none; opacity: 1; }
+/* Retour #353 — « quand classe D est sélectionné je veux qu'il soit en rouge
+   (actuellement il est en gris donc on sait pas s'il est sélectionné ou pas) ».
+   La classe D est grise dans tout le BO : rendue à sa couleur, elle était
+   donc identique à une pastille éteinte. Le rouge ne vaut QUE dans ce
+   sélecteur, où il signifie « retenue » — ailleurs, D reste grise. */
+.mt-note.on .note.nD { background: var(--red); color: #fff; }
 
 /* Prix figé par le dossier ou l'estimation (retour #326). */
 .mt-prixfige {
@@ -2324,6 +2330,47 @@ button.mt-h.ouvrable:hover { border-color: var(--gold-bo); background: #fffdf7; 
 .asst-tr-t { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--gray-lt); line-height: 1.5; }
 .asst-tr-t b { font-size: 13px; font-weight: 700; color: var(--slate); }
 .asst-tr-t i { font-style: normal; font-size: 11.5px; color: #8a5300; }
+
+/* Retour #354 — le lien transfer.it, réduit à un picto posé à côté du titre.
+   Le `.mlab` qui le porte devient une ligne : le titre à gauche, le lien à
+   droite, sans rien peser. */
+.mlab:has(.asst-tr-mini) { display: flex; align-items: center; gap: 10px; }
+.asst-tr-mini {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-left: auto; padding: 2px 8px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  font-size: 11.5px; font-weight: 600; color: var(--gray-lt);
+  text-decoration: none; text-transform: none; letter-spacing: 0;
+}
+.asst-tr-mini svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.asst-tr-mini:hover { border-color: var(--green); color: var(--green); background: #f5fbf7; }
+
+/* Retour #355 — les chiffres du dossier retenu, sous la liste déroulante :
+   une `<option>` ne porte pas de couleur de façon fiable. */
+.asst-chiffres { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; align-items: center; }
+.asst-chiffres .ac-v, .asst-chiffres .ac-p {
+  font-size: 12.5px; font-weight: 700; padding: 3px 8px; border-radius: 3px;
+  background: #eef1f4; color: #35506b; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.asst-chiffres .ac-v.off { background: none; color: var(--gray-lt); font-weight: 600; }
+.asst-chiffres .ac-p.vert { background: #e9f7ef; color: #1d7a45; }
+.asst-chiffres .ac-p.rouge { background: #fdecea; color: #b3261e; }
+
+/* Retours #355 et #359 — la pièce jointe qui partira, et son poids. */
+.asst-pj {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px;
+  background: #fbfcfd; text-decoration: none;
+}
+.asst-pj:hover { border-color: var(--slate); }
+.asst-pj-i { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 4px; background: #eceff1; color: var(--slate-2); }
+.asst-pj-i svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.asst-pj-t { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--gray-lt); line-height: 1.45; }
+.asst-pj-t b { font-size: 12.5px; font-weight: 700; color: var(--slate); }
+/* Au-delà de 3 Mo, le message se fait filtrer avant d'être lu. */
+.asst-pj.lourd { border-color: var(--orange, #d98b16); background: #fff8ec; }
+.asst-pj.lourd .asst-pj-t { color: #8a5300; }
 
 .asst-ok { border-left: 3px solid var(--green); background: #f3f9f3; padding: 8px 12px; font-size: 13px; color: var(--slate); margin-bottom: 8px; }
 .asst-alerte { margin: 12px 16px 0; border-left: 3px solid var(--red); background: #fdf5f5; padding: 9px 13px; font-size: 12.5px; color: var(--slate); }
@@ -5296,6 +5343,26 @@ button.rc-lieux.modif:hover svg, button.rc-lieux.modif:focus-visible svg { opaci
 .rm-grille { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .rm-grille label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--gray-lt); }
 .rm-grille .min { width: 108px; }
+/* Un montant, une surface, un pourcentage (#350, #351). Le cadre est sur
+   l'enveloppe : l'unité vit DANS le champ, pas à côté. */
+.rm-nb {
+  display: inline-flex; align-items: center; gap: 4px;
+  width: 108px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 8px 10px; background: #fff;
+}
+.rm-nb.large { width: 132px; }
+.rm-nb:focus-within { border-color: var(--red); }
+.rm-nb input {
+  flex: 1; min-width: 0; width: 100%;
+  border: 0; outline: none; background: none; padding: 0;
+  font: inherit; font-size: 13.5px; color: var(--slate);
+  font-variant-numeric: tabular-nums;
+}
+/* L'unité reste discrète tant que la case est vide, et s'affirme dès qu'elle
+   qualifie un chiffre. */
+.rm-nb i { flex: none; font-style: normal; font-size: 12.5px; color: var(--gray-lt); }
+.rm-nb.on i { color: var(--slate-2); font-weight: 700; }
 .rm-aide { margin: 6px 0 0; font-size: 11.5px; color: var(--gray-lt); line-height: 1.55; }
 .rm-aide b { color: var(--slate); }
 .rm-avert {
@@ -7292,3 +7359,61 @@ body.hors-bo {
 }
 .topbar .search .in .raz:hover { color: var(--red); }
 
+
+/* Le choix « tout de suite / à une date » de l'envoi SMS (demande MAV).
+   Les deux options sur une ligne, le champ de date à la suite quand il sert. */
+.asst-quand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
+.asst-quand label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate-2); cursor: pointer; }
+.asst-quand input[type="radio"] { accent-color: var(--gold-bo); }
+.asst-quand .min { width: auto; flex: none; }
+
+/* Retour #360 — les anomalies de destinataires, avant l'envoi.
+   Chaque ligne porte un lien vers la fiche à corriger : signaler un problème
+   sans dire où le corriger ne sert à rien. */
+.asst-rec .rouge { color: var(--red); font-weight: 700; }
+.asst-anos {
+  margin-top: 8px; padding: 9px 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--red);
+  border-radius: 4px; background: #fff6f5;
+}
+.asst-anos.doute { border-left-color: var(--orange, #d98b16); background: #fff8ec; }
+.asst-anos > b { display: block; font-size: 12px; color: var(--slate); margin-bottom: 5px; }
+.asst-ano {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 3px 0; font-size: 12px; color: var(--gray-lt);
+}
+.asst-ano a { color: var(--slate); font-weight: 600; text-decoration: none; }
+.asst-ano a:hover { text-decoration: underline; }
+.asst-ano code { font-size: 11.5px; background: #fff; border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; }
+.asst-ano i { font-style: normal; color: var(--gray-lt); }
+.asst-ano-n { display: block; margin-top: 6px; font-style: normal; font-size: 11.5px; color: #8a5300; line-height: 1.5; }
+
+/* État locatif imprimable (retour #359). Un A4 paysage : onze colonnes ne
+   tiennent pas en portrait, et couper le tableau en deux le rend illisible. */
+@page { size: A4; margin: 10mm; }
+.el-page { max-width: 277mm; margin: 0 auto; padding: 16px 20px 28px; background: #fff; color: #1b211f; }
+.el-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 2px solid #1b211f; padding-bottom: 10px; }
+.el-h h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+.el-adr { margin: 3px 0 0; font-size: 13px; color: #5c6763; }
+.el-marque { text-align: right; font-size: 11px; color: #5c6763; line-height: 1.5; }
+.el-marque b { display: block; font-size: 13px; color: #1b211f; }
+.el-synth { display: flex; flex-wrap: wrap; gap: 0; margin: 12px 0 14px; border: 1px solid #dee2dd; border-radius: 3px; }
+.el-synth > div { flex: 1; min-width: 96px; padding: 8px 12px; border-right: 1px solid #eaeeea; }
+.el-synth > div:last-child { border-right: 0; }
+.el-synth b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.el-synth span { display: block; font-size: 10.5px; color: #5c6763; margin-top: 1px; }
+.el-t { width: 100%; border-collapse: collapse; font-size: 11px; }
+.el-t th { text-align: left; padding: 6px 7px; border-bottom: 1.5px solid #1b211f; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: #5c6763; }
+.el-t td { padding: 5px 7px; border-bottom: 1px solid #eaeeea; }
+.el-t .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.el-t tr.libre td { color: #5c6763; }
+.el-t tfoot td { padding: 7px; border-top: 1.5px solid #1b211f; border-bottom: 0; font-weight: 700; }
+.el-pied { margin-top: 14px; font-size: 9.5px; color: #5c6763; line-height: 1.55; }
+
+/* La seconde pièce jointe (retour #359) : générée ou déposée, une seule case. */
+.asst-pj2 {
+  display: flex; align-items: center; gap: 10px; margin-top: 6px;
+  padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fbfcfd;
+}
+.asst-pj2-n { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--slate); }
+.asst-pj2-n i { display: block; font-style: normal; font-weight: 400; font-size: 11px; color: var(--gray-lt); margin-top: 1px; }
