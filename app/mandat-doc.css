@@ -1,0 +1,290 @@
+/* Feuille du document « mandat de vente ».
+ *
+ * Reprise TELLE QUELLE de la maquette validée du mandat à la découpe
+ * (docs/mandats-reference/) : cette feuille-là est le sur-ensemble exact des
+ * quatre maquettes — celles en bloc portent la même, à dix lignes près qui ne
+ * servent qu'au tableau de lots. On la copie donc sans la recomposer : la
+ * mise en page et les cotes sont la spécification du module, pas une
+ * inspiration, et tout écart est un bug.
+ *
+ * Un seul écart assumé : les polices sont servies par nous (voir
+ * app/marque.css), jamais par un CDN — un mandat doit se générer à
+ * l'identique sans réseau.
+ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--noir:#0A0A0A;--or:#C19B6E;--or-p:#EFE0CD;--or-pp:#FAF4EC;
+--gris:#7C7C7C;--ligne:#E5E2DC;--point:#C7C3BC}
+html{background:#E9E9E9}
+body{font-family:'Inter',Arial,sans-serif;color:var(--noir);-webkit-font-smoothing:antialiased}
+.page{background:#fff;width:210mm;height:297mm;overflow:hidden;margin:0 auto 9mm;padding:15mm 15mm 26mm;position:relative;display:block;break-after:page}
+.page:last-child{break-after:auto}
+.doc-hd{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:3mm;margin-bottom:6mm;border-bottom:1px solid var(--ligne)}
+.logo svg{height:7mm;display:block}.lg-t{fill:#0A0A0A}.lg-b{fill:var(--or)}
+.doc-hd .ref{font-size:6.4pt;letter-spacing:.12em;color:var(--gris);text-transform:uppercase}
+.doc-ft{position:absolute;left:15mm;right:15mm;bottom:11mm;padding-top:3mm;display:flex;justify-content:space-between;align-items:flex-end;gap:6mm}
+.ft-l{font-size:5.8pt;color:var(--gris);line-height:1.4;max-width:76mm}
+.par{display:flex;align-items:flex-end;gap:2.4mm}
+.par-l{font-size:5.6pt;text-transform:uppercase;letter-spacing:.12em;color:var(--gris);margin-right:.5mm}
+.par i{display:block;width:11mm;height:6mm}
+.pg{font-size:6.2pt;color:var(--gris);white-space:nowrap}
+h1{font-family:'Archivo',Arial;font-size:22pt;line-height:1.05;letter-spacing:-.025em;font-weight:700}
+h2{font-family:'Archivo',Arial;font-size:9pt;text-transform:uppercase;letter-spacing:.16em;font-weight:700;margin:0 0 4.5mm;display:flex;align-items:center;gap:3mm;border-bottom:1px solid var(--ligne);padding-bottom:2.6mm}
+h2 .anum{display:inline-flex;align-items:center;justify-content:center;width:6.4mm;height:6.4mm;border-radius:999px;background:var(--or);color:#fff;font-size:6.6pt;letter-spacing:0}
+h3{font-size:7.6pt;font-weight:700;margin:5mm 0 2.2mm;color:var(--noir);text-transform:uppercase;letter-spacing:.12em}
+h3.pill{display:inline-block;background:var(--or);color:#fff;border-radius:999px;padding:1.5mm 4mm;font-size:7pt;letter-spacing:.16em;margin:7mm 0 3mm}
+.card{border:1px solid var(--or-p);border-radius:3mm;padding:4mm 4.5mm 4.5mm;margin-bottom:4.5mm;overflow:hidden}
+.card-t{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:var(--or);margin-bottom:3mm;padding-bottom:2mm;border-bottom:1px solid var(--or-p)}
+.card p:last-child{margin-bottom:0}
+p{font-size:8.1pt;line-height:1.55;text-align:justify;margin-bottom:1.8mm}
+p.intro{color:var(--gris)}
+p.legal{font-size:8.1pt;line-height:1.5;margin-bottom:1.4mm}
+.eyebrow{font-size:6.4pt;letter-spacing:.3em;text-transform:uppercase;color:var(--or);font-weight:700;margin-bottom:2.5mm}
+.hero{padding-bottom:5mm;margin-bottom:6mm;border-bottom:2px solid var(--or)}
+.hero-sub{font-size:9pt;color:var(--noir);margin-top:2mm;font-weight:600}
+.hero-meta{font-size:7.2pt;color:var(--gris);margin-top:1.5mm}
+.kv{display:grid;grid-template-columns:34mm 1fr;font-size:7.8pt}
+.kv dt{color:var(--gris);font-size:6.2pt;text-transform:uppercase;letter-spacing:.07em;font-weight:600;padding:1.15mm 0;border-top:1px dotted var(--point)}
+.kv dd{padding:1.15mm 0;border-top:1px dotted var(--point);line-height:1.38}
+.kv dt:first-of-type,.kv dd:first-of-type{border-top:none}
+.kv.tight{grid-template-columns:23mm 1fr;font-size:7.3pt}
+.kv.tight dt,.kv.tight dd{padding:1mm 0}
+/* parties */
+.pty{margin-bottom:3mm;border:1px solid var(--ligne);border-radius:3mm;padding:0 3.6mm 3.6mm;background:#fff;overflow:hidden}
+.pty-h{display:flex;align-items:center;gap:3mm;margin:0 -3.6mm 2.4mm;padding:2.2mm 3.6mm;background:var(--or-pp);border-bottom:1px solid var(--or-p)}
+.chip{font-size:6.2pt;text-transform:uppercase;letter-spacing:.14em;font-weight:700;padding:1.1mm 3mm;border-radius:999px;background:var(--or);color:#fff}
+.pty-role{font-size:6.2pt;color:var(--gris);text-transform:uppercase;letter-spacing:.1em}
+.pty-k{font-size:8pt;font-weight:700}
+.pty-sep{opacity:.6}
+.pty-name{font-size:9pt;font-weight:700;line-height:1.2;margin-bottom:1.6mm}
+.pty-foot{font-size:6.4pt;color:var(--gris);margin-top:1.6mm;text-align:left}
+.ptys.many{display:grid;grid-template-columns:1fr 1fr;gap:3mm;grid-auto-rows:1fr}
+.ptys.many .pty{margin-bottom:0}
+/* registres */
+.ldg{margin:2mm 0 3mm}
+.ld{display:flex;align-items:baseline;gap:2.5mm;padding:1.8mm 0}
+.ld+.ld{border-top:1px dotted var(--point)}
+.ld-k{font-size:8pt;font-weight:600;flex:none;max-width:100mm}
+.ld-k em{display:block;font-style:normal;font-size:6.6pt;color:var(--gris);font-weight:400;line-height:1.35;margin-top:.4mm}
+.ld i{flex:1;border-bottom:1px dotted var(--point);transform:translateY(-1mm)}
+.ld-v{font-size:9.6pt;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ld-tot{border-top:1.4pt solid var(--noir)!important;margin-top:1mm;padding-top:2.4mm}
+.ld-tot .ld-v{font-size:12pt}
+.gap{display:flex;align-items:center;gap:1.6mm;padding:1.2mm 0}
+.gap span{font-size:6.2pt;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.12em}
+.gap:before{content:"";width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-top:1.8mm solid var(--or)}
+/* prix */
+.pviz{display:flex;align-items:stretch;gap:2.5mm;margin:1mm 0 3mm}
+.pcard{flex:1;border:1px solid var(--ligne);border-radius:3mm;padding:3.4mm;display:flex;flex-direction:column;gap:1mm}
+.pcard-hi{background:var(--or);border-color:var(--or)}
+.pcard-hi .plab,.pcard-hi .pnote{color:#fff;opacity:.9}.pcard-hi .pval{color:#fff}
+.plab{font-size:6.2pt;text-transform:uppercase;letter-spacing:.12em;color:var(--gris);font-weight:600}
+.pval{font-family:'Archivo',Arial;font-size:13.5pt;font-weight:700;letter-spacing:-.02em}
+.pnote{font-size:6.2pt;color:var(--gris)}
+.pop{display:flex;align-items:center;font-size:11pt;color:var(--or);font-weight:700}
+/* durée — D1 gantt */
+.gantt{margin:1mm 0 3mm}
+.gt{display:flex;align-items:center;gap:4mm;margin-bottom:2.2mm}
+.gt-e{width:22mm;flex:none;font-size:7pt;font-weight:700;text-align:right}
+.gt-h{margin-bottom:1mm}
+.gt-h .gt-e{font-size:5.8pt;color:var(--gris);font-weight:600}
+.gt-hd{background:transparent!important;height:0}
+.viz-lead{font-size:7.4pt;color:var(--gris);margin-bottom:2.4mm}
+.gt-l{width:26mm;flex:none;font-size:6.4pt;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--gris);text-align:right}
+.gt-t{flex:1;position:relative;height:6mm;background:#F7F5F2;border-radius:999px}
+.gt-t i{position:absolute;left:0;top:0;height:6mm;border-radius:999px;display:flex;align-items:center;justify-content:center}
+.gt-t em{font-style:normal;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.b-mandat{background:var(--or)}.b-mandat em{color:#fff}
+.b-exclu{background:var(--or-p)}.b-exclu em{color:var(--noir)}
+.b-irr{background:#fff;border:1px solid var(--noir)}.b-irr em{color:var(--noir);font-size:5pt}
+.gt-ax .gt-t{background:transparent;height:5mm;border-top:1px dotted var(--point);border-radius:0}
+.ax{position:absolute;top:1.4mm;font-size:6pt;color:var(--gris);white-space:nowrap;transform:translateX(-50%)}
+.ax:first-of-type{transform:none}
+.ax-r{right:0;left:auto;transform:none}
+.viz-note{font-size:6.6pt;color:var(--gris);margin:2mm 0 3mm}
+/* durée — D2 frise verticale */
+.vf{position:relative;margin:2mm 0 3mm;padding-left:32mm}
+.vf:before{content:"";position:absolute;left:26mm;top:2mm;bottom:4mm;width:1.2px;background:var(--or-p)}
+.vf-n{position:relative;padding-bottom:1.5mm}
+.vf-n:before{content:"";position:absolute;left:-6.7mm;top:1.1mm;width:3.4mm;height:3.4mm;border-radius:999px;background:var(--or);box-shadow:0 0 0 1mm #fff}
+.vf-end:before{background:var(--noir)}
+.vf-d{position:absolute;left:-32mm;top:.3mm;width:22mm;text-align:right;font-size:7.6pt;font-weight:700}
+.vf-t{display:block;font-size:8pt;font-weight:700;line-height:1.3}
+.vf-n p{font-size:7pt;color:var(--gris);margin:.6mm 0 0;text-align:left;line-height:1.4}
+.vf-g{position:relative;padding:2mm 0}
+.vf-g span{display:inline-block;font-size:6pt;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.12em;background:#fff;padding:0 1.6mm;margin-left:-6.6mm}
+/* durée — D3 barre surlignée */
+.tl{margin:1mm 0 4mm}
+.tl-over{display:flex;align-items:center;gap:2.4mm;margin-top:1.6mm}
+.tl-over i{background:var(--noir);border-radius:999px;height:2.6mm;flex:none}
+.tl-over span{font-size:6pt;font-weight:700;color:var(--noir);text-transform:uppercase;letter-spacing:.1em}
+.tl-dates{position:relative;height:5mm;margin-top:2mm;border-top:1px dotted var(--point)}
+.tl-dates span{position:absolute;top:1.4mm;font-size:6pt;color:var(--gris);transform:translateX(-50%)}
+.tl-dates span:first-child{left:0;transform:none}
+.tl-dates .r{right:0;left:auto;transform:none}
+.tl-track{display:flex;height:6mm;gap:1mm}
+.tl-track i{border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.tl-track em{font-style:normal;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sg-1{background:var(--noir)}.sg-1 em{color:#fff}
+.sg-2{background:var(--or)}.sg-2 em{color:#fff}
+.sg-3{background:var(--or-p)}.sg-3 em{color:var(--noir)}
+.tl-legend{display:flex;align-items:center;gap:6mm;margin-top:3mm;padding-top:2.4mm;border-top:1px dotted var(--point)}
+.lgd{display:flex;align-items:center;gap:1.6mm;font-size:6.4pt;color:var(--gris);text-transform:uppercase;letter-spacing:.08em}
+.lgd b{width:3mm;height:3mm;border-radius:999px;display:block}
+.lgd .d1{background:var(--noir)}.lgd .d2{background:var(--or)}.lgd .d3{background:var(--or-p)}
+.lgd-r{margin-left:auto;font-size:6.4pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--noir)}
+.phases{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2.5mm;margin-bottom:3mm}
+.ph{border:1px solid var(--or-p);border-radius:3mm;padding:3mm 3.4mm;position:relative}
+.ph-n{position:absolute;top:2.4mm;right:3mm;font-family:'Archivo';font-size:11pt;font-weight:700;color:var(--or-p);line-height:1}
+.ph-t{display:block;font-size:6.2pt;text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:1.4mm;color:var(--or)}
+.ph p{font-size:7pt;margin:0;text-align:left;line-height:1.4;color:var(--noir)}
+/* encadrés */
+.box{border:1px solid var(--or);border-radius:3mm;padding:4.5mm 5mm;margin-bottom:3.5mm;background:#fff}
+.box-t{font-size:6.8pt;text-transform:uppercase;letter-spacing:.15em;font-weight:700;margin-bottom:2.8mm;padding-bottom:2mm;color:var(--or);border-bottom:1px solid var(--or-p)}
+.box p.lead{font-size:7.9pt;font-weight:600;line-height:1.45}
+.box p.fine{font-size:6.9pt;font-weight:400;margin-bottom:0;color:var(--gris)}
+/* tableaux */
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:7.6pt;margin:2mm 0}
+.tbl th{background:var(--or);color:#fff;font-size:6.3pt;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:2mm 2.4mm;border-right:1px solid rgba(255,255,255,.4)}
+.tbl thead th:first-child{border-radius:999px 0 0 999px}
+.tbl thead th:last-child{border-radius:0 999px 999px 0;border-right:none}
+.tbl td{padding:1.9mm 2.4mm;border-bottom:1px dotted var(--point);border-right:1px dotted var(--point)}
+.tbl td:last-child{border-right:none}
+.tbl .num{text-align:right}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tfoot td{font-weight:700;border-top:1.4pt solid var(--noir);border-bottom:none;padding-top:2.2mm}
+/* listes */
+.lst{list-style:none;font-size:7.9pt}
+.lst li{position:relative;padding-left:4.6mm;margin-bottom:1.4mm;line-height:1.45;text-align:justify}
+.lst li:before{content:"";position:absolute;left:0;top:1.4mm;width:2.6mm;height:1.2mm;border-radius:999px;background:var(--or)}
+.plain{margin-bottom:3mm}
+.plain p.lead{font-size:8.1pt;font-weight:400;line-height:1.55;text-align:justify;margin-bottom:2mm}
+.plain p.lead b{font-weight:700}
+.plain p.fine{font-size:7pt;color:var(--gris);margin:0;text-align:justify}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:7mm}
+.nopow{font-size:7.2pt;line-height:1.45;margin-top:3mm;padding:2.6mm 3mm;background:var(--or-pp);border-radius:2.4mm;text-align:left}
+.mentions{font-size:6.9pt}.mentions.two{columns:2;column-gap:8mm}
+.ment{break-inside:avoid;margin-bottom:2.6mm}
+.ment h4{font-size:6.3pt;text-transform:uppercase;letter-spacing:.09em;color:var(--or);margin-bottom:.8mm}
+.ment p{font-size:6.9pt;line-height:1.42;margin:0}
+/* signatures */
+.sgs{display:grid;grid-template-columns:1fr 1fr;gap:7mm 8mm;margin-top:5mm}
+.sg{display:flex;flex-direction:column}
+.sg-r{font-size:6.2pt;text-transform:uppercase;letter-spacing:.14em;font-weight:700;color:var(--noir);background:var(--or);border-radius:999px;padding:1.1mm 3mm;align-self:flex-start;margin-bottom:2.4mm}
+.sg-n{font-size:8.6pt;font-weight:700;line-height:1.25}
+.sg-q{font-size:6.6pt;color:var(--gris)}
+.sg-z{height:30mm}
+.sg-l{font-size:6.2pt;color:var(--gris);padding-top:1.4mm}
+/* annexe */
+.coupon{border:1px solid var(--or);border-radius:3mm;padding:6mm;margin-top:4mm}
+.coupon-t{font-size:6.6pt;text-transform:uppercase;letter-spacing:.15em;font-weight:700;margin-bottom:3mm;color:var(--or)}
+.coupon p{font-size:7.8pt}
+.clines{margin-top:5mm;display:grid;gap:6mm}
+.clines div{display:flex;align-items:flex-end;gap:3mm}
+.clines span{font-size:6.4pt;color:var(--gris);text-transform:uppercase;letter-spacing:.08em;width:28mm;flex:none}
+.clines i{flex:1;border-bottom:1px dotted var(--point);height:1px}
+@media print{html{background:#fff}.page{margin:0}}
+@page{size:A4;margin:0}
+
+/* B — Or en aplat sur les en-têtes de carte et d'encadré */
+.pty-h{background:var(--or);border-bottom:none;align-items:baseline}
+.pty-h .pty-k{color:#fff;font-size:8pt;font-weight:700;letter-spacing:.02em}
+.pty-h .pty-sep{color:#fff;opacity:.7;font-size:7pt}
+.pty-h .pty-role{color:#fff;opacity:.9;font-size:6.2pt}
+.box{border:1px solid var(--or-p);overflow:hidden;padding:4mm 5mm}
+.box-t{background:var(--or);color:#fff;margin:0 -5mm 3.2mm;padding:2.6mm 5mm;border-bottom:none;border-radius:0}
+.ph{border:none;background:var(--or-pp)}
+.ph-n{color:var(--or-p)}
+.coupon{overflow:hidden;padding:0 6mm 6mm}
+.coupon-t{background:var(--or);color:#fff;margin:0 -6mm 4mm;padding:2.6mm 6mm}
+
+/* tableau — gélule, séparateurs fins, pas d'alternance */
+.tbl{border-radius:3mm;overflow:hidden;border:1px solid var(--or-p);margin:0 0 2mm}
+.tbl th{background:var(--or);color:#fff;border-right:1px solid rgba(255,255,255,.45);padding:2.2mm 2.6mm}
+.tbl thead th:first-child,.tbl thead th:last-child{border-radius:0}
+.tbl thead th:last-child{border-right:none}
+.tbl td{padding:2.1mm 2.6mm;border-bottom:1px dotted var(--point);border-right:1px dotted var(--point)}
+.tbl td:last-child{border-right:none}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tfoot td{border-top:1.4pt solid var(--noir);border-bottom:none;padding-top:2.4mm}
+/* vignette prix de vente : libellés en noir, montant en blanc */
+.pcard-hi{background:var(--or);border-color:var(--or)}
+.pcard-hi .plab,.pcard-hi .pnote{color:var(--noir);opacity:1}
+.pcard-hi .pval{color:#fff}
+
+.gt-out{position:absolute;top:1.4mm;font-size:5.6pt;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--noir)}
+.lots th,.lots td{font-size:7.4pt}
+.note-copro{font-size:7.4pt;color:var(--gris);margin-top:2mm}
+
+.lots{font-size:6.6pt}
+.lots th{padding:1.8mm 1.6mm;font-size:5.8pt}
+.lots td{padding:1.35mm 1.6mm}
+.lots .c{text-align:center}
+.lots .b{font-weight:700}
+.lots .g{color:var(--gris)}
+.lots tr.bd td{background:var(--or-pp);font-size:5.8pt;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--or-f,#8A6A44);padding:1.6mm}
+.lots tr.st td{border-top:1px solid var(--noir);border-bottom:none;font-weight:700;background:#fff}
+.lots tfoot td{font-size:7.2pt}
+
+/* Article 78 du décret du 20 juillet 1972 : la faculté de dénoncer le mandat
+   passé le délai d'irrévocabilité doit figurer « en caractères très
+   apparents ». La jurisprudence sanctionne son absence par la nullité ABSOLUE
+   du contrat entier — c'est la seule règle du document dont le non-respect
+   annule le mandat.
+
+   Les maquettes ne la portaient pas : ce paragraphe y était un alinéa comme
+   les autres. Il a donc désormais sa classe, plus grasse et plus grande que
+   le corps courant, et RIEN ne doit la surcharger. */
+/* Sélecteur et !important assumés : `.plain p.lead` l'emportait sur la seule
+   classe, et cette règle-ci ne doit JAMAIS pouvoir être défaite par une
+   retouche ultérieure de la feuille. C'est le seul !important du document. */
+.legal-apparent,
+.plain p.legal-apparent { font-weight: 700 !important; font-size: 8.6pt !important; }
+
+/* Le mandat est un document, pas un écran de l'outil : la coquille de
+   l'application s'efface autour de lui, à l'écran comme à l'impression. Même
+   précaution que pour les dossiers — sans elle, la barre du haut décale la
+   première page et le pied ajoute une feuille vide au PDF. */
+body:has(.mdoc) .main { margin: 0; padding: 0; min-height: 0; }
+body:has(.mdoc) .side, body:has(.mdoc) .bottbar { display: none; }
+/* Rendu « nu » (celui que capture la génération PDF) : aucun élément d'outil. */
+body:has(.mdoc.nu) .rv-fab, body:has(.mdoc.nu) .rv-chip, body:has(.mdoc.nu) .rv-pin,
+body:has(.mdoc.nu) .rv-zone, body:has(.mdoc.nu) .rv-panel,
+body:has(.mdoc.nu) .brg-bar, body:has(.mdoc.nu) .brg-voile,
+body:has(.mdoc.nu) .fadd, body:has(.mdoc.nu) .fchip { display: none; }
+body:has(.mdoc.nu) html, body:has(.mdoc.nu) { background: #fff; }
+.mdoc.nu .page { margin: 0 auto; box-shadow: none; }
+
+/* La barre d'aperçu, décrite dans la feuille du dossier d'estimation que
+   cette page ne charge pas. Sans ces règles elle sort en texte brut. */
+.dos-bar {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+  background: #fff; border-bottom: 1px solid #e3e3e3; padding: 9px 16px;
+  font-family: var(--font-title), sans-serif; font-size: 13px; color: #44525f;
+}
+.dos-bar a { color: #44525f; }
+.dos-bar .sp { flex: 1; }
+.dos-bar button {
+  border: 0; background: #3db327; color: #fff; border-radius: 4px;
+  padding: 7px 14px; font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+
+@media print {
+  .dos-bar, .brg-bar, .brg-voile, .side, .bottbar, .fadd, .fchip,
+  .rv-fab, .rv-chip, .rv-pin, .rv-zone, .rv-panel { display: none !important; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .shell, .main { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+  .mdoc .page { margin: 0; box-shadow: none; break-after: page; }
+  .mdoc .page:last-child { break-after: auto; }
+}
+
+/* Vignettes d'intertitre (« DÉSIGNATION », « PRIX ET HONORAIRES »).
+   Retour MAV : trop hautes, texte blanc pas assez gras et mal centré en
+   hauteur. La maquette les composait en bloc avec un rembourrage vertical :
+   les capitales, qui n'ont pas de jambage, se retrouvaient poussées vers le
+   haut de la gélule. Hauteur fixe et centrage par flex règlent les trois. */
+.mdoc h3.pill {
+  display: inline-flex; align-items: center;
+  height: 4.8mm; padding: 0 4mm; line-height: 1;
+  font-weight: 800;
+}
