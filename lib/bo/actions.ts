@@ -169,12 +169,16 @@ export async function addSuivi(input: {
 
 /* ---------- Actions du menu « … » des cartes (retour MAV #3) ---------- */
 
-/** Archive un immeuble avec le motif du référentiel. */
-export async function archiverImmeuble(immeubleId: string, motif: string) {
+/** Archive un immeuble avec le motif du référentiel, et la précision libre
+ *  que le BO range dans `motif_archivage_txt` (retour #362). */
+export async function archiverImmeuble(immeubleId: string, motif: string, precision?: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
-    p_patch: { archived: true, Motif_archivage: motif, date_archivage: new Date().toISOString() },
+    p_patch: cleanPatch({
+      archived: true, Motif_archivage: motif, motif_archivage_txt: precision?.trim() || undefined,
+      date_archivage: new Date().toISOString(),
+    }),
   });
   refresh(immeubleId);
 }

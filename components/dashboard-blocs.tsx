@@ -12,7 +12,7 @@ import {
 import { SuiviModal } from "@/components/suivi-modal";
 import { Facade } from "@/components/facade";
 import {
-  FicheContact, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
+  FicheContact, ModaleArchivage, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
 } from "@/components/dashboard-modales";
 import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
 
@@ -49,6 +49,7 @@ function Card({
   const [hist, setHist] = useState(false);
   const [moyen, setMoyen] = useState(false);
   const [transfert, setTransfert] = useState(false);
+  const [archivage, setArchivage] = useState(false);
   const [attente, setAttente] = useState(false);
   const [fiche, setFiche] = useState(false);
   const [note, setNote] = useState(false);
@@ -248,11 +249,10 @@ function Card({
                 <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
                 Envoyer un e-mail
               </button>
-              <button type="button" onClick={() => {
-                setMenu(false);
-                const motif = prompt(`Motif d'archivage ?\n\n${MOTIFS_ARCHIVAGE.join(" · ")}`, "Ne souhaite pas vendre");
-                if (motif) startTransition(() => archiverImmeuble(c.id, motif));
-              }}>
+              {/* Retour #362 : plus de `prompt()` du navigateur pré-rempli —
+                  une vraie liste, et rien n'est archivé tant qu'on n'a pas
+                  choisi. */}
+              <button type="button" onClick={() => { setMenu(false); setArchivage(true); }}>
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
                 Archiver
               </button>
@@ -366,6 +366,18 @@ function Card({
 
       {moyen && (
         <ModaleMoyenContact onAnnuler={() => setMoyen(false)} onConfirmer={confirmerMoyen} />
+      )}
+
+      {archivage && (
+        <ModaleArchivage
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
+          motifs={MOTIFS_ARCHIVAGE}
+          onAnnuler={() => setArchivage(false)}
+          onArchiver={(motif, precision) => {
+            setArchivage(false);
+            startTransition(() => archiverImmeuble(c.id, motif, precision || undefined));
+          }}
+        />
       )}
 
       {transfert && (
