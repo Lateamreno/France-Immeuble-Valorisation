@@ -23,7 +23,7 @@ import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { ContactPicker } from "@/components/contact-picker";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
 import {
-  FONCTIONS_MANDANT, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
+  FONCTIONS_MANDANT, champsDuDocument, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
   nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
   venteDirecteLocataire, REMISE_LOCATAIRE,
   type ChampPrix, type Mandant, type Mode, type Prix, type Societe,
@@ -36,9 +36,68 @@ import {
   cancelMandat, capitalDuSiren, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
   addParcelle, majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne,
   reporterCadastre,
-  reserveMandatNumero,
-  updateMandat, type EntrepriseTrouvee, type MandatPatch,
+  reserveMandatNumero, societesDuBO,
+  updateMandat, type EntrepriseTrouvee, type MandantDepuisContact, type MandatPatch, type SocieteConnue,
 } from "@/lib/bo/actions";
+
+/**
+ * Ce que la fiche contact apporte à une ligne de mandant (retours #133, #287,
+ * #289, et le 21/09).
+ *
+ * Une seule règle pour les deux chemins — le rattachement automatique du
+ * propriétaire de la fiche et la sélection à la main d'un contact — parce que
+ * les deux en avaient chacun la moitié : le premier remplissait la civilité
+ * et les pièces mais ni la naissance, ni l'adresse, ni la société ; le second
+ * l'inverse. Résultat, un mandat créé depuis la fiche du bien demandait de
+ * retaper ce que la fiche savait.
+ *
+ * L'identité (civilité, prénom, nom, e-mail) est SERVIE par la fiche : elle
+ * s'y affiche en lecture seule, donc elle suit la fiche. Le reste — naissance,
+ * adresse, qualité, société, pièces — ne comble que les cases vides : ce qui a
+ * été saisi sur cette ligne reste.
+ *
+ * `basculer` : le contact a une société et la ligne n'en a pas encore — on
+ * passe la ligne en personne morale. Seulement quand l'agent vient de choisir
+ * ce contact ; le rattachement automatique ne change jamais le type, qui a
+ * été décidé à la création du mandat.
+ */
+function completerDepuisContact(x: Mandant, f: MandantDepuisContact, basculer: boolean): Partial<Mandant> {
+  const p: Partial<Mandant> = {};
+  if (f.civilite && f.civilite !== x.qualite) p.qualite = f.civilite;
+  if (f.prenom && f.prenom !== x.prenom) p.prenom = f.prenom;
+  if (f.nom && f.nom !== x.nom) p.nom = f.nom;
+  if (!x.email && f.email) p.email = f.email;
+  if (!x.dateNaissance && f.dateNaissance) p.dateNaissance = f.dateNaissance;
+  if (!x.lieuNaissance && f.lieuNaissance) p.lieuNaissance = f.lieuNaissance;
+  if (!x.adresse && f.adresse) p.adresse = f.adresse;
+  if (!x.fonction && f.fonction) p.fonction = f.fonction;
+  if (!x.cni && f.cni) p.cni = f.cni;
+
+  const connues = f.societes ?? [];
+  const morale = x.personne === "morale" || (basculer && !x.societe?.nom && connues.length > 0);
+  if (morale) {
+    /* La société de la ligne : celle qu'elle a, complétée par ce que la fiche
+       en sait ; sinon la première de la fiche. */
+    const k = (s?: Societe) => (s?.siren ?? "").replace(/\D/g, "") || (s?.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const deLaFiche = x.societe?.nom
+      ? connues.find((s) => k(s) === k(x.societe))
+      : connues[0];
+    if (deLaFiche) {
+      const soc: Societe = { ...x.societe };
+      let change = false;
+      for (const c of ["nom", "siren", "rcs", "siege"] as const) {
+        if (!soc[c] && deLaFiche[c]) { soc[c] = deLaFiche[c]; change = true; }
+      }
+      if (soc.capital === undefined && deLaFiche.capital !== undefined) { soc.capital = deLaFiche.capital; change = true; }
+      if (change) p.societe = soc;
+      if (!x.representante?.nom && deLaFiche.representante?.nom) p.representante = deLaFiche.representante;
+      if (!x.kbis && deLaFiche.kbis) p.kbis = deLaFiche.kbis;
+    }
+    if (!x.kbis && !p.kbis && f.kbis) p.kbis = f.kbis;
+    if (basculer && x.personne !== "morale") p.personne = "morale";
+  }
+  return p;
+}
 
 type Data = NonNullable<Awaited<ReturnType<typeof getMandat>>>;
 
@@ -291,6 +350,7 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
         {tab === "Mandants" && (
           <OngletMandants
             mandatId={mandatId} immeubleId={immeubleId} mandants={mandants} locked={locked}
+            repris={S(m.repris_de) ? (m.repris_meme_immeuble === true ? "immeuble" : "contact") : undefined}
             adresseImmeuble={im
               ? [S(im.adresse_numero_rue), S(im.adresse_rue), S(im.adresse_zipcode), S(im.adresse_ville)]
                 .filter(Boolean).join(" ")
@@ -339,9 +399,12 @@ function useModifie(empreinte: string) {
 
 function OngletMandants({
   mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
-  vignettes, proprietaireId,
+  vignettes, proprietaireId, repris,
 }: {
   mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
+  /** D'où viennent les mandants d'un mandat neuf (21/09) : du mandat précédent
+   *  de cet immeuble, ou du dernier mandat du propriétaire ailleurs. */
+  repris?: "immeuble" | "contact";
   /** L'adresse de l'immeuble : c'est par elle qu'on retrouve le propriétaire. */
   adresseImmeuble?: string;
   /** Cartes de visite chargées avec le mandat (retour #205). */
@@ -379,6 +442,13 @@ function OngletMandants({
         titre={rows.length > 1 ? "Les mandants" : "Le mandant"}
         aide="Le mandant est un contact de la base : le sélectionner évite de ressaisir son état civil. Ce qui est saisi ou corrigé ici — naissance, adresse, qualité, société, pièces — remonte sur sa fiche à l'enregistrement, et repartira de là au mandat suivant."
       />
+      {repris && !locked && (
+        <div className="mdt-note">
+          {repris === "immeuble"
+            ? "Mandants repris du mandat précédent de cet immeuble — société, état civil, qualité et pièces. Vérifiez, corrigez ce qui a changé, puis enregistrez."
+            : "Mandant repris de son dernier mandat sur un autre immeuble — société, état civil, qualité et pièces. Vérifiez, corrigez ce qui a changé, puis enregistrez."}
+        </div>
+      )}
 
       {/* La recherche DGFiP ne sert qu'à trouver un propriétaire qu'on n'a pas.
           Rattaché, la question ne se pose plus : l'encart s'efface (retour
@@ -487,13 +557,7 @@ function CarteMandant({
       .then((f) => {
         if (!vivant || !f) return;
         setCache({ id: contactId, liste: f.societes ?? [] });
-        const p: Partial<Mandant> = {};
-        if (f.civilite && f.civilite !== x.qualite) p.qualite = f.civilite;
-        if (f.prenom && f.prenom !== x.prenom) p.prenom = f.prenom;
-        if (f.nom && f.nom !== x.nom) p.nom = f.nom;
-        if (!x.email && f.email) p.email = f.email;
-        if (!x.cni && f.cni) p.cni = f.cni;
-        if (!x.kbis && f.kbis) p.kbis = f.kbis;
+        const p = completerDepuisContact(x, f, false);
         /* Ne rien appeler quand rien ne change : `onMaj` remonte dans l'état du
            parent, et une mise à jour inconditionnelle relancerait ce même effet
            en boucle. */
@@ -501,10 +565,25 @@ function CarteMandant({
       })
       .catch(() => undefined);
     return () => { vivant = false; };
-    /* Volontairement calé sur le seul contact : c'est lui qui change la
-       réponse. Relire à chaque frappe rejouerait la requête pour rien. */
+    /* Volontairement calé sur le contact et le type de personne : ce sont eux
+       qui changent la réponse (passer en personne morale doit aller chercher
+       la société de la fiche). Relire à chaque frappe rejouerait la requête
+       pour rien. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactId]);
+  }, [contactId, x.personne]);
+
+  /* La société choisie dans la liste de la fiche : avec sa holding et son
+     Kbis, qui lui appartiennent (retour du 21/09). */
+  const choisirSociete = (s: Societe) => {
+    const { representante, kbis, kbisLe: _le, ...soc } = s;
+    void _le;
+    onMaj({
+      societe: soc,
+      representante: representante?.nom ? representante : x.representante,
+      kbis: kbis || x.kbis,
+    });
+  };
+  const demande = champsDuDocument(x);
 
   return (
     <div className="mdt-md">
@@ -560,31 +639,15 @@ function CarteMandant({
             setPicker(false);
             /* Le contact sait déjà tout : civilité, naissance, adresse, société.
                On recopie, sans écraser ce qui a été saisi à la main sur cette
-               ligne (retour #133). */
+               ligne (retour #133). Même règle que le rattachement automatique,
+               à un détail près : choisi à la main, un contact qui a une
+               société fait passer la ligne en personne morale. */
             start(async () => {
               const f = await mandantDepuisContact(c.id).catch(() => null);
               if (!f) return;
-              const p2: Partial<Mandant> = {};
-              if (!x.qualite && f.civilite) p2.qualite = f.civilite;
-              if (f.prenom) p2.prenom = f.prenom;
-              if (f.nom) p2.nom = f.nom;
-              if (f.email) p2.email = f.email;
-              if (!x.dateNaissance && f.dateNaissance) p2.dateNaissance = f.dateNaissance;
-              if (!x.lieuNaissance && f.lieuNaissance) p2.lieuNaissance = f.lieuNaissance;
-              if (!x.adresse && f.adresse) p2.adresse = f.adresse;
-              if (!x.fonction && f.fonction) p2.fonction = f.fonction;
-              const s = f.societe ?? {};
-              const soc: Societe = { ...x.societe };
-              let aSociete = false;
-              for (const k of ["nom", "siren", "rcs", "siege"] as const) {
-                if (!soc[k] && s[k]) { soc[k] = s[k]; aSociete = true; }
-              }
-              if (soc.capital === undefined && s.capital !== undefined) { soc.capital = s.capital; aSociete = true; }
-              if (aSociete) p2.societe = soc;
-              /* La fiche porte une société et rien n'a encore été choisi : le
-                 mandant est vraisemblablement une personne morale. */
-              if (aSociete && soc.nom && x.personne === "physique" && !x.societe?.nom) p2.personne = "morale";
-              onMaj(p2);
+              setCache({ id: c.id, liste: f.societes ?? [] });
+              const p2 = completerDepuisContact({ ...x, contactId: c.id, email: c.email }, f, true);
+              if (Object.keys(p2).length) onMaj(p2);
             });
           }}
         />
@@ -623,19 +686,28 @@ function CarteMandant({
           )}
         </Champ>
 
-        <Champ label="Né(e) le">
-          <input className="mi" type="date" value={jourIso(x.dateNaissance) ?? ""} disabled={locked}
-            onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
-        </Champ>
-        <Champ label="Lieu de naissance">
-          {/* Retour #207 : la commune se complète dès les premières lettres,
-              sur la même base que l'adresse — gratuite et sans clé. La frappe
-              reste libre : on naît aussi hors de France. */}
-          <AdresseInput classe="mi" cible="commune" valeur={x.lieuNaissance ?? ""} disabled={locked}
-            placeholder="Ville de naissance"
-            onSaisie={(v) => onMaj({ lieuNaissance: v || undefined })}
-            onChoisir={(a) => onMaj({ lieuNaissance: a.label })} />
-        </Champ>
+        {/* Retour du 21/09 — « si dans le mandat rédigé il n'y a pas la date de
+            naissance ou d'autres informations, on ne les demande pas ». Le
+            mandat n'écrit du représentant d'une société que son nom et sa
+            qualité : naissance et adresse ne se demandent qu'à la personne
+            physique, qui, elle, est désignée par son état civil complet. */}
+        {demande.naissance && (
+          <Champ label="Né(e) le">
+            <input className="mi" type="date" value={jourIso(x.dateNaissance) ?? ""} disabled={locked}
+              onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
+          </Champ>
+        )}
+        {demande.naissance && (
+          <Champ label="Lieu de naissance">
+            {/* Retour #207 : la commune se complète dès les premières lettres,
+                sur la même base que l'adresse — gratuite et sans clé. La frappe
+                reste libre : on naît aussi hors de France. */}
+            <AdresseInput classe="mi" cible="commune" valeur={x.lieuNaissance ?? ""} disabled={locked}
+              placeholder="Ville de naissance"
+              onSaisie={(v) => onMaj({ lieuNaissance: v || undefined })}
+              onChoisir={(a) => onMaj({ lieuNaissance: a.label })} />
+          </Champ>
+        )}
         <Champ label="Qualité au mandat">
           {/* Champ libre avec suggestions : le BO contient « Gérant dûment
               habilité », « Gérant - Associé »… qu'une liste fermée perdrait.
@@ -651,21 +723,63 @@ function CarteMandant({
           </datalist>
         </Champ>
 
-        <Champ label="Adresse" pleine>
-          {/* Adresse géolocalisée : on tape les premières lettres, la Base
-              Adresse Nationale complète (retour #134). */}
-          <AdresseInput classe="mi" valeur={x.adresse ?? ""} disabled={locked}
-            placeholder="N°, rue, code postal, ville"
-            onSaisie={(v) => onMaj({ adresse: v || undefined })}
-            onChoisir={(a) => onMaj({ adresse: a.label })} />
-        </Champ>
+        {demande.adresse ? (
+          <Champ label="Adresse" pleine>
+            {/* Adresse géolocalisée : on tape les premières lettres, la Base
+                Adresse Nationale complète (retour #134). */}
+            <AdresseInput classe="mi" valeur={x.adresse ?? ""} disabled={locked}
+              placeholder="N°, rue, code postal, ville"
+              onSaisie={(v) => onMaj({ adresse: v || undefined })}
+              onChoisir={(a) => onMaj({ adresse: a.label })} />
+          </Champ>
+        ) : (
+          <span className="mdt-hint pleine">
+            Le mandat désigne le représentant par son nom et sa qualité, rien d&apos;autre :
+            sa date de naissance et son adresse personnelle ne sont pas demandées. La société,
+            elle, est désignée par son capital, son immatriculation et son siège.
+          </span>
+        )}
       </div>
 
       {morale && (
         <>
           <div className="mdt-sub">La société</div>
+          {/* Retour #200, élargi le 21/09 — « qu'on puisse sélectionner une
+              société de la fiche contact si jamais on l'a déjà créée pour un
+              autre immeuble ». Les sociétés de la fiche se proposent dès la
+              première (et plus seulement à partir de deux) : c'est justement
+              celle-là qu'on veut retrouver au mandat suivant. */}
+          {societesConnues.length > 0 && !locked && (
+            <div className="mdt-socs">
+              <span className="l">Sociétés de {[x.prenom, x.nom].filter(Boolean).join(" ") || "ce contact"}</span>
+              {societesConnues.map((s) => {
+                const active = (s.siren && s.siren === x.societe?.siren)
+                  || (!!s.nom && s.nom === x.societe?.nom);
+                return (
+                  <button
+                    key={`${s.siren ?? ""}-${s.nom ?? ""}`} type="button"
+                    className={`mdt-soc-choix${active ? " on" : ""}`}
+                    title={active ? "Société retenue pour ce mandat" : "Retenir cette société pour ce mandat"}
+                    onClick={() => choisirSociete(s)}
+                  >
+                    <b>{s.nom}</b>
+                    <i>
+                      {[s.siren && `SIREN ${s.siren}`, s.representante?.nom && `via ${s.representante.nom}`, s.kbis && "Kbis au coffre"]
+                        .filter(Boolean).join(" · ") || "à compléter"}
+                    </i>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {!locked && (
             <ChercheSociete
+              onChoisirConnue={(k) => {
+                choisirSociete(k.societe);
+                /* Une société d'une autre fiche, sur une ligne sans contact :
+                   son représentant vient avec elle. */
+                if (!x.contactId) onMaj({ contactId: k.contactId });
+              }}
               onChoisir={(e) => {
                 const soc: Societe = {
                   ...x.societe,
@@ -690,31 +804,6 @@ function CarteMandant({
                 }
               }}
             />
-          )}
-          {/* Retour #200 — « un propriétaire peut avoir plusieurs sociétés […]
-              si le vendeur en a plusieurs, quand on crée un mandat il nous
-              propose de sélectionner une des sociétés créées ». Le choix
-              n'apparaît qu'à partir de deux : en proposer une seule serait un
-              menu à une entrée. Les sociétés viennent de la fiche du contact,
-              où chaque mandat dépose la sienne. */}
-          {societesConnues.length > 1 && !locked && (
-            <div className="mdt-socs">
-              <span className="l">Sociétés de {[x.prenom, x.nom].filter(Boolean).join(" ") || "ce contact"}</span>
-              {societesConnues.map((s) => {
-                const active = (s.siren && s.siren === x.societe?.siren)
-                  || (!!s.nom && s.nom === x.societe?.nom);
-                return (
-                  <button
-                    key={`${s.siren ?? ""}-${s.nom ?? ""}`} type="button"
-                    className={`mdt-soc-choix${active ? " on" : ""}`}
-                    onClick={() => onMaj({ societe: { ...s } })}
-                  >
-                    <b>{s.nom}</b>
-                    {s.siren && <i>SIREN {s.siren}</i>}
-                  </button>
-                );
-              })}
-            </div>
           )}
           <div className="mdt-grid">
             <Champ label="Raison sociale" large>
@@ -929,24 +1018,41 @@ function QuiPossede({ adresse, onRetenir }: {
  * la raison sociale, le SIREN et le siège se remplissent seuls. Restent le
  * capital et le RCS, qui viennent du registre du commerce.
  */
-function ChercheSociete({ onChoisir }: { onChoisir: (e: EntrepriseTrouvee) => void }) {
+function ChercheSociete({ onChoisir, onChoisirConnue }: {
+  onChoisir: (e: EntrepriseTrouvee) => void;
+  /** Une société déjà enregistrée dans le BO, sur une fiche contact (21/09). */
+  onChoisirConnue?: (k: SocieteConnue) => void;
+}) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<EntrepriseTrouvee[]>([]);
+  const [connues, setConnues] = useState<SocieteConnue[]>([]);
   const [cherche, setCherche] = useState(false);
   const [vide, setVide] = useState(false);
 
   useEffect(() => {
     const t = q.trim();
     const timer = setTimeout(() => {
-      if (t.length < 3) { setRes([]); setVide(false); setCherche(false); return; }
+      if (t.length < 3) { setRes([]); setConnues([]); setVide(false); setCherche(false); return; }
       setCherche(true);
-      chercherEntreprise(t)
-        .then((r) => { setRes(r); setVide(r.length === 0); })
-        .catch(() => setRes([]))
+      /* Deux sources, la nôtre d'abord (retour du 21/09) : une société déjà
+         saisie sur une fiche contact arrive avec son capital, son RCS, sa
+         holding et son Kbis — l'annuaire public, lui, ne connaît ni les uns
+         ni les autres. */
+      Promise.all([
+        onChoisirConnue ? societesDuBO(t).catch(() => [] as SocieteConnue[]) : Promise.resolve([] as SocieteConnue[]),
+        chercherEntreprise(t).catch(() => [] as EntrepriseTrouvee[]),
+      ])
+        .then(([k, r]) => {
+          const deja = new Set(k.map((x) => (x.societe.siren ?? "").replace(/\D/g, "")).filter(Boolean));
+          const reste = r.filter((e) => !deja.has(e.siren.replace(/\D/g, "")));
+          setConnues(k); setRes(reste); setVide(k.length === 0 && reste.length === 0);
+        })
         .finally(() => setCherche(false));
     }, t.length < 3 ? 0 : 350);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, onChoisirConnue]);
+
+  const fermer = () => { setQ(""); setRes([]); setConnues([]); };
 
   return (
     <div className="mdt-soc">
@@ -956,11 +1062,23 @@ function ChercheSociete({ onChoisir }: { onChoisir: (e: EntrepriseTrouvee) => vo
           placeholder="Rechercher la société — raison sociale ou SIREN" />
         {cherche && <i>…</i>}
       </label>
-      {res.length > 0 && (
+      {(connues.length > 0 || res.length > 0) && (
         <div className="mdt-soc-l">
+          {connues.length > 0 && <span className="src haut">Déjà dans le BO — sur une fiche contact</span>}
+          {connues.map((k) => (
+            <button key={`bo-${k.contactId}-${k.societe.siren ?? k.societe.nom}`} type="button"
+              onClick={() => { onChoisirConnue?.(k); fermer(); }}>
+              <b>{k.societe.nom}</b>
+              <span>
+                {[k.societe.siren && `SIREN ${k.societe.siren}`, k.societe.siege, `fiche de ${k.contactNom}`,
+                  k.societe.kbis && "Kbis au coffre"].filter(Boolean).join(" · ")}
+              </span>
+            </button>
+          ))}
+          {res.length > 0 && connues.length > 0 && <span className="src haut">Annuaire des entreprises</span>}
           {res.map((e) => (
             <button key={e.siren} type="button"
-              onClick={() => { onChoisir(e); setQ(""); setRes([]); }}>
+              onClick={() => { onChoisir(e); fermer(); }}>
               <b>{e.nom}</b>
               <span>{[e.forme, `SIREN ${e.siren}`, e.siege].filter(Boolean).join(" · ")}</span>
             </button>

@@ -13,6 +13,7 @@ import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lect
 import { netVendeurDepuisHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
 import { jourIso } from "@/lib/format";
+import { lireMandants, type Societe } from "@/lib/mandat";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -1645,7 +1646,7 @@ export type ContactPatch = Partial<{
   entreprise_siege_geo: GeoPoint;
   /** Toutes les sociétés du contact (retours #200 et #228) : les champs
    *  `entreprise_*` n'en tiennent qu'une, celle qui est affichée. */
-  societes: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string }[];
+  societes: Societe[];
   /** Classement acquéreur A/B/C/D du BO. */
   Note: string;
   /** Profil du propriétaire, saisi librement depuis la fiche bien (#71). */
@@ -2711,7 +2712,96 @@ export type MandatPatch = Partial<{
   vente_mode: string;
 }>;
 
-/** Crée un mandat (modale « Nouveau mandat ») rattaché à un immeuble. */
+/** Lit des mandats du miroir sur un filtre PostgREST, les plus récents d'abord. */
+async function mandatsOu(filtre: string, limit = 5): Promise<Record<string, unknown>[]> {
+  if (!SB_KEY) return [];
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_mandat?${filtre}&select=data&order=data->>Created%20Date.desc&limit=${limit}`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  ).catch(() => null);
+  if (!res?.ok) return [];
+  const rows = (await res.json().catch(() => [])) as { data: Record<string, unknown> }[];
+  return rows.map((r) => r.data).filter(Boolean);
+}
+
+/**
+ * Le mandat dont un nouveau mandat hérite (retour MAV du 21/09).
+ *
+ * « Quand on fait un nouveau mandat après en avoir fait un, il faut que ça
+ * garde toutes les informations du précédent mandat, notamment sur le
+ * mandant, société ou personne physique. »
+ *
+ * Deux sources, dans cet ordre :
+ *   1. le dernier mandat DU MÊME IMMEUBLE — on reprend tout : les mandants
+ *      tels qu'ils ont été signés, et les conditions (régime, durées, charge,
+ *      cadastre, titre, descriptif) ;
+ *   2. à défaut, le dernier mandat où LE PROPRIÉTAIRE de la fiche est mandant,
+ *      sur un autre immeuble — on ne reprend que SA ligne (sa société, son état
+ *      civil, ses pièces), pas les co-indivisaires d'une autre affaire.
+ * Un mandat annulé compte quand même : l'identité du mandant n'a pas changé
+ * parce qu'un mandat a été annulé.
+ */
+async function mandatPrecedent(immeubleId: string, proprietaireId?: string): Promise<
+  { m: Record<string, unknown>; mandants: MandantEnregistre[]; memeImmeuble: boolean } | null
+> {
+  const avecMandants = (m: Record<string, unknown>) =>
+    Array.isArray(m.mandants) && (m.mandants as MandantEnregistre[]).length > 0;
+  const memes = await mandatsOu(`data->IMMEUBLEs=cs.${encodeURIComponent(`["${immeubleId}"]`)}`);
+  const dernier = memes.find(avecMandants) ?? memes[0];
+  if (dernier) {
+    const liste = avecMandants(dernier)
+      ? (dernier.mandants as MandantEnregistre[])
+      : (lireMandants(dernier) as MandantEnregistre[]);
+    if (liste.length) return { m: dernier, mandants: liste, memeImmeuble: true };
+  }
+  if (!proprietaireId) return null;
+  const autres = await mandatsOu(`data->MANDANTs=cs.${encodeURIComponent(`["${proprietaireId}"]`)}`);
+  for (const m of autres) {
+    const liste = avecMandants(m) ? (m.mandants as MandantEnregistre[]) : (lireMandants(m) as MandantEnregistre[]);
+    const siennes = liste.filter((x) => x.contactId === proprietaireId);
+    if (siennes.length) return { m, mandants: siennes, memeImmeuble: false };
+  }
+  return null;
+}
+
+/**
+ * La première ligne d'un mandat sans précédent : le propriétaire de la fiche,
+ * tel que sa fiche contact le connaît — état civil, société principale, pièces.
+ */
+async function mandantDepuisLaFiche(contactId: string, forcerMorale: boolean): Promise<MandantEnregistre | null> {
+  const f = await mandantDepuisContact(contactId).catch(() => null);
+  if (!f) return null;
+  const societe = f.societes?.[0] ?? (f.societe?.nom ? f.societe : undefined);
+  /* Personne physique par défaut : un contact qui a une société sur sa fiche
+     vend aussi en son nom, et le passage en personne morale est un clic. On
+     ne part en personne morale que si la fiche n'a pas de nom de personne. */
+  const morale = forcerMorale || (!f.prenom && !f.nom && !!societe?.nom);
+  return {
+    uid: "m1",
+    contactId,
+    qualite: f.civilite,
+    prenom: f.prenom,
+    nom: f.nom,
+    email: f.email,
+    dateNaissance: f.dateNaissance,
+    lieuNaissance: f.lieuNaissance,
+    adresse: f.adresse,
+    fonction: f.fonction,
+    personne: morale ? "morale" : "physique",
+    societe: morale ? societe : undefined,
+    representante: morale ? societe?.representante : undefined,
+    cni: f.cni,
+    kbis: morale ? (societe?.kbis ?? f.kbis) : undefined,
+  };
+}
+
+/**
+ * Crée un mandat rattaché à un immeuble.
+ *
+ * Il naît du dossier (retour #286) : mandant = propriétaire, objet = l'immeuble,
+ * prix = l'estimation (retour #189). Et depuis le retour du 21/09, il naît
+ * SURTOUT du mandat d'avant quand il y en a un — voir `mandatPrecedent`.
+ */
 export async function createMandat(
   immeubleId: string,
   agentId: string,
@@ -2727,13 +2817,37 @@ export async function createMandat(
   const id = newId();
   const now = new Date().toISOString();
 
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const proprietaireId = typeof im?.PROPRIETAIRE === "string" && im.PROPRIETAIRE ? im.PROPRIETAIRE : undefined;
+  const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+
+  const prec = await mandatPrecedent(immeubleId, proprietaireId).catch(() => null);
+  const mandants: MandantEnregistre[] = prec
+    ? prec.mandants
+    : proprietaireId
+      ? [await mandantDepuisLaFiche(proprietaireId, input.Type_personne === "Personne morale").catch(() => null)]
+          .filter((x): x is MandantEnregistre => !!x)
+      : [];
+
   /* Le prix part de l'estimation (retour #189) : c'est le montant qu'on vient
      d'annoncer au propriétaire, ce serait absurde de le ressaisir. Il reste
-     modifiable, et les honoraires en découlent par le barème. */
-  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
-  const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+     modifiable, et les honoraires en découlent par le barème. Quand le mandat
+     précédent du même immeuble est postérieur à cette estimation, c'est lui
+     le dernier prix convenu avec le vendeur : on le garde. */
   const haiEstime = nombre(im?.prix_hai_estim) ?? nombre(im?.prix_hai);
-  const prix = haiEstime ? netVendeurDepuisHai(haiEstime) : null;
+  const prixEstime = haiEstime ? netVendeurDepuisHai(haiEstime) : null;
+  const estimeLe = typeof im?.date_last_est === "string" ? Date.parse(im.date_last_est) : 0;
+  const precLe = typeof prec?.m["Created Date"] === "string" ? Date.parse(prec.m["Created Date"] as string) : 0;
+  const prixDuPrecedent = prec?.memeImmeuble && nombre(prec.m.prix_hai) && precLe >= estimeLe;
+  const prix = prixDuPrecedent
+    ? { hai: prec!.m.prix_hai, nv: prec!.m.prix_nv, honos: prec!.m.honos_ttc, taux: prec!.m.honos_taux }
+    : { hai: haiEstime, nv: prixEstime?.nv, honos: prixEstime?.honos, taux: prixEstime?.taux ?? 5 };
+
+  /* Les conditions du mandat précédent du même immeuble : régime, durées,
+     charge des honoraires, cadastre, titre de propriété, descriptif. Sur un
+     autre immeuble elles ne veulent rien dire, on repart des défauts. */
+  const c = prec?.memeImmeuble ? prec.m : {};
+  const reprise = (k: string) => (c[k] === undefined || c[k] === null || c[k] === "" ? undefined : c[k]);
 
   await rpc("bo_insert_doc", {
     p_table: "bo_mandat",
@@ -2741,26 +2855,41 @@ export async function createMandat(
     p_doc: cleanPatch({
       IMMEUBLEs: [immeubleId],
       AGENT: agentId,
-      Type: input.Type,
-      Type_exclu: "Semi-exclusif",
-      Type_personne: input.Type_personne,
+      Type: (reprise("Type") as string | undefined) ?? input.Type,
+      Type_exclu: (reprise("Type_exclu") as string | undefined) ?? "Semi-exclusif",
       Statut: "Attente infos",
-      "prénom_m1": input.prenom_m1,
-      nom_m1: input.nom_m1,
-      raison_sociale: input.raison_sociale,
-      description: input.remarques,
+      /* Les mandants — liste moderne ET champs plats Bubble, comme à
+         l'enregistrement de l'onglet, pour que rien ne diverge. Sans
+         précédent ni fiche, les trois champs de la modale d'autrefois. */
+      ...(mandants.length
+        ? champsPlats(mandants)
+        : {
+            Type_personne: input.Type_personne,
+            "prénom_m1": input.prenom_m1,
+            nom_m1: input.nom_m1,
+            raison_sociale: input.raison_sociale,
+          }),
+      /* D'où vient ce qu'on a repris : on le dit à l'écran, on le garde ici. */
+      repris_de: prec ? String(prec.m._id ?? "") || undefined : undefined,
+      repris_meme_immeuble: prec ? prec.memeImmeuble : undefined,
+      description: (reprise("description") as string | undefined) ?? input.remarques,
+      ref_cadastre: reprise("ref_cadastre"),
+      surface_terrain: reprise("surface_terrain"),
+      justif_propriete: reprise("justif_propriete"),
+      vente_mode: reprise("vente_mode"),
+      publication_web_yn: reprise("publication_web_yn"),
       /* Charge acquéreur par défaut en bloc (retour #191) : elle ne bascule
          sur le vendeur que si l'état locatif ne compte qu'un seul locataire,
          seul cas où un droit de préemption d'ensemble peut jouer. C'est
          `regimeHonoraires` qui l'impose alors, sans que l'agent ait à choisir. */
-      Charge_hono: "Acheteur",
-      prix_hai: haiEstime,
-      prix_nv: prix?.nv,
-      honos_ttc: prix?.honos,
-      honos_taux: prix?.taux ?? 5,
-      "durée_tot_month": 12,
-      "durée_exclu_jours": 90,
-      "durée_irrevoc_days": 30,
+      Charge_hono: (reprise("Charge_hono") as string | undefined) ?? "Acheteur",
+      prix_hai: prix.hai,
+      prix_nv: prix.nv,
+      honos_ttc: prix.honos,
+      honos_taux: prix.taux,
+      "durée_tot_month": (reprise("durée_tot_month") as number | undefined) ?? 12,
+      "durée_exclu_jours": (reprise("durée_exclu_jours") as number | undefined) ?? 90,
+      "durée_irrevoc_days": (reprise("durée_irrevoc_days") as number | undefined) ?? 30,
       // La prise d'effet part d'aujourd'hui (retour #193), et reste modifiable.
       date_effet: now,
       "Created Date": now,
@@ -2863,35 +2992,7 @@ export async function majMandants(
     return { ...x, cni: x.cni || a?.cni, kbis: x.kbis || a?.kbis };
   });
 
-  const plat: Record<string, unknown> = {
-    mandants,
-    MANDANTs: mandants.map((x) => x.contactId).filter(Boolean),
-    Type_personne: mandants.some((x) => x.personne === "morale") ? "Morale" : "Physique",
-  };
-  const [a, b] = mandants;
-  // `qualité_m1` porte la qualité au mandat (Gérant, Président…), pas la civilité.
-  plat["qualité_m1"] = a?.fonction ?? null;
-  plat["prénom_m1"] = a?.prenom ?? null;
-  plat.nom_m1 = a?.nom ?? null;
-  plat.date_naissance_m1 = a?.dateNaissance ?? null;
-  plat.adresse_m1_geo = a?.adresse ?? null;
-  plat.lieu_naissance_geo_m1 = a?.lieuNaissance ?? null;
-  plat.cni_m1 = a?.cni ?? null;
-  plat["prénom_m2"] = b?.prenom ?? null;
-  plat.nom_m2 = b?.nom ?? null;
-  plat.date_naissance_m2 = b?.dateNaissance ?? null;
-  plat.adresse_m2_geo = b?.adresse ?? null;
-  plat.cni_m2 = b?.cni ?? null;
-  const morale = mandants.find((x) => x.personne === "morale");
-  plat.raison_sociale = morale?.societe?.nom ?? null;
-  plat.siren = morale?.societe?.siren ?? null;
-  plat.rcs = morale?.societe?.rcs ?? null;
-  plat.capital = morale?.societe?.capital ?? null;
-  plat.siege_geo = morale?.societe?.siege ?? null;
-  plat.kbis = morale?.kbis ?? null;
-  plat.searchfield = mandants
-    .map((x) => [x.prenom, x.nom, x.societe?.nom].filter(Boolean).join(" "))
-    .join(" · ");
+  const plat: Record<string, unknown> = champsPlats(mandants);
   plat["Modified Date"] = new Date().toISOString();
 
   await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: plat });
@@ -2931,6 +3032,47 @@ export async function majMandants(
   }
 
   rafraichirMandat(mandatId, immeubleId);
+}
+
+/**
+ * La liste des mandants, ET les champs plats du BO qui la doublent —
+ * `MANDANTs`, prénom/nom m1 et m2, `Type_personne`, la société — pour que les
+ * écrans Bubble encore en service et le champ de recherche continuent de
+ * fonctionner. Même écriture à la création du mandat et à l'enregistrement de
+ * l'onglet : c'est ce qui garantit qu'un mandat repris d'un précédent se lit
+ * exactement comme un mandat saisi.
+ */
+function champsPlats(mandants: MandantEnregistre[]): Record<string, unknown> {
+  const plat: Record<string, unknown> = {
+    mandants,
+    MANDANTs: mandants.map((x) => x.contactId).filter(Boolean),
+    Type_personne: mandants.some((x) => x.personne === "morale") ? "Morale" : "Physique",
+  };
+  const [a, b] = mandants;
+  // `qualité_m1` porte la qualité au mandat (Gérant, Président…), pas la civilité.
+  plat["qualité_m1"] = a?.fonction ?? null;
+  plat["prénom_m1"] = a?.prenom ?? null;
+  plat.nom_m1 = a?.nom ?? null;
+  plat.date_naissance_m1 = a?.dateNaissance ?? null;
+  plat.adresse_m1_geo = a?.adresse ?? null;
+  plat.lieu_naissance_geo_m1 = a?.lieuNaissance ?? null;
+  plat.cni_m1 = a?.cni ?? null;
+  plat["prénom_m2"] = b?.prenom ?? null;
+  plat.nom_m2 = b?.nom ?? null;
+  plat.date_naissance_m2 = b?.dateNaissance ?? null;
+  plat.adresse_m2_geo = b?.adresse ?? null;
+  plat.cni_m2 = b?.cni ?? null;
+  const morale = mandants.find((x) => x.personne === "morale");
+  plat.raison_sociale = morale?.societe?.nom ?? null;
+  plat.siren = morale?.societe?.siren ?? null;
+  plat.rcs = morale?.societe?.rcs ?? null;
+  plat.capital = morale?.societe?.capital ?? null;
+  plat.siege_geo = morale?.societe?.siege ?? null;
+  plat.kbis = morale?.kbis ?? null;
+  plat.searchfield = mandants
+    .map((x) => [x.prenom, x.nom, x.societe?.nom].filter(Boolean).join(" "))
+    .join(" · ");
+  return plat;
 }
 
 /**
@@ -2999,6 +3141,10 @@ async function renvoyerSurLeContact(x: MandantEnregistre) {
       || (s?.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const liste: Soc[] = Array.isArray(c.societes) ? [...(c.societes as Soc[])] : [];
     const i = liste.findIndex((s) => cle(s) && cle(s) === cle(x.societe));
+    /* La société telle que le mandat la connaît, PLUS ce qui n'appartient qu'à
+       elle sur la fiche (retour du 21/09) : la holding qui la représente, et
+       son Kbis — le mandat suivant les retrouvera en la choisissant. */
+    const holding = x.representante?.nom ? x.representante : undefined;
     if (i >= 0) {
       liste[i] = {
         nom: x.societe.nom || liste[i].nom,
@@ -3006,9 +3152,17 @@ async function renvoyerSurLeContact(x: MandantEnregistre) {
         rcs: x.societe.rcs || liste[i].rcs,
         capital: x.societe.capital ?? liste[i].capital,
         siege: x.societe.siege || liste[i].siege,
+        representante: holding ?? liste[i].representante,
+        kbis: x.kbis || liste[i].kbis,
+        kbisLe: x.kbis && x.kbis !== liste[i].kbis ? new Date().toISOString().slice(0, 10) : liste[i].kbisLe,
       };
     } else {
-      liste.push(x.societe);
+      liste.push({
+        ...x.societe,
+        representante: holding,
+        kbis: x.kbis || undefined,
+        kbisLe: x.kbis ? new Date().toISOString().slice(0, 10) : undefined,
+      });
     }
     if (JSON.stringify(liste) !== JSON.stringify(c.societes ?? [])) patch.societes = liste;
   }
@@ -3032,9 +3186,9 @@ export type MandantEnregistre = {
   email?: string;
   personne: "physique" | "morale";
   fonction?: string;
-  societe?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+  societe?: Societe;
   /** La société qui représente la société mandante — les holdings (#292). */
-  representante?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+  representante?: Societe;
   cni?: string;
   kbis?: string;
 };
@@ -3098,19 +3252,32 @@ export async function deposerPieceMandat(
       // Et elle enrichit la fiche contact : elle resservira au mandat suivant,
       // au compromis, à la vente.
       if (contactId) {
-        await rpc("bo_patch_doc", {
-          p_table: "bo_contact",
-          p_id: contactId,
-          p_patch: {
-            [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
-            /* Retour #289 — « pour le Kbis, ce serait bien d'écrire la date à
-               laquelle on a déposé le document aussi. » Un Kbis vaut trois
-               mois : sans sa date, on ne peut pas savoir s'il est encore
-               recevable, et on le redemande par précaution à chaque fois. */
-            [cle === "cni" ? "cni_depose_le" : "entreprise_kbis_depose_le"]: new Date().toISOString(),
-            "Modified Date": new Date().toISOString(),
-          },
-        });
+        const patchContact: Record<string, unknown> = {
+          [cle === "cni" ? "cni" : "entreprise_kbis"]: url,
+          /* Retour #289 — « pour le Kbis, ce serait bien d'écrire la date à
+             laquelle on a déposé le document aussi. » Un Kbis vaut trois
+             mois : sans sa date, on ne peut pas savoir s'il est encore
+             recevable, et on le redemande par précaution à chaque fois. */
+          [cle === "cni" ? "cni_depose_le" : "entreprise_kbis_depose_le"]: new Date().toISOString(),
+          "Modified Date": new Date().toISOString(),
+        };
+        /* Le Kbis est celui d'UNE société : il se range aussi sur son entrée
+           dans la liste des sociétés du contact (retour du 21/09), sans quoi un
+           contact à deux sociétés perdait celui de la première en déposant
+           celui de la seconde. */
+        const soc = i >= 0 ? liste[i]?.societe : undefined;
+        if (cle === "kbis" && soc?.nom) {
+          const c = await bqOne("bo_contact", contactId).catch(() => null);
+          const socs: Societe[] = Array.isArray(c?.societes) ? [...(c!.societes as Societe[])] : [];
+          const k = (s?: Societe) =>
+            (s?.siren ?? "").replace(/\D/g, "") || (s?.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+          const j = socs.findIndex((s) => k(s) && k(s) === k(soc));
+          const jour = new Date().toISOString().slice(0, 10);
+          if (j >= 0) socs[j] = { ...socs[j], kbis: url, kbisLe: jour };
+          else socs.push({ ...soc, kbis: url, kbisLe: jour });
+          patchContact.societes = socs;
+        }
+        await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: patchContact });
         revalidatePath(`/contact/${contactId}`);
       }
     }
@@ -3521,11 +3688,9 @@ export type MandantDepuisContact = {
   lieuNaissance?: string;
   adresse?: string;
   fonction?: string;
-  societe?: {
-    nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string;
-  };
+  societe?: Societe;
   /** Toutes celles que la fiche connaît (retour #200), la principale d'abord. */
-  societes?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string }[];
+  societes?: Societe[];
   /* Retour #287 — « pour les pièces justificatives d'une société ou d'un
      mandant (notamment la CNI), j'aimerais que cela soit également enregistré
      dans la fiche contact du client, de telle façon qu'on ne nous la redemande
@@ -3612,13 +3777,12 @@ export async function mandantDepuisContact(id: string): Promise<MandantDepuisCon
  * à défaut sur le nom réduit à ses lettres et ses chiffres — « SCI DU PARC » et
  * « S.C.I. du Parc » sont la même société.
  */
-function societesDuContact(c: Record<string, unknown>) {
-  type Soc = NonNullable<MandantEnregistre["societe"]>;
+function societesDuContact(c: Record<string, unknown>): Societe[] {
   const S3 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   const cap = typeof c.entreprise_capital === "number" ? c.entreprise_capital
     : typeof c.entreprise_capital === "string" ? parseFloat(c.entreprise_capital.replace(/[^\d.]/g, "")) : undefined;
 
-  const principale: Soc | undefined = S3(c.entreprise_nom)
+  const principale: Societe | undefined = S3(c.entreprise_nom)
     ? {
         nom: S3(c.entreprise_nom),
         siren: S3(c.entreprise_siren),
@@ -3628,18 +3792,73 @@ function societesDuContact(c: Record<string, unknown>) {
       }
     : undefined;
 
-  const cle = (s: Soc) =>
+  const cle = (s: Societe) =>
     (s.siren ?? "").replace(/\D/g, "") || (s.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const out: Soc[] = [];
+  const liste = Array.isArray(c.societes) ? (c.societes as Societe[]) : [];
+  const out: Societe[] = [];
   const vues = new Set<string>();
-  for (const s of [principale, ...(Array.isArray(c.societes) ? (c.societes as Soc[]) : [])]) {
+  for (const s of [principale, ...liste]) {
     if (!s?.nom) continue;
     const k = cle(s);
     if (!k || vues.has(k)) continue;
     vues.add(k);
-    out.push(s);
+    /* La principale (vieux champs `entreprise_*`) se complète de ce que son
+       entrée de liste sait en plus : holding, Kbis. Et le Kbis « du contact »
+       (`entreprise_kbis`) reste celui de la principale quand l'entrée n'en a
+       pas — c'est là qu'il était déposé avant le 21/09. */
+    const detail = liste.find((x) => x?.nom && cle(x) === k);
+    out.push({
+      ...s,
+      representante: s.representante ?? detail?.representante,
+      kbis: s.kbis ?? detail?.kbis ?? (s === principale ? S3(c.entreprise_kbis) : undefined),
+      kbisLe: s.kbisLe ?? detail?.kbisLe ?? (s === principale ? S3(c.entreprise_kbis_depose_le)?.slice(0, 10) : undefined),
+    });
   }
   return out;
+}
+
+/** Une société déjà connue du BO, et sur la fiche de qui. */
+export type SocieteConnue = { societe: Societe; contactId: string; contactNom: string };
+
+/**
+ * Les sociétés déjà enregistrées dans le BO, toutes fiches confondues (retour
+ * du 21/09 : « qu'on puisse sélectionner une société de la fiche contact si
+ * jamais on l'a déjà créée pour un autre immeuble »).
+ *
+ * Elles vivent sur les fiches contact — c'est là que chaque mandat les dépose.
+ * On cherche donc dans les fiches, sur la raison sociale principale et sur la
+ * liste, et on rend chaque société avec la personne qui la porte : au mandat,
+ * choisir la société rattache aussi son représentant.
+ */
+export async function societesDuBO(q: string): Promise<SocieteConnue[]> {
+  const t = (q ?? "").trim();
+  if (!SB_KEY || t.length < 2) return [];
+  const motif = `*${t.replace(/[%,()*]/g, " ").trim()}*`;
+  const p = new URLSearchParams({ select: "id,data", limit: "30" });
+  p.set("or", `(data->>entreprise_nom.ilike.${motif},data->>societes.ilike.${motif})`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  const rows = (await res.json().catch(() => [])) as { id: string; data: Record<string, unknown> }[];
+  const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const cible = norm(t);
+  const out: SocieteConnue[] = [];
+  const vues = new Set<string>();
+  for (const r of rows) {
+    const c = r.data;
+    const nom = `${String(c["prénom"] ?? "")} ${String(c.nom ?? "")}`.trim() || String(c.email ?? "");
+    for (const s of societesDuContact(c)) {
+      const k = (s.siren ?? "").replace(/\D/g, "") || norm(s.nom ?? "");
+      if (!k || vues.has(k)) continue;
+      // Le filtre PostgREST a rendu la fiche ; c'est la société qu'on retient.
+      if (!norm(s.nom ?? "").includes(cible) && !(s.siren ?? "").replace(/\D/g, "").includes(t.replace(/\D/g, "") || "\u0000")) continue;
+      vues.add(k);
+      out.push({ societe: s, contactId: r.id, contactNom: nom });
+    }
+  }
+  return out.slice(0, 12);
 }
 
 /* ---------- Recherche d'entreprise en open data (retour #135) ---------- */

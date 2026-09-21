@@ -46,7 +46,14 @@ const versGeo = (t: string) => (t.trim() ? { address: t.trim() } : undefined);
 
 /* --- Les sociétés du contact (retours #200 et #228) --- */
 
-type Soc = { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+/* Une société de la fiche porte aussi, depuis le 21/09, la holding qui la
+   représente et son Kbis : ce sont les mandats qui les y déposent, la fiche
+   les montre et surtout ne les perd pas quand on la réenregistre. */
+type Soc = {
+  nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string;
+  representante?: { nom?: string; siren?: string; rcs?: string; capital?: number; siege?: string };
+  kbis?: string; kbisLe?: string;
+};
 
 /** Le SIREN identifie une société ; à défaut son nom réduit à ses lettres et
  *  ses chiffres, « SCI DU PARC » et « S.C.I. du Parc » étant la même. */
@@ -62,6 +69,7 @@ const fusionnerSociete = (liste: Soc[], s: Soc): Soc[] => {
   if (i < 0) return [...liste, s];
   const out = [...liste];
   out[i] = {
+    ...out[i],
     nom: s.nom || out[i].nom,
     siren: s.siren || out[i].siren,
     rcs: s.rcs || out[i].rcs,
@@ -520,7 +528,13 @@ export function ContactFiche({ d, echanges = [], compte }: {
                           title="Afficher cette société ci-dessus"
                           onClick={() => mettreAuPremierPlan(s)}>
                           <b>{s.nom}</b>
-                          {s.siren && <i>SIREN {s.siren}</i>}
+                          {(s.siren || s.representante?.nom || s.kbis) && (
+                            <i>
+                              {[s.siren && `SIREN ${s.siren}`, s.representante?.nom && `via ${s.representante.nom}`,
+                                s.kbis && `Kbis${s.kbisLe ? ` du ${dmy(s.kbisLe) ?? s.kbisLe}` : ""}`]
+                                .filter(Boolean).join(" · ")}
+                            </i>
+                          )}
                         </button>
                       ))}
                     </div>

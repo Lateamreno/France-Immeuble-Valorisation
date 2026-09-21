@@ -22,6 +22,16 @@ export type Societe = {
   rcs?: string;
   capital?: number;
   siege?: string;
+  /**
+   * Ce que la fiche contact retient EN PLUS, société par société (retour du
+   * 21/09) : la holding qui la représente, et son Kbis. Sans ça, un contact à
+   * deux sociétés perdait le Kbis de la première en déposant celui de la
+   * seconde, et la chaîne de représentation d'une holding se ressaisissait à
+   * chaque mandat.
+   */
+  representante?: Omit<Societe, "representante" | "kbis" | "kbisLe">;
+  kbis?: string;
+  kbisLe?: string;
 };
 
 export type Mandant = {
@@ -179,6 +189,23 @@ export const mandantVide = (i: number): Mandant => ({ uid: uid(i), personne: "ph
 export function nomMandant(x: Mandant): string {
   if (x.personne === "morale") return x.societe?.nom ?? "Société à renseigner";
   return [x.qualite, x.prenom, x.nom].filter(Boolean).join(" ") || "Mandant à renseigner";
+}
+
+/**
+ * Ce que le mandat rédigé ÉCRIT d'un mandant — et donc ce qu'on lui demande,
+ * rien de plus (retour MAV du 21/09 : « si dans le mandat rédigé il n'y a pas
+ * la date de naissance ou d'autres informations, on ne les demande pas »).
+ *
+ * La source est `lib/bo/mandat-doc.ts`, à la lettre :
+ *   · personne physique → nom, date et lieu de naissance, adresse ;
+ *   · personne morale   → raison sociale, capital, SIREN/RCS, siège, et pour
+ *     le représentant son nom et sa qualité — ni sa naissance ni son adresse.
+ * Demander la date de naissance du gérant, c'était réclamer une donnée que
+ * l'acte n'imprime nulle part.
+ */
+export function champsDuDocument(x: Mandant): { naissance: boolean; adresse: boolean } {
+  const physique = x.personne !== "morale";
+  return { naissance: physique, adresse: physique };
 }
 
 /** Les pièces d'identité obligatoires pour ce mandant. */
@@ -619,7 +646,12 @@ export function manques(
        capital et son immatriculation. */
     if (x.personne === "morale" && !x.societe?.rcs) push(`m${i}-rcs`, `RCS de ${x.societe?.nom ?? qui}`, "Mandants");
     if (x.personne === "morale" && !x.societe?.capital) push(`m${i}-cap`, `Capital social de ${x.societe?.nom ?? qui}`, "Mandants");
-    if (!x.adresse) push(`m${i}-adr`, `Adresse de ${qui}`, "Mandants");
+    /* L'adresse que l'acte imprime : celle de la personne physique, ou le
+       SIÈGE de la société. On exigeait l'adresse personnelle du gérant, que
+       le mandat n'écrit nulle part (retour du 21/09). */
+    if (x.personne === "morale" && !x.societe?.siege) push(`m${i}-siege`, `Siège social de ${x.societe?.nom ?? qui}`, "Mandants");
+    if (x.personne === "morale" && !(x.prenom && x.nom)) push(`m${i}-rep`, `Représentant de ${x.societe?.nom ?? qui}`, "Mandants");
+    if (champsDuDocument(x).adresse && !x.adresse) push(`m${i}-adr`, `Adresse de ${qui}`, "Mandants");
     if (!x.cni) push(`m${i}-cni`, `Pièce d'identité de ${qui}`, "Mandants");
     if (x.personne === "morale" && !x.kbis) push(`m${i}-kbis`, `Kbis de ${x.societe?.nom ?? qui}`, "Mandants");
   });
