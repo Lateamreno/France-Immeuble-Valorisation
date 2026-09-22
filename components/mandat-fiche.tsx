@@ -23,19 +23,21 @@ import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { ContactPicker } from "@/components/contact-picker";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
 import {
-  FONCTIONS_MANDANT, champsDuDocument, descriptifLegal, lireMandants, manques, mandantVide, modeVente,
-  nomMandant, piecesMandant, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
+  FONCTIONS_MANDANT, ancrePrix, champsDuDocument, descriptifLegal, lireAvenants, lireMandants, manques, mandantVide, modeVente,
+  nomMandant, piecesMandant, prixEnVigueur, publicationWeb, regimeHonoraires, resoudrePrix, synthese, verrou,
   venteDirecteLocataire, REMISE_LOCATAIRE,
-  type ChampPrix, type Mandant, type Mode, type Prix, type Societe,
+  type Avenant, type ChampPrix, type Mandant, type Mode, type Prix, type Societe,
 } from "@/lib/mandat";
 import { AdresseInput } from "@/components/adresse-input";
 import {
   proprietairesPm, type ProprietairePM, type ResultatProprietaires,
 } from "@/lib/bo/proprio-actions";
 import {
-  cancelMandat, capitalDuSiren, chercherEntreprise, deposerPieceMandat, envoyerMandatSignature, genererMandat,
-  addParcelle, majMandants, mandantDepuisContact, mandatInfosRecues, marquerMandatSigne,
-  reporterCadastre,
+  cancelMandat, capitalDuSiren, chercherEntreprise, creerAvenantPrix, deposerPieceMandat, envoyerMandatSignature,
+  genererAvenant, genererMandat,
+  addParcelle, majMandants, mandantDepuisContact, mandatInfosRecues, marquerAvenantEnvoye, marquerAvenantSigne,
+  marquerMandatSigne,
+  reporterCadastre, retirerAvenant,
   reserveMandatNumero, societesDuBO,
   updateMandat, type EntrepriseTrouvee, type MandantDepuisContact, type MandatPatch, type SocieteConnue,
 } from "@/lib/bo/actions";
@@ -1490,10 +1492,18 @@ function OngletPrix({
       valider();
     });
 
-  /* La case mise en avant est celle qu'on vient d'écrire ; le prix HAI reste
-     toujours signalé, puisque c'est lui qui tient tout le reste. */
+  /* La case mise en avant est celle qu'on vient d'écrire, et l'ANCRE — le
+     dernier montant saisi à la main, net vendeur ou HAI (22/09). Tant que
+     rien n'a été tapé, c'est le HAI, qui vient de l'estimation. */
   const dernier = pilotes[pilotes.length - 1];
-  const pilote = (c: ChampPrix) => c === dernier || c === "hai";
+  const ancre = ancrePrix(pilotes);
+  const pilote = (c: ChampPrix) => c === dernier || c === ancre;
+  /* Mandat verrouillé : les cases montrent le prix enregistré, tel quel —
+     c'est lui qu'un avenant signé vient de réécrire, et une saisie gardée en
+     mémoire n'a plus rien à y faire. */
+  const vue: Prix = locked
+    ? { nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc) }
+    : p;
   /* Le barème est un plafond : au-delà, l'écran le dit. */
   const tropCher = p.nv && p.taux ? p.taux > plafondTaux(p.nv, bareme) + 0.005 : false;
   const rendement = p.hai && s.loyerMensuel ? ((s.loyerMensuel * 12) / p.hai) * 100 : undefined;
@@ -1502,7 +1512,7 @@ function OngletPrix({
     <>
       <Titre
         titre="Le prix et les honoraires"
-        aide="Saisissez le prix HAI : les honoraires se calculent au barème et le net vendeur s'en déduit. Ajuster les honoraires, le net vendeur ou le taux ne fait jamais bouger le prix HAI — c'est lui qui est annoncé au client."
+        aide="Le chiffre que vous tapez est la base : saisissez un net vendeur, il tient, et le HAI se déduit des honoraires ; saisissez un HAI, c'est lui qui tient et le net vendeur descend. Changer le taux ou les honoraires ne touche jamais au montant que vous avez saisi en dernier. Sans saisie, le HAI de l'estimation tient."
       />
       <p className="mdt-bareme">
         Barème en vigueur — <b>{baremeTexte(bareme)}</b>. Depuis l'arrêté du 26 janvier 2022 c'est un
@@ -1510,13 +1520,13 @@ function OngletPrix({
       </p>
 
       <div className="mdt-prix">
-        <CasePrix label="Prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={locked} onChange={saisir("hai")} fort />
+        <CasePrix label="Prix HAI" unite="€" v={vue.hai} pilote={pilote("hai")} locked={locked} onChange={saisir("hai")} fort />
         <span className="op sep">dont</span>
-        <CasePrix label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} locked={locked} onChange={saisir("nv")} />
+        <CasePrix label="Net vendeur" unite="€" v={vue.nv} pilote={pilote("nv")} locked={locked} onChange={saisir("nv")} />
         <span className="op">+</span>
-        <CasePrix label="Honoraires" unite="€" v={p.honos} pilote={pilote("honos")} locked={locked} onChange={saisir("honos")} />
+        <CasePrix label="Honoraires" unite="€" v={vue.honos} pilote={pilote("honos")} locked={locked} onChange={saisir("honos")} />
         <span className="op sep">soit</span>
-        <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={locked} onChange={saisir("taux")} decimal />
+        <CasePrix label="Taux" unite="%" v={vue.taux} pilote={pilote("taux")} locked={locked} onChange={saisir("taux")} decimal />
       </div>
 
       {tropCher && (
@@ -1581,10 +1591,266 @@ function OngletPrix({
         </div>
       )}
 
+      {/* Mandat signé : le prix ne bouge plus que par avenant (22/09). */}
+      {!!S(m.date_signature) && (
+        <Avenants m={m} mandatId={mandatId} immeubleId={immeubleId} bareme={bareme} />
+      )}
+
       {!locked && (
         <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler} />
       )}
     </>
+  );
+}
+
+/* ---------------------------------------------- Avenants au mandat signé
+ *
+ * Retour MAV du 22/09 : « j'ai fait un avenant de modification de prix, ce
+ * serait bien qu'on puisse faire des avenants aussi côté mandat pour la
+ * baisse de prix par exemple. »
+ *
+ * Un mandat signé est verrouillé, et c'est voulu : le prix qu'il porte est
+ * celui inscrit au registre. Le changer, c'est un avenant — un document à
+ * part, signé, inscrit en marge du numéro. La liste ci-dessous en tient
+ * l'histoire ; la fenêtre de rédaction reprend les quatre cases du prix avec
+ * la même règle : le chiffre tapé à la main est la base.
+ */
+
+const sensAvenant = (a: Avenant) =>
+  a.avant.hai !== undefined && a.apres.hai !== undefined
+    ? a.apres.hai < a.avant.hai ? "baisse" : a.apres.hai > a.avant.hai ? "hausse" : "modification"
+    : "modification";
+
+function Avenants({
+  m, mandatId, immeubleId, bareme,
+}: {
+  m: Record<string, unknown>; mandatId: string; immeubleId: string; bareme?: Tranche[];
+}) {
+  const liste = useMemo(() => lireAvenants(m), [m]);
+  const enCours = liste.find((a) => !a.signeLe);
+  const [ouvert, setOuvert] = useState(false);
+  return (
+    <>
+      <div className="mdt-sub">Avenants au mandat</div>
+      <span className="mdt-hint" style={{ marginTop: 0, marginBottom: 12 }}>
+        Le mandat est signé : son prix ne se modifie plus ici, mais par avenant — un document à part,
+        signé par les mêmes parties et inscrit en marge du numéro {S(m.numero) || "du registre"}.
+        Le prix du mandat n&apos;est réécrit qu&apos;au retour de l&apos;avenant signé.
+      </span>
+
+      {liste.map((a) => (
+        <LigneAvenant key={a.n} a={a} m={m} mandatId={mandatId} immeubleId={immeubleId} />
+      ))}
+
+      <div className="mdt-btns" style={{ marginTop: liste.length ? 4 : 0 }}>
+        <button className="mdt-go" type="button" disabled={!!enCours} onClick={() => setOuvert(true)}
+          title={enCours ? `L'avenant n° ${enCours.n} attend sa signature` : undefined}>
+          <span className="ch">›</span> Rédiger un avenant de prix
+        </button>
+        {enCours && (
+          <span className="mdt-hint" style={{ marginTop: 0 }}>
+            L&apos;avenant n° {enCours.n} n&apos;est pas encore signé : signez-le ou retirez-le avant d&apos;en rédiger un autre.
+          </span>
+        )}
+      </div>
+
+      {ouvert && (
+        <ModaleAvenant m={m} mandatId={mandatId} immeubleId={immeubleId} bareme={bareme}
+          onFermer={() => setOuvert(false)} />
+      )}
+    </>
+  );
+}
+
+function LigneAvenant({
+  a, m, mandatId, immeubleId,
+}: {
+  a: Avenant; m: Record<string, unknown>; mandatId: string; immeubleId: string;
+}) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [dateSig, setDateSig] = useState(dateInput(a.signeLe) || new Date().toISOString().slice(0, 10));
+  const sens = sensAvenant(a);
+  const ecart = a.avant.hai !== undefined && a.apres.hai !== undefined ? a.apres.hai - a.avant.hai : undefined;
+  const signe = !!a.signeLe;
+  const apercu = `/bien/${immeubleId}/mandat/${mandatId}/avenant/${a.n}/imprimer`;
+  return (
+    <div className={`mdt-etape${signe ? " ok" : ""}`}>
+      <span className="n">A{a.n}</span>
+      <div className="c">
+        <b>
+          Avenant n° {a.n} — {sens} du prix
+          {ecart !== undefined && ecart !== 0 && ` (${ecart > 0 ? "+" : "−"} ${euros(Math.abs(ecart))})`}
+        </b>
+        <span>
+          {euros(a.avant.hai)} HAI → <b>{euros(a.apres.hai)} HAI</b> · net vendeur {euros(a.avant.nv)} → {euros(a.apres.nv)} ·
+          honoraires {euros(a.apres.honos)}{a.apres.taux !== undefined ? ` (${String(a.apres.taux).replace(".", ",")} %)` : ""}.
+          {" "}Prise d&apos;effet le {dmy(a.dateEffet)}.{a.motif ? ` Motif : ${a.motif}.` : ""}
+        </span>
+        <span>
+          {signe
+            ? <>Signé le {dmy(a.signeLe)} — inscrit au registre sous la référence {S(m.numero)}-A{a.n}. Le prix du mandat est celui-ci.</>
+            : a.envoyeLe
+            ? <>Envoyé à la signature le {dmy(a.envoyeLe)} — en attente du retour.</>
+            : a.genereLe
+            ? <>PDF généré le {dmy(a.genereLe)} — à envoyer à la signature.</>
+            : <>Rédigé le {dmy(a.creeLe)} — à générer.</>}
+        </span>
+        <div className="mdt-btns">
+          <Link className="mdt-btn" href={apercu} target="_blank">Prévisualiser</Link>
+          {!signe && (
+            <button className="mdt-go" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                setMsg(null);
+                const r = await genererAvenant(immeubleId, mandatId, a.n);
+                setMsg(r.ok ? `Avenant généré (${r.ko} Ko).` : `Échec : ${r.message}`);
+              })}>
+              <span className="ch">›</span> {pending ? "Génération…" : a.pdf ? "Regénérer le PDF" : "Générer le PDF"}
+            </button>
+          )}
+          {a.pdf && <a className="mdt-btn" href={a.pdf} target="_blank" rel="noreferrer">Télécharger</a>}
+          {a.pdfSigne && <a className="mdt-btn" href={a.pdfSigne} target="_blank" rel="noreferrer">Exemplaire signé</a>}
+          {!signe && a.pdf && (
+            <button className="mdt-btn" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                const r = await marquerAvenantEnvoye(mandatId, immeubleId, a.n);
+                setMsg(r.ok ? "Envoi journalisé." : `Échec : ${r.message}`);
+              })}>
+              Marquer comme envoyé par Docusign
+            </button>
+          )}
+          {!signe && (
+            <button className="mdt-x" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                if (!window.confirm(`Retirer l'avenant n° ${a.n} ? Il n'a pas été signé, rien n'est inscrit au registre.`)) return;
+                const r = await retirerAvenant(mandatId, immeubleId, a.n);
+                if (!r.ok) setMsg(`Échec : ${r.message}`);
+              })}>
+              ✕ Retirer
+            </button>
+          )}
+        </div>
+        {!signe && a.pdf && (
+          <div className="mdt-btns">
+            <label className="mdt-ch">
+              <span>Date de signature</span>
+              <input className="mi" type="date" value={dateSig} onChange={(e) => setDateSig(e.target.value)} />
+            </label>
+            <label className="mdt-up gros">
+              Déposer l&apos;avenant signé
+              <input type="file" accept="application/pdf,image/*" disabled={pending}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const fd = new FormData();
+                  fd.set("file", f);
+                  start(async () => {
+                    const r = await marquerAvenantSigne(mandatId, immeubleId, a.n, new Date(dateSig).toISOString(), fd);
+                    if (!r.ok) setMsg(`Échec : ${r.message}`);
+                  });
+                }} />
+            </label>
+            <button className="mdt-btn" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                const r = await marquerAvenantSigne(mandatId, immeubleId, a.n, new Date(dateSig).toISOString());
+                if (!r.ok) setMsg(`Échec : ${r.message}`);
+              })}>
+              Marquer signé sans dépôt
+            </button>
+          </div>
+        )}
+        {msg && <span className={msg.startsWith("Échec") ? "er" : "okmsg"}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ModaleAvenant({
+  m, mandatId, immeubleId, bareme, onFermer,
+}: {
+  m: Record<string, unknown>; mandatId: string; immeubleId: string; bareme?: Tranche[];
+  onFermer: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const avant = useMemo(() => prixEnVigueur(m), [m]);
+  const [p, setP] = useState<Prix>(avant);
+  /* Même règle que l'onglet : le montant tapé à la main est l'ancre. On part
+     de rien de saisi — le HAI en vigueur tient tant qu'on n'a rien tapé. */
+  const [pilotes, setPilotes] = useState<ChampPrix[]>([]);
+  const [dateEffet, setDateEffet] = useState(new Date().toISOString().slice(0, 10));
+  const [motif, setMotif] = useState("");
+  const dernier = pilotes[pilotes.length - 1];
+  const ancre = ancrePrix(pilotes);
+  const pilote = (c: ChampPrix) => c === dernier || c === ancre;
+  const saisir = (cle: ChampPrix) => (v: string) => {
+    const suite = [...pilotes.filter((c) => c !== cle), cle];
+    setPilotes(suite);
+    setP(resoudrePrix({ ...p, [cle]: parse(v) }, suite, bareme));
+  };
+  const ecart = avant.hai !== undefined && p.hai !== undefined ? p.hai - avant.hai : undefined;
+  const identique = p.nv === avant.nv && p.hai === avant.hai && p.honos === avant.honos;
+  const tropCher = p.nv && p.taux ? p.taux > plafondTaux(p.nv, bareme) + 0.005 : false;
+  const pret = !!p.nv && !!p.hai && !identique && !!dateEffet;
+
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal lg avenant" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">Avenant de prix au mandat n° {S(m.numero)}<button type="button" onClick={onFermer}>✕</button></div>
+        <div className="modal-b">
+          <p style={{ fontSize: 12.5, color: "var(--gray-txt)", lineHeight: 1.6, margin: "0 0 14px" }}>
+            Prix en vigueur : <b>{euros(avant.hai)} HAI</b>, dont {euros(avant.nv)} net vendeur et{" "}
+            {euros(avant.honos)} d&apos;honoraires{avant.taux !== undefined ? ` (${String(avant.taux).replace(".", ",")} %)` : ""}.
+            Tapez le nouveau chiffre : il tient, les autres se déduisent.
+          </p>
+          <div className="mdt-prix">
+            <CasePrix label="Nouveau prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={false} onChange={saisir("hai")} fort />
+            <span className="op sep">dont</span>
+            <CasePrix label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} locked={false} onChange={saisir("nv")} />
+            <span className="op">+</span>
+            <CasePrix label="Honoraires" unite="€" v={p.honos} pilote={pilote("honos")} locked={false} onChange={saisir("honos")} />
+            <span className="op sep">soit</span>
+            <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={false} onChange={saisir("taux")} decimal />
+          </div>
+          {ecart !== undefined && ecart !== 0 && (
+            <div className="mdt-rend">
+              {ecart < 0 ? "Baisse" : "Hausse"} de <b>{euros(Math.abs(ecart))}</b> sur le prix HAI
+              ({avant.hai ? `${(Math.abs(ecart) / avant.hai * 100).toFixed(1).replace(".", ",")} %` : ""}).
+              Le net vendeur passe de {euros(avant.nv)} à <b>{euros(p.nv)}</b>.
+            </div>
+          )}
+          {tropCher && (
+            <p className="mdt-alerte">
+              Le taux dépasse le barème ({plafondTaux(p.nv!, bareme).toFixed(2).replace(".", ",")} % pour ce net vendeur).
+            </p>
+          )}
+          <div className="mdt-grid" style={{ marginTop: 14 }}>
+            <Champ label="Prise d'effet du nouveau prix">
+              <input className="mi" type="date" value={dateEffet} onChange={(e) => setDateEffet(e.target.value)} />
+            </Champ>
+            <Champ label="Motif (facultatif, imprimé sur l'avenant)">
+              <input className="mi" value={motif} placeholder="ex. : retours du marché après trois mois de commercialisation"
+                onChange={(e) => setMotif(e.target.value)} />
+            </Champ>
+          </div>
+          {msg && <p className="mdt-alerte" style={{ marginTop: 10 }}>{msg}</p>}
+        </div>
+        <div className="modal-f">
+          <span style={{ fontSize: 12, color: "var(--gray-lt)" }}>
+            L&apos;avenant est rédigé, pas signé : le prix du mandat ne change qu&apos;au retour signé.
+          </span>
+          <button className="kgo" type="button" disabled={!pret || pending}
+            onClick={() => start(async () => {
+              setMsg(null);
+              const r = await creerAvenantPrix(mandatId, immeubleId, { apres: p, dateEffet, motif });
+              if (r.ok) onFermer();
+              else setMsg(r.message);
+            })}>
+            <span className="ch">›</span> {pending ? "Rédaction…" : "Rédiger l'avenant"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

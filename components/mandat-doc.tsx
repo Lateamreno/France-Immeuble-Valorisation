@@ -44,17 +44,17 @@ function Logo() {
 }
 
 /** Les textes portent du gras : ils sont composés, pas saisis par un tiers. */
-const T = ({ t }: { t: string }) => <span dangerouslySetInnerHTML={{ __html: t }} />;
+export const T = ({ t }: { t: string }) => <span dangerouslySetInnerHTML={{ __html: t }} />;
 
-const Entete = ({ d }: { d: DocMandat }) => (
+export const Entete = ({ refEntete }: { refEntete: string }) => (
   <div className="doc-hd">
     <span className="logo"><Logo /></span>
-    <div className="ref">{d.refEntete}</div>
+    <div className="ref">{refEntete}</div>
   </div>
 );
 
 /** Pied des pages du corps : mentions, cinq zones de paraphe, pagination. */
-const Pied = ({ n, total }: { n: number; total: number }) => (
+export const Pied = ({ n, total }: { n: number; total: number }) => (
   <div className="doc-ft">
     <div className="ft-l">{MANDATAIRE.pied}</div>
     <div className="par">
@@ -66,11 +66,11 @@ const Pied = ({ n, total }: { n: number; total: number }) => (
   </div>
 );
 
-const H2 = ({ n, children }: { n: number | string; children: React.ReactNode }) => (
+export const H2 = ({ n, children }: { n: number | string; children: React.ReactNode }) => (
   <h2><span className="anum">{n}</span>{children}</h2>
 );
 
-const Registre = ({ lignes }: { lignes: LigneRegistre[] }) => (
+export const Registre = ({ lignes }: { lignes: LigneRegistre[] }) => (
   <div className="ldg">
     {lignes.map((l, i) => (
       <div key={i} className={`ld${i === lignes.length - 1 && l.k === "Prix de vente HAI" ? " ld-tot" : ""}`}>
@@ -99,7 +99,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
       {/* ---------------------------------------------- 1 · Les parties */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <div className="hero">
             <div className="eyebrow">{d.eyebrow}</div>
@@ -155,7 +155,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
       {/* ------------------------------------------ 2 · Le bien et le prix */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <H2 n={d.art.bien}>Le bien et le prix</H2>
           <h3 className="pill" style={{ marginTop: 0 }}>Désignation</h3>
@@ -211,7 +211,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
       {/* --------------------------- 3 · Durée · 4 · Exclusivité (si régime) */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <H2 n={d.art.duree}>Durée, irrévocabilité et dénonciation</H2>
           <Registre lignes={d.registre} />
@@ -257,7 +257,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
       {/* ------------------------- 5 · Clause pénale · 6 · Obligations */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <H2 n={d.art.penale}>Clause pénale</H2>
           <div className="plain">
@@ -304,7 +304,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
       {/* --------------------- 7 · Mentions légales · 8 · Signatures */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <H2 n={d.art.mentions}>Mentions légales</H2>
           <div className="mentions two">
@@ -354,7 +354,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
           et à la perte de la commission. L'annexe ne porte aucun tag de
           signature et ne compte pas dans le total des pages. */}
       <section className="page">
-        <Entete d={d} />
+        <Entete refEntete={d.refEntete} />
         <div className="pc">
           <H2 n="A">Annexe — Formulaire de rétractation</H2>
           {d.annexeIntro.map((p, i) => <p className="intro" key={i}>{p}</p>)}

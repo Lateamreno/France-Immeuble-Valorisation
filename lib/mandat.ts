@@ -414,28 +414,117 @@ export function adresseImmeuble(im: Record<string, unknown>): string {
 /* ------------------------------------------------------------------- Prix */
 
 export type Prix = { nv?: number; hai?: number; taux?: number; honos?: number };
+
+/* --------------------------------------------------------------- Avenants */
+
+/**
+ * Un avenant au mandat (retour MAV du 22/09 : « ce serait bien qu'on puisse
+ * faire des avenants aussi côté mandat, pour la baisse de prix par exemple »).
+ *
+ * Il ne modifie que le prix : net vendeur, honoraires, HAI. La durée, le
+ * régime et les parties restent ceux du mandat — c'est ce que le document
+ * dit noir sur blanc, et c'est ce qui le distingue d'un nouveau mandat. Il
+ * porte son propre numéro dans le mandat (n° 1, n° 2…), est inscrit en marge
+ * du numéro de registre, et suit le même chemin que le mandat : rédigé,
+ * généré, envoyé, signé.
+ */
+export type Avenant = {
+  n: number;
+  creeLe: string;
+  /** Date à compter de laquelle le nouveau prix s'applique. */
+  dateEffet: string;
+  motif?: string;
+  avant: Prix;
+  apres: Prix;
+  /** Charge des honoraires au moment de l'avenant, reprise du mandat. */
+  charge?: string;
+  pdf?: string;
+  genereLe?: string;
+  envoyeLe?: string;
+  signeLe?: string;
+  pdfSigne?: string;
+};
+
+export function lireAvenants(m: Record<string, unknown>): Avenant[] {
+  const liste = Array.isArray(m.avenants) ? (m.avenants as Record<string, unknown>[]) : [];
+  const prix = (v: unknown): Prix => {
+    const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    return { nv: N(o.nv), hai: N(o.hai), taux: N(o.taux), honos: N(o.honos) };
+  };
+  return liste
+    .map((a) => ({
+      n: N(a.n) ?? 0,
+      creeLe: S(a.creeLe) ?? "",
+      dateEffet: S(a.dateEffet) ?? "",
+      motif: S(a.motif),
+      avant: prix(a.avant),
+      apres: prix(a.apres),
+      charge: S(a.charge),
+      pdf: S(a.pdf),
+      genereLe: S(a.genereLe),
+      envoyeLe: S(a.envoyeLe),
+      signeLe: S(a.signeLe),
+      pdfSigne: S(a.pdfSigne),
+    }))
+    .filter((a) => a.n > 0)
+    .sort((a, b) => a.n - b.n);
+}
+
+/** Le prix en vigueur : celui du dernier avenant signé, sinon celui du mandat. */
+export function prixEnVigueur(m: Record<string, unknown>): Prix {
+  const signes = lireAvenants(m).filter((a) => a.signeLe);
+  const dernier = signes[signes.length - 1];
+  if (dernier) return dernier.apres;
+  return { nv: N(m.prix_nv), hai: N(m.prix_hai), taux: N(m.honos_taux), honos: N(m.honos_ttc) };
+}
 export type ChampPrix = keyof Prix;
 
 const arrondi = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Résolution du prix — le prix HAI est l'ancre (retour MAV #190).
+ * L'ancre du prix : le dernier MONTANT saisi à la main, net vendeur ou HAI.
  *
- * C'est le prix HAI que l'agent annonce, affiche et négocie : c'est donc lui
- * qu'il saisit, et c'est lui qui ne doit JAMAIS bouger tout seul. Les trois
- * autres cases s'ajustent entre elles sous cette contrainte :
+ * Retour MAV du 22/09 : « il devait y avoir en HAI le prix de l'estimation,
+ * 2 310 000 €. J'ai mis 2 300 000 € net vendeur, puis 4 % d'honoraires, et il
+ * a modifié instantanément le net vendeur et pas le HAI. La base de calcul
+ * doit toujours être le chiffre que je rentre à la main. Si je n'avais pas
+ * touché au net vendeur et seulement passé les honoraires à 4 %, alors il
+ * aurait fallu faire remonter le net vendeur. »
  *
- *   · on saisit le HAI      → honoraires au barème, net vendeur déduit ;
- *   · on saisit les honos   → net vendeur = HAI − honoraires, taux recalculé ;
- *   · on saisit le net vend.→ honoraires = HAI − net vendeur, taux recalculé ;
- *   · on saisit le taux     → net vendeur = HAI ÷ (1 + taux), honos déduits.
+ * Tant qu'aucun montant n'a été tapé, l'ancre est le HAI (retour #190 : c'est
+ * lui qu'on annonce, il vient de l'estimation). Dès qu'un montant est tapé,
+ * c'est lui qui tient, et l'autre se déduit.
+ */
+export function ancrePrix(pilotes: ChampPrix[]): "nv" | "hai" {
+  for (let i = pilotes.length - 1; i >= 0; i--) {
+    if (pilotes[i] === "nv" || pilotes[i] === "hai") return pilotes[i] as "nv" | "hai";
+  }
+  return "hai";
+}
+
+/**
+ * Résolution du prix — le montant saisi à la main est l'ancre (22/09).
  *
- * La règle précédente — « les deux dernières cases touchées pilotent les deux
- * autres » — faisait bouger le prix de vente quand l'agent ajustait ses
- * honoraires, ce qui n'a pas de sens : le client, lui, paie le HAI convenu.
+ * `pilotes` est l'ordre des cases touchées ; `ancrePrix` en tire le montant
+ * qui tient (net vendeur ou HAI), le dernier élément dit ce qui vient d'être
+ * saisi. Quatre cases, deux degrés de liberté :
+ *
+ *   · on saisit le HAI      → il devient l'ancre ; taux saisi s'il y en a un,
+ *                             sinon le barème ; net vendeur déduit ;
+ *   · on saisit le net vend.→ il devient l'ancre ; taux saisi ou barème ;
+ *                             honoraires = net × taux, HAI = net + honoraires ;
+ *   · on saisit le taux     → l'ancre ne bouge pas : sur HAI, le net vendeur
+ *                             descend ; sur net vendeur, le HAI monte ;
+ *   · on saisit les honos   → même chose, en montant : sur HAI le net vendeur
+ *                             se déduit, sur net vendeur le HAI se déduit.
+ *
+ * Avant : le HAI était l'ancre quoi qu'on tape, et taper un net vendeur puis
+ * un taux faisait réécrire le net vendeur qu'on venait d'écrire.
  */
 export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]): Prix {
   const dernier = pilotes[pilotes.length - 1] ?? "hai";
+  const ancre = ancrePrix(pilotes);
+  const tauxSaisi = pilotes.includes("taux");
   const v = (k: ChampPrix) => (typeof p[k] === "number" && p[k]! > 0 ? p[k]! : undefined);
   const nv = v("nv"), hai = v("hai"), taux = v("taux"), honos = v("honos");
 
@@ -446,35 +535,38 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]):
     taux: r.taux !== undefined ? arrondi(r.taux) : undefined,
   });
 
-  /* Le HAI vient d'être saisi, ou il est seul renseigné : le barème donne les
-     honoraires, et le net vendeur s'en déduit. */
-  if (dernier === "hai" || (hai && !nv && !honos && !taux)) {
+  /* Un montant vient d'être saisi : il devient l'ancre. Le taux tient s'il a
+     été saisi, sinon c'est le barème qui le donne. */
+  if (dernier === "hai") {
     if (!hai) return out({ nv, hai, taux, honos });
+    if (tauxSaisi && taux) { const n = hai / (1 + taux / 100); return out({ hai, taux, nv: n, honos: hai - n }); }
     const r = netVendeurDepuisHai(hai, bareme);
     return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux });
   }
+  if (dernier === "nv") {
+    if (!nv) return out({ nv, hai, taux, honos });
+    if (tauxSaisi && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+    const r = honorairesBareme(nv, bareme);
+    return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos });
+  }
 
-  /* Sans prix HAI on ne peut rien ancrer : on le fabrique depuis ce qu'on a,
-     c'est le seul cas où il se calcule. */
-  if (!hai) {
-    if (nv && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
-    if (nv && honos) return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
-    if (nv) { const r = honorairesBareme(nv, bareme); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
+  /* Un taux ou des honoraires viennent d'être saisis : l'ancre ne bouge pas,
+     l'autre montant se déduit. */
+  if (ancre === "nv" && nv) {
+    if (dernier === "taux" && taux !== undefined) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+    if (dernier === "honos" && honos !== undefined) return out({ nv, honos, hai: nv + honos, taux: (honos / nv) * 100 });
+  }
+  if (hai) {
+    if (dernier === "taux" && taux !== undefined) { const n = hai / (1 + taux / 100); return out({ hai, taux, nv: n, honos: hai - n }); }
+    if (dernier === "honos" && honos !== undefined) { const n = hai - honos; return out({ hai, honos, nv: n, taux: n > 0 ? (honos / n) * 100 : undefined }); }
+    /* Rien de saisi encore : le HAI seul renseigné se décline au barème. */
+    if (!nv && !honos && !taux) { const r = netVendeurDepuisHai(hai, bareme); return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux }); }
     return out({ nv, hai, taux, honos });
   }
-
-  if (dernier === "honos" && honos !== undefined) {
-    const n = hai - honos;
-    return out({ hai, honos, nv: n, taux: n > 0 ? (honos / n) * 100 : undefined });
-  }
-  if (dernier === "nv" && nv !== undefined) {
-    const h = hai - nv;
-    return out({ hai, nv, honos: h, taux: nv > 0 ? (h / nv) * 100 : undefined });
-  }
-  if (dernier === "taux" && taux !== undefined) {
-    const n = hai / (1 + taux / 100);
-    return out({ hai, taux, nv: n, honos: hai - n });
-  }
+  /* Sans HAI : on le fabrique depuis ce qu'on a. */
+  if (nv && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+  if (nv && honos) return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
+  if (nv) { const r = honorairesBareme(nv, bareme); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
   return out({ nv, hai, taux, honos });
 }
 

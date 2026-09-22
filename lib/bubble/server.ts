@@ -108,6 +108,15 @@ function sbParams(constraints?: Constraint[]) {
     else if (c.constraint_type === "equals")
       // Les clés Bubble exotiques (espaces, « 0 - IMMEUBLE ») doivent être citées côté PostgREST.
       p.append(`data->>${/^\w+$/.test(c.key) ? c.key : `"${c.key}"`}`, `eq.${c.value}`);
+    /* « n'est pas oui » — pour les cases oui/non de Bubble (22/09).
+       Une case jamais cochée vaut « non » dans Bubble, mais l'export ne
+       l'écrit pas : la clé est absente. `archived = false` ne rendait donc
+       que les lignes explicitement décochées — sur les recherches, une sur
+       deux — et le matching ne voyait que la moitié du vivier. */
+    else if (c.constraint_type === "is not true") {
+      const k = /^\w+$/.test(c.key) ? c.key : `"${c.key}"`;
+      p.append("or", `(data->>${k}.is.null,data->>${k}.eq.false)`);
+    }
     else if (c.constraint_type === "contains")
       p.append("data", `cs.${JSON.stringify({ [c.key]: [c.value] })}`);
     // « la clé est renseignée » : évite de ramener une table entière pour n'en
@@ -186,7 +195,12 @@ async function bq(
     limit: String(opts.limit ?? 100),
     cursor: String(opts.cursor ?? 0),
   });
-  if (opts.constraints) p.set("constraints", JSON.stringify(opts.constraints));
+  if (opts.constraints) {
+    /* « is not true » est à nous ; Bubble connaît « not equal ». */
+    const bubble = opts.constraints.map((c) =>
+      c.constraint_type === "is not true" ? { key: c.key, constraint_type: "not equal", value: true } : c);
+    p.set("constraints", JSON.stringify(bubble));
+  }
   if (opts.sort) {
     p.set("sort_field", opts.sort);
     p.set("descending", String(opts.desc ?? false));
@@ -2336,7 +2350,10 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
   if (!im) return null;
 
   const [recherches, matchs, commercialisations, adresses] = await Promise.all([
-    fetchAll("recherche", [{ key: "archived", constraint_type: "equals", value: "false" }], 4000).catch(() => []),
+    /* « non archivée » et non « archivée = non » (22/09) : 983 recherches
+       sur 1 951 n'ont jamais eu la case touchée, Bubble les compte comme
+       actives, et le matching de Livry-Gargan en rendait 165 au lieu de 309. */
+    fetchAll("recherche", [{ key: "archived", constraint_type: "is not true", value: "true" }], 4000).catch(() => []),
     fetchAll("match", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
     fetchAll("commercialisation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
     fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 2).catch(() => []),
@@ -2353,9 +2370,16 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
   const adr = adresses[0];
   const cp = String(adr?.zipcode ?? "");
   const num = (v: unknown) => (typeof v === "number" ? v : undefined);
-  // « Mixte » ne désigne pas une destination attendue par les acquéreurs :
-  // c'est l'absence de destination unique, donc aucune contrainte.
+  /* Les destinations de l'immeuble, TOUTES (22/09). On ne passait que la
+     principale, et « Mixte » devenait « aucune contrainte » : le matching
+     retenait des acquéreurs qui ne veulent que de la logistique ou des
+     bureaux pour un immeuble logements + commerces. Bubble matche avec la
+     liste `Destinations` de la fiche ; c'est elle qu'on passe, la principale
+     ne servant qu'à défaut. */
   const dest = String(im.Destination_principale ?? "");
+  const destinations = Array.isArray(im.Destinations) && (im.Destinations as unknown[]).length > 0
+    ? (im.Destinations as unknown[]).map(String).filter(Boolean)
+    : dest && dest !== "Mixte" ? [dest] : [];
 
   return {
     recherches,
@@ -2373,7 +2397,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       travaux: num(im.travaux_total),
       ville: String(adr?.ville_name ?? ""),
       departement: cp.slice(0, 2),
-      destinations: dest && dest !== "Mixte" ? [dest] : [],
+      destinations,
       cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
     },
   };

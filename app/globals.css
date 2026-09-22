@@ -2388,6 +2388,10 @@ button.mt-h.ouvrable:hover { border-color: var(--gold-bo); background: #fffdf7; 
 }
 .fsub-nav button.on { color: var(--slate); border-bottom-color: var(--gold-bo); }
 .modal.lg { max-width: 720px; }
+/* La fenêtre d'avenant porte les quatre cases du prix sur une ligne, comme
+   l'onglet : elle est plus large que les autres. */
+.modal.lg.avenant { width: min(980px, 96vw); max-width: 980px; }
+.modal.avenant .mdt-prix .mdt-cp { flex: 1 1 120px; min-width: 120px; }
 
 /* Pictos des onglets de section (retour #51 : mêmes dessins que le rail). */
 .ftab-ic { display: inline-flex; width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; }

@@ -244,8 +244,17 @@ function ModaleMatching({
     const n = (v: unknown) => (typeof v === "number" ? String(v) : "");
     if (n(doc.prix_hai)) setPrix(n(doc.prix_hai));
     if (n(doc.surface_carrez)) setSurface(n(doc.surface_carrez));
+    /* L'estimation ne porte pas `occupation` ni `renta` : son occupation est
+       `imm_occupation`, et son rendement retenu `fin_best_renta` — le champ
+       est marqué « [SUPPR] » dans Bubble mais c'est encore lui que le BO
+       Bubble lit pour matcher (22/09 : 100 % et 10,1 % chez Bubble, 83 % et
+       8,6 % ici, 31 acquéreurs de moins). Le dossier, lui, a ses propres
+       champs, on les garde. */
     if (n(doc.occupation)) setOccupation(n(doc.occupation));
+    else if (n(doc.imm_occupation)) setOccupation(n(doc.imm_occupation));
     if (n(doc.renta)) setRenta(n(doc.renta));
+    else if (n(doc["[SUPPR] fin_best_renta"])) setRenta(n(doc["[SUPPR] fin_best_renta"]));
+    else if (n(doc.fin_renta_best)) setRenta(n(doc.fin_renta_best));
   };
 
   const criteres: CriteresBien = {
