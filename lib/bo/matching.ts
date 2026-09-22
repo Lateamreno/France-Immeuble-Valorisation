@@ -213,8 +213,11 @@ export function matcher(
   const retenues = recherches.filter((r) => {
     if (r.archived === true || r.standby === true) return false;
 
-    // Filtres de campagne
-    if (filtres.notes.length > 0 && filtres.notes.length < 4) {
+    /* Filtres de campagne. Les classes cochées sont les seules retenues —
+       y compris quand les quatre le sont : une recherche SANS classe n'en
+       fait pas partie, comme chez Bubble (22/09). Elle passait ici dès que
+       tout était coché, ce qui ajoutait des acquéreurs jamais qualifiés. */
+    if (filtres.notes.length > 0) {
       if (!filtres.notes.includes(S(r.Note))) return false;
     }
     if (filtres.exclureDejaVus && arr(r.IMMEUBLEs_proposed).includes(bien.immeubleId)) return false;

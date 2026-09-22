@@ -13,7 +13,7 @@ import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lect
 import { netVendeurDepuisHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
 import { jourIso } from "@/lib/format";
-import { lireMandants, type Societe } from "@/lib/mandat";
+import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, type Societe } from "@/lib/mandat";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -3442,6 +3442,217 @@ export async function marquerMandatSigne(
       patch.pdf_signed = `/api/photo?s=${encodeURIComponent(path)}`;
     }
     await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: patch });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/* ---------------------------------------------------- Avenants au mandat
+ *
+ * Retour MAV du 22/09 : « j'ai fait un avenant de modification de prix, ce
+ * serait bien qu'on puisse faire des avenants aussi côté mandat pour la
+ * baisse de prix par exemple. »
+ *
+ * Un mandat signé est verrouillé : son prix ne bouge plus par l'onglet Prix.
+ * Il bouge par avenant — écrit, signé, inscrit en marge du numéro de
+ * registre (loi Hoguet). La liste vit sur le mandat (`avenants`), chaque
+ * avenant y porte le prix d'avant et le prix d'après, et suit le chemin du
+ * mandat : rédigé, généré, envoyé, signé. C'est à la SIGNATURE, et pas
+ * avant, que le prix du mandat est réécrit : un avenant qu'on n'a jamais
+ * signé n'a rien changé.
+ */
+
+const avenantsBruts = (m: Record<string, unknown> | null) =>
+  Array.isArray(m?.avenants) ? (m!.avenants as Record<string, unknown>[]) : [];
+
+const nettoyerPrix = (p: Prix): Prix => ({
+  nv: typeof p.nv === "number" && p.nv > 0 ? Math.round(p.nv) : undefined,
+  hai: typeof p.hai === "number" && p.hai > 0 ? Math.round(p.hai) : undefined,
+  honos: typeof p.honos === "number" && p.honos >= 0 ? Math.round(p.honos) : undefined,
+  taux: typeof p.taux === "number" && p.taux >= 0 ? Math.round(p.taux * 100) / 100 : undefined,
+});
+
+/** Rédige un avenant de prix : le nouveau prix, sa date d'effet, son motif. */
+export async function creerAvenantPrix(
+  mandatId: string,
+  immeubleId: string,
+  e: { apres: Prix; dateEffet: string; motif?: string },
+) {
+  try {
+    const m = await bqOne("bo_mandat", mandatId);
+    if (!m) throw new Error("Mandat introuvable.");
+    if (!m.date_signature) throw new Error("Un avenant ne se fait que sur un mandat signé : avant la signature, le prix se modifie dans l'onglet Prix.");
+    const existants = lireAvenants(m);
+    const enCours = existants.find((a) => !a.signeLe);
+    if (enCours) throw new Error(`L'avenant n° ${enCours.n} n'est pas encore signé : signez-le ou retirez-le avant d'en rédiger un autre.`);
+    const apres = nettoyerPrix(e.apres);
+    if (!apres.nv || !apres.hai) throw new Error("Le nouveau prix est incomplet : il faut un net vendeur et un HAI.");
+    const avant = nettoyerPrix(prixEnVigueur(m));
+    if (avant.nv === apres.nv && avant.hai === apres.hai && avant.honos === apres.honos) {
+      throw new Error("Le nouveau prix est identique au prix en vigueur : rien à modifier.");
+    }
+    const now = new Date().toISOString();
+    const avenant: Avenant = {
+      n: (existants[existants.length - 1]?.n ?? 0) + 1,
+      creeLe: now,
+      dateEffet: e.dateEffet ? new Date(e.dateEffet).toISOString() : now,
+      motif: e.motif?.trim() || undefined,
+      avant,
+      apres,
+      charge: m.Charge_hono ? String(m.Charge_hono) : undefined,
+    };
+    await rpc("bo_patch_doc", {
+      p_table: "bo_mandat",
+      p_id: mandatId,
+      p_patch: { avenants: [...avenantsBruts(m), cleanPatch(avenant as unknown as Record<string, unknown>)], "Modified Date": now },
+    });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const, n: avenant.n };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Retire un avenant jamais signé. Un avenant signé ne se retire pas : il est au registre. */
+export async function retirerAvenant(mandatId: string, immeubleId: string, n: number) {
+  try {
+    const m = await bqOne("bo_mandat", mandatId);
+    if (!m) throw new Error("Mandat introuvable.");
+    const cible = lireAvenants(m).find((a) => a.n === n);
+    if (!cible) throw new Error(`Avenant n° ${n} introuvable.`);
+    if (cible.signeLe) throw new Error("Un avenant signé est inscrit au registre : il ne se retire pas.");
+    const now = new Date().toISOString();
+    await rpc("bo_patch_doc", {
+      p_table: "bo_mandat",
+      p_id: mandatId,
+      p_patch: { avenants: avenantsBruts(m).filter((a) => Number(a.n) !== n), "Modified Date": now },
+    });
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Réécrit un avenant de la liste, à numéro constant. */
+async function patcherAvenant(
+  m: Record<string, unknown>,
+  mandatId: string,
+  n: number,
+  patch: Record<string, unknown>,
+  now: string,
+  reste: Record<string, unknown> = {},
+) {
+  const liste = avenantsBruts(m).map((a) => (Number(a.n) === n ? { ...a, ...patch } : a));
+  await rpc("bo_patch_doc", {
+    p_table: "bo_mandat",
+    p_id: mandatId,
+    p_patch: { avenants: liste, ...reste, "Modified Date": now },
+  });
+}
+
+/** Fabrique le PDF de l'avenant depuis sa page imprimable et le range au coffre. */
+export async function genererAvenant(immeubleId: string, mandatId: string, n: number) {
+  try {
+    const { pdfDepuisUrl } = await import("./pdf");
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
+    const url = `${proto}://${hote}/bien/${immeubleId}/mandat/${mandatId}/avenant/${n}/imprimer?nu=1`;
+    const pdf = await pdfDepuisUrl(url, h.get("cookie") ?? undefined);
+
+    const now = new Date().toISOString();
+    const m = await bqOne("bo_mandat", mandatId);
+    if (!m) throw new Error("Mandat introuvable.");
+    if (!lireAvenants(m).some((a) => a.n === n)) throw new Error(`Avenant n° ${n} introuvable.`);
+    const numero = m.numero ? String(m.numero) : mandatId.slice(-6);
+    /* Chemin neuf à chaque génération, comme pour le mandat : le relais sert
+       les fichiers en « immutable », et chaque version doit rester lisible. */
+    const horodatage = now.replace(/[-:]/g, "").replace(/\..+$/, "");
+    const path = `mandats/${mandatId}/avenant-${numero}-A${n}-${horodatage}.pdf`;
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/pdf", "x-upsert": "true" },
+      body: new Uint8Array(pdf),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+
+    const docId = newId();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_app_document",
+      p_id: docId,
+      p_doc: cleanPatch({
+        IMMEUBLE: immeubleId,
+        MANDAT: mandatId,
+        name: `Avenant ${n} au mandat ${numero}`,
+        file_name: `Avenant-${numero}-A${n}.pdf`,
+        path,
+        format: "application/pdf",
+        size_kB: Math.round(pdf.length / 1024),
+        "Created Date": now,
+        "Modified Date": now,
+      }),
+    });
+    const urlPdf = `/api/photo?s=${encodeURIComponent(path)}`;
+    await patcherAvenant(m, mandatId, n, { pdf: urlPdf, genereLe: now }, now);
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const, url: urlPdf, ko: Math.round(pdf.length / 1024) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[pdf avenant]", message);
+    return { ok: false as const, message };
+  }
+}
+
+/** Journalise l'envoi de l'avenant à la signature (même doctrine que le mandat : l'app trace, l'envoi se fait depuis Docusign). */
+export async function marquerAvenantEnvoye(mandatId: string, immeubleId: string, n: number) {
+  try {
+    const m = await bqOne("bo_mandat", mandatId);
+    if (!m) throw new Error("Mandat introuvable.");
+    const now = new Date().toISOString();
+    await patcherAvenant(m, mandatId, n, { envoyeLe: now }, now);
+    rafraichirMandat(mandatId, immeubleId);
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Retour de signature de l'avenant : c'est ici, et seulement ici, que le prix
+ * du mandat est réécrit. Le prix « avant » reste dans l'avenant, on ne perd
+ * rien de l'histoire du mandat.
+ */
+export async function marquerAvenantSigne(
+  mandatId: string,
+  immeubleId: string,
+  n: number,
+  dateSignature: string,
+  fd?: FormData,
+) {
+  try {
+    const m = await bqOne("bo_mandat", mandatId);
+    if (!m) throw new Error("Mandat introuvable.");
+    const cible = lireAvenants(m).find((a) => a.n === n);
+    if (!cible) throw new Error(`Avenant n° ${n} introuvable.`);
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = { signeLe: dateSignature || now };
+    const file = fd?.get("file");
+    if (file instanceof File && file.size > 0) {
+      const path = `mandats/${mandatId}/avenant-A${n}-signe-${safeName(file.name)}`;
+      await uploadToBucket(path, file);
+      patch.pdfSigne = `/api/photo?s=${encodeURIComponent(path)}`;
+    }
+    await patcherAvenant(m, mandatId, n, patch, now, cleanPatch({
+      prix_nv: cible.apres.nv,
+      prix_hai: cible.apres.hai,
+      honos_taux: cible.apres.taux,
+      honos_ttc: cible.apres.honos,
+    }));
     rafraichirMandat(mandatId, immeubleId);
     return { ok: true as const };
   } catch (e) {
