@@ -106,6 +106,10 @@ export type ImmeubleRelance = {
   prix?: string;
   /** Jours écoulés depuis le dernier geste, quand on le sait. */
   jours?: number;
+  /** Le dossier dans sa dernière version, quand il a un lien : la relance le
+   *  redonne (#365 : « ce bouton envoie les emails avec la dernière version du
+   *  dossier »). */
+  lien?: string;
   /**
    * Les autres propositions du MÊME immeuble pour la MÊME personne.
    *
@@ -208,7 +212,7 @@ export function grouperParClient(
 export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: string }): string {
   const un = c.immeubles.length === 1;
   const liste = c.immeubles
-    .map((i) => `  • ${i.libelle}${i.prix ? ` — ${i.prix}` : ""}`)
+    .map((i) => `  • ${i.libelle}${i.prix ? ` — ${i.prix}` : ""}${i.lien ? `\n    Dossier : ${i.lien}` : ""}`)
     .join("\n");
   return [
     `Bonjour,`,

@@ -1762,9 +1762,23 @@ export type PropositionLigne = {
   statut?: string;
   motif?: string;
   commentaire?: string;
-  immeuble?: { id: string; libelle: string };
+  immeuble?: { id: string; libelle: string; prix?: string };
   /** Vraie quand la proposition entre dans le compteur « à relancer ». */
   aRelancer: boolean;
+  /* Retours #365 et #366 : la carte de la fiche contact porte ce que porte
+     celle du BO — les recherches matchées, le dossier envoyé, la relance. */
+  refusee: boolean;
+  /** Relances coupées à la demande de la personne. */
+  stop: boolean;
+  /** L'adresse à laquelle le dossier est parti. */
+  email?: string;
+  /** Dernier geste connu (relance, envoi), ISO : la carte en tire les jours. */
+  depuis?: string;
+  relanceLe?: string;
+  /** Les recherches avec lesquelles le bien a été matché. */
+  recherches: { id: string; libelle: string }[];
+  /** Le dossier envoyé, avec sa version et son PDF quand il en a un. */
+  dossier?: { version: string; pdf?: string };
 };
 
 /** Visite ou offre — même carte, deux jeux de valeurs. */
@@ -1797,7 +1811,7 @@ export type SuiviLigne = {
 export type ContactData = {
   c: Record<string, unknown>;
   /** Commercial qui suit le contact (champ `SUIVI`, pas `agent`). */
-  agent?: { nom: string; initiales: string; couleur?: string };
+  agent?: { id?: string; nom: string; initiales: string; couleur?: string; tel?: string };
   /** Qui a créé la fiche, en clair, pour la ligne « Création … par … ». */
   createur?: string;
   /** « (il y a 2 276 jours) » — calculé au rendu serveur : appeler l'horloge
@@ -1878,6 +1892,11 @@ export async function getContact(id: string): Promise<ContactData | null> {
     const im = ims.get(imId);
     return im ? { id: imId, libelle: imLabel(im) } : undefined;
   };
+  /* Les dossiers envoyés, pour la vignette « Dossier V2 · PDF » (#366). */
+  const dossiers = new Map<string, Record<string, unknown>>();
+  for (const r of await parIds("dossier", [...new Set(propositions.map((p) => String(p.DOSSIER ?? "")).filter(Boolean))]).catch(() => []))
+    dossiers.set(String(r._id), r);
+  const recherchesDuContact = recherchesBO.filter((r) => r.contact?.id === id);
 
   const tous = await agents();
   const suivi = tous.find((a) => a.id === String(c.SUIVI ?? ""));
@@ -1885,7 +1904,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
 
   return {
     c,
-    agent: suivi ? { nom: suivi.name, initiales: suivi.initials, couleur: suivi.color } : undefined,
+    agent: suivi ? { id: suivi.id, nom: suivi.name, initiales: suivi.initials, couleur: suivi.color, tel: suivi.tel } : undefined,
     createur: createur?.name ?? "France Immeuble",
     anciennete: (() => {
       const iso = S2(c["Created Date"]);
@@ -1946,14 +1965,30 @@ export async function getContact(id: string): Promise<ContactData | null> {
       .sort((a, b) => String(b.date_envoi ?? b["Created Date"] ?? "").localeCompare(String(a.date_envoi ?? a["Created Date"] ?? "")))
       .map((p) => {
       const st = S2(p.Statut);
+      const im = ims.get(String(p.IMMEUBLE ?? ""));
+      const dos = dossiers.get(String(p.DOSSIER ?? ""));
+      const pdf = S2(dos?.pdf);
       return {
         id: String(p._id),
         quand: `Proposition du ${jjmmaa(p.date_envoi) ?? jjmmaa(p["Created Date"]) ?? "?"}`,
         statut: st,
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
-        immeuble: lien(String(p.IMMEUBLE ?? "")),
+        immeuble: im ? { id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined } : undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
+        refusee: (st ?? "").startsWith("Refus"),
+        stop: p.stop_relances_yn === true,
+        email: S2(p.mail_adresse),
+        depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
+        relanceLe: jjmmaa(p.date_last_relance),
+        recherches: (Array.isArray(p.RECHERCHEs) ? (p.RECHERCHEs as unknown[]).map(String) : [])
+          .map((rid) => ({ id: rid, libelle: recherchesDuContact.find((r) => r.id === rid)?.cible ?? "Recherche" })),
+        dossier: dos
+          ? {
+              version: `V${typeof dos.version === "number" ? dos.version : S2(dos.version) ?? "?"}`,
+              pdf: pdf ? (pdf.startsWith("//") ? `https:${pdf}` : pdf) : undefined,
+            }
+          : undefined,
       } satisfies PropositionLigne;
     }),
 

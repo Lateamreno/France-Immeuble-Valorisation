@@ -8,16 +8,27 @@
  * correspondant : une recherche vue depuis la fiche est la même carte que sur
  * l'écran Recherches. */
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Copier } from "@/components/copier";
-import type { ContactData, FilMail, RechercheCard } from "@/lib/bubble/server";
+import type { ContactData, FilMail, PropositionLigne, RechercheCard } from "@/lib/bubble/server";
 import { dmy, jourIso } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
-import { ModaleRechercheEdition } from "@/components/recherche-modale";
+import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
-import { archiverContact, noterProposition, retirerPieceContact, updateContact } from "@/lib/bo/actions";
+import { ModaleApresRefus } from "@/components/proposition-refus";
+import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
+import {
+  archiverContact, noterProposition, retirerPieceContact, setPropositionStatut, updateContact,
+} from "@/lib/bo/actions";
+import {
+  departRecherche, departRechercheDeProposition, envoyerRelances, marquerRelances, relanceEnvoiPossible,
+} from "@/lib/bo/relances-actions";
+import {
+  JOURS_RELANCE, joursDepuis, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
+} from "@/lib/bo/relances";
 import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
   CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
@@ -649,37 +660,16 @@ export function ContactFiche({ d, echanges = [], compte }: {
         )}
 
         {tab === "propositions" && (
-          <Onglet ajout="+ Ajouter une proposition" href="/propositions" vide={d.propositions.length === 0} quoi="proposition"
+          <OngletPropositions
+            d={d} contactId={id} nom={nomComplet} email={email.trim()}
+            vignette={{
+              id, nom: nomComplet, qualite: entreprise || types[0] || undefined,
+              tel: telAffiche || undefined, email: email.trim() || undefined,
+              immeubles: d.immeubles.length, recherches: d.recherches.length,
+            }}
+            note={note}
             onAjouter={() => setAjout("proposition")}
-            entete={d.aRelancer > 0 ? (
-              <div className="cfx-relance">
-                <b>⚠ {d.aRelancer} proposition{d.aRelancer > 1 ? "s" : ""} à relancer</b>
-                <span style={{ flex: 1 }} />
-                <Link className="cfx-relance-b" href={`/propositions?contact=${id}`}>Relancer</Link>
-              </div>
-            ) : undefined}
-            cartes={d.propositions.map((p) => (
-              <div className={`cfc${p.aRelancer ? "" : " pale"}`} key={p.id}>
-                <div className="cfc-g">
-                  <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC.propositions}</svg></span>
-                </div>
-                <div className="cfc-c">
-                  <div className="cfc-l1">
-                    <span className="cfc-t">{p.quand}</span>
-                    {p.statut && <span className={`cfc-st${p.statut === "Envoyée" ? "" : " off"}`}>{p.statut}</span>}
-                    {p.motif && <span className="cfc-motif">{p.motif}</span>}
-                  </div>
-                  <NoteProposition propositionId={p.id} contactId={id} valeur={p.commentaire ?? ""} />
-                  {p.immeuble && (
-                    <div className="cfc-l3">
-                      <Link className="cfc-im" href={`/bien/${p.immeuble.id}`}>
-                        <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{p.immeuble.libelle}
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))} />
+          />
         )}
 
         {tab === "questions" && (
@@ -965,6 +955,360 @@ function Onglet({ ajout, href, vide, quoi, entete, cartes, onAjouter }: {
           <i>{reste} restante{feminin ? "s" : ""}</i>
         </button>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------ Onglet Propositions
+ *
+ * Retours #365 et #366 — la carte du BO, reprise trait pour trait : la ou les
+ * recherches avec lesquelles le bien a été matché (un clic ouvre la recherche
+ * en modification), le nom du client (un clic ouvre sa vignette), le dossier
+ * envoyé et son PDF, la pastille « à relancer », le bouton Relancer, le bouton
+ * Refuser qui ouvre une barre de texte pour dire pourquoi.
+ *
+ * Le bouton Relancer est SCINDÉ (demande MAV du 23/09) : le clic principal
+ * envoie tout de suite le message habituel, sans fenêtre ; la flèche ouvre
+ * la fenêtre pour changer le texte avant l'envoi. L'envoi est un geste de
+ * l'agent — c'est le clic — et il n'est marqué relancé que si le message est
+ * parti (doctrine §7.1).
+ */
+
+const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
+
+function OngletPropositions({ d, contactId, nom, email, vignette, note, onAjouter }: {
+  d: ContactData; contactId: string; nom: string; email: string;
+  vignette: VignetteData; note: string; onAjouter: () => void;
+}) {
+  const router = useRouter();
+  const [maintenant] = useState(() => Date.now());
+  /* La fenêtre de relance : quelles propositions, et le texte à modifier. */
+  const [relance, setRelance] = useState<{ ids: string[] } | null>(null);
+  const [rapport, setRapport] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const agent = d.agent ? { id: d.agent.id, nom: d.agent.nom, tel: d.agent.tel } : undefined;
+
+  /** Les propositions ouvertes, avec leur ancienneté. */
+  const ouvertes = useMemo(
+    () => d.propositions
+      .filter((p) => !p.refusee && !p.stop && !STATUTS_CLOS_PROP.has(p.statut ?? "") && p.immeuble)
+      .map((p) => ({ p, jours: joursDepuis(p.depuis, maintenant) })),
+    [d.propositions, maintenant],
+  );
+  const aRelancer = ouvertes.filter((x) => x.jours === undefined || x.jours >= JOURS_RELANCE);
+
+  /** Le message d'une relance : un e-mail pour toutes les propositions retenues. */
+  const client = (ids: string[]): ClientRelance => {
+    const immeubles: ImmeubleRelance[] = ouvertes
+      .filter((x) => ids.includes(x.p.id))
+      .map((x) => ({
+        propositionId: x.p.id, immeubleId: x.p.immeuble!.id, libelle: x.p.immeuble!.libelle,
+        prix: x.p.immeuble!.prix, jours: x.jours, autresIds: [], lien: x.p.dossier?.pdf,
+      }));
+    return { contactId, nom, email, immeubles, joursMax: Math.max(0, ...immeubles.map((i) => i.jours ?? 999)) };
+  };
+
+  /** Envoi direct, sans fenêtre : le message habituel, tel quel. */
+  const envoyerDirect = (ids: string[]) =>
+    start(async () => {
+      setRapport(null);
+      if (!email) { setRapport("Aucune adresse e-mail sur la fiche : la relance ne peut pas partir."); return; }
+      const c = client(ids);
+      if (c.immeubles.length === 0) return;
+      try {
+        const r = await envoyerRelances(
+          [{ contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: ids }],
+          agent?.id, undefined, [`/contact/${contactId}`],
+        );
+        setRapport(r.envoyes ? `Relance envoyée à ${email}.` : `Échec : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);
+        router.refresh();
+      } catch (e) {
+        setRapport(e instanceof Error ? e.message : "L'envoi a échoué.");
+      }
+    });
+
+  return (
+    <Onglet ajout="+ Ajouter une proposition" href="/propositions" vide={d.propositions.length === 0} quoi="proposition"
+      onAjouter={onAjouter}
+      entete={(
+        <>
+          {aRelancer.length > 0 && (
+            <div className="cfx-relance">
+              <b>⚠ {aRelancer.length} proposition{aRelancer.length > 1 ? "s" : ""} à relancer</b>
+              <span style={{ flex: 1 }} />
+              <BoutonScinde
+                rouge pending={pending}
+                onPrincipal={() => envoyerDirect(aRelancer.map((x) => x.p.id))}
+                onFleche={() => setRelance({ ids: aRelancer.map((x) => x.p.id) })}
+                titre="Envoyer la relance habituelle, un seul e-mail pour tous les dossiers"
+              >
+                Relancer
+              </BoutonScinde>
+            </div>
+          )}
+          {rapport && <div className={`cfx-rapport${rapport.startsWith("Échec") || rapport.startsWith("Aucune") ? " ko" : ""}`}>{rapport}</div>}
+          {relance && (
+            <ModaleRelanceContact
+              ouvertes={ouvertes} ids={relance.ids} client={client} agent={agent} email={email}
+              contactId={contactId}
+              onFermer={() => setRelance(null)}
+              onFait={(msg) => { setRelance(null); setRapport(msg); router.refresh(); }}
+            />
+          )}
+        </>
+      )}
+      cartes={d.propositions.map((p) => (
+        <CarteProposition
+          key={p.id} p={p} contactId={contactId} vignette={vignette} note={note}
+          jours={joursDepuis(p.depuis, maintenant)}
+          onRelancer={() => envoyerDirect([p.id])}
+          onRelancerModale={() => setRelance({ ids: [p.id] })}
+          onRafraichir={() => router.refresh()}
+        />
+      ))}
+    />
+  );
+}
+
+/** Un bouton en deux parties : l'action habituelle à gauche, la flèche à
+ *  droite ouvre les variantes. Le dessin que MAV a envoyé le 23/09. */
+function BoutonScinde({ children, onPrincipal, onFleche, pending, rouge, titre }: {
+  children: React.ReactNode; onPrincipal: () => void; onFleche: () => void;
+  pending?: boolean; rouge?: boolean; titre?: string;
+}) {
+  return (
+    <span className={`bsc${rouge ? " rouge" : ""}`}>
+      <button type="button" className="bsc-m" disabled={pending} title={titre} onClick={onPrincipal}>
+        {pending ? "…" : children}
+      </button>
+      <button type="button" className="bsc-c" disabled={pending} title="Modifier le message avant l'envoi"
+        aria-label="Autres options" onClick={onFleche}>
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+    </span>
+  );
+}
+
+function CarteProposition({ p, contactId, vignette, note, jours, onRelancer, onRelancerModale, onRafraichir }: {
+  p: PropositionLigne; contactId: string; vignette: VignetteData; note: string; jours?: number;
+  onRelancer: () => void; onRelancerModale: () => void; onRafraichir: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [refus, setRefus] = useState(false);
+  const [motif, setMotif] = useState("");
+  const [apres, setApres] = useState<string | null>(null);
+  const [recherche, setRecherche] = useState<DepartRecherche | null>(null);
+  const [creerPour, setCreerPour] = useState<{ id: string; nom: string } | null>(null);
+  const immeubleId = p.immeuble?.id ?? "";
+  const ouverte = !p.refusee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
+  const aRelancer = ouverte && !p.stop && (jours === undefined || jours >= JOURS_RELANCE);
+
+  const ouvrirRecherche = (rid: string) =>
+    start(async () => {
+      const r = await departRecherche(rid);
+      if (r?.recherche) setRecherche(r.recherche);
+    });
+
+  return (
+    <div className={`cfc${ouverte ? "" : " pale"}`}>
+      <div className="cfc-g">
+        <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC.propositions}</svg></span>
+      </div>
+      <div className="cfc-c">
+        <div className="cfc-l1">
+          <span className="cfc-t">{p.quand}</span>
+          {p.statut && <span className={`cfc-st${p.refusee ? " rouge" : p.statut === "Envoyée" ? "" : " off"}`}>{p.statut}</span>}
+          <span style={{ flex: 1 }} />
+          {/* #366 — les recherches matchées : un clic ouvre la recherche. */}
+          {p.recherches.map((r) => (
+            <button key={r.id} type="button" className="cfc-rch" disabled={pending}
+              title="Ouvrir cette recherche pour la modifier" onClick={() => ouvrirRecherche(r.id)}>
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+              {r.libelle}
+            </button>
+          ))}
+          {/* #366 — le nom du client, avec sa vignette. */}
+          <span className="cfc-qui">
+            <VignetteContact v={vignette} />
+            {note && <b className={`note n${note}`}>{note}</b>}
+          </span>
+        </div>
+        <div className="cfc-l2">
+          {p.motif && <span className="cfc-motif">✕ {p.motif}</span>}
+          {p.relanceLe && <span className="cfc-num">Relancé le {p.relanceLe}</span>}
+          {aRelancer && (
+            <span className="cfc-past">
+              À relancer{jours !== undefined ? ` · ${jours} j` : ""}
+            </span>
+          )}
+          {p.stop && ouverte && <span className="cfc-num">Relances coupées</span>}
+        </div>
+        <NoteProposition propositionId={p.id} contactId={contactId} valeur={p.commentaire ?? ""} />
+        <div className="cfc-l3">
+          {p.immeuble && (
+            <Link className="cfc-im" href={`/bien/${p.immeuble.id}`}>
+              <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{p.immeuble.libelle}
+            </Link>
+          )}
+          {p.dossier && p.immeuble && (
+            <Link className="cfc-doc" href={`/bien/${p.immeuble.id}?ecran=dossiers`}>Dossier <b>{p.dossier.version}</b></Link>
+          )}
+          {p.dossier?.pdf && (
+            <a className="cfc-doc" href={p.dossier.pdf} target="_blank" rel="noreferrer">📎 PDF</a>
+          )}
+          <span style={{ flex: 1 }} />
+          {ouverte ? (
+            <span className="cfc-btns">
+              <button className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+                onClick={() => setRefus((v) => !v)}>Refuser</button>
+              <BoutonScinde pending={pending} onPrincipal={onRelancer} onFleche={onRelancerModale}
+                titre={jours === undefined ? "Envoyer la relance habituelle" : jours === 0 ? "Envoyée aujourd'hui" : `Sans nouvelle depuis ${jours} jour${jours > 1 ? "s" : ""} — envoyer la relance habituelle`}>
+                Relancer
+              </BoutonScinde>
+            </span>
+          ) : (
+            <button className="fadd" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "reactiver", undefined, undefined, contactId);
+                onRafraichir();
+              })}>
+              ↻ Réactiver
+            </button>
+          )}
+        </div>
+        {/* #365 — le refus : une barre de texte pour dire pourquoi, sur la carte. */}
+        {refus && ouverte && (
+          <div className="cfc-refus">
+            <input className="min" value={motif} autoFocus placeholder="Pourquoi il refuse — ex. : pas de résidentiel, trop cher, secteur"
+              onChange={(e) => setMotif(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setRefus(false); }} />
+            <button type="button" className="cfc-refus-x" onClick={() => setRefus(false)}>Annuler</button>
+            <button type="button" className="cfc-refus-go" disabled={pending || !motif.trim()}
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "refuser", motif.trim(), undefined, contactId);
+                setRefus(false);
+                setApres(motif.trim());
+                onRafraichir();
+              })}>
+              <span className="ch">›</span> Enregistrer le refus
+            </button>
+          </div>
+        )}
+        {apres !== null && (
+          <ModaleApresRefus
+            motif={apres || undefined}
+            pending={pending}
+            onNon={() => setApres(null)}
+            onOui={() => start(async () => {
+              const r = await departRechercheDeProposition(p.id);
+              setApres(null);
+              if (r?.recherche) setRecherche(r.recherche);
+              else if (r?.contact) setCreerPour({ id: r.contact.id, nom: r.contact.nom });
+            })}
+          />
+        )}
+        {(recherche || creerPour) && (
+          <ModaleRechercheEdition
+            depart={recherche ?? undefined}
+            contactImpose={creerPour ?? undefined}
+            onFermer={() => { setRecherche(null); setCreerPour(null); }}
+            onEnregistre={() => { setRecherche(null); setCreerPour(null); onRafraichir(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * La fenêtre derrière la flèche : le texte de la relance, modifiable, les
+ * dossiers qu'elle cite (retirables), et l'envoi — ou « ouvrir dans le client
+ * mail » quand aucune boîte n'est branchée.
+ */
+function ModaleRelanceContact({ ouvertes, ids, client, agent, email, contactId, onFermer, onFait }: {
+  ouvertes: { p: PropositionLigne; jours?: number }[];
+  ids: string[];
+  client: (ids: string[]) => ClientRelance;
+  agent?: { id?: string; nom?: string; tel?: string };
+  email: string;
+  contactId: string;
+  onFermer: () => void;
+  onFait: (message: string) => void;
+}) {
+  const [pending, start] = useTransition();
+  const [retenus, setRetenus] = useState<string[]>(ids);
+  const [texte, setTexte] = useState<string | null>(null);
+  const [possible, setPossible] = useState<boolean | null>(null);
+  const c = client(retenus);
+  const corps = texte ?? messageRelance(c, agent);
+  const objet = objetRelance(c);
+  const agentId = agent?.id;
+  useEffect(() => {
+    let vivant = true;
+    relanceEnvoiPossible(agentId)
+      .then((p) => { if (vivant) setPossible(p); })
+      .catch(() => { if (vivant) setPossible(false); });
+    return () => { vivant = false; };
+  }, [agentId]);
+
+  const basculer = (id: string) =>
+    setRetenus((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  return (
+    <div className="modal-ov" onClick={onFermer}>
+      <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">Relancer {c.nom}<button type="button" onClick={onFermer}>✕</button></div>
+        <div className="modal-b">
+          <span className="mlab">Dossiers cités dans la relance</span>
+          <div className="rlz-lignes" style={{ padding: 0, marginBottom: 12 }}>
+            {ouvertes.map(({ p, jours }) => {
+              const off = !retenus.includes(p.id);
+              return (
+                <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
+                  <span>{p.immeuble?.libelle}</span>
+                  {p.dossier && <span className="rlz-prix">Dossier {p.dossier.version}</span>}
+                  <span className="rlz-j">{jours === undefined ? "date inconnue" : `${jours} j`}</span>
+                  <span className="sp" style={{ flex: 1 }} />
+                  <button type="button" className="rlz-x" onClick={() => basculer(p.id)}>{off ? "ajouter" : "retirer"}</button>
+                </div>
+              );
+            })}
+          </div>
+          <span className="mlab">Objet</span>
+          <input className="min" value={objet} readOnly />
+          <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
+          <textarea className="min" rows={12} value={corps} onChange={(e) => setTexte(e.target.value)} />
+          <div className="asst-note">
+            Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
+            Le dossier est cité avec le lien de sa dernière version.
+            {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
+          </div>
+        </div>
+        <div className="modal-f">
+          <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <a className="fadd" href={`mailto:${email}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`}
+            onClick={() => start(async () => {
+              await marquerRelances(retenus, [`/contact/${contactId}`]);
+            })}>
+            Ouvrir dans le client mail
+          </a>
+          <button className="kgo" type="button" disabled={pending || !email || retenus.length === 0 || possible === false}
+            onClick={() => start(async () => {
+              try {
+                const r = await envoyerRelances(
+                  [{ contactId, email, objet, corps, propositionIds: retenus }],
+                  agent?.id, undefined, [`/contact/${contactId}`],
+                );
+                onFait(r.envoyes ? `Relance envoyée à ${email}.` : `Échec : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);
+              } catch (e) {
+                onFait(`Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`);
+              }
+            })}>
+            <span className="ch">›</span> Envoyer
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

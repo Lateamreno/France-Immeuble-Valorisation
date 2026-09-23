@@ -8,6 +8,7 @@
 // données — une liste déroulante qui change de contenu selon ce qu'on a sous
 // les yeux ne se mémorise pas.
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { ListCard } from "@/lib/bubble/server";
 
 export type Filtres = {
@@ -269,7 +270,12 @@ export function PanneauFiltres({
         ⟲ Réinitialiser
       </button>
 
-      {lieuOuvert && (
+      {/* Retour #364 — « on voit les photos à travers ». La colonne de filtres
+          est collante (position: sticky), ce qui en fait un contexte
+          d'empilement : la fenêtre, pourtant fixée au-dessus de tout, restait
+          dessinée SOUS les cartes de la liste, photos comprises. Elle est
+          donc montée au niveau du document, hors de la colonne. */}
+      {lieuOuvert && createPortal(
         <div className="modal-ov" onClick={() => setLieuOuvert(false)}>
           <div className="modal lieu-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h">
@@ -313,7 +319,8 @@ export function PanneauFiltres({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </aside>
   );
