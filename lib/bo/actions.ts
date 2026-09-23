@@ -4664,6 +4664,8 @@ export async function setPropositionStatut(
    *  refus dans une catégorie comparable ; les précisions gardent la phrase,
    *  qui est souvent la seule chose exploitable six mois plus tard. */
   precisions?: string,
+  /** La fiche contact d'où part le geste, à rafraîchir aussi (#365). */
+  contactId?: string,
 ) {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> =
@@ -4681,7 +4683,8 @@ export async function setPropositionStatut(
     p_id: propositionId,
     p_patch: { ...patch, date_modif: now, "Modified Date": now },
   });
-  revalidatePath(`/bien/${immeubleId}`);
+  if (immeubleId) revalidatePath(`/bien/${immeubleId}`);
+  if (contactId) revalidatePath(`/contact/${contactId}`);
   revalidatePath("/propositions");
 }
 

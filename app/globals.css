@@ -5934,6 +5934,49 @@ a.cfc-t:hover { text-decoration: underline; }
 .cfx-suite:hover { border-color: var(--slate); }
 .cfx-suite i { font-style: normal; font-weight: 400; color: var(--gray-lt); font-size: 12px; }
 .rc-mention { font-size: 12px; font-weight: 600; color: var(--green); white-space: nowrap; }
+/* --- Propositions de la fiche contact (#365, #366) --- */
+/* Le bouton scindé : l'action habituelle à gauche, la flèche à droite. */
+.bsc { display: inline-flex; align-items: stretch; border-radius: 4px; overflow: hidden; flex: none; }
+.bsc button {
+  border: 1px solid var(--slate); background: var(--slate); color: #fff; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; padding: 0 12px; height: 30px;
+  display: inline-flex; align-items: center;
+}
+.bsc .bsc-c { padding: 0 7px; border-left: 1px solid rgba(255, 255, 255, .35); }
+.bsc .bsc-c svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.bsc button:hover { background: #3a3f47; }
+.bsc button:disabled { opacity: .5; cursor: default; }
+.bsc.rouge button { background: var(--red); border-color: var(--red); }
+.bsc.rouge button:hover { background: #b83a2e; }
+.cfc-rch {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-lt); border-radius: 3px;
+  background: #fff; padding: 3px 8px; font-size: 11.5px; color: var(--slate-2); cursor: pointer; font-family: inherit;
+}
+.cfc-rch svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cfc-rch:hover { border-color: var(--gold-bo); color: var(--slate); }
+.cfc-qui { display: inline-flex; align-items: center; gap: 5px; }
+.cfc-qui .note { width: 16px; height: 16px; font-size: 10px; }
+.cfc-past {
+  border: 1px solid var(--red); background: var(--red); color: #fff;
+  border-radius: 999px; padding: 3px 9px; font-size: 11.5px; font-weight: 700;
+}
+.cfc-btns { display: inline-flex; align-items: center; gap: 6px; }
+a.cfc-doc { text-decoration: none; }
+a.cfc-doc:hover { border-color: var(--slate); }
+.cfc-refus { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.cfc-refus input { flex: 1; min-width: 0; }
+.cfc-refus-x { border: 0; background: none; color: var(--gray-txt); font-size: 12px; cursor: pointer; font-family: inherit; }
+.cfc-refus-go {
+  border: 1px solid var(--red); background: var(--red); color: #fff; border-radius: 4px; cursor: pointer;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600; padding: 6px 12px; white-space: nowrap;
+}
+.cfc-refus-go:disabled { opacity: .5; cursor: default; }
+.cfx-rapport {
+  margin-bottom: 12px; border: 1px solid #cfe0cf; background: #fafcfa; color: #2c6b22;
+  border-radius: 4px; padding: 8px 12px; font-size: 12.5px;
+}
+.cfx-rapport.ko { border-color: #e6b3b3; background: #fffafa; color: var(--red); }
+
 .cfc-saisie {
   width: 100%; border: 0; border-bottom: 1px dashed var(--line); background: none;
   resize: vertical; padding: 3px 0; font: inherit; font-size: 12.5px; color: var(--slate);

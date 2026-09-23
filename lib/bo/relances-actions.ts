@@ -223,7 +223,7 @@ async function compterHorsFenetre(borne: string) {
 /* --------------------------------------------------------- Écritures */
 
 /** Marque un lot de propositions comme relancées aujourd'hui. */
-export async function marquerRelances(propositionIds: string[]) {
+export async function marquerRelances(propositionIds: string[], chemins: string[] = []) {
   const now = new Date().toISOString();
   let n = 0;
   for (const id of propositionIds) {
@@ -241,6 +241,7 @@ export async function marquerRelances(propositionIds: string[]) {
   }
   revalidatePath("/relances");
   revalidatePath("/propositions");
+  for (const c of chemins) revalidatePath(c);
   return { marquees: n, total: propositionIds.length };
 }
 
@@ -261,6 +262,8 @@ export async function envoyerRelances(
   envois: { contactId: string; email: string; objet: string; corps: string; propositionIds: string[] }[],
   agentId?: string,
   repondreA?: string,
+  /** Pages à rafraîchir en plus (la fiche contact d'où part la relance). */
+  chemins: string[] = [],
 ) {
   const { envoiPossible, envoyerPourAgent } = await import("@/lib/bo/mail");
   if (!(await envoiPossible(agentId))) {
@@ -297,7 +300,15 @@ export async function envoyerRelances(
 
   revalidatePath("/relances");
   revalidatePath("/propositions");
+  for (const c of chemins) revalidatePath(c);
   return { envoyes, echecs, journal, restants: Math.max(0, envois.length - lot.length) };
+}
+
+/** L'envoi est-il possible depuis la boîte de cet agent ? L'écran le demande
+ *  avant de proposer un bouton qui enverrait dans le vide. */
+export async function relanceEnvoiPossible(agentId?: string) {
+  const { envoiPossible } = await import("@/lib/bo/mail");
+  return envoiPossible(agentId);
 }
 
 /**
@@ -392,8 +403,25 @@ export async function departRechercheDeProposition(propositionId: string) {
     r = autres.sort(cmpRecent)[0];
   }
 
+  const contact = await contactDe(contactId);
+  if (!r) return { recherche: null, contact };
+  return { contact, recherche: versDepart(r, contact) };
+}
+
+/**
+ * Une recherche précise, prête pour la modale (#366 : sur la fiche contact,
+ * la vignette d'une recherche matchée l'ouvre directement en modification).
+ */
+export async function departRecherche(rechercheId: string) {
+  const r = (await parPaquets("bo_recherche", [rechercheId])).get(rechercheId);
+  if (!r) return null;
+  const contact = await contactDe(S(r.ACHETEUR));
+  return { contact, recherche: versDepart(r, contact) };
+}
+
+async function contactDe(contactId?: string) {
   const c = contactId ? (await parPaquets("bo_contact", [contactId])).get(contactId) : undefined;
-  const contact = c
+  return c
     ? {
         id: String(c._id),
         nom: `${S(c["prénom"]) ?? ""} ${S(c.nom) ?? ""}`.trim() || S(c.email) || "Contact",
@@ -401,31 +429,31 @@ export async function departRechercheDeProposition(propositionId: string) {
         email: S(c.email),
       }
     : undefined;
+}
 
-  if (!r) return { recherche: null, contact };
-
+function versDepart(
+  r: Record<string, unknown>,
+  contact?: { id: string; nom: string; tel?: string; email?: string },
+) {
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
   const liste = (k: string) => (Array.isArray(r[k]) ? (r[k] as unknown[]).map(String) : []);
   return {
+    id: String(r._id),
+    destinations: liste("Destinations"),
+    /* Villes et départements sont deux listes en base ; la modale les
+       resépare sur la forme du code, comme l'écran Recherches. */
+    lieux: [
+      ...liste("villes").filter((v) => !/^\d{13}x\d+$/.test(v)),
+      ...liste("dpts").filter((v) => /^\d{2,3}[AB]?$/.test(v)),
+    ],
+    commentaire: S(r.commentaire),
     contact,
-    recherche: {
-      id: String(r._id),
-      destinations: liste("Destinations"),
-      /* Villes et départements sont deux listes en base ; la modale les
-         resépare sur la forme du code, comme l'écran Recherches. */
-      lieux: [
-        ...liste("villes").filter((v) => !/^\d{13}x\d+$/.test(v)),
-        ...liste("dpts").filter((v) => /^\d{2,3}[AB]?$/.test(v)),
-      ],
-      commentaire: S(r.commentaire),
-      contact,
-      brut: {
-        cible: S(r.Cible),
-        prixMin: n(r.prix_min), prixMax: n(r.prix_max),
-        surfaceMin: n(r.surface_min), surfaceMax: n(r.surface_max),
-        occupMin: n(r.occup_min), occupMax: n(r.occup_max),
-        renta: n(r.renta),
-      },
+    brut: {
+      cible: S(r.Cible),
+      prixMin: n(r.prix_min), prixMax: n(r.prix_max),
+      surfaceMin: n(r.surface_min), surfaceMax: n(r.surface_max),
+      occupMin: n(r.occup_min), occupMax: n(r.occup_max),
+      renta: n(r.renta),
     },
   };
 }
