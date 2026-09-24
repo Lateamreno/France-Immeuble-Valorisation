@@ -4,9 +4,9 @@
  * Recherches de la fiche contact (retours #116, #117, #119). Une seule
  * définition : les deux écrans ne peuvent pas diverger. */
 
-import { useState } from "react";
 import Link from "next/link";
 import type { RechercheCard } from "@/lib/bubble/server";
+import { VignetteContact } from "@/components/vignette-contact";
 
 /* Les quatre destinations du BO, dans son ordre. Un picto éteint dit « pas
    recherché » — l'absence de picto ne dirait rien du tout. */
@@ -52,7 +52,6 @@ export function CarteRecherche({
   sansContact?: boolean;
   mention?: string;
 }) {
-  const [ouvert, setOuvert] = useState(false);
 
   return (
     <div className="rc">
@@ -103,42 +102,12 @@ export function CarteRecherche({
           )}
           <span style={{ flex: 1 }} />
           {sansContact ? null : r.contact ? (
-            <span className="rc-ct-zone">
-              <button type="button" className="rc-ct" onClick={() => setOuvert(!ouvert)}>
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                {r.contact.nom}
-                {r.contact.note && <b className={`note n${r.contact.note}`}>{r.contact.note}</b>}
-              </button>
-              {ouvert && (
-                <>
-                  <span className="rc-voile" onClick={() => setOuvert(false)} />
-                  <span className="rc-pop">
-                    <span className="rc-pop-h">
-                      <span className="lav" style={r.agentCouleur ? { background: r.agentCouleur } : undefined}>{r.agent}</span>
-                      <span>
-                        <b>
-                          {r.contact.note && <i className={`note n${r.contact.note}`}>{r.contact.note}</i>}
-                          {r.contact.nom}
-                        </b>
-                        <em>{r.contact.qualite}</em>
-                        {r.contact.tel && <span>{r.contact.tel}</span>}
-                        {r.contact.email && <span>{r.contact.email}</span>}
-                        <span className="rc-pop-cpt">
-                          {r.contact.immeubles} immeuble{r.contact.immeubles > 1 ? "s" : ""} ·{" "}
-                          {r.contact.recherches} recherche{r.contact.recherches > 1 ? "s" : ""}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="rc-pop-f">
-                      {r.contact.tel && <a href={`tel:${r.contact.tel.replace(/[^\d+]/g, "")}`}>☎ Appeler</a>}
-                      {r.contact.email && <a href={`mailto:${r.contact.email}`}>✉ E-mail</a>}
-                      {/* Deuxième clic : on ouvre la fiche pour la modifier. */}
-                      <Link href={`/contact/${r.contact.id}`}>Fiche ↗</Link>
-                    </span>
-                  </span>
-                </>
-              )}
-            </span>
+            /* La vignette partagée (retour du 24/09), avec la classe de
+               l'acquéreur dans la puce. */
+            <VignetteContact
+              v={r.contact}
+              badge={r.contact.note ? <b className={`note n${r.contact.note}`}>{r.contact.note}</b> : undefined}
+            />
           ) : (
             <span className="rc-orphelin">
               <em>{[r.orphelin?.email, r.orphelin?.tel].filter(Boolean).join(" · ") || "Sans coordonnées"}</em>

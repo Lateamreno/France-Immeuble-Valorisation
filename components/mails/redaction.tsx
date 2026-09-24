@@ -40,7 +40,7 @@ export type Reponse = {
 };
 
 export function FenetreRedaction({
-  agent, modeles, brouillon, modele, reponse, amorce, flottante, onClose, onEnvoye,
+  agent, modeles, brouillon, modele, reponse, amorce, flottante, destinataire, immeuble, onClose, onEnvoye,
 }: {
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
@@ -53,6 +53,11 @@ export function FenetreRedaction({
   /** Retour #370 : en fenêtre flottante, réductible, posée en bas à droite
    *  comme dans Gmail — avec, en titre, l'initiale et le nom du destinataire. */
   flottante?: { titre: string };
+  /** Retour #371 : le destinataire est connu d'avance (vignette, fiche) — les
+   *  champs de fusion partent de SA fiche, pas d'un exemple. */
+  destinataire?: ContactTrouve | null;
+  /** L'immeuble dont on parle, quand la fenêtre s'ouvre depuis un bien. */
+  immeuble?: string;
   onClose: () => void;
   /** Prévient l'écran qu'un message est parti, pour qu'il se rafraîchisse. */
   onEnvoye?: () => void;
@@ -69,12 +74,14 @@ export function FenetreRedaction({
   const [fait, setFait] = useState<string | null>(null);
   /* Le destinataire réel, quand il est dans le fichier : l'aperçu doit montrer
      CE qu'il recevra, pas un exemple (retour #131). */
-  const [qui, setQui] = useState<ContactTrouve | null>(null);
+  const [qui, setQui] = useState<ContactTrouve | null>(destinataire ?? null);
   const [pending, start] = useTransition();
 
   const appliquer = (id: string) => {
     const m = modeles.find((x) => x.id === id);
-    if (!m) return;
+    /* Retour #372 : revenir à « Partir de zéro » vide l'objet ET le message,
+       pas seulement la liste. */
+    if (!m) { setObjet(""); setCorps(""); return; }
     setObjet(m.objet);
     setCorps(m.corps);
   };
@@ -91,6 +98,8 @@ export function FenetreRedaction({
       politesse: civilite ? `Bonjour ${civilite} ${nomFamille}` : "Bonjour",
       societe: qui.societe ?? "",
       email: qui.email ?? a.split(",")[0]?.trim(),
+      telephone: qui.tel ?? "",
+      immeuble: immeuble ?? "",
       agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
       agent_email: agent.email, agent_tel: agent.telephone,
       agence: "France Immeuble", site: "france-immeuble.fr",
@@ -98,6 +107,7 @@ export function FenetreRedaction({
     : {
       ...APERCU_UNITAIRE,
       email: a.split(",")[0]?.trim(),
+      immeuble: immeuble ?? "",
       agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
       agent_email: agent.email, agent_tel: agent.telephone,
       agence: "France Immeuble", site: "france-immeuble.fr",

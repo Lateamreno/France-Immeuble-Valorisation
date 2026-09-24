@@ -11,8 +11,9 @@ import {
 } from "@/lib/bo/actions";
 import { SuiviModal } from "@/components/suivi-modal";
 import { Facade } from "@/components/facade";
+import { VignetteContact } from "@/components/vignette-contact";
 import {
-  FicheContact, ModaleArchivage, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
+  ModaleArchivage, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
 } from "@/components/dashboard-modales";
 import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
 
@@ -51,7 +52,6 @@ function Card({
   const [transfert, setTransfert] = useState(false);
   const [archivage, setArchivage] = useState(false);
   const [attente, setAttente] = useState(false);
-  const [fiche, setFiche] = useState(false);
   const [note, setNote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -91,21 +91,17 @@ function Card({
         <div className="kbody">
           <div className="krow1">
             <span className="kt">{c.ville}</span>
-            <span className="kcontact-wrap">
-              <span className="kcontact" role="button" tabIndex={0}
-                title="Voir les coordonnées"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFiche((v) => !v); }}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setFiche((v) => !v); } }}>
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                {c.contact}
-              </span>
-              {fiche && (
-                <FicheContact
-                  c={{ ...(c.contactInfo ?? { nom: c.contact }), initiales: c.rvText, initialesCouleur: c.rvCouleur }}
-                  onClose={() => setFiche(false)}
-                />
-              )}
-            </span>
+            {/* La vignette partagée (retour du 24/09 : la même fiche contact
+                partout, tableau de bord compris). */}
+            <VignetteContact
+              nom={c.contact}
+              immeuble={c.objet}
+              v={c.contactId && c.contactInfo ? {
+                id: c.contactId, nom: c.contactInfo.nom || c.contact, qualite: c.contactInfo.type,
+                tel: c.contactInfo.tel, email: c.contactInfo.email,
+                immeubles: c.contactInfo.nbImmeubles ?? 0, recherches: c.contactInfo.nbRecherches ?? 0,
+              } : undefined}
+            />
           </div>
 
           {c.statusMandat && (

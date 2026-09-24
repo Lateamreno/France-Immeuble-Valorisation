@@ -80,63 +80,6 @@ export type ContactBref = {
   nbRecherches?: number;
 };
 
-export function FicheContact({ c, onClose }: { c: ContactBref; onClose: () => void }) {
-  useEffect(() => {
-    const away = () => onClose();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    // Le clic qui vient d'ouvrir la fiche ne doit pas la refermer aussitôt.
-    const t = setTimeout(() => document.addEventListener("mousedown", away), 0);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("mousedown", away);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="fcont" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-      <div className="fcont-h">
-        <span className="fcont-av">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6" /><path d="M4.5 20c.8-4.2 3.9-6 7.5-6s6.7 1.8 7.5 6" /></svg>
-          {c.initiales && <b style={c.initialesCouleur ? { background: c.initialesCouleur } : undefined}>{c.initiales}</b>}
-        </span>
-        <div className="fcont-id">
-          <div className="n">{c.nom || "—"}</div>
-          {c.type && <div className="t">{c.type}</div>}
-          {c.tel && (
-            <div className="l">
-              <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M11 18.5h2" /></svg>
-              {c.tel}
-            </div>
-          )}
-          {c.email && <div className="l m">{c.email}</div>}
-        </div>
-      </div>
-      <div className="fcont-n">
-        <span>
-          <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2M8 14h2M12 14h2" /></svg>
-          {c.nbImmeubles ?? 0}
-        </span>
-        <span className="off">
-          <svg viewBox="0 0 24 24"><circle cx="7" cy="14" r="4" /><circle cx="17" cy="14" r="4" /><path d="M7 10V6h10v4" /></svg>
-          {c.nbRecherches ?? 0}
-        </span>
-      </div>
-      <div className="fcont-f">
-        <a className={c.tel ? "" : "off"} href={c.tel ? `tel:${c.tel}` : undefined}>
-          <svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
-          Appeler
-        </a>
-        <a className={c.email ? "" : "off"} href={c.email ? `mailto:${c.email}` : undefined}>
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
-          E-mail
-        </a>
-      </div>
-    </div>
-  );
-}
-
 /* ---------- Transférer à un collègue ---------- */
 
 export function ModaleTransfert({

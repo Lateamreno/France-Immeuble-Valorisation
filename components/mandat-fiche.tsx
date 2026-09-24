@@ -525,7 +525,7 @@ function OngletMandants({
         {rows.map((x, i) => (
           <CarteMandant
             key={x.uid} x={x} rang={i + 1} seul={rows.length === 1} locked={locked}
-            mandatId={mandatId} immeubleId={immeubleId}
+            mandatId={mandatId} immeubleId={immeubleId} adresseImmeuble={adresseImmeuble}
             vignettes={vignettes} proprietaireId={proprietaireId}
             onMaj={(p) => maj(x.uid, p)} onSupprimer={() => supprimer(x.uid)}
           />
@@ -601,10 +601,10 @@ type EcartContact = {
 };
 
 function CarteMandant({
-  x, rang, seul, locked, mandatId, immeubleId, vignettes, proprietaireId, onMaj, onSupprimer,
+  x, rang, seul, locked, mandatId, immeubleId, adresseImmeuble, vignettes, proprietaireId, onMaj, onSupprimer,
 }: {
   x: Mandant; rang: number; seul: boolean; locked: boolean;
-  mandatId: string; immeubleId: string;
+  mandatId: string; immeubleId: string; adresseImmeuble?: string;
   /** Cartes de visite chargées avec le mandat (retour #205). */
   vignettes: Record<string, VignetteData>;
   /** Le propriétaire de la fiche : mandant par défaut de la ligne. */
@@ -712,6 +712,7 @@ function CarteMandant({
         <VignetteContact
           v={x.contactId ? vignettes[x.contactId] : undefined}
           nom={[x.prenom, x.nom].filter(Boolean).join(" ") || "À désigner"}
+          immeuble={adresseImmeuble}
         />
         {x.contactId && x.contactId === proprietaireId && (
           <span className="mdt-md-dft">propriétaire de la fiche</span>

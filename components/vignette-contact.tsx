@@ -32,6 +32,7 @@ import { createPortal } from "react-dom";
 import { Copier } from "@/components/copier";
 import { FenetreRedaction } from "@/components/mails/redaction";
 import { contexteRedaction } from "@/lib/bo/mails-actions";
+import { chercherContacts, type ContactTrouve } from "@/lib/bo/actions";
 
 export type VignetteData = {
   id: string;
@@ -62,10 +63,10 @@ export function initialeEtNom(v: { nom: string; prenom?: string; nomFamille?: st
   return [prenom ? `${prenom[0].toUpperCase()}.` : "", nom.toUpperCase()].filter(Boolean).join(" ") || v.nom;
 }
 
-type Contexte = Awaited<ReturnType<typeof contexteRedaction>>;
+type Contexte = Awaited<ReturnType<typeof contexteRedaction>> & { qui: ContactTrouve | null };
 
 export function VignetteContact({
-  v, nom, prefixe,
+  v, nom, prefixe, badge, immeuble,
 }: {
   /** La fiche du contact ; absente, la vignette n'est qu'un libellé. */
   v?: VignetteData;
@@ -73,10 +74,25 @@ export function VignetteContact({
   nom?: string;
   /** Étiquette posée devant, comme dans le BO : « Mandant », « Propriétaire ». */
   prefixe?: string;
+  /** Un insigne dans la puce (la classe A–D d'un acquéreur, par exemple). */
+  badge?: React.ReactNode;
+  /** L'immeuble dont on parle, pour le champ de fusion {{immeuble}} (#371). */
+  immeuble?: string;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [mail, setMail] = useState<Contexte | "chargement" | null>(null);
   const boite = useRef<HTMLSpanElement>(null);
+  /* Une puce posée au bord droit d'une carte (écran Recherches) ouvrirait sa
+     carte hors de l'écran : dans ce cas elle s'aligne à droite. */
+  const [droite, setDroite] = useState(false);
+  const pop = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!ouvert || !pop.current) return;
+    const r = pop.current.getBoundingClientRect();
+    const deborde = r.right > window.innerWidth - 8;
+    if (deborde !== droite) setDroite(deborde);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ouvert]);
 
   useEffect(() => {
     if (!ouvert) return;
@@ -116,24 +132,33 @@ export function VignetteContact({
     if (!v.email || mail) return;
     setOuvert(false);
     setMail("chargement");
-    contexteRedaction()
-      .then((c) => setMail(c))
+    /* Retour #371 : les champs de fusion partent de la fiche du destinataire,
+       qu'on va chercher en même temps que l'agent. */
+    Promise.all([
+      contexteRedaction(),
+      chercherContacts(v.email).then((l) => l.find((c) => c.id === v.id) ?? l[0] ?? null).catch(() => null),
+    ])
+      .then(([c, qui]) => setMail({ ...c, qui }))
       .catch(() => setMail(null));
   };
+  /* Les vignettes vivent parfois dans un lien (carte du tableau de bord) :
+     un clic dedans ne doit pas suivre ce lien. */
+  const isoler = (e: React.SyntheticEvent) => { e.stopPropagation(); if ("preventDefault" in e && (e.target as HTMLElement).tagName !== "A") e.preventDefault(); };
 
   return (
     <span className="vgn" ref={boite}>
       {prefixe && <i className="vgn-pre">{prefixe}</i>}
       <button
         type="button" className={`vgn-chip${ouvert ? " on" : ""}`}
-        aria-expanded={ouvert} onClick={() => setOuvert((o) => !o)}
+        aria-expanded={ouvert} onClick={(e) => { isoler(e); setOuvert((o) => !o); }}
       >
         <svg viewBox="0 0 24 24" aria-hidden>{IC_PERS}</svg>
         {libelle}
+        {badge}
       </button>
 
       {ouvert && (
-        <span className="vgn-pop">
+        <span className={`vgn-pop${droite ? " droite" : ""}`} ref={pop} onClick={(e) => e.stopPropagation()}>
           <span className="vgn-card">
             {/* Le picto et le nom mènent à la fiche (#370). */}
             <Link className="av" href={fiche} title="Ouvrir la fiche contact">
@@ -189,6 +214,8 @@ export function VignetteContact({
           modeles={mail.modeles}
           amorce={{ to: v.email ?? "", objet: "", corps: "" }}
           flottante={{ titre: initialeEtNom(v) }}
+          destinataire={mail.qui}
+          immeuble={immeuble}
           onClose={() => setMail(null)}
         />,
         document.body,
