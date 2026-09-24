@@ -1129,7 +1129,7 @@ function CarteProposition({ p, contactId, vignette, note, jours, onRelancer, onR
           ))}
           {/* #366 — le nom du client, avec sa vignette. */}
           <span className="cfc-qui">
-            <VignetteContact v={vignette} />
+            <VignetteContact v={vignette} immeuble={p.immeuble?.libelle} />
             {note && <b className={`note n${note}`}>{note}</b>}
           </span>
         </div>
