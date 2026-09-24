@@ -25,6 +25,16 @@ const NB = " "; // espace insécable
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
+/** Les destinations au féminin : « une (1) cave », « vingt et une (21) annexes ». */
+const DESTINATIONS_FEMININES = new Set(["Cave", "Annexe"]);
+const nombreAccorde = (n: number, destination: string) => {
+  const mots = entierEnLettres(n);
+  return `${DESTINATIONS_FEMININES.has(destination) ? mots.replace(/\bun$/, "une") : mots} (${n})`;
+};
+/** « un (1) local loué », « neuf (9) locaux loués » : le pluriel suit le nombre (#368). */
+const locaux = (n: number, etat: "loué" | "libre") =>
+  n === 1 ? `un (1) local ${etat}` : `${nombreAvecChiffre(n)} locaux ${etat}s`;
+
 /** Séparateur de milliers insécable, comme l'exige la typographie française. */
 const sep = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
 
@@ -312,8 +322,10 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
 
   const parDest = s.parDestination;
   if (parDest.length > 0) {
+    /* Retour #368 : « un (1) cave » — la cave est féminine, l'annexe aussi.
+       Le nombre en lettres s'accorde avec ce qu'il compte. */
     const detail = parDest
-      .map((d) => `<b>${nombreAvecChiffre(d.nb)} ${d.destination.toLowerCase()}${d.nb > 1 ? "s" : ""}</b>`)
+      .map((d) => `<b>${nombreAccorde(d.nb, d.destination)} ${d.destination.toLowerCase()}${d.nb > 1 ? "s" : ""}</b>`)
       .join(", ");
     designation.push(
       `Ledit immeuble comprenant ${detail}, représentant une surface privative totale d'environ <b>${surf(s.surface)}</b> `
@@ -331,15 +343,15 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
     );
   } else if (s.occupation === "occupe") {
     designation.push(
-      `L'immeuble est à ce jour <b>entièrement loué</b>, soit ${nombreAvecChiffre(s.occupes)} locaux loués, `
+      `L'immeuble est à ce jour <b>entièrement loué</b>, soit ${locaux(s.occupes, "loué")}, `
       + `générant un loyer annuel global hors charges de <b>${eur(loyerAnnuel)}</b>. `
       + "L'état locatif détaillé lot par lot est annexé au dossier de commercialisation.",
     );
   } else {
     designation.push(
       "L'immeuble est à ce jour occupé pour partie : "
-      + `<b>${nombreAvecChiffre(s.occupes)} locaux loués</b> et `
-      + `<b>${nombreAvecChiffre(s.libres)} locaux libres</b>, `
+      + `<b>${locaux(s.occupes, "loué")}</b> et `
+      + `<b>${locaux(s.libres, "libre")}</b>, `
       + `générant un loyer annuel global hors charges de <b>${eur(loyerAnnuel)}</b>. `
       + "L'état locatif détaillé lot par lot est annexé au dossier de commercialisation.",
     );
