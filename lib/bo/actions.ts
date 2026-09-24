@@ -1677,11 +1677,37 @@ export async function archiverContact(contactId: string, motif: string) {
   revalidatePath(`/contact/${contactId}`);
 }
 
+/**
+ * Le profil « Agent immobilier » et le booléen `agent` disent la même chose,
+ * et Bubble les tient ensemble : on fait pareil, sinon un confrère saisi
+ * depuis le BO passerait pour un client et recevrait les dossiers (24/09).
+ */
+function drapeauAgent(clean: Record<string, unknown>) {
+  if (Array.isArray(clean.Types)) clean.agent = (clean.Types as unknown[]).includes("Agent immobilier");
+  return clean;
+}
+
+/** Les recherches d'un contact portent le même drapeau que lui. */
+async function alignerRecherchesAgent(contactId: string, agent: boolean) {
+  if (!SB_KEY) return;
+  const p = new URLSearchParams({ select: "id", limit: "200" });
+  p.append("data->>ACHETEUR", `eq.${contactId}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_recherche?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return;
+  const ids = ((await res.json()) as { id: string }[]).map((r) => r.id);
+  await Promise.all(ids.map((id) =>
+    rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: { agent } }).catch(() => undefined)));
+}
+
 /** Met à jour une fiche contact. */
 export async function updateContact(contactId: string, patch: ContactPatch) {
-  const clean = cleanPatch(patch as Record<string, unknown>);
+  const clean = drapeauAgent(cleanPatch(patch as Record<string, unknown>));
   if (Object.keys(clean).length === 0) return;
   await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: clean });
+  if (typeof clean.agent === "boolean") await alignerRecherchesAgent(contactId, clean.agent);
   revalidatePath(`/contact/${contactId}`);
   revalidatePath("/contacts");
 }
@@ -1694,7 +1720,7 @@ export async function createContact(input: ContactPatch & { agentId?: string }) 
   await rpc("bo_insert_doc", {
     p_table: "bo_contact",
     p_id: id,
-    p_doc: cleanPatch({
+    p_doc: drapeauAgent(cleanPatch({
       ...rest,
       /* `SUIVI` porte le commercial qui suit la fiche. `agent` est un BOOLÉEN
          « est-ce un agent immobilier » : y écrire un identifiant faisait
@@ -1702,7 +1728,7 @@ export async function createContact(input: ContactPatch & { agentId?: string }) 
       SUIVI: agentId,
       "Created Date": now,
       "Modified Date": now,
-    } as Record<string, unknown>),
+    } as Record<string, unknown>)),
   });
   revalidatePath("/contacts");
   return id;
@@ -3860,6 +3886,21 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
  * en deux. La comparaison ignore la casse et les espaces — « Kanun78@ » et
  * « kanun78@ » sont la même boîte.
  */
+/** La fiche d'un contact, pour ce que la recherche a besoin d'en savoir. */
+async function contactParId(id: string): Promise<{ estAgent: boolean } | null> {
+  if (!id || !SB_KEY) return null;
+  const p = new URLSearchParams({ select: "data", limit: "1" });
+  p.append("id", `eq.${id}`);
+  const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const c = ((await res.json()) as { data: Record<string, unknown> }[])[0]?.data;
+  if (!c) return null;
+  return { estAgent: c.agent === true || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier")) };
+}
+
 export async function contactParEmail(email: string): Promise<ContactTrouve | null> {
   const propre = email.trim().toLowerCase();
   if (!propre || !propre.includes("@") || !SB_KEY) return null;
@@ -4801,11 +4842,15 @@ export async function enregistrerRecherche(saisie: SaisieRecherche, agentId?: st
   if (saisie.id) {
     await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: doc });
   } else {
+    /* Une recherche ouverte pour un confrère en porte le drapeau dès sa
+       naissance : c'est lui que le matching lit (24/09). */
+    const proprietaire = saisie.contactId ? await contactParId(saisie.contactId) : null;
     await rpc("bo_insert_doc", {
       p_table: "bo_recherche",
       p_id: id,
       p_doc: {
         ...doc,
+        agent: proprietaire?.estAgent ?? false,
         SUIVI: agentId ?? null,
         archived: false,
         standby: false,

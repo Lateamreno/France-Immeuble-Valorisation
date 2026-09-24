@@ -222,7 +222,10 @@ export function matcher(
     }
     if (filtres.exclureDejaVus && arr(r.IMMEUBLEs_proposed).includes(bien.immeubleId)) return false;
     if (arr(r.IMMEUBLES_hidden).includes(bien.immeubleId)) return false;
-    if (filtres.exclureAgents && r.agent === true) return false;
+    /* Un confrère est reconnu par le drapeau de sa recherche OU par sa fiche
+       (booléen `agent`, profil « Agent immobilier ») : il ne reçoit les
+       dossiers que si l'agent l'a décidé pour cette campagne (24/09). */
+    if (filtres.exclureAgents && (r.agent === true || contactEstAgent(contacts.get(S(r.ACHETEUR))))) return false;
     if (filtres.mandatObligatoire && arr(r.MANDATs).length === 0) return false;
 
     return correspond(r, bien, exclusions?.get(String(r._id)));
@@ -232,6 +235,12 @@ export function matcher(
 }
 
 /** Construit la carte acquéreur affichée dans les résultats. */
+/** Le contact est-il un agent immobilier ? Même règle que côté serveur. */
+export function contactEstAgent(c: Record<string, unknown> | undefined): boolean {
+  if (!c) return false;
+  return c.agent === true || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
+}
+
 export function carte(
   r: Record<string, unknown>,
   contacts: Map<string, Record<string, unknown>>,

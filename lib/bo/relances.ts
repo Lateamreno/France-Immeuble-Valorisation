@@ -234,6 +234,14 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
   ].filter((l) => l !== undefined).join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
 }
 
+/**
+ * La relance par SMS (#373) : courte, un seul dossier, la mention STOP que
+ * MailingVox exige. Le numéro STOP est celui du réglage, passé par l'appelant.
+ */
+export function texteRelanceSms(libelle: string, agent: string | undefined, stop: string): string {
+  return `Bonjour, avez-vous pu regarder le dossier ${libelle} que je vous ai adressé ? Un mot en retour m'aide à affiner mes envois. ${agent ?? "France Immeuble"}, France Immeuble. STOP au ${stop}`;
+}
+
 /** L'objet de l'e-mail : il dit combien de dossiers, sans faire de mystère. */
 export function objetRelance(c: ClientRelance): string {
   return c.immeubles.length === 1

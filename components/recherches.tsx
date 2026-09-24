@@ -7,8 +7,9 @@
  * d'immeubles on pourrait lui envoyer sans se répéter. Ce dernier chiffre est
  * le seul en rouge : c'est le travail qui reste à faire. */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RechercheCard } from "@/lib/bubble/server";
+import { chargerToutesRecherches } from "@/lib/bo/recherches-actions";
 import { CarteRecherche, DESTINATIONS, ModaleRecherche } from "@/components/carte-recherche";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
 import { PanneauAProposer } from "@/components/a-proposer";
@@ -18,11 +19,27 @@ const TAILLES = [10, 25, 50, 100];
 type Vue = "en_cours" | "en_attente" | "archivees";
 
 export function EcranRecherches({
-  rows, agents,
+  premieres, total, agents,
 }: {
-  rows: RechercheCard[];
+  /** Les premières cartes, servies avec la page : de quoi lire tout de suite. */
+  premieres: RechercheCard[];
+  /** Combien il y en a en tout, pour dire ce qui arrive encore. */
+  total: number;
   agents: { id: string; name: string; initials: string }[];
 }) {
+  /* Perf n° 3 (24/09) : deux mille cartes dans la page, c'était 2,5 Mo à
+     télécharger avant de voir quoi que ce soit. La page arrive avec les
+     premières ; le reste se charge derrière, et les filtres portent sur tout
+     dès qu'il est là. Une modification (la page se rafraîchit) recharge tout. */
+  const [tout, setTout] = useState<RechercheCard[] | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    setTout(null);
+    chargerToutesRecherches().then((l) => { if (vivant) setTout(l); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [premieres]);
+  const rows = tout ?? premieres;
+  const complet = tout !== null || premieres.length >= total;
   const [vue, setVue] = useState<Vue>("en_cours");
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState("");
@@ -223,7 +240,10 @@ export function EcranRecherches({
           {tranche.length === 0 && <div className="fempty">Aucune recherche.</div>}
 
           <div className="lst-pager">
-            <span className="lst-res">{filtrees.length} résultat{filtrees.length > 1 ? "s" : ""}</span>
+            <span className="lst-res">
+              {filtrees.length} résultat{filtrees.length > 1 ? "s" : ""}
+              {!complet && <i style={{ marginLeft: 8, opacity: .7 }}>· le reste des {total} arrive…</i>}
+            </span>
             <span className="sp" style={{ flex: 1 }} />
             <button className="pgb" type="button" disabled={cur <= 1} onClick={() => setPage(1)}>«</button>
             <button className="pgb" type="button" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹</button>

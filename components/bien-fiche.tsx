@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ModaleApresRefus } from "@/components/proposition-refus";
+import { EcranPropositionsBien, JOURS_ENTRE_RELANCES } from "@/components/propositions";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,14 +15,22 @@ import {
   updateContact,
 } from "@/lib/bo/actions";
 import { ModaleMoyenContact } from "@/components/dashboard-modales";
-import { EstimationWizard, type RepriseEstimation } from "@/components/estimation-wizard";
-import { EstimationEnLecture } from "@/components/estimation-lecture";
+import dynamic from "next/dynamic";
+import type { RepriseEstimation } from "@/components/estimation-wizard";
+/* Perf n° 6 (24/09) : l'estimation, le coffre, la diffusion et le matching
+   ne se chargent que lorsqu'on ouvre leur rubrique — ils pesaient la moitié
+   du JavaScript de la fiche, pour des écrans qu'une visite sur cinq ouvre. */
+const chargement = () => <div className="fempty">Chargement…</div>;
+const EstimationWizard = dynamic(() => import("@/components/estimation-wizard").then((m) => m.EstimationWizard), { loading: chargement });
+const EstimationEnLecture = dynamic(() => import("@/components/estimation-lecture").then((m) => m.EstimationEnLecture), { loading: chargement });
+const SectionDiffusion = dynamic(() => import("@/components/diffusion").then((m) => m.SectionDiffusion), { loading: chargement });
+const Acheteurs = dynamic(() => import("@/components/acheteurs").then((m) => m.Acheteurs), { loading: chargement });
+const DocumentsCoffre = dynamic(() => import("@/components/fichiers").then((m) => m.DocumentsCoffre), { loading: chargement });
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
 import type { Espace } from "@/lib/bo/espace-modele";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
-import { SectionDiffusion } from "@/components/diffusion";
 import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
@@ -32,10 +41,8 @@ import { manquesDossier } from "@/lib/bo/completude";
 import { Facade } from "@/components/facade";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
-import { Acheteurs } from "@/components/acheteurs";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
 import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
-import { DocumentsCoffre } from "@/components/fichiers";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
@@ -1965,42 +1972,32 @@ function EcranPropositions({ b }: { b: BienData }) {
   const [ajout, setAjout] = useState(false);
   const [salve, setSalve] = useState(false);
   const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
-  const ouvertes = b.propositions.rows.filter((p) => !String(p.Statut ?? "").startsWith("Refus")).length;
-  const traitees = b.propositions.rows.length - ouvertes;
+  /* Retour #373 : l'écran est l'objet partagé de components/propositions.tsx —
+     toutes les propositions, en cours / terminées, recherche, tri par classe,
+     pages ; la même carte que la fiche contact. */
   return (
     <>
-      <TitreAcheteurs cle="propositions" badges={
-        <>
-          <span className="acx-b rouge">{ouvertes} à traiter</span>
-          <span className="acx-b vert">{traitees} traitées</span>
-        </>
-      } />
-      <div className="acx-add-zone" style={{ gap: 8 }}>
-        <button className="acx-add" type="button" onClick={() => setAjout(true)}>
-          + Créer une nouvelle proposition
-        </button>
-        {/* « Tu feras attention qu'on puisse faire régulièrement les relances
-            avec le bouton adapté » : ici, c'est le geste par IMMEUBLE — on
-            rouvre une affaire et on relance tous ceux qui n'ont pas répondu,
-            d'un coup. La relance hebdomadaire par client, elle, a son écran. */}
-        <button className="acx-add" type="button" onClick={() => setSalve(true)}>
-          ↻ Relancer tous ceux en attente
-        </button>
-      </div>
-      {b.propositions.rows.map((p) => (
-        <Row key={p._id as string}>
-          <div className="grow">
-            <div className="t">Proposition du {dmy(p.date_envoi ?? p["Created Date"])}</div>
-            <div className="s">
-              {String(p.mail_adresse ?? "—")} · {String(p.Source_proposition ?? "")}
-              {p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}
-            </div>
+      <EcranPropositionsBien
+        immeubleId={bien.id}
+        libelle={[b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble"}
+        prix={b.prix}
+        agent={{ id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel }}
+        titre={(badges) => <TitreAcheteurs cle="propositions" badges={badges} />}
+        actions={(
+          <div className="acx-add-zone" style={{ gap: 8 }}>
+            <button className="acx-add" type="button" onClick={() => setAjout(true)}>
+              + Créer une nouvelle proposition
+            </button>
+            {/* « Tu feras attention qu'on puisse faire régulièrement les relances
+                avec le bouton adapté » : ici, c'est le geste par IMMEUBLE — on
+                rouvre une affaire et on relance tous ceux qui n'ont pas répondu,
+                d'un coup. La relance hebdomadaire par client, elle, a son écran. */}
+            <button className="acx-add" type="button" onClick={() => setSalve(true)}>
+              ↻ Relancer tous ceux en attente
+            </button>
           </div>
-          <PropositionActions b={b} p={p} />
-          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
-        </Row>
-      ))}
-      {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
+        )}
+      />
       {ajout && <ModaleProposition bien={bien} onFermer={() => setAjout(false)} />}
       {salve && <ModaleRelanceImmeuble b={b} onFermer={() => setSalve(false)} />}
     </>
@@ -2026,7 +2023,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
 
   useEffect(() => {
     let vivant = true;
-    propositionsARelancer(immeubleId)
+    propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES)
       .then((l) => { if (vivant) setListe(l); })
       .catch(() => { if (vivant) setListe([]); });
     return () => { vivant = false; };
@@ -2061,8 +2058,8 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
           {!liste && <div className="fempty">Lecture des propositions…</div>}
           {liste && liste.length === 0 && (
             <div className="fempty">
-              Personne à relancer sur ce bien : tout le monde a répondu, ou l&apos;envoi
-              date de moins de sept jours.
+              Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier
+              envoi date de moins de vingt-quatre heures.
             </div>
           )}
           {liste && liste.length > 0 && (
@@ -2105,7 +2102,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 onClick={() => start(async () => {
                   await marquerRelances(retenus.map((p) => p.id));
                   setRapport(`${retenus.length} proposition${retenus.length > 1 ? "s" : ""} marquée${retenus.length > 1 ? "s" : ""} relancée${retenus.length > 1 ? "s" : ""}.`);
-                  setListe(await propositionsARelancer(immeubleId));
+                  setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
                 })}>
                 Marquer relancées
               </button>
@@ -2122,7 +2119,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                   } catch (e) {
                     setRapport(e instanceof Error ? e.message : "L'envoi a échoué.");
                   }
-                  setListe(await propositionsARelancer(immeubleId));
+                  setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
                 })}>
                 <span className="ch">›</span> Envoyer {Math.min(retenus.length, PLAFOND_RELANCES)} relance{retenus.length > 1 ? "s" : ""}
               </button>

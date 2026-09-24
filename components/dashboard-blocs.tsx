@@ -100,6 +100,8 @@ function Card({
                 id: c.contactId, nom: c.contactInfo.nom || c.contact, qualite: c.contactInfo.type,
                 tel: c.contactInfo.tel, email: c.contactInfo.email,
                 immeubles: c.contactInfo.nbImmeubles ?? 0, recherches: c.contactInfo.nbRecherches ?? 0,
+                note: c.contactInfo.note, estAgent: c.contactInfo.estAgent,
+                agent: c.contactInfo.initiales ? { initiales: c.contactInfo.initiales, couleur: c.contactInfo.initialesCouleur } : undefined,
               } : undefined}
             />
           </div>

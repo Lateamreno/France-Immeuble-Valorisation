@@ -124,6 +124,8 @@ export type KCard = {
   contactInfo?: {
     nom: string; type?: string; tel?: string; email?: string;
     nbImmeubles?: number; nbRecherches?: number;
+    /** Classe A–D, silhouette d'agent immobilier, agent qui suit (24/09). */
+    note?: string; estAgent?: boolean; initiales?: string; initialesCouleur?: string;
   };
   /** Objet de l'échange affiché dans la modale Suivi. */
   objet?: string;
