@@ -39,7 +39,8 @@ import {
   marquerMandatSigne,
   reporterCadastre, retirerAvenant,
   reserveMandatNumero, societesDuBO,
-  updateMandat, type EntrepriseTrouvee, type MandantDepuisContact, type MandatPatch, type SocieteConnue,
+  updateContact, updateMandat,
+  type ContactPatch, type EntrepriseTrouvee, type MandantDepuisContact, type MandatPatch, type SocieteConnue,
 } from "@/lib/bo/actions";
 
 /**
@@ -65,9 +66,14 @@ import {
  */
 function completerDepuisContact(x: Mandant, f: MandantDepuisContact, basculer: boolean): Partial<Mandant> {
   const p: Partial<Mandant> = {};
-  if (f.civilite && f.civilite !== x.qualite) p.qualite = f.civilite;
-  if (f.prenom && f.prenom !== x.prenom) p.prenom = f.prenom;
-  if (f.nom && f.nom !== x.nom) p.nom = f.nom;
+  /* Retour #367 — « là on ne peut pas changer la civilité ». L'identité se
+     corrige donc au mandat aussi : la fiche ne remplit plus que les cases
+     vides, comme pour le reste, et l'enregistrement propose de reporter la
+     correction sur la fiche (voir `ecartsIdentite`). Sauf quand on vient de
+     choisir le contact à la main : là, c'est bien lui qu'on veut. */
+  if (f.civilite && (basculer || !x.qualite)) p.qualite = f.civilite;
+  if (f.prenom && (basculer || !x.prenom)) p.prenom = f.prenom;
+  if (f.nom && (basculer || !x.nom)) p.nom = f.nom;
   if (!x.email && f.email) p.email = f.email;
   if (!x.dateNaissance && f.dateNaissance) p.dateNaissance = f.dateNaissance;
   if (!x.lieuNaissance && f.lieuNaissance) p.lieuNaissance = f.lieuNaissance;
@@ -431,11 +437,50 @@ function OngletMandants({
     setRows((r) => r.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
   const supprimer = (uid: string) => setRows((r) => r.filter((x) => x.uid !== uid));
 
+  /* Retour #367 — « quand on enregistre, ça nous dit : attention, vous avez
+     modifié des infos sur le propriétaire (lesquelles, avant / après), et ça
+     demande si on veut les enregistrer dans la fiche ». On compare donc ce
+     qui est saisi sur chaque ligne à ce que la fiche du contact dit
+     aujourd'hui, et on pose la question avant d'écrire. */
+  const [ecarts, setEcarts] = useState<EcartContact[] | null>(null);
+  const enregistrer = async (reporter: boolean, liste: EcartContact[]) => {
+    if (reporter) {
+      for (const e of liste) {
+        await updateContact(e.contactId, Object.fromEntries(e.lignes.map((l) => [l.cle, l.apres])) as ContactPatch);
+      }
+    }
+    await majMandants(mandatId, immeubleId, rows);
+    oublier(memo);
+    valider();
+    setEcarts(null);
+  };
   const save = () =>
     start(async () => {
-      await majMandants(mandatId, immeubleId, rows);
-      oublier(memo);
-      valider();
+      const liste: EcartContact[] = [];
+      /* « M. » et « Monsieur » sont la même civilité : pas d'écart pour ça. */
+      const norm = (s?: string) => (s ?? "").trim().toLowerCase()
+        .replace(/^m\.$/, "monsieur").replace(/^mme$/, "madame").replace(/^mlle$/, "mademoiselle");
+      for (const x of rows) {
+        if (!x.contactId) continue;
+        const f = await mandantDepuisContact(x.contactId).catch(() => null);
+        if (!f) continue;
+        const lignes: EcartContact["lignes"] = [];
+        const cmp = (champ: string, cle: EcartContact["lignes"][number]["cle"], avant?: string, apres?: string) => {
+          if (apres && norm(apres) !== norm(avant)) lignes.push({ champ, cle, avant: avant || "—", apres });
+        };
+        cmp("Civilité", "Civilité", f.civilite, x.qualite);
+        cmp("Prénom", "prénom", f.prenom, x.prenom);
+        cmp("Nom", "nom", f.nom, x.nom);
+        if (lignes.length) {
+          liste.push({
+            contactId: x.contactId,
+            nom: [f.prenom, f.nom].filter(Boolean).join(" ") || vignettes[x.contactId]?.nom || "le contact",
+            lignes,
+          });
+        }
+      }
+      if (liste.length) { setEcarts(liste); return; }
+      await enregistrer(false, []);
     });
 
   return (
@@ -502,9 +547,58 @@ function OngletMandants({
             : "Indivision, usufruit et sociétés : autant de lignes que nécessaire"}
         </BarreEnregistrer>
       )}
+
+      {ecarts && (
+        <div className="modal-ov" onClick={() => setEcarts(null)}>
+          <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h">
+              Vous avez modifié des informations du contact
+              <button type="button" onClick={() => setEcarts(null)}>✕</button>
+            </div>
+            <div className="modal-b">
+              {ecarts.map((e) => (
+                <div key={e.contactId} className="mdt-ecart">
+                  <b>{e.nom}</b>
+                  <table>
+                    <thead><tr><th></th><th>Sur la fiche</th><th>Au mandat</th></tr></thead>
+                    <tbody>
+                      {e.lignes.map((l) => (
+                        <tr key={l.cle}><td>{l.champ}</td><td className="av">{l.avant}</td><td className="ap">{l.apres}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <div className="asst-note">
+                Le mandat garde ce que vous avez saisi. Faut-il aussi corriger la fiche contact, pour que
+                le prochain mandat, les propositions et les e-mails repartent de la bonne identité ?
+              </div>
+            </div>
+            <div className="modal-f">
+              <button className="fadd" type="button" onClick={() => setEcarts(null)}>Annuler</button>
+              <span style={{ flex: 1 }} />
+              <button className="fadd" type="button" disabled={pending}
+                onClick={() => start(() => enregistrer(false, ecarts))}>
+                Seulement sur le mandat
+              </button>
+              <button className="kgo" type="button" disabled={pending}
+                onClick={() => start(() => enregistrer(true, ecarts))}>
+                <span className="ch">›</span> Enregistrer aussi sur la fiche
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+
+/** Une identité qui diffère entre une ligne de mandant et la fiche du contact (#367). */
+type EcartContact = {
+  contactId: string;
+  nom: string;
+  lignes: { champ: string; cle: "Civilité" | "prénom" | "nom"; avant: string; apres: string }[];
+};
 
 function CarteMandant({
   x, rang, seul, locked, mandatId, immeubleId, vignettes, proprietaireId, onMaj, onSupprimer,
@@ -670,20 +764,30 @@ function CarteMandant({
             c'est créer un second état civil qui dérive du premier au premier
             mandat suivant. Rattaché, elle s'affiche et se corrige sur la fiche
             du contact ; sans contact, ces cases n'ont rien à montrer. */}
+        {/* Retour #367 : la civilité, le prénom et le nom se corrigent ici.
+            À l'enregistrement, ce qui diffère de la fiche est rappelé avant /
+            après, et on choisit de le reporter sur la fiche ou non. */}
         <Champ label="Civilité">
-          <input className="mi gris" value={x.qualite ?? ""} readOnly
-            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
+          <select className="mi" value={x.qualite ?? ""} disabled={locked}
+            onChange={(e) => onMaj({ qualite: e.target.value || undefined })}>
+            <option value="">—</option>
+            {[...new Set(["Monsieur", "Madame", x.qualite].filter(Boolean))].map((c) => (
+              <option key={c} value={c as string}>{c}</option>
+            ))}
+          </select>
         </Champ>
         <Champ label="Prénom">
-          <input className="mi gris" value={x.prenom ?? ""} readOnly
-            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
+          <input className="mi" value={x.prenom ?? ""} disabled={locked}
+            placeholder={x.contactId ? "—" : "à reprendre du contact"}
+            onChange={(e) => onMaj({ prenom: e.target.value || undefined })} />
         </Champ>
         <Champ label="Nom">
-          <input className="mi maj gris" value={x.nom ?? ""} readOnly
-            placeholder={x.contactId ? "—" : "à reprendre du contact"} />
-          {x.contactId && !locked && (
+          <input className="mi maj" value={x.nom ?? ""} disabled={locked}
+            placeholder={x.contactId ? "—" : "à reprendre du contact"}
+            onChange={(e) => onMaj({ nom: e.target.value || undefined })} />
+          {x.contactId && (
             <Link className="mdt-lien" href={`/contact/${x.contactId}`} target="_blank">
-              Corriger sur la fiche contact
+              Ouvrir la fiche contact
             </Link>
           )}
         </Champ>
@@ -2183,7 +2287,11 @@ function OngletEnvoi({
               bouton — on croit le mandat parti. Il dit maintenant ce qu'il
               fait, et le lien à côté ouvre la page où l'envoi se fait vraiment. */}
           <div className="mdt-btns">
-            <a className="mdt-btn" href="https://apps.docusign.com/send/sending"
+            {/* Retour #369 : l'ancien lien ouvrait une page qui n'existe plus.
+                Celui-ci est l'accueil « Envoyer » de Docusign, d'où l'on
+                démarre une enveloppe ; un lien vers une enveloppe précise ne
+                servirait qu'une fois. */}
+            <a className="mdt-btn" href="https://apps.docusign.com/send/home"
               target="_blank" rel="noreferrer">
               Ouvrir Docusign — créer une enveloppe ↗
             </a>

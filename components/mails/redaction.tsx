@@ -40,7 +40,7 @@ export type Reponse = {
 };
 
 export function FenetreRedaction({
-  agent, modeles, brouillon, modele, reponse, amorce, onClose, onEnvoye,
+  agent, modeles, brouillon, modele, reponse, amorce, flottante, onClose, onEnvoye,
 }: {
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
@@ -50,10 +50,14 @@ export function FenetreRedaction({
   reponse?: Reponse;
   /** Message déjà rédigé par un autre écran, à relire puis envoyer. */
   amorce?: { to: string; objet: string; corps: string };
+  /** Retour #370 : en fenêtre flottante, réductible, posée en bas à droite
+   *  comme dans Gmail — avec, en titre, l'initiale et le nom du destinataire. */
+  flottante?: { titre: string };
   onClose: () => void;
   /** Prévient l'écran qu'un message est parti, pour qu'il se rafraîchisse. */
   onEnvoye?: () => void;
 }) {
+  const [reduit, setReduit] = useState(false);
   const [a, setA] = useState(
     amorce?.to ?? brouillon?.destinataires.map((d) => d.email).join(", ") ?? "",
   );
@@ -148,14 +152,8 @@ export function FenetreRedaction({
       }
     });
 
-  return (
-    <div className="modal-ov" onClick={onClose}>
-      <div className="modal mail-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          <b>Nouveau message</b>
-          <button type="button" onClick={onClose}>✕</button>
-        </div>
-
+  const corpsFenetre = (
+    <>
         <div className="modal-b">
           <div className="mred-entete">
             <ChampDestinataires valeur={a} onChange={setA} agentId={agent.id}
@@ -202,6 +200,33 @@ export function FenetreRedaction({
             <span className="ch">›</span> Envoyer
           </button>
         </div>
+    </>
+  );
+
+  if (flottante) {
+    return (
+      <div className={`mail-flot${reduit ? " reduit" : ""}`} role="dialog" aria-label={`Message à ${flottante.titre}`}>
+        <div className="mf-h" onClick={() => reduit && setReduit(false)}>
+          <b>{flottante.titre}</b>
+          <span style={{ flex: 1 }} />
+          <button type="button" title={reduit ? "Agrandir" : "Réduire"} onClick={(e) => { e.stopPropagation(); setReduit((r) => !r); }}>
+            {reduit ? "▢" : "—"}
+          </button>
+          <button type="button" title="Fermer" onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
+        </div>
+        {!reduit && <div className="mf-c">{corpsFenetre}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-ov" onClick={onClose}>
+      <div className="modal mail-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h">
+          <b>Nouveau message</b>
+          <button type="button" onClick={onClose}>✕</button>
+        </div>
+        {corpsFenetre}
       </div>
     </div>
   );

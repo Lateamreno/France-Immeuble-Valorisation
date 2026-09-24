@@ -4614,7 +4614,7 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 
 .vgn-pop {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
-  display: block; width: 262px;
+  display: block; width: 312px;
   background: #fff; border: 1px solid var(--gold-bo); border-radius: 5px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, .18); overflow: hidden;
 }
@@ -4637,15 +4637,65 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .vgn-card .cpt svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.7; opacity: .75; }
 
 .vgn-act { display: flex; border-top: 1px solid var(--line); }
-.vgn-act a {
+.vgn-act a, .vgn-act button {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 4px; text-decoration: none;
+  padding: 8px 4px; text-decoration: none; border: 0; background: none; cursor: pointer;
   font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate);
 }
-.vgn-act a + a { border-left: 1px solid var(--line); }
-.vgn-act a:hover { background: var(--cols); }
-.vgn-act a.off { color: var(--gray-lt); pointer-events: none; }
+.vgn-act a + a, .vgn-act a + button { border-left: 1px solid var(--line); }
+.vgn-act a:hover, .vgn-act button:hover { background: var(--cols); }
+.vgn-act a.off, .vgn-act button.off { color: var(--gray-lt); pointer-events: none; }
 .vgn-act svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+/* Retour #370 : chaque ligne se copie, le nom et le picto ouvrent la fiche,
+   les compteurs ouvrent l'onglet qui va avec. */
+.vgn-card .av { text-decoration: none; }
+.vgn-card .ligne { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.vgn-card .ligne > .l, .vgn-card .ligne > .nom { flex: 1; min-width: 0; }
+.vgn-card .nom { font-family: var(--font-title); font-size: 13.5px; font-weight: 700; color: var(--slate); text-decoration: none; }
+.vgn-card .nom:hover { color: var(--gold-bo); }
+.vgn-cop {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px; border: 1px solid var(--line-lt); border-radius: 3px; background: #fff;
+  color: var(--gray-txt); cursor: pointer; padding: 0;
+}
+.vgn-cop svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.vgn-cop:hover { border-color: var(--gold-bo); color: var(--slate); }
+.vgn-cop.ok { border-color: #3db327; color: #2b8a1f; }
+.vgn-card .cpt a { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--gray-txt); text-decoration: none; }
+.vgn-card .cpt a:hover { color: var(--gold-bo); text-decoration: underline; }
+
+/* La fenêtre d'e-mail flottante (#370) : en bas à droite, réductible à sa barre. */
+.mail-flot {
+  position: fixed; right: 24px; bottom: 0; z-index: 80;
+  width: min(760px, calc(100vw - 48px)); max-height: min(78vh, 760px);
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0;
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, .22);
+}
+.mail-flot.reduit { width: 300px; }
+.mail-flot .mf-h {
+  display: flex; align-items: center; gap: 6px; padding: 9px 12px 9px 16px;
+  background: var(--slate); color: #fff; border-radius: 8px 8px 0 0; cursor: default;
+  font-family: var(--font-title); font-size: 13.5px;
+}
+.mail-flot.reduit .mf-h { cursor: pointer; }
+.mail-flot .mf-h button {
+  border: 0; background: none; color: #fff; font-size: 13px; width: 26px; height: 24px;
+  border-radius: 4px; cursor: pointer;
+}
+.mail-flot .mf-h button:hover { background: rgba(255, 255, 255, .18); }
+.mail-flot .mf-c { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.mail-flot .modal-b { padding: 14px 16px; }
+.mail-flot .modal-f { position: sticky; bottom: 0; }
+
+/* Le rappel avant / après quand l'identité saisie au mandat diffère de la fiche (#367). */
+.mdt-ecart { margin-bottom: 12px; }
+.mdt-ecart > b { display: block; font-family: var(--font-title); font-size: 13.5px; color: var(--slate); margin-bottom: 6px; }
+.mdt-ecart table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mdt-ecart th { text-align: left; font-family: var(--font-title); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--gray-lt); padding: 3px 8px; border-bottom: 1px solid var(--line); }
+.mdt-ecart td { padding: 5px 8px; border-bottom: 1px solid var(--line-lt); }
+.mdt-ecart td.av { color: var(--gray-txt); text-decoration: line-through; }
+.mdt-ecart td.ap { color: var(--slate); font-weight: 700; }
 
 .mdt-add {
   display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;

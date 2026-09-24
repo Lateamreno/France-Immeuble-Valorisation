@@ -411,3 +411,35 @@ export async function lancerSalve(
 export async function abandonnerSalve(id: string) {
   await ecrire("fi_salve", "PATCH", { statut: "abandonnee" }, `id=eq.${id}`);
 }
+
+/* ---------------------------------------------------- Écrire depuis partout
+ *
+ * Retour #370 — « quand on clique sur le bouton e-mail j'aimerais que cela
+ * m'ouvre directement un popup pour lui écrire un e-mail depuis le BO ». La
+ * fenêtre de rédaction vit dans l'écran Mails, qui connaît l'agent et ses
+ * messages types. Depuis une vignette de contact, n'importe où, il faut les
+ * lui redonner : c'est ce que rend cette action.
+ */
+export async function contexteRedaction(agentSlug = "marc-antoine") {
+  const [{ getAgentFiche, getAgents }, { messagesTypes }] = await Promise.all([
+    import("@/lib/bubble/server"),
+    import("@/lib/mails/serveur"),
+  ]);
+  const [agents, modeles] = await Promise.all([
+    getAgents().catch(() => []),
+    messagesTypes().catch(() => []),
+  ]);
+  const actifs = agents.filter((a) => a.actif);
+  const courant = actifs.find((a) => a.slug === agentSlug) ?? actifs[0];
+  const fiche = courant ? await getAgentFiche(courant.id).catch(() => null) : null;
+  const s2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  return {
+    agent: {
+      id: courant?.id ?? "",
+      nom: courant?.name ?? "France Immeuble",
+      email: s2(fiche?.email),
+      telephone: s2(fiche?.["portable (TXT)"]) ?? s2(fiche?.portable),
+    },
+    modeles,
+  };
+}
