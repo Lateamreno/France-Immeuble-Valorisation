@@ -1,6 +1,6 @@
 "use client";
 
-// Description et prix — réplique de l'écran du BO (retours #93 et #94).
+// Description et prix — réplique de l'écran du BO (retours #93, #94, #398).
 //
 // Le prix affiché est le dernier en date : celui de l'estimation, du mandat,
 // ou celui saisi à la main. La molette le fait bouger et tout le tableau suit
@@ -14,10 +14,10 @@ import { euros, group, S } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
 import { marquerPrixRepris, ouvrirEspace, revoquerEspace } from "@/lib/bo/espace-actions";
-import { ouvrirCompteClient } from "@/lib/bo/comptes-bo";
+import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import type { Espace } from "@/lib/bo/espace-modele";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
-import { Modale } from "@/components/modale";
+import { Modale, useQuestion } from "@/components/modale";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => {
@@ -247,6 +247,11 @@ export function EspaceVendeur({
   const [lienCompte, setLienCompte] = useState<string | null>(null);
   const [copieCompte, setCopieCompte] = useState(false);
   const [erreurCompte, setErreurCompte] = useState<string | null>(null);
+  /* Retour #382 — le compte se ferme aussi d'ici. L'état vient du serveur,
+     mais on le tient localement pour que la ligne dise « fermé » à la seconde
+     où l'on ferme, sans attendre le rechargement. */
+  const [compteOuvert, setCompteOuvert] = useState(!!compteActif);
+  const { confirmer, question } = useQuestion();
   const urlCompte = lienCompte
     ? `${typeof window === "undefined" ? "" : window.location.origin}${lienCompte}` : "";
 
@@ -333,17 +338,55 @@ export function EspaceVendeur({
         <div className="espv-cli">
           <span className="espv-lab">
             Espace client (avec mot de passe) —
-            {compteActif ? " ouvert" : " pas encore ouvert"}
+            {compteOuvert ? " ouvert" : " pas encore ouvert"}
             {proprietaireEmail ? ` · ${proprietaireEmail}` : ""}
           </span>
-          <button type="button" className="espv-b" disabled={pending || !proprietaireEmail}
-            onClick={() => start(async () => {
-              setErreurCompte(null);
-              const r = await ouvrirCompteClient(proprietaireId, proprietaireEmail ?? "");
-              if (r.ok) setLienCompte(r.lien); else setErreurCompte(r.message);
-            })}>
-            {pending ? "…" : compteActif ? "Renvoyer un lien d'accès" : "Ouvrir l'espace client"}
-          </button>
+          {/* Retour #382 — « mets-moi un bouton pour annuler l'espace vendeur
+              et un lien pour voir à quoi ça ressemble ».
+              Voir : ce que le propriétaire voit derrière son mot de passe est
+              SA session — le BO ne peut pas s'y glisser, c'est tout l'édifice
+              de l'espace client (§10 bis). On ouvre donc la page du lien secret,
+              qui montre la même fiche, quand un lien court ; sinon l'entrée de
+              l'espace client, qui est ce qu'il voit en premier.
+              Fermer : le compte reste, l'accès tombe (`desactiverCompteClient`),
+              après une confirmation — c'est un geste qu'on ne devine pas. */}
+          <div className="espv-cli-act">
+            <a className="espv-lien" href={jeton ? url : "/espace"} target="_blank" rel="noreferrer"
+              title={jeton
+                ? "Ouvre, dans un nouvel onglet, la page du propriétaire telle qu'il la voit"
+                : "Aucun lien secret ouvert : ouvre la page d'entrée de l'espace client"}>
+              Voir l&apos;espace ↗
+            </a>
+            <button type="button" className="espv-b" disabled={pending || !proprietaireEmail}
+              onClick={() => start(async () => {
+                setErreurCompte(null);
+                const r = await ouvrirCompteClient(proprietaireId, proprietaireEmail ?? "");
+                if (r.ok) { setLienCompte(r.lien); setCompteOuvert(true); } else setErreurCompte(r.message);
+              })}>
+              {pending ? "…" : compteOuvert ? "Renvoyer un lien d'accès" : "Ouvrir l'espace client"}
+            </button>
+            {compteOuvert && (
+              <button type="button" className="espv-b ko" disabled={pending}
+                onClick={async () => {
+                  if (!(await confirmer(
+                    "Fermer l'espace vendeur de ce propriétaire ? Son mot de passe ne fonctionnera plus et ses sessions ouvertes seront coupées. Le compte pourra être rouvert plus tard.",
+                    { titre: "Fermer l'espace vendeur", danger: true, oui: "Fermer l'espace" },
+                  ))) return;
+                  start(async () => {
+                    setErreurCompte(null);
+                    try {
+                      await desactiverCompteClient(proprietaireId, immeubleId);
+                      setCompteOuvert(false);
+                      setLienCompte(null);
+                    } catch {
+                      setErreurCompte("La fermeture a échoué. Réessayez dans un instant.");
+                    }
+                  });
+                }}>
+                Fermer l&apos;espace vendeur
+              </button>
+            )}
+          </div>
           {erreurCompte && <p className="espv-txt" style={{ color: "#a5341f" }}>{erreurCompte}</p>}
           {lienCompte && (
             <p className="espv-txt">
@@ -359,6 +402,7 @@ export function EspaceVendeur({
           )}
         </div>
       )}
+      {question}
     </div>
   );
 }
@@ -398,7 +442,48 @@ const IC_DEST: Record<string, React.ReactNode> = {
 const AU_LOT = new Set(["Cave", "Parking"]);
 
 /**
- * Le résumé de l'état locatif, une ligne par destination, sur deux colonnes.
+ * Le résumé de l'immeuble, sous le titre (retour #398).
+ *
+ * MAV : « dans l'encadré or pas besoin de mettre d'infos, c'est juste pour dire
+ * sur quelle page on est ; par contre c'est bien de remettre les infos
+ * principales sur l'immeuble dans "ce que l'immeuble contient" pour rappeler
+ * la surface, l'occupation, le nombre de lots, le loyer annuel actuel et
+ * potentiel et les travaux à réaliser. Du coup ça s'appellerait résumé de
+ * l'immeuble. »
+ *
+ * Les cinq pastilles du #338 quittent donc le cadre or pour rejoindre le
+ * détail par destination du #311, dans un seul bloc : les chiffres d'ensemble
+ * en tête, et dessous d'où ils viennent. Les travaux s'y ajoutent — c'est eux
+ * qui séparent le prix actuel du prix potentiel des deux tableaux plus bas.
+ */
+function ResumeImmeuble({ b, ctx, occupationPct }: {
+  b: BienData; ctx: ContexteRendement; occupationPct: number;
+}) {
+  const tuiles: [string, string][] = [
+    ["Surface Carrez", ctx.surface > 0 ? `${group(Math.round(ctx.surface))} m²` : "n.c."],
+    ["Occupation", `${Math.round(occupationPct)} %`],
+    ["Lots", `${b.lots.length} lot${b.lots.length > 1 ? "s" : ""}`],
+    ["Loyer annuel actuel", `${euros(Math.round(ctx.loyers))} HC`],
+    ["Loyer annuel potentiel", `${euros(Math.round(ctx.loyersMax))} HC`],
+    ["Travaux à réaliser", ctx.travaux > 0 ? euros(Math.round(ctx.travaux)) ?? "—" : "Aucun"],
+  ];
+  return (
+    <>
+      <div className="fsub">Résumé de l&apos;immeuble</div>
+      <div className="px-res">
+        <div className="px-res-g">
+          {tuiles.map(([l, v]) => (
+            <div className="px-res-t" key={l}><span>{l}</span><b>{v}</b></div>
+          ))}
+        </div>
+        <ResumeLocatif b={b} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Le détail par destination, une ligne par destination, sur deux colonnes.
  *
  * « Bureau 3 lots — 120 m² — 2 400 €/mois » : de quoi comprendre d'où viennent
  * les loyers sans quitter l'écran du prix. Les caves et les parkings
@@ -425,7 +510,7 @@ function ResumeLocatif({ b }: { b: BienData }) {
   if (lignes.length === 0) return null;
   return (
     <>
-      <div className="fsub" style={{ marginTop: 18 }}>Ce que l&apos;immeuble contient</div>
+      <div className="px-res-s">Ce que l&apos;immeuble contient</div>
       <div className="px-loc">
         {lignes.map((l) => (
           <div className="px-loc-l" key={l.dest}>
@@ -566,34 +651,18 @@ export function PrixEcran({ b, espace }: {
     );
   }
 
+  /* Retour #398 — « la page prix est trop déstructurée. Sur le BO actuel elle
+     ne prend pas toute la largeur, ce qui facilite la lecture : elle est
+     cantonnée au milieu. » La page se resserre donc sur ~760 px (`px-page`),
+     et suit l'ordre de la capture du BO : le résumé de l'immeuble sous le
+     titre, le prix actuel, les deux tableaux, la marge, les conditions,
+     l'historique. Le cadre or ne porte plus que le titre (voir PrixSection
+     dans bien-fiche.tsx) : ses pastilles vivent maintenant dans le résumé. */
   return (
-    <div style={pending ? { opacity: 0.6 } : undefined}>
-      <div className="blor">
-        <div className="blor-t">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg>
-          Prix
-        </div>
-        <div className="blor-chips">
-          <span className="fchip"><b>{euros(prixEnBase)}</b> HAI</span>
-          <span className="fchip"><b>{euros(nvEnBase)}</b> net vendeur</span>
-        </div>
-        {/* Retour #338 — « la surface Carrez, l'occupation en %, le nombre de
-            lots totaux, les loyers HC annuel actuel et potentiels dans
-            l'encadré au début dans des pastilles en dessous de celles du prix.
-            Ces infos seront sur la même ligne. »
-            Elles remplacent le Récapitulatif, retiré au même retour : ces cinq
-            chiffres sont ceux qu'on cherche en ouvrant l'écran, ils n'ont pas à
-            attendre trois sections plus bas. */}
-        <div className="blor-chips synth">
-          <span className="fchip"><b>{group(Math.round(ctx.surface))}</b> m² Carrez</span>
-          <span className="fchip"><b>{Math.round(occupationPct)}</b> % occupé</span>
-          <span className="fchip"><b>{b.lots.length}</b> lot{b.lots.length > 1 ? "s" : ""}</span>
-          <span className="fchip"><b>{euros(Math.round(ctx.loyers))}</b> HC/an</span>
-          <span className="fchip"><b>{euros(Math.round(ctx.loyersMax))}</b> HC/an potentiel</span>
-        </div>
-      </div>
+    <div className="px-page" style={pending ? { opacity: 0.6 } : undefined}>
+      <ResumeImmeuble b={b} ctx={ctx} occupationPct={occupationPct} />
 
-      <div className="px-hd">
+      <div className="px-hd" style={{ marginTop: 18 }}>
         <div className="fsub">Prix actuel</div>
         <button className="fadd" type="button" onClick={() => setModale(true)}>✎ Modifier le prix</button>
       </div>
@@ -619,8 +688,6 @@ export function PrixEcran({ b, espace }: {
         <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
         <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
       </div>
-
-      <ResumeLocatif b={b} />
 
       <div className="fsub" style={{ marginTop: 18 }}>Marge de négociation</div>
       <div className="px-cards">

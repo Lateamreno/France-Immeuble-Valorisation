@@ -47,6 +47,49 @@ function lotLabel(l: Record<string, unknown>) {
    qu'il faille les créer (#91). Ils n'entrent en base qu'une fois renseignés. */
 const COMPOSANTS_STANDARD = ["Chauffage", "Façade", "Fenêtres", "Toiture"] as const;
 
+/**
+ * Le pictogramme de chaque composant du bâti (retour #397).
+ *
+ * MAV : « fais-moi des pictos qui correspondent aux choses demandées : un
+ * radiateur pour le chauffage, un toit pour la toiture, un immeuble pour la
+ * façade, une fenêtre pour la fenêtre ». Les lignes portaient toutes le même
+ * cube : on relisait le nom à chaque ligne, le picto ne servait à rien. Un
+ * dessin par type de `TYPES_COMPOSANT`, trait 2 px sur 24 × 24 (le CSS #397
+ * règle l'épaisseur), et le cube reste pour « Autre » et les types inconnus.
+ */
+const IC_COMPOSANT: Record<string, React.ReactNode> = {
+  /* Un radiateur : le corps et ses ailettes, les deux pieds. */
+  Chauffage: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7.5 6v12M12 6v12M16.5 6v12M5.5 18v2.5M18.5 18v2.5" /></>,
+  /* Un immeuble : trois étages de fenêtres, la porte. */
+  Façade: <><rect x="5" y="3" width="14" height="18" rx="1" /><path d="M8.5 7h2M13.5 7h2M8.5 11h2M13.5 11h2M8.5 15h2M13.5 15h2M10.5 21v-3.5h3V21" /></>,
+  /* Une fenêtre à quatre carreaux. */
+  Fenêtres: <><rect x="4" y="4" width="16" height="16" rx="1.5" /><path d="M12 4v16M4 12h16" /></>,
+  /* Un toit qui déborde des murs, avec sa cheminée. */
+  Toiture: <><path d="M2.5 13.5 12 5l9.5 8.5" /><path d="M16.3 6.3h2.4v4.2" /><path d="M5.5 10.8V19.5h13v-8.7" /></>,
+  /* Une cabine, la flèche qui monte et celle qui descend. */
+  Ascenseur: <><rect x="4.5" y="3" width="15" height="18" rx="1.5" /><path d="M12 3v18" /><path d="m6.8 10.5 1.7-2.2 1.7 2.2M13.8 13.5l1.7 2.2 1.7-2.2" /></>,
+  /* Une grille d'évacuation. */
+  Assainissement: <><circle cx="12" cy="12" r="8.5" /><path d="M12 5.5v13M8.2 7.4v9.2M15.8 7.4v9.2" /></>,
+  /* Une ferme de charpente : l'entrait, les arbalétriers, le poinçon. */
+  Charpente: <><path d="M2.5 18 12 5l9.5 13z" /><path d="M12 5v13M7.25 11.5 12 18l4.75-6.5" /></>,
+  /* Sous le toit, la lucarne. */
+  Combles: <><path d="M3 15 12 5l9 10" /><path d="M6 15v5.5h12V15" /><rect x="10" y="10.5" width="4" height="4.5" /></>,
+  /* Un éclair. */
+  Electricité: <><path d="M13.5 2.5 5 13.5h6L10.5 21.5 19 10.5h-6z" /></>,
+  /* Un coude de tuyau, avec ses deux brides. */
+  Plomberie: <><path d="M2.5 8.5h8.5a3 3 0 0 1 3 3V21" /><path d="M2.5 12.5h8.5v8.5" /><path d="M2.5 7v7M9.5 21h7" /></>,
+  /* Un escalier : les parties communes se montent. */
+  "Parties communes": <><path d="M3 20v-4h4.5v-4H12V8h4.5V4H21" /><path d="M3 20h18" /></>,
+  /* Un ventilateur, quatre pales. */
+  Ventilation: <><circle cx="12" cy="12" r="2.2" /><path d="M12 9.8C12 6 10.5 4 8 4c1.5 2 2 4 4 5.8zM14.2 12C18 12 20 10.5 20 8c-2 1.5-4 2-5.8 4zM12 14.2C12 18 13.5 20 16 20c-1.5-2-2-4-4-5.8zM9.8 12C6 12 4 13.5 4 16c2-1.5 4-2 5.8-4z" /></>,
+  /* Deux battants à lames. */
+  Volets: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M12 3v18M6.5 7h3M6.5 10.5h3M6.5 14h3M6.5 17.5h3M14.5 7h3M14.5 10.5h3M14.5 14h3M14.5 17.5h3" /></>,
+  /* Le cube d'avant, pour ce qui n'a pas de dessin à lui. */
+  Autre: <><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></>,
+};
+
+const pictoComposant = (type: string) => IC_COMPOSANT[type] ?? IC_COMPOSANT.Autre;
+
 /** Vignette « Année de construction » / « État général », rouge tant que vide. */
 function VignetteBati({
   icone, libelle, enfants, vide,
@@ -127,10 +170,22 @@ function ChoixMateriau({ composant, valeur, ajouts, onChange }: {
         onChange={(e) => { setTexte(e.target.value); setMsg(null); }}
         onBlur={() => { if (texte.trim()) onChange(texte.trim()); }}
         onKeyDown={(e) => { if (e.key === "Escape") setLibre(false); }} />
+      {/* Retour #396 — « rends les boutons un peu plus gros et plus précis,
+          on les comprend pas, notamment le refresh qui a une forme bizarre ».
+          Le « + » et le « ↺ » étaient des caractères dans des cases de 16 px :
+          la flèche dépendait de la police, et rien ne disait ce qu'elle faisait
+          avant de survoler. Deux pictos SVG nets, une case de 28 px, et un
+          `title` en clair — la taille et le dessin sont dans le CSS (#396). */}
       <span className="tacts">
-        <button type="button" title="Enregistrer ce matériau pour les prochains immeubles"
-          disabled={pending || texte.trim().length < 2} onClick={enregistrer}>+</button>
-        <button type="button" title="Revenir à la liste" onClick={() => setLibre(false)}>↺</button>
+        <button type="button" title="Ajouter ce matériau à la liste, pour les prochains immeubles"
+          aria-label="Ajouter ce matériau à la liste"
+          disabled={pending || texte.trim().length < 2} onClick={enregistrer}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M5 12h14M12 5v14" /></svg>
+        </button>
+        <button type="button" title="Abandonner la saisie libre et revenir à la liste des matériaux"
+          aria-label="Revenir à la liste des matériaux" onClick={() => setLibre(false)}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+        </button>
       </span>
       {msg && <span className="tmsg">{msg}</span>}
     </span>
@@ -174,7 +229,7 @@ function LigneComposant({
   return (
     <>
       <div className={`cmp${pending ? " att" : ""}`}>
-        <span className="cmp-ic"><svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg></span>
+        <span className="cmp-ic"><svg viewBox="0 0 24 24">{pictoComposant(type)}</svg></span>
         {/* Retour #314 — « j'aimerais que le dropdown de sélection d'état soit
             plus proche de la sélection de matériaux, pour faciliter la
             complétion de la chose. L'idéal serait que le début du dropdown

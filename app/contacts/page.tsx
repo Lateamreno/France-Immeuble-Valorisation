@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; per?: string; agent?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; per?: string; agent?: string; note?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q ?? "";
@@ -14,11 +14,12 @@ export default async function ContactsPage({
      il travaille sur l'ensemble du fichier, pas seulement sur le sien. Un
      commercial se filtrera lui-même par le sélecteur. */
   const agent = sp.agent ?? "";
+  const note = sp.note ?? "";
   const taille = Math.min(100, Math.max(10, parseInt(sp.per ?? "10", 10) || 10));
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const [{ rows, total }, agents] = await Promise.all([
-    listContactsPage(q, page, taille, agent).catch(() => ({ rows: [], total: 0 })),
+    listContactsPage(q, page, taille, agent, note).catch(() => ({ rows: [], total: 0 })),
     getAgents().catch(() => []),
   ]);
 
@@ -28,6 +29,7 @@ export default async function ContactsPage({
       rows={rows} total={total} page={page} taille={taille} q={q}
       agents={agents.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))}
       agent={agent}
+      note={note}
       searchPlaceholder="Recherchez un contact..."
     />
   );

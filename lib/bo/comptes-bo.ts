@@ -112,13 +112,20 @@ export async function ouvrirCompteClient(
   return { ok: true, email: propre, lien: `/espace/activer/${j}` };
 }
 
-/** Coupe l'accès : le compte reste, les sessions tombent à la seconde. */
-export async function desactiverCompteClient(contactId: string) {
+/**
+ * Coupe l'accès : le compte reste, les sessions tombent à la seconde.
+ *
+ * Retour #382 — l'accès se ferme aussi depuis la fiche de l'immeuble ; elle
+ * passe alors son identifiant pour que son onglet Propriétaire se rafraîchisse,
+ * sinon il continuerait d'afficher « ouvert » jusqu'au prochain chargement.
+ */
+export async function desactiverCompteClient(contactId: string, immeubleId?: string) {
   const c = await compteDuContact(contactId);
   if (!c) return;
   await ecrire(`fi_compte_client?id=eq.${c.id}`, "PATCH", { actif: false });
   await ecrire(`fi_session_client?compte_id=eq.${c.id}`, "DELETE").catch(() => undefined);
   revalidatePath(`/contact/${contactId}`);
+  if (immeubleId) revalidatePath(`/bien/${immeubleId}`);
 }
 
 /** Les réponses d'acquéreurs qui attendent l'agent. */

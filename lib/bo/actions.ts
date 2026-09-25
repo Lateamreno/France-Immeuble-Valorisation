@@ -902,9 +902,48 @@ export type EmplacementPatch = Partial<{
   emp_autre_name: string; emp_autre_time: number; emp_autre_moyen: string; emp_autre_geo: string | null;
   emp_population: number; emp_revenus: number;
   emp_zone_tendue: boolean; emp_tension_locative: string;
+  /* Retour #387 — les points d'intérêt AJOUTÉS par l'agent, au-delà des six
+     cases du BO. Bubble n'a pas de champ pour eux : ils vivent dans une liste
+     JSON de la fiche (le miroir est en jsonb, une clé nouvelle y passe comme
+     `emp_*_geo` l'a fait au #186). Le tableau est envoyé entier à chaque
+     enregistrement, vide compris : c'est ce qui fait qu'une suppression tient. */
+  emp_points: { type: string; name: string; time?: number; moyen: string; geo?: string }[];
   plu_zone: string; plu_Type_zone: string; plu_hauteur: number; plu_emprise: number;
   ter_surface: number; ter_facade: number;
 }>;
+
+/* ---------- Tension locative (retour #389) ---------- */
+
+/* MAV : « essaye de faire en sorte de préremplir la tension locative, avant ça
+   le faisait tout seul ». Aucune de nos bases ne la porte : `bo_villes_stats`
+   sait si la commune est en zone tendue (un oui/non réglementaire), pas la
+   tension au sens de LOCservice, dont l'échelle est celle de la fiche. On va
+   donc la lire là où l'agent la lisait à la main : sur la page du tensiomètre
+   de la commune, dont le premier cadran — « facilité à trouver une location »
+   — porte sa valeur en clair dans son libellé accessible. */
+const TENSION_LOCSERVICE: Record<string, string> = {
+  "très difficile": "Très forte",
+  "difficile": "Forte",
+  "moyen": "Modérée",
+  "facile": "Faible",
+  "très facile": "Très faible",
+};
+
+/** La tension locative d'une commune selon LOCservice, dans l'échelle de la
+ *  fiche (`TENSIONS_LOCATIVES`) ; `null` si la page ne se lit pas. */
+export async function tensionLocservice(insee: string): Promise<string | null> {
+  if (!/^\d[0-9AB]\d{3}$/i.test(insee)) return null;
+  const res = await fetch(`https://www.locservice.fr/tensiometre/tensiometre-${insee}.html`, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; BO France Immeuble)" },
+    // Une commune ne change pas de tension d'une semaine à l'autre : un mois.
+    next: { revalidate: 2592000 },
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const html = await res.text();
+  const m = html.match(/aria-label="1\/ Facilit[^:"]*:\s*([^"]+)"/);
+  const cle = m?.[1]?.trim().toLowerCase();
+  return cle ? TENSION_LOCSERVICE[cle] ?? null : null;
+}
 
 /** Met à jour les données d'emplacement / PLU de l'immeuble. */
 export async function updateEmplacement(immeubleId: string, patch: EmplacementPatch) {
@@ -1053,7 +1092,15 @@ export async function saveSecteurDest(
   immeubleId: string,
   secteurId: string | null,
   dest: string,
-  values: { loyer?: number; prix?: number; renta?: number; commentaire?: string },
+  values: {
+    loyer?: number; prix?: number; renta?: number; commentaire?: string;
+    /* Retour #391 — « la vignette est rouge tant que j'ai pas vérifié et
+       confirmé ou modifié les prix ». Les repères se posent tout seuls dans la
+       vignette ; ce drapeau dit qu'un agent les a regardés. Une destination à
+       la fois : `hab_check_ok`, `com_check_ok`… sur le modèle du `0 - check_ok`
+       global que Bubble posait déjà sur le relevé. */
+    check_ok?: boolean;
+  },
   poids: { dest: string; carrez: number }[],
 ) {
   const prefix = DEST_PREFIX[dest] ?? "autre";
@@ -1063,6 +1110,8 @@ export async function saveSecteurDest(
     [`${prefix}_prix_retenu`]: values.prix,
     [`${prefix}_renta_retenu`]: values.renta,
     [`${prefix}_commentaire`]: values.commentaire,
+    [`${prefix}_check_ok`]: values.check_ok,
+    [`${prefix}_check_le`]: values.check_ok ? now : undefined,
     "0 - date": now,
   });
 

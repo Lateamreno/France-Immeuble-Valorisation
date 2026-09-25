@@ -10,9 +10,9 @@ import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros, S } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
-  updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
+  tensionLocservice, updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
 } from "@/lib/bo/actions";
-import { oublier, useMemoireServie } from "@/lib/memoire";
+import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
@@ -23,7 +23,13 @@ import { annoncesLot, loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/s
 import { slugVille, urlUnemplacement, type ValeurUE } from "@/lib/unemplacement";
 import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
-import { MOYENS, itineraireGoogle } from "@/lib/bo/itineraire";
+import { itineraireGoogle as itineraireBrut } from "@/lib/bo/itineraire";
+
+/* Retour #388 — la liste propose « en bus », que lib/bo/itineraire.ts ne
+   connaît pas (il retomberait sur la marche). Pour Google, un bus est un
+   transport en commun : on traduit ici, sans toucher au calcul partagé. */
+const itineraireGoogle: typeof itineraireBrut = (im, vers, opts = {}) =>
+  itineraireBrut(im, vers, { ...opts, moyen: opts.moyen === "en bus" ? "en transport" : opts.moyen });
 import { TENSIONS_LOCATIVES } from "@/lib/referentiels";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -62,6 +68,30 @@ const POIS = [
 ] as const;
 type CleP = (typeof POIS)[number][0];
 
+/* Retour #386 — « reprends l'ordre du BO : à gauche de haut en bas gare, bus,
+   route ; à droite école, commerce, autre ». Une grille qui remplit ligne par
+   ligne mettait l'école à côté de la gare : les deux colonnes sont donc
+   explicites. */
+const POIS_GAUCHE: readonly CleP[] = ["gare", "bus", "route"];
+const POIS_DROITE: readonly CleP[] = ["school", "com", "autre"];
+
+/** Le type d'un point, tel qu'il se lit dans la liste déroulante (#388). */
+const TYPES_POI: Record<CleP, string> = {
+  gare: "Gare", bus: "Bus", route: "Route", school: "École", com: "Commerce", autre: "Autre",
+};
+
+/** Point d'intérêt ajouté par l'agent (#387) — même dessin que les six du BO,
+ *  avec en plus son type et une croix pour le retirer. Rangé dans `emp_points`. */
+type PointLibre = { type: CleP; name: string; time: string; moyen: string; geo: string };
+const estClePoi = (v: unknown): v is CleP => POIS.some(([k]) => k === v);
+const lirePoints = (im: Record<string, unknown>): PointLibre[] =>
+  Array.isArray(im.emp_points)
+    ? (im.emp_points as Record<string, unknown>[]).filter((p) => p && typeof p === "object").map((p) => ({
+        type: estClePoi(p.type) ? p.type : "autre",
+        name: S(p.name), time: S(num(p.time)), moyen: S(p.moyen) || "à pied", geo: S(p.geo),
+      }))
+    : [];
+
 /* Ce qu'on cherche quand le point n'est pas encore nommé (retour #215). Le
    libellé de la vignette ne fait pas l'affaire tel quel : Google comprend
    « gare » et « supermarché », pas « Gares » ni « Commerces ». */
@@ -95,7 +125,16 @@ function AdresseTab({ b }: { b: BienData }) {
   const im = b.im;
   const immeubleId = String(im._id);
   const [pending, start] = useTransition();
-  const [poi, setPoi] = useState(
+  const { confirmer, question } = useQuestion();
+  /* Retour #388 — la saisie s'enregistre au blur et à Entrée, comme dans le
+     BO. Chaque enregistrement rafraîchit la fiche, et l'onglet — dont la clé
+     est la date de modification — se remonte : une valeur tapée pendant que
+     l'enregistrement précédent est en route partirait avec (le piège du
+     #294). La mémoire d'écran la garde, et son témoin distingue « la fiche a
+     bougé » de « l'agent a tapé ». */
+  const cleMem = `emp:${immeubleId}:`;
+  const [poi, setPoi] = useMemoireServie<Record<string, string>>(
+    `${cleMem}poi`,
     Object.fromEntries(
       POIS.flatMap(([k]) => [
         [`${k}_name`, S(im[`emp_${k}_name`])],
@@ -103,19 +142,26 @@ function AdresseTab({ b }: { b: BienData }) {
         [`${k}_moyen`, S(im[`emp_${k}_moyen`]) || "à pied"],
         [`${k}_geo`, S(im[`emp_${k}_geo`])],
       ]),
-    ) as Record<string, string>,
+    ),
   );
+  const [pts, setPts] = useMemoireServie<PointLibre[]>(`${cleMem}pts`, lirePoints(im));
   const [pop, setPop] = useState(S(num(im.emp_population)));
   const [rev, setRev] = useState(S(num(im.emp_revenus)));
   const [zt, setZt] = useState(im.emp_zone_tendue === true);
-  const [tension, setTension] = useState(S(im.emp_tension_locative));
+  const [tension, setTension] = useMemoireServie(`${cleMem}tension`, S(im.emp_tension_locative));
+  /** Vrai quand la tension affichée vient de LOCservice et non de la fiche (#389). */
+  const [tensionProposee, setTensionProposee] = useState(false);
   const [editionAdr, setEditionAdr] = useState(false);
 
   // Enrichissement automatique (retours #14 et #15).
   const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
   const lat = num(geo?.lat);
   const lon = num(geo?.lng);
-  const [sugg, setSugg] = useState<Enrichissement | null>(null);
+  /* Les propositions survivent au remontage de l'onglet (voir `cleMem`) :
+     sans ça, choisir une gare — donc enregistrer — effaçait les propositions
+     des cinq autres cases. Préfixe distinct : `oublier(cleMem)` ne doit pas
+     les emporter avec la saisie. */
+  const [sugg, setSugg] = useMemoire<Enrichissement | null>(`empsugg:${immeubleId}`, null);
   /* Code INSEE de la commune : il ouvre le tensiomètre LOCservice sur la
      bonne ville (#76). L'enrichissement le rapporte ; à défaut on le demande
      une fois, sans rien modifier de la fiche. */
@@ -129,6 +175,30 @@ function AdresseTab({ b }: { b: BienData }) {
       .then((d) => { if (d?.code) setInseeSeul(String(d.code)); })
       .catch(() => {});
   }, [insee, im.adresse_ville, im.adresse_zipcode]);
+
+  /* Retour #389 — la tension locative se propose toute seule, depuis le
+     tensiomètre LOCservice de la commune (la source que la vignette affiche).
+     Uniquement quand la case est vide : une valeur choisie par l'agent ne se
+     réécrit jamais. Elle reste une proposition — c'est le bouton Enregistrer
+     qui la fait entrer dans la fiche, comme les autres valeurs de l'écran. */
+  const tensionVideEnBase = !S(im.emp_tension_locative);
+  const tensionRef = useRef(tension);
+  useEffect(() => { tensionRef.current = tension; }, [tension]);
+  /* Une seule lecture par commune : le `set` de la mémoire d'écran change à
+     chaque rendu, l'effet se relance donc plus souvent qu'il ne le faudrait. */
+  const tensionDemandee = useRef("");
+  useEffect(() => {
+    if (!insee || !tensionVideEnBase || tensionDemandee.current === insee) return;
+    tensionDemandee.current = insee;
+    tensionLocservice(insee)
+      .then((t) => {
+        // L'agent a pu choisir entre-temps : sa valeur prime.
+        if (!t || tensionRef.current) return;
+        setTension(t);
+        setTensionProposee(true);
+      })
+      .catch(() => undefined);
+  }, [insee, tensionVideEnBase, setTension]);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   /** Photo des valeurs avant remplissage automatique, pour pouvoir l'annuler. */
@@ -237,15 +307,18 @@ function AdresseTab({ b }: { b: BienData }) {
   /* Ce qui est en base au chargement : la barre d'enregistrement n'apparaît
      que si l'écran s'en écarte (retours #79 et #83). */
   const enBase = useRef<string>("");
-  const courant = JSON.stringify({ poi, pop, rev, zt, tension });
+  const courant = JSON.stringify({ poi, pts, pop, rev, zt, tension });
   if (!enBase.current) enBase.current = courant;
   const modifie = courant !== enBase.current;
 
   const save = () =>
-    start(() => {
+    start(async () => {
       const patch: Record<string, unknown> = {
         emp_population: parse(pop), emp_revenus: parse(rev),
         emp_zone_tendue: zt, emp_tension_locative: tension || undefined,
+        emp_points: pts
+          .filter((p) => p.name.trim() || p.time.trim())
+          .map((p) => ({ type: p.type, name: p.name.trim(), time: parse(p.time), moyen: p.moyen || "à pied", geo: p.geo || undefined })),
       };
       for (const [k] of POIS) {
         patch[`emp_${k}_name`] = poi[`${k}_name`] || undefined;
@@ -257,8 +330,41 @@ function AdresseTab({ b }: { b: BienData }) {
         patch[`emp_${k}_moyen`] = poi[`${k}_moyen`] || undefined;
       }
       enBase.current = courant;
-      return updateEmplacement(immeubleId, patch as EmplacementPatch);
+      setTensionProposee(false);
+      await updateEmplacement(immeubleId, patch as EmplacementPatch);
+      // Enregistré : la fiche redevient la seule source (même geste qu'au PLU).
+      oublier(cleMem);
     });
+
+  /* Retour #388 — « on remplit et c'est pris » : un blur ou Entrée dans une
+     case, un choix dans une liste, et l'enregistrement part par le même chemin
+     que le bouton de la barre. On ne peut pas appeler `save` dans le même
+     geste que le changement (il lirait l'état d'avant) : la demande est notée,
+     et honorée au rendu suivant, quand `modifie` dit vrai. */
+  const validerRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    validerRef.current = () => { if (modifie && !pending) save(); };
+  });
+  const [demande, setDemande] = useState(0);
+  useEffect(() => { if (demande) validerRef.current(); }, [demande]);
+  const valider = () => setDemande((n) => n + 1);
+
+  /* Retour #387 — un point de plus, vide, à remplir sur place. */
+  const ajouterPoint = () =>
+    setPts((prev) => [...prev, { type: "autre", name: "", time: "", moyen: "à pied", geo: "" }]);
+  const majPoint = (i: number, champ: keyof PointLibre, v: string) =>
+    setPts((prev) => prev.map((p, j) => (j !== i ? p : {
+      ...p, [champ]: v,
+      // Retaper le nom désigne un autre lieu : ses coordonnées ne valent plus (#186).
+      ...(champ === "name" ? { geo: "" } : null),
+    })));
+  const supprimerPoint = async (i: number) => {
+    const p = pts[i];
+    const vide = !p.name.trim() && !p.time.trim();
+    if (!vide && !(await confirmer(`Supprimer le point d'intérêt « ${p.name.trim() || TYPES_POI[p.type]} » ?`, { danger: true, oui: "Supprimer" }))) return;
+    setPts((prev) => prev.filter((_, j) => j !== i));
+    valider();
+  };
 
   const adresseComplete = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`;
   const mapsLien = S(b.adr?.maps_url) || `https://www.google.com/maps/search/${encodeURIComponent(adresseComplete)}`;
@@ -343,25 +449,54 @@ function AdresseTab({ b }: { b: BienData }) {
       </div>
       {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
 
+      {/* Retour #386 : deux colonnes, dans l'ordre du BO. Les points ajoutés
+          (#387) se rangent à la suite, en alternant gauche et droite. */}
       <div className="poi-grid">
-        {POIS.map(([k, label]) => (
-          <PoiVignette
-            key={k} cle={k} label={label}
-            nom={poi[`${k}_name`]} minutes={poi[`${k}_time`]} moyen={poi[`${k}_moyen`]}
-            itineraire={itineraireGoogle(im, poi[`${k}_name`] || CHERCHE[k], {
-              geo: poi[`${k}_geo`], moyen: poi[`${k}_moyen`],
+        {[POIS_GAUCHE, POIS_DROITE].map((colonne, c) => (
+          <div className="poi-col" key={c}>
+            {colonne.map((k) => {
+              const label = POIS.find(([cle]) => cle === k)![1];
+              return (
+                <PoiVignette
+                  key={k} cle={k} label={label}
+                  nom={poi[`${k}_name`]} minutes={poi[`${k}_time`]} moyen={poi[`${k}_moyen`]}
+                  itineraire={itineraireGoogle(im, poi[`${k}_name`] || CHERCHE[k], {
+                    geo: poi[`${k}_geo`], moyen: poi[`${k}_moyen`],
+                  })}
+                  suggestions={sugg?.poi?.[k] ?? []}
+                  /* Retaper le nom à la main désigne un autre lieu que celui retenu :
+                     ses coordonnées ne valent plus rien, on les oublie (#186). */
+                  onChange={(champ, v) => setPoi((prev) => ({
+                    ...prev,
+                    [`${k}_${champ}`]: v,
+                    ...(champ === "name" ? { [`${k}_geo`]: "" } : null),
+                  }))}
+                  onChoisir={(s2) => remplirPoi(k, s2)}
+                  onValider={valider}
+                />
+              );
             })}
-            suggestions={sugg?.poi?.[k] ?? []}
-            /* Retaper le nom à la main désigne un autre lieu que celui retenu :
-               ses coordonnées ne valent plus rien, on les oublie (#186). */
-            onChange={(champ, v) => setPoi((prev) => ({
-              ...prev,
-              [`${k}_${champ}`]: v,
-              ...(champ === "name" ? { [`${k}_geo`]: "" } : null),
-            }))}
-            onChoisir={(s2) => remplirPoi(k, s2)}
-          />
+            {pts.map((p, i) => (i % 2 === c ? (
+              <PoiVignette
+                key={`libre-${i}`} cle={p.type} label={TYPES_POI[p.type]}
+                nom={p.name} minutes={p.time} moyen={p.moyen}
+                itineraire={itineraireGoogle(im, p.name || CHERCHE[p.type], { geo: p.geo, moyen: p.moyen })}
+                suggestions={sugg?.poi?.[p.type] ?? []}
+                onChange={(champ, v) => majPoint(i, champ === "name" ? "name" : champ === "time" ? "time" : "moyen", v)}
+                onType={(t) => majPoint(i, "type", t)}
+                onChoisir={(s2) => setPts((prev) => prev.map((q, j) => (j !== i ? q : {
+                  ...q, name: s2.nom, time: String(s2.minutes), moyen: s2.moyen,
+                  geo: s2.lat !== undefined && s2.lon !== undefined ? `${s2.lat},${s2.lon}` : "",
+                })))}
+                onValider={valider}
+                onSupprimer={() => { void supprimerPoint(i); }}
+              />
+            ) : null))}
+          </div>
         ))}
+      </div>
+      <div className="poi-add">
+        <button type="button" className="fadd" onClick={ajouterPoint}>+ Ajouter un point d&apos;intérêt</button>
       </div>
 
       <div className="emp-sect">
@@ -435,11 +570,15 @@ function AdresseTab({ b }: { b: BienData }) {
                 enregistrée là-bas en « Très faible » ou « n.c. » ne trouvait
                 pas son option ici et s'affichait « À renseigner ». Les deux
                 écrans lisent désormais le même référentiel. */}
-            <select className={`v bt sel${tension ? "" : " vide"}`} value={tension}
-              onChange={(e) => setTension(e.target.value)}>
+            {/* #389 — proposée par LOCservice : cadre ambre, comme un repère
+                de secteur, jusqu'à l'enregistrement ou à un autre choix. */}
+            <select className={`v bt sel${tension ? "" : " vide"}${tensionProposee ? " propose" : ""}`} value={tension}
+              title={tensionProposee ? "Lue sur le tensiomètre LOCservice de la commune — à enregistrer" : undefined}
+              onChange={(e) => { setTensionProposee(false); setTension(e.target.value); }}>
               <option value="">À renseigner</option>
               {TENSIONS_LOCATIVES.map((t) => <option key={t}>{t}</option>)}
             </select>
+            {tensionProposee && <span className="ville-note">proposée par LOCservice</span>}
           </div>
         </div>
         {(sugg?.chomage !== undefined || sugg?.delinquance !== undefined) && (
@@ -451,72 +590,109 @@ function AdresseTab({ b }: { b: BienData }) {
       </div>
 
       <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} />
+      {question}
     </>
   );
 }
 
-/** Vignette d'un point d'intérêt : affichage du BO (picto, nom, moyen, durée)
- *  et édition au clic, avec les propositions automatiques dessous. */
+/* Les moyens de locomotion proposés sur la vignette (#388) : ceux du BO
+   (`MOYENS` de lib/bo/itineraire.ts) plus « en bus », que le BO Bubble propose.
+   Une ancienne valeur hors liste reste choisie. */
+const MOYENS_POI = ["à pied", "en bus", "en voiture", "en transport", "à vélo"] as const;
+
+/**
+ * Vignette d'un point d'intérêt, qui se remplit SUR PLACE (retour #388).
+ *
+ * MAV : « à droite c'est le temps, quand on survole ça montre que c'est une
+ * case à remplir et on remplit ; pareil pour le moyen de transport et pour le
+ * type de point d'intérêt. Là aujourd'hui ça ouvre une sorte de modale, c'est
+ * nul. » Plus de panneau : le nom est une case, la durée une case qui jaunit
+ * au survol, le moyen et le type des listes déroulantes. Tout s'enregistre au
+ * blur, à Entrée ou au choix dans une liste (`onValider`). Les propositions
+ * automatiques se montrent sous la vignette pendant qu'on est dans le nom.
+ */
 function PoiVignette({
-  cle, label, nom, minutes, moyen, itineraire, suggestions, onChange, onChoisir,
+  cle, label, nom, minutes, moyen, itineraire, suggestions, onChange, onType, onChoisir, onValider, onSupprimer,
 }: {
-  cle: string; label: string;
+  cle: CleP; label: string;
   nom: string; minutes: string; moyen: string;
   /** L'itinéraire Google vers ce point, calculé par l'écran (retour #215). */
   itineraire: string;
   suggestions: Suggestion[];
   onChange: (champ: "name" | "time" | "moyen", v: string) => void;
+  /** Point ajouté (#387) : son type se choisit, les six du BO ont le leur. */
+  onType?: (t: CleP) => void;
   onChoisir: (s: Suggestion) => void;
+  /** Enregistrer ce qui vient d'être saisi. */
+  onValider: () => void;
+  /** Point ajouté (#387) : la croix qui le retire. */
+  onSupprimer?: () => void;
 }) {
-  const [edition, setEdition] = useState(false);
+  const [dansLeNom, setDansLeNom] = useState(false);
+  const entree = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") e.currentTarget.blur();
+  };
+  const moyens = MOYENS_POI.includes(moyen as (typeof MOYENS_POI)[number]) || !moyen
+    ? [...MOYENS_POI] : [moyen, ...MOYENS_POI];
   return (
-    <div className={`poi${edition ? " edit" : ""}`}>
-      <div className="poi-l" role="button" tabIndex={0}
-        title="Modifier"
-        onClick={() => setEdition((v) => !v)}
-        onKeyDown={(e) => { if (e.key === "Enter") setEdition((v) => !v); }}>
+    <div className={`poi place${dansLeNom ? " actif" : ""}`}>
+      <div className="poi-l">
         <Picto k={cle} gros />
         <div className="poi-txt">
-          {/* Le titre est le nom du point d'intérêt, saisi par l'agent : il
-              s'édite d'un clic dessus, sans passer par le panneau de détail
-              (retour #47). Le libellé de catégorie n'est qu'un repère. */}
+          {/* Le titre est le nom du point d'intérêt, saisi par l'agent (#47). */}
           <input
             className="poi-nom" value={nom} placeholder={label}
             aria-label={`Nom du point d'intérêt (${label.toLowerCase()})`}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
+            onFocus={() => setDansLeNom(true)}
+            onBlur={() => { setDansLeNom(false); onValider(); }}
+            onKeyDown={entree}
             onChange={(e) => onChange("name", e.target.value)}
           />
-          <i>{moyen || "à pied"}</i>
+          <span className="poi-sub">
+            <select className="poi-sel" value={moyen || "à pied"} aria-label="Moyen de transport"
+              onChange={(e) => { onChange("moyen", e.target.value); onValider(); }}>
+              {moyens.map((x) => <option key={x}>{x}</option>)}
+            </select>
+            {onType && (
+              <select className="poi-sel" value={cle} aria-label="Type de point d'intérêt"
+                onChange={(e) => { onType(e.target.value as CleP); onValider(); }}>
+                {POIS.map(([k]) => <option key={k} value={k}>{TYPES_POI[k]}</option>)}
+              </select>
+            )}
+          </span>
         </div>
-        <span className="poi-min">{minutes ? `${minutes} min` : "—"}</span>
+        <label className="poi-min">
+          <input className="poi-min-in" value={minutes} placeholder="—" inputMode="numeric"
+            aria-label="Durée du trajet en minutes"
+            onChange={(e) => onChange("time", e.target.value.replace(/[^\d]/g, ""))}
+            onBlur={onValider} onKeyDown={entree} />
+          <i>min</i>
+        </label>
+        {/* Le lien qui donne la réponse aux cases d'à côté (#215), désormais
+            sur la vignette elle-même puisqu'il n'y a plus de panneau. */}
+        <a className="poi-go" href={itineraire} target="_blank" rel="noreferrer"
+          title={`Itinéraire ${moyen || "à pied"} — Google Maps`}>
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d="M10 14 20 4M15 4h5v5" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
+          </svg>
+        </a>
+        {onSupprimer && (
+          <button type="button" className="xdel poi-x" title="Supprimer ce point d'intérêt" onClick={onSupprimer}>✕</button>
+        )}
       </div>
-      {edition && (
-        <div className="poi-edit">
-          <input className="min" style={{ width: 60 }} placeholder="min" value={minutes}
-            onChange={(e) => onChange("time", e.target.value)} />
-          <select className="min" style={{ width: 125 }} value={moyen || "à pied"}
-            onChange={(e) => onChange("moyen", e.target.value)}>
-            {MOYENS.map((x) => <option key={x}>{x}</option>)}
-          </select>
-          {/* Le lien qui donne la réponse aux deux cases d'à côté (#215). */}
-          <a className="poi-itin" href={itineraire} target="_blank" rel="noreferrer">
-            <svg viewBox="0 0 24 24" aria-hidden>
-              <path d="M10 14 20 4M15 4h5v5" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
-            </svg>
-            Itinéraire
-          </a>
-          {suggestions.length > 0 && (
-            <div className="vgts">
-              {suggestions.map((s2) => (
-                <button key={s2.nom} type="button" title={`${s2.distance} m`}
-                  className={`vgt${nom === s2.nom ? " on" : ""}`} onClick={() => onChoisir(s2)}>
-                  <b>{s2.nom}</b>
-                  <i>{[s2.sous, `${s2.minutes} min ${s2.moyen}`].filter(Boolean).join(" · ")}</i>
-                </button>
-              ))}
-            </div>
-          )}
+      {dansLeNom && suggestions.length > 0 && (
+        <div className="vgts poi-sugg">
+          {suggestions.map((s2) => (
+            /* `onMouseDown` empêché : sinon le nom perd le focus avant le
+               clic, la liste disparaît et le clic tombe dans le vide. */
+            <button key={s2.nom} type="button" title={`${s2.distance} m`}
+              className={`vgt${nom === s2.nom ? " on" : ""}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChoisir(s2); onValider(); }}>
+              <b>{s2.nom}</b>
+              <i>{[s2.sous, `${s2.minutes} min ${s2.moyen}`].filter(Boolean).join(" · ")}</i>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -1098,55 +1274,190 @@ function SecteurTab({ b }: { b: BienData }) {
       <div className="fsub" style={{ marginTop: 18 }}>Détail par destination</div>
       {dests.length === 0 && <div className="fempty">Saisissez d&apos;abord des lots pour ventiler le secteur par destination.</div>}
       <div className="sect-vgs">
-        {dests.map((d) => {
-          const prefix = DEST_PREFIX[d] ?? "autre";
-          const duType = lots.filter((l) => String(l.Destination ?? "") === d);
-          const surf = duType.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
-          const loyer = num(sect[`${prefix}_loyer_retenu`]);
-          const prix = num(sect[`${prefix}_prix_retenu`]);
-          const renta = num(sect[`${prefix}_renta_retenu`]);
-          /* Retours #269 et #270 : la vignette parle l'unité du marché. Une
-             cave ou une place se compte à l'unité — c'est le NOMBRE de lots
-             qui multiplie, pas une surface qu'ils n'ont pas ; un commerce se
-             cote au m² par an. Le stock, lui, reste mensuel. */
-          const u = uniteSecteur(d);
-          const quantite = u.parLot ? duType.length : surf;
-          const loyerAnD = loyer !== undefined && quantite > 0 ? loyer * quantite * 12 : undefined;
-          return (
-            <div key={d} className="sect-vg">
-              <div className="sv-h">
-                <b>{PLURIELS[d] ?? `${d}s`}</b>
-                <span>
-                  {u.parLot
-                    ? `${duType.length} ${duType.length > 1 ? `${u.lot}s` : u.lot}`
-                    : `${Math.round(surf).toLocaleString("fr-FR")} m² carrez`}
-                </span>
-              </div>
-              <div className="sv-l">
-                <svg viewBox="0 0 24 24"><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></svg>
-                {loyer !== undefined
-                  ? <b>{fr1(loyerAffiche(loyer, d)!)} <i>{u.loyerUnite}</i></b>
-                  : <b className="nc">loyer n.c.</b>}
-                {loyerAnD !== undefined && <span className="chip">{Math.round(loyerAnD / 1000).toLocaleString("fr-FR")} k€/an</span>}
-              </div>
-              <div className="sv-l">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg>
-                {prix !== undefined ? <b>{Math.round(prix).toLocaleString("fr-FR")} <i>{u.prixUnite}</i></b> : <b className="nc">prix n.c.</b>}
-                {prix !== undefined && quantite > 0 && <span className="chip">{Math.round(prix * quantite).toLocaleString("fr-FR")} €</span>}
-              </div>
-              <div className="sv-l">
-                <svg viewBox="0 0 24 24"><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></svg>
-                {renta !== undefined ? <b>{fr1(renta)} <i>%</i></b> : <b className="nc">renta n.c.</b>}
-                {renta !== undefined && loyerAnD !== undefined && renta > 0 && (
-                  <span className="chip">{Math.round(loyerAnD / (renta / 100)).toLocaleString("fr-FR")} €</span>
-                )}
-              </div>
-              <div className="sv-f"><EditSecteurBtn b={b} dest={d} poids={poids} commune={commune} /></div>
-            </div>
-          );
-        })}
+        {dests.map((d) => (
+          <VignetteSecteur key={d} b={b} dest={d} poids={poids} commune={commune} />
+        ))}
       </div>
     </>
+  );
+}
+
+/** Les repères de marché d'une destination, tels que la modale les lit. */
+type RepDest = {
+  reperes: Reperes | null;
+  ue: { loyer: ValeurUE | null; prix: ValeurUE | null } | null;
+};
+
+/**
+ * Lit les repères d'une destination — loyers d'annonce et DVF pour les
+ * logements, unemplacement.com pour les bureaux, commerces et entrepôts.
+ *
+ * Retour #391 : « pour les prix du secteur en automatique, comme ça va les
+ * chercher directement, j'aimerais que ça se mette en automatique, pas juste
+ * quand je clique sur la vignette. » La lecture vivait dans la modale, donc
+ * n'avait lieu qu'à son ouverture. Elle est ici, partagée : la vignette la
+ * lance à l'ouverture de l'onglet et la passe à la modale, qui ne relit rien.
+ * `actif` à faux tant qu'on n'en a pas besoin (la modale de l'estimation).
+ */
+function useReperesSecteur(
+  dest: string, commune: { code?: string; nom?: string } | undefined, b: BienData, actif: boolean,
+): RepDest {
+  const [reperes, setReperes] = useState<Reperes | null>(null);
+  const [ue, setUe] = useState<RepDest["ue"]>(null);
+  const cp = S(b.im.adresse_zipcode);
+  const ville = S(b.im.adresse_ville);
+  const ueLoyer = urlUnemplacement(dest, { cp, ville, insee: commune?.code }, "loyer");
+
+  useEffect(() => {
+    if (!actif || !commune?.code || reperes) return;
+    fetch(`/api/reperes?insee=${commune.code}&destination=${encodeURIComponent(dest)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: Reperes | null) => { if (d) setReperes(d); })
+      .catch(() => {});
+  }, [actif, commune?.code, dest, reperes]);
+
+  useEffect(() => {
+    if (!actif || !ueLoyer || ue) return;
+    const q = new URLSearchParams({ dest, cp, ville, insee: commune?.code ?? "" });
+    fetch(`/api/unemplacement?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: RepDest["ue"]) => { if (d) setUe(d); })
+      .catch(() => {});
+  }, [actif, ueLoyer, ue, dest, cp, ville, commune?.code]);
+
+  return { reperes, ue };
+}
+
+/** Ce qu'une destination affiche : la valeur retenue, sinon le repère. Le
+ *  loyer est dans l'unité de l'écran (`loyerAffiche`), comme dans la modale. */
+function valeursSecteur(sect: Record<string, unknown>, dest: string, rep: RepDest) {
+  const prefix = DEST_PREFIX[dest] ?? "autre";
+  const loyerRetenu = num(sect[`${prefix}_loyer_retenu`]);
+  const prixRetenu = num(sect[`${prefix}_prix_retenu`]);
+  const rentaRetenue = num(sect[`${prefix}_renta_retenu`]);
+  const loyerRep = rep.ue?.loyer ? rep.ue.loyer.valeur
+    : rep.reperes?.loyer ? Math.round(rep.reperes.loyer.valeur * 100) / 100 : undefined;
+  const prixRep = rep.ue?.prix ? Math.round(rep.ue.prix.valeur) : rep.reperes?.prix?.valeur;
+  const loyer = loyerRetenu !== undefined ? loyerAffiche(loyerRetenu, dest) : loyerRep;
+  const prix = prixRetenu ?? prixRep;
+  const loyerMensuel = loyerStocke(loyer, dest);
+  const renta = rentaRetenue ?? (loyerMensuel && prix ? Math.round((loyerMensuel * 12 * 1000) / prix) / 10 : undefined);
+  /* Retour #391 : confirmée destination par destination ; à défaut, le
+     drapeau global que Bubble posait sur tout le relevé fait foi, pour que
+     les relevés vérifiés avant nous ne rougissent pas d'un coup. */
+  const drapeau = sect[`${prefix}_check_ok`];
+  const confirme = drapeau === true || (drapeau === undefined && sect["0 - check_ok"] === true);
+  return {
+    loyer, prix, renta, confirme,
+    /** Au moins un chiffre affiché vient d'un repère, pas de la fiche. */
+    auto: (loyerRetenu === undefined && loyer !== undefined) || (prixRetenu === undefined && prix !== undefined),
+    quoi: rep.ue?.loyer || rep.ue?.prix ? "unemplacement.com"
+      : rep.reperes?.prix ? `DVF ${rep.reperes.prix.millesime}` : "",
+  };
+}
+
+/**
+ * La vignette d'une destination (retours #390 et #391).
+ *
+ * #390 : « sur le BO actuel on n'a pas de bouton Modifier, on clique sur la
+ * vignette et ça marche. » La vignette entière ouvre la modale.
+ * #391 : les repères se posent d'eux-mêmes à l'ouverture ; la vignette reste
+ * rouge tant qu'un agent n'a pas confirmé ou modifié — « Confirmer » l'inscrit
+ * en base avec les chiffres affichés, et elle passe au vert.
+ */
+function VignetteSecteur({ b, dest, poids, commune }: {
+  b: BienData; dest: string; poids: { dest: string; carrez: number }[];
+  commune: { code?: string; nom?: string };
+}) {
+  const sect = b.secteur ?? {};
+  const lots = b.lots;
+  const [pending, start] = useTransition();
+  const rep = useReperesSecteur(dest, commune, b, true);
+  const v = valeursSecteur(sect, dest, rep);
+  const duType = lots.filter((l) => String(l.Destination ?? "") === dest);
+  const surf = duType.reduce((s, l) => s + (num(l.surface_carrez) ?? 0), 0);
+  /* Retours #269 et #270 : la vignette parle l'unité du marché. Une cave ou
+     une place se compte à l'unité — c'est le NOMBRE de lots qui multiplie,
+     pas une surface qu'ils n'ont pas ; un commerce se cote au m² par an. Le
+     stock, lui, reste mensuel. */
+  const u = uniteSecteur(dest);
+  const quantite = u.parLot ? duType.length : surf;
+  const loyerMensuel = loyerStocke(v.loyer, dest);
+  const loyerAnD = loyerMensuel !== undefined && quantite > 0 ? loyerMensuel * quantite * 12 : undefined;
+  const complet = v.loyer !== undefined && v.prix !== undefined;
+
+  const confirmerValeurs = () =>
+    start(() =>
+      saveSecteurDest(
+        String(b.im._id),
+        b.secteur ? String(b.secteur._id ?? "") || null : null,
+        dest,
+        { loyer: loyerMensuel, prix: v.prix, renta: v.renta, check_ok: true },
+        poids,
+      ));
+
+  /* Un chiffre de la vignette : ambre quand il vient d'un repère. */
+  const val = (x: string | undefined, unite: string, nc: string) =>
+    x !== undefined
+      ? <b className={v.auto ? "repere" : ""}>{x} <i>{unite}</i></b>
+      : <b className="nc">{nc}</b>;
+
+  return (
+    <EditSecteurBtn
+      b={b} dest={dest} poids={poids} commune={commune} rep={rep}
+      declencheur={(ouvrir) => (
+        <div
+          className={`sect-vg cliquable${v.confirme ? " ok" : " manque"}`}
+          role="button" tabIndex={0} title="Modifier les valeurs du secteur"
+          onClick={ouvrir}
+          onKeyDown={(e) => { if (e.key === "Enter") ouvrir(); }}
+        >
+          <div className="sv-h">
+            <b>{PLURIELS[dest] ?? `${dest}s`}</b>
+            <span>
+              {u.parLot
+                ? `${duType.length} ${duType.length > 1 ? `${u.lot}s` : u.lot}`
+                : `${Math.round(surf).toLocaleString("fr-FR")} m² carrez`}
+            </span>
+          </div>
+          <div className="sv-l">
+            <svg viewBox="0 0 24 24"><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></svg>
+            {val(v.loyer !== undefined ? fr1(v.loyer) : undefined, u.loyerUnite, "loyer n.c.")}
+            {loyerAnD !== undefined && <span className="chip">{Math.round(loyerAnD / 1000).toLocaleString("fr-FR")} k€/an</span>}
+          </div>
+          <div className="sv-l">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></svg>
+            {val(v.prix !== undefined ? Math.round(v.prix).toLocaleString("fr-FR") : undefined, u.prixUnite, "prix n.c.")}
+            {v.prix !== undefined && quantite > 0 && <span className="chip">{Math.round(v.prix * quantite).toLocaleString("fr-FR")} €</span>}
+          </div>
+          <div className="sv-l">
+            <svg viewBox="0 0 24 24"><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></svg>
+            {val(v.renta !== undefined ? fr1(v.renta) : undefined, "%", "renta n.c.")}
+            {v.renta !== undefined && loyerAnD !== undefined && v.renta > 0 && (
+              <span className="chip">{Math.round(loyerAnD / (v.renta / 100)).toLocaleString("fr-FR")} €</span>
+            )}
+          </div>
+          <div className="sv-f">
+            {v.confirme ? (
+              <span className="sv-etat">✓ Vérifié</span>
+            ) : (
+              <>
+                <span className="sv-etat">
+                  {v.auto ? `Repères ${v.quoi} — à vérifier` : complet ? "À vérifier" : "À renseigner"}
+                </span>
+                {/* Le bouton vit dans la vignette cliquable : on arrête le
+                    clic, sinon il ouvrirait aussi la modale. */}
+                <button
+                  type="button" className="sv-ok" disabled={pending || !complet}
+                  title={complet ? "Confirmer ces valeurs pour le secteur" : "Loyer et prix attendus"}
+                  onClick={(e) => { e.stopPropagation(); confirmerValeurs(); }}
+                >{pending ? "…" : "✓ Confirmer"}</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    />
   );
 }
 
@@ -1254,12 +1565,14 @@ function ChampSecteur({
  * un seul enregistrement, deux endroits d'où l'ouvrir — d'où `declencheur`,
  * qui remplace le bouton « Modifier » par ce que l'appelant veut.
  */
-export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
+export function EditSecteurBtn({ b, dest, poids, commune, declencheur, rep }: {
   b: BienData; dest: string; poids: { dest: string; carrez: number }[];
   /** Commune officielle (code INSEE + nom) pour l'URL SeLoger. */
   commune?: { code?: string; nom?: string };
   /** Bouton d'ouverture sur mesure. Par défaut, le « Modifier » du BO. */
   declencheur?: (ouvrir: () => void) => React.ReactNode;
+  /** Repères déjà lus par la vignette (#391) ; sinon la modale les lit à l'ouverture. */
+  rep?: RepDest;
 }) {
   const immeubleId = String(b.im._id);
   const sect = b.secteur ?? {};
@@ -1278,27 +1591,25 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
      donnent l'ordre de grandeur avant la saisie vérifiée : ils préremplissent
      un champ vide, et restent affichés sous le champ pour se situer. Le
      chiffre retenu, lui, reste celui que l'agent tape. */
-  const [reperes, setReperes] = useState<Reperes | null>(null);
-  const prerempli = useRef({ loyer: false, prix: false });
-
   /* Bureaux, commerces, entrepôts : ni les loyers d'annonce du ministère ni
      DVF ne les cotent. unemplacement.com les publie commune par commune, on
-     va les y chercher — la lecture elle-même est plus bas, une fois l'adresse
-     de la commune connue (#157). */
-  const [ue, setUe] = useState<{ loyer: ValeurUE | null; prix: ValeurUE | null } | null>(null);
+     va les y chercher (#157). La lecture est dans `useReperesSecteur` : quand
+     la vignette l'a déjà faite (#391), la modale reprend son résultat. */
+  const lus = useReperesSecteur(dest, commune, b, open && !rep);
+  const { reperes, ue } = rep ?? lus;
+  const prerempli = useRef({ loyer: false, prix: false });
 
+  /* Les repères préremplissent un champ vide, et seulement lui — le chiffre
+     retenu reste celui que l'agent tape. Le site spécialisé passe devant les
+     sources générales, comme avant. */
   useEffect(() => {
-    if (!open || !commune?.code || reperes) return;
-    fetch(`/api/reperes?insee=${commune.code}&destination=${encodeURIComponent(dest)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: Reperes | null) => {
-        if (!d) return;
-        setReperes(d);
-        if (d.loyer) setLoyer((v) => { if (v) return v; prerempli.current.loyer = true; return String(Math.round(d.loyer!.valeur * 100) / 100); });
-        if (d.prix) setPrix((v) => { if (v) return v; prerempli.current.prix = true; return String(d.prix!.valeur); });
-      })
-      .catch(() => {});
-  }, [open, commune?.code, dest, reperes]);
+    const loyerRep = ue?.loyer ? String(ue.loyer.valeur)
+      : reperes?.loyer ? String(Math.round(reperes.loyer.valeur * 100) / 100) : undefined;
+    const prixRep = ue?.prix ? String(Math.round(ue.prix.valeur))
+      : reperes?.prix ? String(reperes.prix.valeur) : undefined;
+    if (loyerRep) setLoyer((v) => { if (v) return v; prerempli.current.loyer = true; return loyerRep; });
+    if (prixRep) setPrix((v) => { if (v) return v; prerempli.current.prix = true; return prixRep; });
+  }, [reperes, ue]);
 
   /* Le rendement n'est pas une saisie : c'est le loyer annuel rapporté au
      prix. Le laisser à la main, c'est laisser entrer une incohérence. */
@@ -1347,20 +1658,6 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
      tête reste LocalCommercial, « qui me sert moins souvent ». */
   const ueLoyer = urlUnemplacement(dest, { cp, ville, insee: commune?.code }, "loyer");
   const uePrix = urlUnemplacement(dest, { cp, ville, insee: commune?.code }, "prix");
-
-  useEffect(() => {
-    if (!open || !ueLoyer || ue) return;
-    const q = new URLSearchParams({ dest, cp, ville, insee: commune?.code ?? "" });
-    fetch(`/api/unemplacement?${q}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { loyer: ValeurUE | null; prix: ValeurUE | null } | null) => {
-        if (!d) return;
-        setUe(d);
-        if (d.loyer) setLoyer((v) => { if (v) return v; prerempli.current.loyer = true; return String(d.loyer!.valeur); });
-        if (d.prix) setPrix((v) => { if (v) return v; prerempli.current.prix = true; return String(Math.round(d.prix!.valeur)); });
-      })
-      .catch(() => {});
-  }, [open, ueLoyer, ue, dest, cp, ville, commune?.code]);
 
   const liens: { cle: string; label: string; href: string }[] =
     unite.parLot
@@ -1414,7 +1711,12 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
                       immeubleId,
                       b.secteur ? String(b.secteur._id ?? "") || null : null,
                       dest,
-                      { loyer: loyerStocke(parse(loyer), dest), prix: parse(prix), renta: parse(renta), commentaire: comment || undefined },
+                      {
+                        loyer: loyerStocke(parse(loyer), dest), prix: parse(prix), renta: parse(renta),
+                        commentaire: comment || undefined,
+                        // Enregistrer depuis la modale, c'est avoir vérifié (#391).
+                        check_ok: true,
+                      },
                       poids,
                     );
                     setOpen(false);

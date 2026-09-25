@@ -1,17 +1,22 @@
 "use client";
 
-// Tableau des lots — réplique de l'onglet État locatif > Lots du BO.
-// Retours MAV du 11/08 pris en compte : sélecteur de colonnes (gauche),
-// sélecteur de destinations avec compteurs qui recalcule les totaux (droite),
-// unités dans les cellules, écarts %/m², en-tête sur 2 lignes sticky avec
-// séparateurs gras entre groupes, barre d'outils sticky avec libellés +
-// import/export, typologies filtrées par destination.
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+// Tableau des lots — réplique de l'onglet État locatif du BO.
+// Retours MAV du 11/08 pris en compte : sélecteur de destinations avec
+// compteurs qui recalcule les totaux (droite), unités dans les cellules,
+// écarts %/m², en-tête sur 2 lignes sticky avec séparateurs gras entre
+// groupes, barre d'outils sticky avec libellés + import/export, typologies
+// filtrées par destination.
+//
+// Retour #379 (25/09) : les anciens onglets Baux et Locataires sont devenus
+// des VUES du même tableau. Une ligne = un lot, avec son bail et son
+// locataire ; la vue choisie dit seulement quelles colonnes on regarde, et
+// une seule barre enregistre tout.
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
 import {
-  addLocataire, addLot, ajouterTypologie, bailDuLot, deleteLot, duplicateLot, locataireDuLot,
-  setLotTravaux, updateLots, type LotPatch,
+  addLocataire, addLot, ajouterTypologie, bailDuLot, deleteLot, setLotTravaux, updateLocataire,
+  updateLots, type LotPatch,
 } from "@/lib/bo/actions";
 import { dateMatrice, lireMatrice, matriceCsv, rempli } from "@/lib/bo/matrice";
 import { ChampDate } from "@/components/champ-date";
@@ -19,7 +24,7 @@ import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
-  compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
+  compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, INDICES_BAIL, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
 import { ModaleDpe } from "@/components/dpe-modale";
@@ -49,6 +54,17 @@ const IC_DEST: Record<string, React.ReactNode> = {
   Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
 };
 
+/** Les statuts d'un bail, dans l'ordre de la liste (ex-onglet Baux). */
+const STATUTS_BAIL = [
+  { key: "en_cours", label: "Bail en cours" },
+  { key: "impayes", label: "Impayés" },
+  { key: "preavis", label: "Préavis déposé" },
+  { key: "expulsion", label: "Expulsion en cours" },
+] as const;
+type StatutBail = (typeof STATUTS_BAIL)[number]["key"];
+const statutBail = (s: string): StatutBail =>
+  STATUTS_BAIL.find((x) => x.key === s)?.key ?? "en_cours";
+
 /** Cellule Typologie : liste filtrée par destination, et saisie libre dès que
  *  l'agent choisit « Autre » — avec proposition d'enregistrer la nouvelle
  *  typologie, doublons contrôlés (retour MAV #22). */
@@ -60,7 +76,10 @@ function CelluleTypologie({
   ajouts: { destination: string; label: string }[];
   onChange: (v: string) => void;
 }) {
-  const liste = typesFor(destination, valeur, ajouts);
+  /* Dédoublonnée : pour une annexe, « Autre » est à la fois dans la liste
+     de la destination et ajouté en fin par `typesFor`, et React se
+     plaignait de deux options sous la même clé. */
+  const liste = [...new Set(typesFor(destination, valeur, ajouts))];
   // Contrôle de doublon fait sur le référentiel seul : la valeur en cours de
   // saisie ne doit pas se déclarer elle-même en doublon.
   const reference = typesFor(destination, undefined, ajouts).filter((t) => t !== "Autre");
@@ -102,81 +121,6 @@ function CelluleTypologie({
       </span>
       {msg && <span className="tmsg">{msg}</span>}
     </div>
-  );
-}
-
-/**
- * L'occupation d'un lot : sa date d'entrée et son locataire (retour #258).
- *
- * MAV : « quand je veux ajouter la date d'entrée et le nom du locataire, je
- * peux pas. J'aimerais pouvoir rentrer la date sous forme de xx/xx/xxxx ou
- * avec le calendrier — je veux les deux solutions dans la modale. Pour le
- * locataire, je veux juste une petite zone de texte qui s'ouvre. »
- *
- * Les deux colonnes n'affichaient qu'un « + » décoratif. Elles ouvrent
- * maintenant cette fenêtre, qui crée au besoin le bail ET le locataire du lot
- * — sans demander de les rattacher, puisque le lot est déjà connu.
- *
- * Le nom saisi va dans le NOM DE FAMILLE, pas coupé au premier espace : « c'est
- * le nom qui est rempli, et ça sera à l'agent de séparer le nom et le prénom
- * dans la modale si jamais ». Deviner où couper « Jean-Pierre Le Test » se
- * trompe une fois sur deux.
- */
-function ModaleOccupation({ b, lotId, titre, onFermer }: {
-  b: BienData; lotId: string; titre: string; onFermer: () => void;
-}) {
-  const immeubleId = String(b.im._id);
-  const [pending, start] = useTransition();
-  const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
-  const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
-  const [entree, setEntree] = useState(
-    typeof bail?.date_start === "string" ? (bail.date_start as string).slice(0, 10) : "",
-  );
-  const [nom, setNom] = useState(String(loc?.formatted_name ?? ""));
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const enregistrer = () =>
-    start(async () => {
-      setErreur(null);
-      try {
-        if (entree || bail) await bailDuLot(immeubleId, lotId, { date_start: entree || null });
-        if (nom.trim() !== String(loc?.formatted_name ?? "").trim()) {
-          await locataireDuLot(immeubleId, lotId, nom);
-        }
-        onFermer();
-      } catch (e) {
-        setErreur(e instanceof Error ? e.message : String(e));
-      }
-    });
-
-  return (
-    <Modale
-      titre={<>Occupation du {titre.toLowerCase()}</>}
-      onFermer={onFermer}
-      className="etroit"
-      pied={
-        <button className="kgo" type="button" disabled={pending}
-          style={pending ? { opacity: 0.5 } : undefined} onClick={enregistrer}>
-          <span className="ch">›</span> {pending ? "Enregistrement…" : "Enregistrer"}
-        </button>
-      }
-    >
-      <span className="mlab">Date d&apos;entrée</span>
-      <ChampDate valeur={entree} onChange={setEntree} />
-      <span className="mlab">Locataire</span>
-      <input
-        className="min" style={{ width: "100%" }} value={nom}
-        placeholder="Nom du locataire"
-        onChange={(e) => setNom(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }}
-      />
-      <p className="mhint">
-        Le nom va tel quel sur la fiche du locataire : l&apos;onglet Locataires
-        permet ensuite de séparer le prénom du nom, et d&apos;ajouter le
-        téléphone et l&apos;e-mail.
-      </p>
-      {erreur && <p className="mhint" style={{ color: "var(--red)" }}>{erreur}</p>}
-    </Modale>
   );
 }
 
@@ -247,6 +191,83 @@ function CelluleBail({ r, lots, onBail, onLot }: {
   );
 }
 
+/**
+ * La fenêtre « combien ? » des boutons Dupliquer et Ajouter (retour #375).
+ *
+ * MAV : « pour dupliquer et ajouter je veux qu'on me demande combien j'en
+ * veux avec une petite modale. Pour ajouter je veux que tu me demandes la
+ * destination et le type et le nombre de lots à ajouter. » Un immeuble de
+ * découpe a vingt caves et douze parkings identiques : les créer un par un,
+ * c'est vingt clics puis vingt corrections de destination.
+ *
+ * Rien ne part en base ici : les lignes naissent à l'écran, et c'est la barre
+ * Enregistrer qui les écrit, comme pour une ligne ajoutée à la main.
+ */
+function ModaleLots({ mode, nbSel, presentes, typologies, onFermer, onValider }: {
+  mode: "dupliquer" | "ajouter";
+  /** Lots cochés (mode dupliquer) : chacun reçoit le nombre de copies demandé. */
+  nbSel: number;
+  /** Les destinations déjà présentes dans le bien, proposées en premier. */
+  presentes: string[];
+  typologies: { destination: string; label: string }[];
+  onFermer: () => void;
+  onValider: (nombre: number, destination: string, type: string) => void;
+}) {
+  const [nombre, setNombre] = useState("1");
+  const [dest, setDest] = useState(presentes[0] ?? "Logement");
+  const [type, setType] = useState("");
+  /* Deux cents lots d'un coup, c'est déjà une erreur de frappe. */
+  const n = Math.max(0, Math.min(200, parseInt(nombre, 10) || 0));
+  const total = mode === "dupliquer" ? n * nbSel : n;
+  const types = typesFor(dest, undefined, typologies).filter((t) => t !== "Autre");
+  const destinations = [...presentes, ...DESTINATIONS.filter((d) => !presentes.includes(d))];
+  const valider = () => { if (total > 0) onValider(n, dest, type); };
+  const pluriel = total > 1 ? "s" : "";
+
+  return (
+    <Modale
+      titre={mode === "dupliquer" ? `Dupliquer ${nbSel > 1 ? `${nbSel} lots` : "le lot"}` : "Ajouter des lots"}
+      onFermer={onFermer}
+      className="etroit"
+      pied={
+        <button className="kgo" type="button" disabled={total === 0} onClick={valider}
+          style={total === 0 ? { opacity: 0.5 } : undefined}>
+          <span className="ch">›</span> {mode === "dupliquer" ? `Dupliquer ${total} lot${pluriel}` : `Ajouter ${total} lot${pluriel}`}
+        </button>
+      }
+    >
+      {mode === "ajouter" && (
+        <>
+          <span className="mlab">Destination</span>
+          <select className="min" value={dest} onChange={(e) => { setDest(e.target.value); setType(""); }}>
+            {destinations.map((d) => <option key={d}>{d}</option>)}
+          </select>
+          <span className="mlab">Type</span>
+          <select className="min" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">— à préciser dans le tableau —</option>
+            {types.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </>
+      )}
+      <span className="mlab">
+        {mode === "dupliquer" ? `Combien de copies${nbSel > 1 ? " de chaque lot" : ""} ?` : "Nombre de lots"}
+      </span>
+      <input
+        className="min" autoFocus inputMode="numeric" value={nombre}
+        onChange={(e) => setNombre(e.target.value.replace(/\D/g, "").slice(0, 3))}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); valider(); } }}
+      />
+      <p className="mhint">
+        {mode === "dupliquer"
+          ? "Les copies reprennent le lot coché — sans son bail ni son locataire — et prennent les numéros suivants."
+          : "Les lots prennent les numéros suivants ; tout se règle ensuite dans le tableau."}
+        {" "}Rien n&apos;est écrit avant « Enregistrer ».
+      </p>
+    </Modale>
+  );
+}
+
 type Row = {
   id: string; isNew: boolean;
   /** Rang d'affichage choisi à la souris (#82) — il ne touche pas au numéro. */
@@ -266,12 +287,27 @@ type Row = {
   lot_rattache: string;
   Etat: string; Type_dpe: string; renov_year: string;
   commentaire: string;
-  /* Bail et locataire venus de la matrice d'import (#261). Ils attendent que le
-     lot existe en base pour s'y rattacher — un bail sans lot n'a nulle part où
-     aller. Vides pour un lot créé à l'écran. */
-  impBail?: Record<string, string>;
-  impLoc?: Record<string, string>;
+  /* Le bail du lot (ex-onglet Baux, #379). Une case vide reste vide : le bail
+     n'est créé en base que si l'agent écrit quelque chose. */
+  b_loyer: string; b_dg: string; b_entree: string;
+  b_indice: string; b_i0: string; b_i1: string;
+  b_statut: string; b_com: string;
+  /* Le locataire du lot (ex-onglet Locataires, #379). `l_pm` vaut « oui »
+     pour une société. */
+  l_pm: string; l_civ: string; l_prenom: string; l_nom: string;
+  l_phone: string; l_email: string; l_com: string;
 };
+
+/** Les champs du bail et du locataire, à comparer avant d'écrire. */
+const CHAMPS_BAIL = ["b_loyer", "b_dg", "b_entree", "b_indice", "b_i0", "b_i1", "b_statut", "b_com"] as const;
+const CHAMPS_LOC = ["l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"] as const;
+/** Ce que porte une ligne sans bail ni locataire. */
+const VIDE_BAIL_LOC: Pick<Row, (typeof CHAMPS_BAIL)[number] | (typeof CHAMPS_LOC)[number]> = {
+  b_loyer: "", b_dg: "", b_entree: "", b_indice: "", b_i0: "", b_i1: "", b_statut: "en_cours", b_com: "",
+  l_pm: "", l_civ: "", l_prenom: "", l_nom: "", l_phone: "", l_email: "", l_com: "",
+};
+const differe = (avant: Row | undefined, r: Row, champs: readonly (keyof typeof VIDE_BAIL_LOC)[]) =>
+  champs.some((c) => (avant?.[c] ?? VIDE_BAIL_LOC[c]) !== r[c]);
 
 const N = (s: string) => {
   const v = parseFloat(s.replace(",", "."));
@@ -301,7 +337,12 @@ function bailDeduit(r: Row, champ: keyof Row, valeur: string): Partial<Row> | nu
   return null;
 }
 
-function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
+const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+
+function toRow(
+  l: Record<string, unknown>, i: number, travaux = "",
+  bail?: Record<string, unknown>, loc?: Record<string, unknown>,
+): Row {
   return {
     id: String(l._id), isNew: false,
     ordre: typeof l.ordre === "number" ? (l.ordre as number) : i,
@@ -319,6 +360,23 @@ function toRow(l: Record<string, unknown>, i: number, travaux = ""): Row {
     lot_rattache: S(l.lot_rattache),
     Etat: S(l.Etat), Type_dpe: S(l.Type_dpe), renov_year: S(l.renov_year),
     commentaire: S(l.commentaire),
+    b_loyer: S(num(bail?.loyer_init)),
+    b_dg: S(num(bail?.depot_garantie)),
+    b_entree: typeof bail?.date_start === "string" ? (bail.date_start as string).slice(0, 10) : "",
+    b_indice: S(bail?.indice_type),
+    b_i0: S(num(bail?.indice_init)),
+    b_i1: S(num(bail?.indice_actuel)),
+    b_statut: bail?.expulsion === true ? "expulsion"
+      : bail?.impayes === true ? "impayes"
+      : bail?.preavis === true ? "preavis" : "en_cours",
+    b_com: S(bail?.commentaire),
+    l_pm: loc?.pm === true ? "oui" : "",
+    l_civ: S(loc?.["pp_civilité"]),
+    l_prenom: S(loc?.["pp_prénom"]),
+    l_nom: loc?.pm === true ? S(loc?.pm_nom) : S(loc?.pp_nom),
+    l_phone: S(loc?.phone),
+    l_email: S(loc?.email),
+    l_com: S(loc?.commentaire),
   };
 }
 
@@ -369,47 +427,233 @@ function toPatch(r: Row, avecOrdre = false): LotPatch {
   };
 }
 
-/* Colonnes optionnelles, comme les bascules du BO. */
-const OPTIONS = [
-  { key: "batiment", label: "Batiment" },
-  { key: "sol", label: "Surf. utile" },
-  { key: "baux", label: "Baux" },
-  { key: "m2", label: "Loyers/m²" },
-  { key: "commentaire", label: "Commentaire" },
-  { key: "photos", label: "Photos" },
-] as const;
-type OptKey = (typeof OPTIONS)[number]["key"];
+/* ---------- Les colonnes et les vues du tableau (retour #379) ---------- */
 
-/* Colonnes que le BO laisse tomber quand la fenêtre se resserre : il ne garde
-   que l'étage, le numéro, la destination, le type, la surface Carrez, le type
-   de bail, les loyers, l'état, le DPE et un bout de commentaire (retour #54). */
-const OPTIONS_LARGES: OptKey[] = ["batiment", "sol", "baux", "m2", "photos"];
+/**
+ * MAV : « pour les 4 menus en haut on va les fusionner (sauf les charges) et
+ * on va faire en sorte que ce soit juste des boutons à actionner et que ça
+ * change les entrées de l'état locatif. En gros je clique sur Baux, ça enlève
+ * les colonnes état, travaux, DPE, date de réno, HC max, €/m² max et ça me
+ * met les colonnes indispensables du bail. Pareil pour les locataires. […]
+ * Limite je devrais pouvoir sélectionner dans un menu déroulant avec des
+ * cases à cocher les colonnes que je veux afficher. Néanmoins je veux
+ * toujours avoir l'option de base. »
+ *
+ * D'où : UNE liste de colonnes, trois vues toutes faites, une vue à soi.
+ */
+export type ColKey =
+  | "bat" | "etg" | "num" | "dest" | "type" | "carrez" | "sol"
+  | "bail" | "hc" | "hcm2" | "hcmax" | "hcmaxm2"
+  | "etat" | "travaux" | "dpe" | "renov"
+  | "b_loyer" | "b_dg" | "b_entree" | "b_indice" | "b_i0" | "b_i1" | "b_revise" | "b_statut" | "b_com"
+  | "l_pm" | "l_civ" | "l_prenom" | "l_nom" | "l_phone" | "l_email" | "l_com"
+  | "commentaire" | "photos";
+
+type Colonne = {
+  /** L'en-tête, court : la colonne est étroite. */
+  label: string;
+  /** Le libellé du menu « Colonnes », quand l'en-tête seul ne suffit pas. */
+  menu?: string;
+  /* Largeurs relevées sur la capture du BO, en poids relatifs. Elles sont
+     normalisées à 100 % sur les seules colonnes affichées : masquer une
+     colonne ne doit pas faire grossir la case à cocher (retour #52). */
+  poids: number;
+  /* En vue compacte il reste moins de colonnes : les repères (étage, numéro,
+     destination) peuvent respirer, sinon ils tronquent leur contenu. */
+  poidsCompact?: number;
+  /* Colonnes que le BO laisse tomber quand la fenêtre se resserre (retour
+     #54) : il ne garde que ce qui se lit à 1 000 px. */
+  large?: boolean;
+};
+
+export const COLONNES: Record<ColKey, Colonne> = {
+  bat: { label: "Bat.", menu: "Bâtiment", poids: 2.1, large: true },
+  etg: { label: "Etg", menu: "Étage", poids: 2.0, poidsCompact: 3.4 },
+  num: { label: "N°", menu: "Numéro", poids: 2.1, poidsCompact: 3.4 },
+  dest: { label: "Dest.", menu: "Destination", poids: 2.3, poidsCompact: 3.2 },
+  type: { label: "Type", poids: 6.8 },
+  carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.2 },
+  sol: { label: "Au sol", menu: "Surface au sol", poids: 5.5, large: true },
+  bail: { label: "Type bail", menu: "Type de bail", poids: 5.2 },
+  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 4.9 },
+  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 3.8, large: true },
+  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 4.9 },
+  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.0, large: true },
+  etat: { label: "Etat", menu: "État du lot", poids: 5.2 },
+  travaux: { label: "Travaux", poids: 6.1, large: true },
+  dpe: { label: "DPE", poids: 2.7 },
+  /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
+     saisie débordait de sa case (retour #251). */
+  renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, poidsCompact: 6.0 },
+  /* En-têtes courts : à seize colonnes, « Loyer initial » se coupait en
+     « Loyer ini… » ; le libellé entier reste dans le menu Colonnes. */
+  b_loyer: { label: "Loyer init.", menu: "Loyer initial", poids: 5.0 },
+  b_dg: { label: "Dépôt", menu: "Dépôt de garantie", poids: 5.0 },
+  b_entree: { label: "Entrée", menu: "Date d'entrée", poids: 7.0 },
+  b_indice: { label: "Indice", poids: 4.0 },
+  b_i0: { label: "Ind. sign.", menu: "Indice à la signature", poids: 4.8 },
+  b_i1: { label: "Ind. actuel", menu: "Indice actuel", poids: 4.8 },
+  b_revise: { label: "Révisé", menu: "Loyer révisé", poids: 4.8 },
+  b_statut: { label: "Statut bail", menu: "Statut du bail", poids: 6.5 },
+  b_com: { label: "Comm. bail", menu: "Commentaire du bail", poids: 10, large: true },
+  l_pm: { label: "Personne", menu: "Physique / morale", poids: 7.0 },
+  l_civ: { label: "Civ.", menu: "Civilité", poids: 3.2 },
+  l_prenom: { label: "Prénom", poids: 6.5 },
+  l_nom: { label: "Nom", menu: "Nom / raison sociale", poids: 8.0 },
+  l_phone: { label: "Téléphone", poids: 6.5 },
+  l_email: { label: "E-mail", poids: 9.0 },
+  l_com: { label: "Comm. locataire", menu: "Commentaire du locataire", poids: 10, large: true },
+  commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 17.3 },
+  photos: { label: "Photos", poids: 2.9, large: true },
+};
+
+/** Les groupes de l'en-tête, dans l'ordre du tableau. */
+export const GROUPES: { label: string; cols: ColKey[] }[] = [
+  { label: "Référence", cols: ["bat", "etg", "num"] },
+  { label: "Général", cols: ["dest", "type", "carrez", "sol"] },
+  { label: "Loyer", cols: ["bail", "hc", "hcm2", "hcmax", "hcmaxm2"] },
+  { label: "Etat", cols: ["etat", "travaux", "dpe", "renov"] },
+  { label: "Bail", cols: ["b_loyer", "b_dg", "b_entree", "b_indice", "b_i0", "b_i1", "b_revise", "b_statut", "b_com"] },
+  { label: "Locataire", cols: ["l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"] },
+  { label: "Autres", cols: ["commentaire", "photos"] },
+];
+const ORDRE: ColKey[] = GROUPES.flatMap((g) => g.cols);
+/** Sans numéro, destination et type, une ligne ne dit plus de quel lot elle parle. */
+export const FIXES = new Set<ColKey>(["num", "dest", "type"]);
+
+export type Vue = "base" | "baux" | "locataires" | "perso";
+export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
+  /* L'état locatif « de base » : ce que l'écran montrait jusqu'ici. */
+  base: ["bat", "etg", "num", "dest", "type", "carrez", "sol", "bail", "hc", "hcm2", "hcmax", "hcmaxm2",
+    "etat", "travaux", "dpe", "renov", "commentaire", "photos"],
+  /* Le bail : on garde de quoi reconnaître le lot et son loyer, on ôte
+     l'état, les travaux, le DPE, la date de réno et le potentiel. */
+  baux: ["etg", "num", "dest", "type", "carrez", "bail", "hc",
+    "b_loyer", "b_dg", "b_entree", "b_indice", "b_i0", "b_i1", "b_revise", "b_statut", "b_com"],
+  /* Le locataire : qui, comment le joindre, depuis quand, et où en est
+     son bail (préavis, impayés). */
+  locataires: ["etg", "num", "dest", "type", "carrez", "bail", "hc", "b_entree", "b_statut",
+    "l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"],
+};
+export const VUES_LISTE = [
+  { key: "base", label: "État locatif", picto: "lots" },
+  { key: "baux", label: "Baux", picto: "baux" },
+  { key: "locataires", label: "Locataires", picto: "locataires" },
+] as const;
+
+const CLE_VUE = "bo.locatif.vue";
+
+/* Le stockage local est une source EXTERNE à React : on s'y abonne plutôt
+   que de le recopier dans un état après coup. Si le navigateur le refuse
+   (navigation privée), la mémoire du module prend le relais le temps de la
+   page. */
+const ECOUTEURS = new Set<() => void>();
+let memoireVue: string | null = null;
+const lireVue = () => {
+  try { return localStorage.getItem(CLE_VUE) ?? memoireVue; } catch { return memoireVue; }
+};
+const ecrireVue = (v: Vue, p: ColKey[]) => {
+  memoireVue = JSON.stringify({ vue: v, perso: p });
+  try { localStorage.setItem(CLE_VUE, memoireVue); } catch { /* on garde la mémoire du module */ }
+  ECOUTEURS.forEach((f) => f());
+};
+const abonnerVue = (f: () => void) => {
+  ECOUTEURS.add(f);
+  window.addEventListener("storage", f);
+  return () => { ECOUTEURS.delete(f); window.removeEventListener("storage", f); };
+};
+/** Relit ce qui est mémorisé, en ne gardant que ce qui existe encore. */
+const decoderVue = (brut: string | null): { vue: Vue; perso: ColKey[] } => {
+  try {
+    const m = JSON.parse(brut ?? "null") as { vue?: unknown; perso?: unknown } | null;
+    if (!m || typeof m !== "object") return { vue: "base", perso: VUES.base };
+    const vue: Vue = m.vue === "perso" || (typeof m.vue === "string" && m.vue in VUES) ? (m.vue as Vue) : "base";
+    const perso = Array.isArray(m.perso)
+      ? ORDRE.filter((c) => (m.perso as unknown[]).includes(c) || FIXES.has(c))
+      : VUES.base;
+    return { vue, perso };
+  } catch { return { vue: "base", perso: VUES.base }; }
+};
+
+/**
+ * La vue choisie, mémorisée par navigateur (localStorage, pas en base) :
+ * c'est une préférence d'écran, pas une donnée de l'immeuble. Le rendu
+ * serveur ne connaît pas le stockage : il rend la vue de base, et le
+ * navigateur applique la sienne aussitôt monté.
+ */
+export function useVueLocatif() {
+  const brut = useSyncExternalStore(abonnerVue, lireVue, () => null);
+  const { vue, perso } = useMemo(() => decoderVue(brut), [brut]);
+  const colonnes = vue === "perso" ? perso : VUES[vue];
+  const setVue = (v: Vue) => ecrireVue(v, perso);
+  /* Cocher ou décocher une colonne, c'est composer SA vue : on part de ce
+     qui est affiché, quelle que soit la vue d'origine. */
+  const basculer = (c: ColKey) => {
+    if (FIXES.has(c)) return;
+    const n = colonnes.includes(c) ? colonnes.filter((x) => x !== c) : ORDRE.filter((x) => x === c || colonnes.includes(x));
+    ecrireVue("perso", n);
+  };
+  return { vue, colonnes, setVue, basculer };
+}
+
+/** Le bouton « Colonnes ▾ » et sa liste de cases à cocher (retour #379). */
+export function MenuColonnes({ colonnes, actif, onBasculer }: {
+  colonnes: ColKey[];
+  /** Vrai quand la vue affichée est celle composée ici. */
+  actif: boolean;
+  onBasculer: (c: ColKey) => void;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ouvert) return;
+    const dehors = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOuvert(false); };
+    const echap = (e: KeyboardEvent) => { if (e.key === "Escape") setOuvert(false); };
+    document.addEventListener("mousedown", dehors);
+    document.addEventListener("keydown", echap);
+    return () => { document.removeEventListener("mousedown", dehors); document.removeEventListener("keydown", echap); };
+  }, [ouvert]);
+  return (
+    <div className="lcol" ref={ref}>
+      <button type="button" className={`ftab${actif ? " on" : ""}`} aria-expanded={ouvert}
+        title="Choisir les colonnes affichées" onClick={() => setOuvert((o) => !o)}>
+        Colonnes <span className="chev">▾</span>
+      </button>
+      {ouvert && (
+        <div className="lcol-menu" role="menu">
+          {GROUPES.map((g) => (
+            <div key={g.label} className="lcol-g">
+              <b>{g.label}</b>
+              {g.cols.map((c) => (
+                <label key={c} className={FIXES.has(c) ? "fixe" : undefined}>
+                  <input type="checkbox" checked={colonnes.includes(c)} disabled={FIXES.has(c)}
+                    onChange={() => onBasculer(c)} />
+                  {COLONNES[c].menu ?? COLONNES[c].label}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** En dessous, les colonnes secondaires ne tiennent plus lisiblement. */
 const SEUIL_COMPACT = 1000;
 /** En dessous, aucun tableau ne tient : on passe aux cartes (téléphone). */
 const SEUIL_MOBILE = 640;
-
-/* Largeurs relevées sur la capture du BO, en poids relatifs. Elles sont
-   normalisées à 100 % sur les seules colonnes affichées : masquer une colonne
-   ne doit pas faire grossir la case à cocher (retour #52). */
-const POIDS: Record<string, number> = {
-  bat: 2.1, etg: 2.0, num: 2.1, dest: 2.3, type: 6.8, carrez: 5.2, sol: 5.5,
-  bail: 5.2, entree: 4.6, locataire: 8.8, hc: 4.9, hcm2: 3.8, hcmax: 4.9,
-  /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
-     saisie débordait de sa case (retour #251). */
-  hcmaxm2: 4.0, etat: 5.2, travaux: 6.1, dpe: 2.7, renov: 5.4,
-  commentaire: 17.3, photos: 2.9,
-};
-/* En vue compacte il reste moins de colonnes : les repères (étage, numéro,
-   destination) peuvent respirer, sinon ils tronquent leur contenu. */
-const POIDS_COMPACT: Record<string, number> = { etg: 3.4, num: 3.4, dest: 3.2, renov: 6.0 };
 
 const PLURIEL: Record<string, string> = {
   Logement: "Logements", Commerce: "Commerces", Bureau: "Bureaux",
   Logistique: "Entrepôts", Cave: "Caves", Parking: "Parkings", Annexe: "Annexes",
 };
 
-export function LotsEditor({ b }: { b: BienData }) {
+export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
+  b: BienData;
+  /** Les colonnes de la vue en cours (#379) ; la vue de base à défaut. */
+  colonnes?: ColKey[];
+}) {
   const immeubleId = String(b.im._id);
   /* Le recensement ADEME (#DPE) : une fenêtre de consultation, hors de la
      mémoire d'écran — une fenêtre ouverte n'est pas un travail à retrouver. */
@@ -424,9 +668,19 @@ export function LotsEditor({ b }: { b: BienData }) {
     }
     return m;
   }, [b.travaux]);
+  /* Le bail et le locataire de chaque lot, tels qu'ils sont en base (#379). */
+  const bailDe = (lotId: string) =>
+    b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
+  const locDe = (lotId: string) =>
+    b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
   const initial = useMemo(
-    () => b.lots.map((l, i) => toRow(l, i, String(travauxDuLot.get(String(l._id)) ?? ""))),
-    [b.lots, travauxDuLot],
+    () => b.lots.map((l, i) => {
+      const id = String(l._id);
+      const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(id));
+      const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(id));
+      return toRow(l, i, String(travauxDuLot.get(id) ?? ""), bail, loc);
+    }),
+    [b.lots, b.baux, b.locataires, travauxDuLot],
   );
   /* Point de retour de « Annuler » (#85) : la dernière version enregistrée. */
   const enregistre = useRef<Row[]>(initial);
@@ -434,11 +688,6 @@ export function LotsEditor({ b }: { b: BienData }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
-  // Les colonnes de bail sont masquées par défaut : elles font doublon avec
-  // l'onglet Baux et mangent la largeur utile (retour #52).
-  const [opts, setOpts] = useState<Record<OptKey, boolean>>({
-    batiment: true, sol: true, baux: false, m2: true, commentaire: true, photos: true,
-  });
   const [destOff, setDestOff] = useState<Set<string>>(new Set());
 
   // Largeur réellement disponible : en dessous du seuil on bascule en vue
@@ -460,12 +709,6 @@ export function LotsEditor({ b }: { b: BienData }) {
   const [lotOuvert, setLotOuvert] = useState<string | null>(null);
 
   const compacte = compact;
-  const on = (k: OptKey) => opts[k] && !(compacte && OPTIONS_LARGES.includes(k));
-  /* La bascule « Batiment » couvre bâtiment et étage. En fenêtre étroite le BO
-     ne sacrifie que le bâtiment : l'étage reste, c'est un repère de terrain. */
-  const colBat = opts.batiment && !compacte;
-  const colEtg = opts.batiment;
-  const toggleOpt = (k: OptKey) => setOpts((o) => ({ ...o, [k]: !o[k] }));
   const toggleDest = (d: string) =>
     setDestOff((s) => {
       const n = new Set(s);
@@ -491,31 +734,21 @@ export function LotsEditor({ b }: { b: BienData }) {
     [parDest, destOff],
   );
 
-  /* Colonnes réellement affichées, dans l'ordre du tableau. */
-  const colonnes = useMemo(() => {
-    const c: string[] = [];
-    if (colBat) c.push("bat");
-    if (colEtg) c.push("etg");
-    c.push("num", "dest", "type", "carrez");
-    if (on("sol")) c.push("sol");
-    c.push("bail");
-    if (on("baux")) c.push("entree", "locataire");
-    c.push("hc");
-    if (on("m2")) c.push("hcm2");
-    c.push("hcmax");
-    if (on("m2")) c.push("hcmaxm2");
-    c.push("etat");
-    if (!compacte) c.push("travaux");
-    c.push("dpe", "renov");
-    if (on("commentaire")) c.push("commentaire");
-    if (on("photos")) c.push("photos");
-    return c;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts, compacte, colBat, colEtg]);
+  /* Colonnes réellement affichées, dans l'ordre du tableau : la vue choisie,
+     moins ce que la fenêtre étroite ne peut pas montrer (#54). */
+  const colonnes = ORDRE.filter((c) => choisies.includes(c) && !(compacte && COLONNES[c].large));
+  /* Les groupes de l'en-tête qui ont encore au moins une colonne, et la
+     première colonne de chacun, qui porte le séparateur gras. */
+  const groupes = GROUPES
+    .map((g) => ({ label: g.label, cols: g.cols.filter((c) => colonnes.includes(c)) }))
+    .filter((g) => g.cols.length > 0);
+  const brd = new Set(groupes.map((g) => g.cols[0]));
+  const cls = (c: ColKey, ...extra: (string | false | undefined)[]) =>
+    [brd.has(c) ? "brd" : "", ...extra].filter(Boolean).join(" ") || undefined;
 
-  const poids = (c: string) => (compacte ? POIDS_COMPACT[c] : undefined) ?? POIDS[c] ?? 4;
+  const poids = (c: ColKey) => (compacte ? COLONNES[c].poidsCompact : undefined) ?? COLONNES[c].poids;
   const totalPoids = colonnes.reduce((s2, c) => s2 + poids(c), 0);
-  const largeur = (c: string) => (poids(c) / totalPoids) * 100;
+  const largeur = (c: ColKey) => (poids(c) / totalPoids) * 100;
 
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
 
@@ -571,19 +804,120 @@ export function LotsEditor({ b }: { b: BienData }) {
       return n;
     });
 
-  const nextNumero = () =>
-    String(rows.reduce((m, r) => Math.max(m, parseInt(r.numero, 10) || 0), 0) + 1);
+  const nextNumero = (rs: Row[]) =>
+    rs.reduce((m, r) => Math.max(m, parseInt(r.numero, 10) || 0), 0) + 1;
 
-  const addRow = () => {
-    const id = `new_${Date.now()}`;
-    setRows((rs) => [...rs, {
-      id, isNew: true, ordre: rs.length, travaux: "", travaux_objet: "", travaux_urgence: "",
-      batiment: "", etage: "", numero: nextNumero(),
-      Destination: "Logement", Type_lot: "", surface_carrez: "", surface_sol: "",
-      Type_bail: "Vide", loyer: "", loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
-      renov_year: "", commentaire: "",
-    }]);
-    setDirty((d) => new Set(d).add(id));
+  /** Une ligne neuve, prête à être remplie. */
+  const ligneNeuve = (id: string, ordre: number, numero: number, dest = "Logement", type = ""): Row => ({
+    id, isNew: true, ordre, travaux: "", travaux_objet: "", travaux_urgence: "",
+    batiment: "", etage: "", numero: String(numero),
+    Destination: dest, Type_lot: type, surface_carrez: "", surface_sol: "",
+    Type_bail: "Vide", loyer: "", loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
+    renov_year: "", commentaire: "",
+    ...VIDE_BAIL_LOC,
+  });
+
+  /**
+   * Ajoute N lots d'une destination et d'un type (retour #375). Les
+   * numéros suivent le plus grand numéro du tableau, saisie en cours comprise.
+   */
+  const ajouterLots = (nombre: number, dest = "Logement", type = "") => {
+    const base = Date.now();
+    const ids: string[] = [];
+    setRows((rs) => {
+      let numero = nextNumero(rs);
+      const neuves: Row[] = [];
+      for (let k = 0; k < nombre; k++) {
+        const id = `new_${base}_${k}`;
+        ids.push(id);
+        neuves.push(ligneNeuve(id, rs.length + k, numero++, dest, type));
+      }
+      return [...rs, ...neuves];
+    });
+    setDirty((d) => { const n = new Set(d); ids.forEach((id) => n.add(id)); return n; });
+  };
+
+  /**
+   * Duplique chaque lot coché en N copies (retour #375). Les copies sont des
+   * lignes neuves du tableau — pas des lots en base : rien ne part avant
+   * « Enregistrer », et « Annuler » les fait disparaître. Le bail et le
+   * locataire ne se copient pas : une cave dupliquée n'a pas déjà son
+   * locataire.
+   */
+  const dupliquerLots = (copies: number) => {
+    const base = Date.now();
+    const ids: string[] = [];
+    setRows((rs) => {
+      let numero = nextNumero(rs);
+      const neuves: Row[] = [];
+      for (const src of rs.filter((r) => sel.has(r.id))) {
+        for (let k = 0; k < copies; k++) {
+          const id = `new_${base}_${neuves.length}`;
+          ids.push(id);
+          neuves.push({
+            ...src, id, isNew: true, ordre: rs.length + neuves.length, numero: String(numero++),
+            travaux: "", travaux_objet: "", travaux_urgence: "", lot_rattache: "",
+            ...VIDE_BAIL_LOC,
+          });
+        }
+      }
+      return [...rs, ...neuves];
+    });
+    setDirty((d) => { const n = new Set(d); ids.forEach((id) => n.add(id)); return n; });
+    setSel(new Set());
+  };
+
+  /** La fenêtre « combien ? » ouverte, s'il y en a une (#375). */
+  const [fenetreLots, setFenetreLots] = useState<"dupliquer" | "ajouter" | null>(null);
+
+  /** Écrit le bail et le locataire d'un lot s'ils ont bougé (#379). */
+  const enregistrerBailLoc = async (r: Row, id: string, avant: Row | undefined) => {
+    const bailExiste = !!bailDe(r.id);
+    /* Le type de bail est une colonne du lot ; s'il change et qu'un bail
+       existe, le bail suit — l'ancien onglet Baux le tenait à jour aussi. */
+    if (differe(avant, r, CHAMPS_BAIL) || (bailExiste && avant?.Type_bail !== r.Type_bail)) {
+      await bailDuLot(immeubleId, id, {
+        Type_bail: r.Type_bail && !BAIL_VIDE.has(r.Type_bail) ? r.Type_bail : null,
+        loyer_init: nb(r.b_loyer),
+        depot_garantie: nb(r.b_dg),
+        date_start: r.b_entree || null,
+        indice_type: r.b_indice || null,
+        indice_init: nb(r.b_i0),
+        indice_actuel: nb(r.b_i1),
+        statut: statutBail(r.b_statut),
+        commentaire: r.b_com || null,
+      });
+    }
+    if (differe(avant, r, CHAMPS_LOC)) {
+      const lc = locDe(r.id);
+      const pm = r.l_pm === "oui";
+      if (lc) {
+        await updateLocataire(immeubleId, String(lc._id), {
+          pm,
+          pm_nom: pm ? (r.l_nom || null) : null,
+          pp_civilite: pm ? null : (r.l_civ || null),
+          pp_prenom: pm ? null : (r.l_prenom || null),
+          pp_nom: pm ? null : (r.l_nom || null),
+          phone: r.l_phone || null,
+          email: r.l_email || null,
+          commentaire: r.l_com || null,
+        });
+      } else if (r.l_nom.trim()) {
+        /* Tant qu'il n'a pas de nom, le locataire n'existe pas : une fiche
+           sans nom ne servirait à personne. */
+        await addLocataire(immeubleId, {
+          pm,
+          pm_nom: pm ? r.l_nom : undefined,
+          pp_civilite: pm ? undefined : r.l_civ || undefined,
+          pp_prenom: pm ? undefined : r.l_prenom || undefined,
+          pp_nom: pm ? undefined : r.l_nom,
+          phone: r.l_phone || undefined,
+          email: r.l_email || undefined,
+          lotIds: [id],
+          commentaire: r.l_com || undefined,
+        });
+      }
+    }
   };
 
   const save = () =>
@@ -599,39 +933,10 @@ export function LotsEditor({ b }: { b: BienData }) {
         if (Number.isFinite(montant) && montant > 0) {
           await setLotTravaux(immeubleId, id, `lot ${r.numero || r.Type_lot || ""}`.trim(), montant, null, 0, objetTravaux(r));
         }
-        /* Le bail et le locataire venus de la matrice (#261) : maintenant que
-           le lot a une identité, ils peuvent s'y rattacher. */
-        if (r.impBail) {
-          const v = r.impBail;
-          const statut = ["en_cours", "impayes", "preavis", "expulsion"].includes(v.statut)
-            ? (v.statut as "en_cours" | "impayes" | "preavis" | "expulsion") : "en_cours";
-          await bailDuLot(immeubleId, id, {
-            Type_bail: r.Type_bail && r.Type_bail !== "Vide" ? r.Type_bail : null,
-            loyer_init: N(v.loyer_initial) ?? null,
-            depot_garantie: N(v.depot_garantie) ?? null,
-            date_start: dateMatrice(v.date_entree) || null,
-            indice_type: v.indice || null,
-            indice_init: N(v.indice_signature) ?? null,
-            indice_actuel: N(v.indice_actuel) ?? null,
-            statut,
-            commentaire: v.commentaire || null,
-          });
-        }
-        if (r.impLoc) {
-          const v = r.impLoc;
-          const pm = /^(oui|o|x|vrai|true|1)$/i.test(v.societe.trim());
-          await addLocataire(immeubleId, {
-            pm,
-            pm_nom: pm ? v.nom : undefined,
-            pp_civilite: pm ? undefined : v.civilite || undefined,
-            pp_prenom: pm ? undefined : v.prenom || undefined,
-            pp_nom: pm ? undefined : v.nom,
-            phone: v.telephone || undefined,
-            email: v.email || undefined,
-            lotIds: [id],
-            commentaire: v.commentaire || undefined,
-          });
-        }
+        /* Le bail et le locataire saisis sur la ligne — ou venus de la
+           matrice (#261) : maintenant que le lot a une identité, ils peuvent
+           s'y rattacher. */
+        await enregistrerBailLoc(r, id, undefined);
       }
       if (edits.length) await updateLots(immeubleId, edits.map((r) => ({ id: r.id, patch: toPatch(r, rang) })));
       // Travaux des lots existants : seulement ceux dont le montant a bougé.
@@ -645,10 +950,14 @@ export function LotsEditor({ b }: { b: BienData }) {
         const autres = avant - (typeof dediee?.montant === "number" ? (dediee.montant as number) : 0);
         await setLotTravaux(immeubleId, r.id, `lot ${r.numero || r.Type_lot || ""}`.trim(), cible, dediee ? String(dediee._id) : null, autres, objetTravaux(r));
       }
+      /* Bail et locataire des lots existants (#379) : seulement ce qui a
+         bougé depuis la dernière version enregistrée. */
+      for (const r of edits) {
+        await enregistrerBailLoc(r, r.id, enregistre.current.find((x) => x.id === r.id));
+      }
       reordonne.current = false;
       enregistre.current = rows.map((r) => ({
         ...r, isNew: false, travaux: "", travaux_objet: "", travaux_urgence: "",
-        impBail: undefined, impLoc: undefined,
       }));
       setImporte(null);
       setDirty(new Set());
@@ -683,20 +992,8 @@ export function LotsEditor({ b }: { b: BienData }) {
     setDirty(new Set(rows.map((r) => r.id)));
   };
 
-  const duplicate = () =>
-    start(async () => {
-      let n = parseInt(nextNumero(), 10);
-      for (const id of sel) {
-        const src = b.lots.find((l) => String(l._id) === id);
-        if (src) await duplicateLot(immeubleId, src, n++);
-      }
-      setSel(new Set());
-    });
-
   /** Le lot dont on demande l'objet des travaux (retour #254). */
   const [objetDe, setObjetDe] = useState<string | null>(null);
-  /** Le lot dont on saisit l'occupation — date d'entrée et locataire (#258). */
-  const [occupation, setOccupation] = useState<string | null>(null);
 
   /* Suppression (#86) : une vraie fenêtre qui récapitule les lots concernés,
      pas la boîte du navigateur. */
@@ -759,6 +1056,9 @@ export function LotsEditor({ b }: { b: BienData }) {
         const id = `new_${Date.now()}_${nouveaux.length}`;
         if (rempli(bail)) baux++;
         if (locataire.nom.trim()) locataires++;
+        /* Le bail et le locataire de la matrice prennent leurs colonnes dans
+           la ligne (#379) : ils se relisent dans les vues Baux et Locataires
+           avant d'être enregistrés, comme le reste. */
         nouveaux.push({
           id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
           batiment: o.batiment, etage: o.etage, numero: o.numero,
@@ -768,8 +1068,13 @@ export function LotsEditor({ b }: { b: BienData }) {
           lot_rattache: "",
           Etat: o.Etat || "n.c.", Type_dpe: o.Type_dpe || "n.c.",
           renov_year: o.renov_year, commentaire: o.commentaire,
-          impBail: rempli(bail) ? bail : undefined,
-          impLoc: locataire.nom.trim() ? locataire : undefined,
+          b_loyer: bail.loyer_initial ?? "", b_dg: bail.depot_garantie ?? "",
+          b_entree: dateMatrice(bail.date_entree ?? ""), b_indice: bail.indice ?? "",
+          b_i0: bail.indice_signature ?? "", b_i1: bail.indice_actuel ?? "",
+          b_statut: statutBail(bail.statut ?? ""), b_com: bail.commentaire ?? "",
+          l_pm: /^(oui|o|x|vrai|true|1)$/i.test((locataire.societe ?? "").trim()) ? "oui" : "",
+          l_civ: locataire.civilite ?? "", l_prenom: locataire.prenom ?? "", l_nom: locataire.nom ?? "",
+          l_phone: locataire.telephone ?? "", l_email: locataire.email ?? "", l_com: locataire.commentaire ?? "",
         });
       }
       setRows((rs) => [...rs, ...nouveaux]);
@@ -794,23 +1099,242 @@ export function LotsEditor({ b }: { b: BienData }) {
   /** Cases à cocher + colonnes affichées. */
   const nbCols = 1 + colonnes.length;
 
+  /** Une case de saisie texte, sur toute la largeur de sa colonne. */
+  const texte = (c: ColKey, r: Row, champ: keyof Row, placeholder?: string) => (
+    <td key={c} className={cls(c)}>
+      <input className="lcell" value={r[champ] as string} placeholder={placeholder}
+        onChange={(e) => edit(r.id, champ, e.target.value)} />
+    </td>
+  );
+  /** Une case de nombre, avec son unité à droite. */
+  const nombre = (c: ColKey, r: Row, champ: keyof Row, unite?: string) => (
+    <td key={c} className={cls(c, "na")}>
+      <input className="lcell num" value={r[champ] as string} onChange={(e) => edit(r.id, champ, e.target.value)} />
+      {unite && <i>{unite}</i>}
+    </td>
+  );
+
+  /** La cellule d'une colonne pour une ligne. */
+  const cellule = (c: ColKey, r: Row) => {
+    switch (c) {
+      case "bat": return texte(c, r, "batiment");
+      case "etg": return texte(c, r, "etage");
+      case "num":
+        /* La poignée se glisse sous le numéro : ni colonne en plus, ni ligne
+           plus haute (#82). */
+        return (
+          <td key={c} className={cls(c, "poi")}>
+            <input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} />
+            <span
+              className="grip" draggable title="Glisser pour déplacer la ligne"
+              onDragStart={() => setGlisse(r.id)}
+              onDragEnd={() => setGlisse(null)}
+            >
+              <svg viewBox="0 0 16 6"><circle cx="4" cy="3" r="1.1" /><circle cx="8" cy="3" r="1.1" /><circle cx="12" cy="3" r="1.1" /></svg>
+            </span>
+          </td>
+        );
+      case "dest":
+        return (
+          <td key={c} className={cls(c, "dest")} title={r.Destination}>
+            <span className="destic">
+              {r.Destination
+                ? <svg viewBox="0 0 24 24">{IC_DEST[r.Destination] ?? IC_DEST.Annexe}</svg>
+                : <i>—</i>}
+            </span>
+            <select className="lcell inv" value={r.Destination}
+              onChange={(e) => {
+                edit(r.id, "Destination", e.target.value);
+                edit(r.id, "Type_lot", "");
+                /* Devenu cave ou parking, le lot n'a plus de Carrez : la case
+                   disparaît, sa valeur doit disparaître avec elle, sinon elle
+                   continue de peser dans le total sans que personne puisse la
+                   voir (retour #250). */
+                if (compteAuLot(e.target.value)) edit(r.id, "surface_carrez", "");
+              }}>
+              <option value="" />{DESTINATIONS.map((o) => <option key={o}>{o}</option>)}
+            </select>
+          </td>
+        );
+      case "type":
+        return (
+          <td key={c} className={cls(c)}>
+            <CelluleTypologie valeur={r.Type_lot} destination={r.Destination}
+              ajouts={b.typologies} onChange={(v) => edit(r.id, "Type_lot", v)} />
+          </td>
+        );
+      case "carrez":
+        /* Caves et parkings : pas de Carrez (retour #250). La case est barrée
+           plutôt que masquée — une colonne qui disparaît d'une ligne sur
+           l'autre désaligne la lecture. La surface au sol, elle, reste
+           saisissable : elle renseigne sans entrer dans le total de
+           l'immeuble. Retour #305 — « à la place de zéro sur ces types de
+           lots on devrait pouvoir choisir NC » : « n.c. » est une réponse,
+           un tiret se lit comme un oubli. */
+        return compteAuLot(r.Destination)
+          ? <td key={c} className={cls(c, "na", "sansm2")} title="Une cave ou un parking se compte au lot, pas au m² — surface Carrez sans objet">n.c.</td>
+          : nombre(c, r, "surface_carrez", "m²");
+      case "sol": return nombre(c, r, "surface_sol", "m²");
+      case "bail":
+        return (
+          <td key={c} className={cls(c)}>
+            <CelluleBail
+              r={r} lots={rows}
+              onBail={(v) => edit(r.id, "Type_bail", v)}
+              onLot={(v) => edit(r.id, "lot_rattache", v)}
+            />
+          </td>
+        );
+      case "hc": return nombre(c, r, "loyer", "€");
+      case "hcm2": {
+        const act = m2(r.loyer, r.surface_carrez);
+        return <td key={c} className={cls(c, "na", "pc")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
+      }
+      case "hcmax": return nombre(c, r, "loyer_max", "€");
+      case "hcmaxm2": {
+        const max = m2(r.loyer_max || r.loyer, r.surface_carrez);
+        return <td key={c} className={cls(c, "na", "pc")}>{max ? ecart(max) ?? `${max.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
+      }
+      case "etat":
+        return (
+          <td key={c} className={cls(c)}>
+            <select className={`lcell${!r.Etat || r.Etat === "n.c." ? " vide" : ""}${r.Etat === "Travaux" ? " red" : ""}`} value={r.Etat} onChange={(e) => edit(r.id, "Etat", e.target.value)}>
+              <option value="" />{[...new Set([r.Etat, ...ETATS])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
+            </select>
+          </td>
+        );
+      case "travaux":
+        return (
+          <td key={c} className={cls(c, "na")}>
+            <span className={parseFloat(r.travaux) > 0 ? "tvx" : undefined}>
+              {/* Retour #254 : « quand on rentre des travaux ici je veux
+                  qu'on ait une modale qui s'ouvre rapidement pour demander à
+                  quoi ça correspond ». Elle s'ouvre en quittant la case, pas à
+                  chaque frappe, et seulement si le montant a bougé vers du
+                  positif. */}
+              <input
+                className="lcell num" value={r.travaux} placeholder="0"
+                onChange={(e) => edit(r.id, "travaux", e.target.value)}
+                onBlur={() => {
+                  const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
+                  const avant = travauxDuLot.get(r.id) ?? 0;
+                  if (Number.isFinite(v) && v > 0 && v !== avant) setObjetDe(r.id);
+                }}
+              />
+              <i>€</i>
+            </span>
+          </td>
+        );
+      case "dpe":
+        return (
+          <td key={c} className={cls(c)}>
+            {/* La lettre du DPE occupe toute la case : pas de réserve de
+                chevron, sinon elle disparaît dans une colonne étroite (#56).
+                #173 — l'étiquette de Plein Bail sert de visage à la liste : le
+                select passe dessus, transparent, et garde le clic. Rien de
+                saisi : la case reste vide, avec la seule flèche de la liste
+                (retour #252). */}
+            <span className={`dpe-cell${r.Type_dpe ? "" : " nu"}`}>
+              <BadgeDpe lettre={r.Type_dpe} />
+              <select value={r.Type_dpe} aria-label="DPE"
+                onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
+                {/* La liste garde l'ordre du référentiel (retour #253). Une
+                    valeur héritée qu'on ne connaît pas s'ajoute à la fin. */}
+                <option value="" />
+                {DPES.map((o) => <option key={o}>{o}</option>)}
+                {r.Type_dpe && !DPES.includes(r.Type_dpe) && <option>{r.Type_dpe}</option>}
+              </select>
+            </span>
+          </td>
+        );
+      case "renov":
+        return (
+          <td key={c} className={cls(c, "na")}>
+            <input className="lcell num" value={r.renov_year} inputMode="numeric" maxLength={4} placeholder="AAAA"
+              onChange={(e) => edit(r.id, "renov_year", e.target.value.replace(/\D/g, "").slice(0, 4))} />
+          </td>
+        );
+      case "b_loyer": return nombre(c, r, "b_loyer", "€");
+      case "b_dg": return nombre(c, r, "b_dg", "€");
+      case "b_entree":
+        return (
+          <td key={c} className={cls(c)}>
+            <ChampDate classe="lcell" valeur={r.b_entree} onChange={(d) => edit(r.id, "b_entree", d)} />
+          </td>
+        );
+      case "b_indice":
+        return (
+          <td key={c} className={cls(c)}>
+            <select className="lcell" value={r.b_indice} onChange={(e) => edit(r.id, "b_indice", e.target.value)}>
+              <option value="" />
+              {INDICES_BAIL.map((i) => <option key={i}>{i}</option>)}
+            </select>
+          </td>
+        );
+      case "b_i0": return nombre(c, r, "b_i0");
+      case "b_i1": return nombre(c, r, "b_i1");
+      case "b_revise": {
+        /* Déduit du loyer initial et des deux indices : le laisser saisir,
+           c'est laisser entrer une incohérence. */
+        const li = N(r.b_loyer), i0 = N(r.b_i0), i1 = N(r.b_i1);
+        const revise = li && i0 && i1 && i0 > 0 ? Math.round((li * i1) / i0) : undefined;
+        return <td key={c} className={cls(c, "na")}>{revise !== undefined ? euros(revise) : <span className="nc">—</span>}</td>;
+      }
+      case "b_statut":
+        return (
+          <td key={c} className={cls(c)}>
+            <select className="lcell" value={r.b_statut} onChange={(e) => edit(r.id, "b_statut", e.target.value)}>
+              {STATUTS_BAIL.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </td>
+        );
+      case "b_com": return texte(c, r, "b_com");
+      case "l_pm":
+        return (
+          <td key={c} className={cls(c)}>
+            <select className="lcell" value={r.l_pm ? "morale" : "physique"}
+              onChange={(e) => edit(r.id, "l_pm", e.target.value === "morale" ? "oui" : "")}>
+              {/* « Physique » / « Morale » : « Personne physique » ne tenait
+                  pas dans la colonne, on ne lisait que « Personne ». */}
+              <option value="physique">Physique</option>
+              <option value="morale">Morale</option>
+            </select>
+          </td>
+        );
+      case "l_civ":
+        /* Une société n'a pas de civilité : la case se tait plutôt que
+           d'attendre une réponse qui n'existe pas. */
+        return r.l_pm ? <td key={c} className={cls(c)}><span className="nc">—</span></td> : (
+          <td key={c} className={cls(c)}>
+            <select className="lcell" value={r.l_civ} onChange={(e) => edit(r.id, "l_civ", e.target.value)}>
+              <option value="" /><option>M.</option><option>Mme</option>
+            </select>
+          </td>
+        );
+      case "l_prenom":
+        return r.l_pm ? <td key={c} className={cls(c)}><span className="nc">—</span></td> : texte(c, r, "l_prenom");
+      case "l_nom": return texte(c, r, "l_nom", r.l_pm ? "Raison sociale" : "NOM");
+      case "l_phone": return texte(c, r, "l_phone");
+      case "l_email": return texte(c, r, "l_email");
+      case "l_com": return texte(c, r, "l_com");
+      case "commentaire": return texte(c, r, "commentaire");
+      case "photos":
+        /* Les photos associées au lot dans l'écran Photos (#95). */
+        return <td key={c} className={cls(c, "na")}><PhotosDuLot b={b} lotId={r.id} /></td>;
+    }
+  };
+
+  /* Les destinations déjà dans le bien, la plus fréquente d'abord : c'est
+     ce que la fenêtre « Ajouter » propose en premier (#375). */
+  const destPresentes = destVisibles
+    .filter((d) => (parDest.get(d) ?? 0) > 0)
+    .sort((x, y) => (parDest.get(y) ?? 0) - (parDest.get(x) ?? 0));
+
   return (
     <div>
-      {/* En-tête : bascules de colonnes · synthèse · bascules de destinations */}
-      <div className="lhead">
-        <div className="lopts">
-          {OPTIONS.map((o) => (
-            <button key={o.key} type="button"
-              className={`ltog${on(o.key) ? " on" : ""}${compacte && OPTIONS_LARGES.includes(o.key) ? " bride" : ""}`}
-              title={compacte && OPTIONS_LARGES.includes(o.key)
-                ? "Fenêtre trop étroite pour cette colonne — élargissez la fenêtre"
-                : undefined}
-              onClick={() => toggleOpt(o.key)}>
-              <span className="sw2" />{o.label}
-            </button>
-          ))}
-        </div>
-
+      {/* En-tête : synthèse · bascules de destinations. Les bascules de
+          colonnes ont rejoint le menu « Colonnes » de la barre du haut (#379). */}
+      <div className="lhead v3">
         {/* Synthèse : cadre doré, titre doré et pastilles à picto (retour #42). */}
         <div className="lsum">
           {totaux.m2mois > 0 && (
@@ -838,6 +1362,7 @@ export function LotsEditor({ b }: { b: BienData }) {
           </div>
         </div>
 
+        {/* Les interrupteurs de destination, au dessin du BO (retour #376). */}
         <div className="ldest">
           {destVisibles.map((d) => (
             <button key={d} type="button" className={`ltog${destOff.has(d) ? "" : " on"}`} onClick={() => toggleDest(d)}>
@@ -860,7 +1385,7 @@ export function LotsEditor({ b }: { b: BienData }) {
               lignes={visibles} b={b} dirty={dirty}
               onChange={edit}
               onOuvrir={setLotOuvert}
-              onAjouter={addRow}
+              onAjouter={() => ajouterLots(1)}
             />
             {lotOuvert && visibles.some((r) => r.id === lotOuvert) && (
               <LotPleinEcran
@@ -888,210 +1413,27 @@ export function LotsEditor({ b }: { b: BienData }) {
           <thead>
             <tr>
               <th className="grp brd" rowSpan={2} style={{ width: 26 }} />
-              <th className="grp brd" colSpan={1 + (colBat ? 1 : 0) + (colEtg ? 1 : 0)}>Référence</th>
-              <th className="grp brd" colSpan={2 + 1 + (on("sol") ? 1 : 0)}>Général</th>
-              <th className="grp brd" colSpan={(on("baux") ? 3 : 1) + 2 + (on("m2") ? 2 : 0)}>Loyer</th>
-              <th className="grp brd" colSpan={compacte ? 3 : 4}>Etat</th>
-              {(on("commentaire") || on("photos")) && (
-                <th className="grp" colSpan={(on("commentaire") ? 1 : 0) + (on("photos") ? 1 : 0)}>Autres</th>
-              )}
+              {groupes.map((g) => (
+                <th key={g.label} className="grp brd" colSpan={g.cols.length}>{g.label}</th>
+              ))}
             </tr>
             <tr>
-              {colBat && <th className="brd">Bat.</th>}
-              {colEtg && <th className={colBat ? "" : "brd"}>Etg</th>}
-              <th className={colBat || colEtg ? "" : "brd"}>N°</th>
-              <th className="brd">Dest.</th><th>Type</th>
-              <th>Carrez</th>{on("sol") && <th>Au sol</th>}
-              <th className="brd">Type bail</th>
-              {on("baux") && <><th>Entrée</th><th>Locataire</th></>}
-              <th>HC actuel</th>{on("m2") && <th>€/m²</th>}
-              <th>HC max</th>{on("m2") && <th>€/m²</th>}
-              <th className="brd">Etat</th>{!compacte && <th>Travaux</th>}<th>DPE</th><th>Date réno.</th>
-              {on("commentaire") && <th className="brd">Commentaire</th>}
-              {on("photos") && <th className={on("commentaire") ? "" : "brd"}>Photos</th>}
+              {colonnes.map((c) => <th key={c} className={cls(c)}>{COLONNES[c].label}</th>)}
             </tr>
           </thead>
           <tbody>
-            {visibles.map((r) => {
-              const act = m2(r.loyer, r.surface_carrez);
-              const max = m2(r.loyer_max || r.loyer, r.surface_carrez);
-              const tvx = b.travaux
-                .filter((t) => Array.isArray(t.LOTs) && (t.LOTs as string[]).includes(r.id))
-                .reduce((s, t) => s + (typeof t.montant === "number" ? t.montant : 0), 0);
-              return (
-                <tr
-                  key={r.id}
-                  className={glisse === r.id ? "glisse" : undefined}
-                  style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}
-                  onDragOver={(e) => { if (glisse) e.preventDefault(); }}
-                  onDrop={(e) => { e.preventDefault(); deposer(r.id); }}
-                >
-                  <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
-                  {colBat && (
-                    <td className="brd"><input className="lcell" value={r.batiment} onChange={(e) => edit(r.id, "batiment", e.target.value)} /></td>
-                  )}
-                  {colEtg && (
-                    <td className={colBat ? "" : "brd"}><input className="lcell" value={r.etage} onChange={(e) => edit(r.id, "etage", e.target.value)} /></td>
-                  )}
-                  {/* La poignée se glisse sous le numéro : ni colonne en plus,
-                      ni ligne plus haute (#82). */}
-                  <td className={`poi${colBat || colEtg ? "" : " brd"}`}>
-                    <input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} />
-                    <span
-                      className="grip" draggable title="Glisser pour déplacer la ligne"
-                      onDragStart={() => setGlisse(r.id)}
-                      onDragEnd={() => setGlisse(null)}
-                    >
-                      <svg viewBox="0 0 16 6"><circle cx="4" cy="3" r="1.1" /><circle cx="8" cy="3" r="1.1" /><circle cx="12" cy="3" r="1.1" /></svg>
-                    </span>
-                  </td>
-                  <td className="brd dest" title={r.Destination}>
-                    <span className="destic">
-                      {r.Destination
-                        ? <svg viewBox="0 0 24 24">{IC_DEST[r.Destination] ?? IC_DEST.Annexe}</svg>
-                        : <i>—</i>}
-                    </span>
-                    <select className="lcell inv" value={r.Destination}
-                      onChange={(e) => {
-                        edit(r.id, "Destination", e.target.value);
-                        edit(r.id, "Type_lot", "");
-                        /* Devenu cave ou parking, le lot n'a plus de Carrez :
-                           la case disparaît, sa valeur doit disparaître avec
-                           elle, sinon elle continue de peser dans le total
-                           sans que personne puisse la voir (retour #250). */
-                        if (compteAuLot(e.target.value)) edit(r.id, "surface_carrez", "");
-                      }}>
-                      <option value="" />{DESTINATIONS.map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <CelluleTypologie valeur={r.Type_lot} destination={r.Destination}
-                      ajouts={b.typologies} onChange={(v) => edit(r.id, "Type_lot", v)} />
-                  </td>
-                  {/* Caves et parkings : pas de Carrez (retour #250). La case
-                      est barrée plutôt que masquée — une colonne qui disparaît
-                      d'une ligne sur l'autre désaligne la lecture. La surface
-                      au sol, elle, reste saisissable : elle renseigne sans
-                      entrer dans le total de l'immeuble. */}
-                  {compteAuLot(r.Destination) ? (
-                    /* Retour #305 — « à la place de zéro sur ces types de lots on devrait
-                        pouvoir choisir NC ». Un tiret se lit comme un oubli ;
-                        « n.c. » est une réponse, et c'est le mot que le reste
-                        du tableau emploie déjà. La case reste barrée : une
-                        cave se compte au lot, pas au m² (#250), et ce qu'on y
-                        écrirait ne pourrait pas entrer dans la surface de
-                        l'immeuble sans la fausser. */
-                    <td className="na sansm2" title="Une cave ou un parking se compte au lot, pas au m² — surface Carrez sans objet">n.c.</td>
-                  ) : (
-                    <td className="na"><input className="lcell num" value={r.surface_carrez} onChange={(e) => edit(r.id, "surface_carrez", e.target.value)} /><i>m²</i></td>
-                  )}
-                  {on("sol") && <td className="na"><input className="lcell num" value={r.surface_sol} onChange={(e) => edit(r.id, "surface_sol", e.target.value)} /><i>m²</i></td>}
-                  <td className="brd">
-                    <CelluleBail
-                      r={r} lots={rows}
-                      onBail={(v) => edit(r.id, "Type_bail", v)}
-                      onLot={(v) => edit(r.id, "lot_rattache", v)}
-                    />
-                  </td>
-                  {on("baux") && (
-                    <>
-                      {/* Retour #258 : « quand je veux ajouter la date d'entrée
-                          et le nom du locataire, je peux pas ». Les deux cases
-                          n'étaient que du texte — le « + » ne faisait rien.
-                          Elles ouvrent la même petite fenêtre, qui crée le bail
-                          et le locataire du lot s'ils n'existent pas encore. */}
-                      <td className="na">
-                        <button type="button" className="occ-b" title="Date d'entrée du locataire"
-                          onClick={() => setOccupation(r.id)}>
-                          {(() => {
-                            const bail = b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
-                            return bail?.date_start
-                              ? new Date(String(bail.date_start)).toLocaleDateString("fr-FR")
-                              : <span className="plus">+</span>;
-                          })()}
-                        </button>
-                      </td>
-                      <td className="na">
-                        <button type="button" className="occ-b" title="Locataire du lot"
-                          onClick={() => setOccupation(r.id)}>
-                          {(() => {
-                            const loc = b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(r.id));
-                            return loc && String(loc.formatted_name ?? "").trim()
-                              ? String(loc.formatted_name)
-                              : <span className="plus">+</span>;
-                          })()}
-                        </button>
-                      </td>
-                    </>
-                  )}
-                  <td className="na"><input className="lcell num" value={r.loyer} onChange={(e) => edit(r.id, "loyer", e.target.value)} /><i>€</i></td>
-                  {on("m2") && <td className="na pc">{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>}
-                  <td className="na"><input className="lcell num" value={r.loyer_max} onChange={(e) => edit(r.id, "loyer_max", e.target.value)} /><i>€</i></td>
-                  {on("m2") && <td className="na pc">{max ? ecart(max) ?? `${max.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>}
-                  <td className="brd">
-                    <select className={`lcell${!r.Etat || r.Etat === "n.c." ? " vide" : ""}${r.Etat === "Travaux" ? " red" : ""}`} value={r.Etat} onChange={(e) => edit(r.id, "Etat", e.target.value)}>
-                      <option value="" />{[...new Set([r.Etat, ...ETATS])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                  </td>
-                  {!compacte && (
-                    <td className="na">
-                      <span className={parseFloat(r.travaux) > 0 ? "tvx" : undefined}>
-                        {/* Retour #254 : « quand on rentre des travaux ici je
-                            veux qu'on ait une modale qui s'ouvre rapidement
-                            pour demander à quoi ça correspond ». Elle s'ouvre
-                            en quittant la case, pas à chaque frappe, et
-                            seulement si le montant a bougé vers du positif. */}
-                        <input
-                          className="lcell num" value={r.travaux} placeholder="0"
-                          onChange={(e) => edit(r.id, "travaux", e.target.value)}
-                          onBlur={() => {
-                            const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
-                            const avant = travauxDuLot.get(r.id) ?? 0;
-                            if (Number.isFinite(v) && v > 0 && v !== avant) setObjetDe(r.id);
-                          }}
-                        />
-                        <i>€</i>
-                      </span>
-                    </td>
-                  )}
-                  <td>
-                    {/* La lettre du DPE occupe toute la case : pas de réserve
-                        de chevron, sinon elle disparaît dans une colonne
-                        étroite (retour #56). */}
-                    {/* #173 — l'étiquette de Plein Bail sert de visage à la
-                        liste : le select passe dessus, transparent, et garde
-                        le clic. */}
-                    {/* Rien de saisi : la case reste vide, avec la seule
-                        flèche de la liste (retour #252). L'étiquette grise
-                        d'avant faisait croire à un DPE vierge, qui est une
-                        réponse, alors qu'il n'y avait pas de réponse. */}
-                    <span className={`dpe-cell${r.Type_dpe ? "" : " nu"}`}>
-                      <BadgeDpe lettre={r.Type_dpe} />
-                      <select value={r.Type_dpe} aria-label="DPE"
-                        onChange={(e) => edit(r.id, "Type_dpe", e.target.value)}>
-                        {/* La liste garde l'ordre du référentiel : la mettre
-                            en tête de la valeur choisie faisait remonter le
-                            G+ au-dessus du A au clic suivant (retour #253).
-                            Une valeur héritée qu'on ne connaît pas s'ajoute
-                            à la fin, pour ne pas la perdre. */}
-                        <option value="" />
-                        {DPES.map((o) => <option key={o}>{o}</option>)}
-                        {r.Type_dpe && !DPES.includes(r.Type_dpe) && <option>{r.Type_dpe}</option>}
-                      </select>
-                    </span>
-                  </td>
-                  <td className="na"><input className="lcell num" value={r.renov_year} inputMode="numeric" maxLength={4} placeholder="AAAA"
-                    onChange={(e) => edit(r.id, "renov_year", e.target.value.replace(/\D/g, "").slice(0, 4))} /></td>
-                  {on("commentaire") && <td className="brd"><input className="lcell" value={r.commentaire} onChange={(e) => edit(r.id, "commentaire", e.target.value)} /></td>}
-                  {on("photos") && (
-                    <td className={`na${on("commentaire") ? "" : " brd"}`}>
-                      {/* Les photos associées au lot dans l'écran Photos (#95). */}
-                      <PhotosDuLot b={b} lotId={r.id} />
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
+            {visibles.map((r) => (
+              <tr
+                key={r.id}
+                className={glisse === r.id ? "glisse" : undefined}
+                style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}
+                onDragOver={(e) => { if (glisse) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); deposer(r.id); }}
+              >
+                <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
+                {colonnes.map((c) => cellule(c, r))}
+              </tr>
+            ))}
             {visibles.length === 0 && (
               <tr><td colSpan={nbCols} className="fempty" style={{ padding: 22 }}>
                 {rows.length === 0 ? "Aucun lot saisi — cliquez sur « + Ajouter »." : "Aucun lot pour les destinations sélectionnées."}
@@ -1124,10 +1466,11 @@ export function LotsEditor({ b }: { b: BienData }) {
 
       {/* Barre d'outils sticky, libellés visibles, import/export */}
       <div className="ltools v2">
-        <button className="ltb lbl" type="button" onClick={addRow}>
+        {/* Ajouter et Dupliquer demandent d'abord « combien ? » (#375). */}
+        <button className="ltb lbl" type="button" onClick={() => setFenetreLots("ajouter")}>
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> Ajouter
         </button>
-        <button className="ltb lbl" type="button" onClick={duplicate} disabled={sel.size === 0 || pending}>
+        <button className="ltb lbl" type="button" onClick={() => setFenetreLots("dupliquer")} disabled={sel.size === 0 || pending}>
           <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg> Dupliquer
         </button>
         <button className="ltb lbl red" type="button" onClick={() => setASupprimer(true)} disabled={sel.size === 0 || pending}>
@@ -1168,6 +1511,21 @@ export function LotsEditor({ b }: { b: BienData }) {
           <span className="ch">›</span> Enregistrer{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </button>
       </div>
+
+      {fenetreLots && (
+        <ModaleLots
+          mode={fenetreLots}
+          nbSel={sel.size}
+          presentes={destPresentes}
+          typologies={b.typologies}
+          onFermer={() => setFenetreLots(null)}
+          onValider={(n, dest, type) => {
+            if (fenetreLots === "dupliquer") dupliquerLots(n);
+            else ajouterLots(n, dest, type);
+            setFenetreLots(null);
+          }}
+        />
+      )}
 
       {dpe && (
         <ModaleDpe
@@ -1231,17 +1589,6 @@ export function LotsEditor({ b }: { b: BienData }) {
               ))}
             </div>
           </Modale>
-        );
-      })()}
-
-      {occupation && (() => {
-        const r = rows.find((x) => x.id === occupation);
-        if (!r) return null;
-        return (
-          <ModaleOccupation
-            b={b} lotId={r.id} titre={libelleLot(r)}
-            onFermer={() => setOccupation(null)}
-          />
         );
       })()}
 

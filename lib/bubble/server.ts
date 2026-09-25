@@ -2386,12 +2386,17 @@ export async function listContactsPage(
   q: string, page: number, taille: number,
   /** Identifiant d'agent, ou vide pour tous les contacts. */
   agentId = "",
+  /** Classe A–D, ou vide (#401 : le filtre de la colonne de gauche). */
+  note = "",
 ): Promise<PageListe> {
   await loadInitials();
+  const egal: Record<string, string> = {};
+  if (agentId) egal.SUIVI = agentId;
+  if (/^[A-D]$/.test(note)) egal.Note = note;
   const { rows, total } = await sbPage("contact", {
     q, page, taille,
     champs: ["searchfield", "nom", '"prénom"', "email", "portable", "entreprise_nom"],
-    egal: agentId ? { SUIVI: agentId } : undefined,
+    egal: Object.keys(egal).length ? egal : undefined,
   });
   return {
     total,
