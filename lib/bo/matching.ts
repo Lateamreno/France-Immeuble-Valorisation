@@ -94,6 +94,17 @@ export function telE164(brut: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Le même numéro, tel qu'on l'écrit en France (retour #434) : « 0612345678 »
+ * plutôt que « +33612345678 » — MAV : « remets juste les zéros ». L'envoi
+ * garde l'E.164, c'est l'écran (et le presse-papiers) qui change ; un numéro
+ * étranger reste en international, c'est ainsi qu'on le compose.
+ */
+export function telAffiche(e164: string): string {
+  const m = /^\+33([1-9]\d{8})$/.exec(e164);
+  return m ? `0${m[1]}` : e164;
+}
+
 const email = (v: unknown) => {
   const s = S(v).trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s) ? s : undefined;

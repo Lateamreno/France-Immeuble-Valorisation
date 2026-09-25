@@ -6,7 +6,7 @@ import { Burger } from "@/components/burger";
 import { getAgents } from "@/lib/bubble/server";
 import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
-import { listFeedback } from "@/lib/bo/feedback";
+import { listFeedbackOuverts } from "@/lib/bo/feedback";
 import { lireMode } from "@/lib/bo/mode";
 
 /** Un déploiement de recette porte la marque en négatif et le dit dans le
@@ -62,7 +62,7 @@ export default async function RootLayout({
             {children}
             <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
           </div>
-          <RevueButton pins={await listFeedback().catch(() => [])} />
+          <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
         </div>
       </body>
     </html>
