@@ -8129,3 +8129,9 @@ button { font-weight: 700; }
 @keyframes chg-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .chargement .chg-b { animation: none; } }
 @media (max-width: 760px) { .chargement .chg-g { grid-template-columns: 1fr; } }
+
+/* ── Essai SMS sur un numéro (assistant de commercialisation) ────────────── */
+.asst-essai { margin: 14px 0 6px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 6px; }
+.asst-essai .mlab { margin-top: 0; }
+.asst-essai-l { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.asst-essai-l input { max-width: 220px; }

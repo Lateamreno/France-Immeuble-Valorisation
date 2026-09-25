@@ -16,14 +16,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
-import { destinataires, paquets, telAffiche, type Acquereur } from "@/lib/bo/matching";
+import { destinataires, paquets, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -297,6 +297,13 @@ export function AssistantCommercialisation({
      devine pas côté navigateur : la clé ne descend jamais ici. */
   const [pont, setPont] = useState<{ configure: boolean; message: string; plafond: number; numeroStop: string } | null>(null);
   const [envoi, setEnvoi] = useState<string | null>(null);
+  /* Le numéro d'essai : celui de l'agent de la fiche, modifiable (demande
+     MAV, 25/09). Un essai n'est pas un envoi : rien n'est marqué. */
+  const [numEssai, setNumEssai] = useState(() => {
+    const n = telE164(b.agentTel);
+    return n ? telAffiche(n) : "";
+  });
+  const [essai, setEssai] = useState<string | null>(null);
   useEffect(() => {
     if (etape !== "SMS" || pont) return;
     let vivant = true;
@@ -805,6 +812,32 @@ export function AssistantCommercialisation({
               {!pont.configure && <b>Envoi automatique indisponible</b>}
               {pont.message}
               {pont.configure && ` Plafond par envoi : ${pont.plafond} numéros.`}
+            </div>
+          )}
+          {pont?.configure && (
+            <div className="asst-essai">
+              <span className="mlab">Essai sur un numéro</span>
+              <div className="asst-essai-l">
+                <input className="min" type="tel" value={numEssai} placeholder="06 12 34 56 78"
+                  onChange={(e) => setNumEssai(e.target.value)} />
+                <button className="fadd" type="button"
+                  disabled={pending || !telE164(numEssai) || !sms.trim()}
+                  onClick={() => start(async () => {
+                    setEssai(null);
+                    const r = await envoyerSmsEssai({ texte: sms, numero: numEssai });
+                    setEssai(r.ok
+                      ? `Essai parti vers ${telAffiche(telE164(numEssai) ?? numEssai)} (${r.segments} segment${r.segments > 1 ? "s" : ""}).`
+                      + " Ce que vous recevez est exactement ce que recevront les acquéreurs."
+                      : r.message);
+                  })}>
+                  M&apos;envoyer un essai
+                </button>
+              </div>
+              <div className="asst-note">
+                Le message tel quel, sur ce seul numéro, tout de suite. Rien n&apos;est marqué sur la
+                commercialisation : l&apos;essai ne compte pas comme un envoi.
+              </div>
+              {essai && <div className={/^Essai parti/.test(essai) ? "asst-ok" : "dif-simu"}>{essai}</div>}
             </div>
           )}
           {envoi && <div className="asst-ok">{envoi}</div>}
