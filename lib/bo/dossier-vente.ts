@@ -23,6 +23,7 @@ import { photoUrl } from "./dossier";
 import { estFacadeRue } from "./facade";
 import { descriptifRetenu } from "./descriptif";
 import { selectionDossier } from "./photos-dossier";
+import { etagesDepuisLots } from "./etages";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -248,9 +249,16 @@ export function construireDossierVente(
 
     /* Page 4 — état technique */
     annee: N(im.year_constru),
+    /* Retour #403 : le nombre d'étages, saisi ou déduit des lots (lib/bo/etages). */
+    etages: N(im.nb_etage) ?? etagesDepuisLots(lots),
+    /* MAV (25/09) : « si j'ai indiqué Autre en matériau dans le BO mais que
+       j'ai décrit à la main », c'est la description qui s'imprime, jamais le
+       mot « Autre » — elle vit dans `type_matériau_autre`. */
     composants: b.composants.map((c) => ({
       type: S(c.Type_composant),
-      materiau: S(c["Type_matériau"]),
+      materiau: S(c["Type_matériau"]) === "Autre"
+        ? (S(c["type_matériau_autre"]) || S(c["Type_matériau"]))
+        : S(c["Type_matériau"]),
       annee: N(c.renov_year) ?? N(c.year),
       etat: S(c.Etat),
     })),

@@ -6,6 +6,7 @@
 // tenue de la maison. Tout vient de `lib/bo/dossier-vente.ts` ; cette page ne
 // calcule rien, elle met en forme.
 import type { DossierVente } from "@/lib/bo/dossier-vente";
+import { IC_COMPOSANT } from "@/lib/pictos-composants";
 import { group } from "@/lib/format";
 import { MENTIONS } from "@/lib/bo/textes-cible";
 import { PhotoDossier } from "@/components/photo-dossier";
@@ -60,7 +61,9 @@ const I = {
      dans une main. » */
   carte: <><rect x="2.5" y="5.5" width="19" height="13" rx="2" /><path d="M2.5 9.5h19" /><path d="M6 15h4.5" /><path d="M14.5 15h3" /></>,
   graphique: <><path d="M3.5 4v16h17" /><path d="M6.5 16.5 10.5 11l3.5 3 5.5-7" /><path d="M15.5 7h4v4" /></>,
-  main: <><path d="M3 15.8c2.2-1.4 4.3-1.4 6.2 0l3.4 1.7h4.6a1.9 1.9 0 0 1 0 3.8H11L3 19.6" /><circle cx="9.5" cy="6" r="2.6" /><circle cx="15.5" cy="8.6" r="2.6" /></>,
+  /* MAV (25/09) : la main ne se lisait pas. Des pièces, donc : deux pièces en
+     euro, l'une devant l'autre. */
+  pieces: <><circle cx="9" cy="14" r="7" /><path d="M11.2 11.3a3 3 0 0 0-4.9 2.7 3 3 0 0 0 4.9 2.7M5.5 13.2h4M5.5 14.8h4" /><path d="M14.5 7.2a7 7 0 0 1 5.6 8.9" /><path d="M13.3 4.2a7 7 0 0 1 3.9 1.4" /></>,
 };
 
 const Ic = ({ d, cls = "dv-ic" }: { d: React.ReactNode; cls?: string }) => (
@@ -102,7 +105,12 @@ function Page({ titre, picto, pied, enfants, nu, compact }: {
         {/* Retours #408 à #416 : « il manque le bandeau horizontal de rappel
             de la page » — comme le dossier actuel, en plus de la tranche (qui
             reste). Il descend le contenu et le pose sur la page. */}
-        {titre && !nu && <div className="dv-bande">{titre.replace(/^Etat/, "État")}</div>}
+        {titre && !nu && (
+          <div className="dv-bande">
+            {picto && <Ic d={picto} cls="dv-bande-ic" />}
+            {titre.replace(/^Etat/, "État")}
+          </div>
+        )}
         {enfants}
         {pied && (
           <div className="dv-pied">
@@ -169,7 +177,10 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             <b className="dv-cible">{d.cibles.length ? d.cibles.join(", ") : "Investissement locatif"}</b>
             {/* Retour #244 : deux par ligne au-delà de deux, et des cotes
                 resserrées à partir de quatre — le cadre, lui, ne grandit pas. */}
-            <div className={`dv-chips${d.compo.length > 2 ? " deux" : ""}${d.compo.length > 3 ? " serree" : ""}`}>
+            {/* MAV (25/09) : « même taille côte à côte quand il n'y a que deux
+                typologies, et deux colonnes / deux lignes quand il y en a
+                plus » — quatre au maximum. */}
+            <div className={`dv-chips${d.compo.length >= 2 ? " deux" : ""}${d.compo.length > 3 ? " serree" : ""}`}>
               {d.compo.map((c) => (
                 <span key={c.dest} className="dv-chip">
                   <Ic d={IC_DEST[c.dest] ?? I.maison} cls="dv-chip-ic" />{c.texte}
@@ -277,7 +288,10 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
       {/* -------------------------------------------- 4. État technique */}
       <Page titre="Etat technique" picto={I.pouls} pied={pied} enfants={<>
-        <h2 className="dv-h"><Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b></h2>
+        <h2 className="dv-h">
+          <Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b>
+          {d.etages !== undefined && <> &nbsp;·&nbsp; <b>{d.etages}</b> étage{d.etages > 1 ? "s" : ""} sur rez-de-chaussée</>}
+        </h2>
 
         <h2 className="dv-h"><Ic d={I.pouls} /> Etat des matériaux</h2>
         {/* Retour #410 : le type reste à gauche ; matériau, derniers travaux
@@ -294,7 +308,8 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           <tbody>
             {d.composants.map((c, i) => (
               <tr key={i}>
-                <td>{nc(c.type)}</td>
+                {/* MAV (25/09) : les mêmes pictos que l'écran Technique du BO. */}
+                <td><span className="dv-lot"><svg className="dv-ic mini" viewBox="0 0 24 24" aria-hidden>{IC_COMPOSANT[c.type] ?? IC_COMPOSANT.Autre}</svg>{nc(c.type)}</span></td>
                 <td className="c">{nc(c.materiau)}</td>
                 {colTravaux && <td className="c gris">{c.annee ?? "n.c."}</td>}
                 <td className={`c${/rénov|renov|neuf/i.test(c.etat) ? " vert" : ""}`}>{nc(c.etat)}</td>
@@ -466,7 +481,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tfoot>
         </table>
 
-        <h2 className="dv-h"><Ic d={I.main} /> Revenus hors charges</h2>
+        <h2 className="dv-h"><Ic d={I.pieces} /> Revenus hors charges</h2>
         <table className="dv-tab fin">
           <thead>
             <tr><th>Type de lot</th><th className="c">Revenus actuels</th><th className="c">Occupation</th><th className="r">Revenus potentiels</th></tr>
@@ -608,7 +623,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               clé à molette, ici aussi. */}
           <Stat picto={I.molette} label="Travaux" source="à prévoir"
             valeur={fr1(d.prix.travaux / 1000)} unite="k€" />
-          <Stat picto={I.main} label="Loyers hc" source="potentiels"
+          <Stat picto={I.pieces} label="Loyers hc" source="potentiels"
             valeur={fr1(d.revenusTot.potentiel / 1000)} unite="k€/an" />
           <Stat picto={I.carte} label="Charges" source="non récupérables"
             valeur={fr1(d.chargesTot.nonRecup / 1000)} unite="k€/an" />
