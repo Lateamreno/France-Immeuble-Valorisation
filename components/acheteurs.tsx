@@ -4,12 +4,14 @@
 // « + Rechercher de nouveaux acquéreurs » (3 sources, filtres de grade et
 // toggles) → résultats en vues matchées / ajoutées / retirées / ciblées →
 // « Commercialiser » qui enchaîne sur l'assistant d'envoi.
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import {
-  carte, destinataires, FILTRES_MATCH_DEFAUT, matcher,
+  carte, comptesParGrade, destinataires, FILTRES_MATCH_DEFAUT, matcher,
   type Acquereur, type CriteresBien, type FiltresMatch,
 } from "@/lib/bo/matching";
+import { CarteMatching, ComptesGrades, CriteresMatching, type ResumeMatching } from "@/components/carte-matching";
+import { CIBLES, DESTINATIONS_BIEN } from "@/lib/pictos-recherche";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
@@ -42,7 +44,10 @@ type Resultat = {
   acquereurs: Acquereur[];
 };
 
-export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
+/** L'historique seul, chargé tout de suite (#420). */
+export type HistoriqueAcheteurs = { matchs: Record<string, unknown>[]; commercialisations: Record<string, unknown>[] };
+
+export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null; hist: HistoriqueAcheteurs }) {
   const [ouvrir, setOuvrir] = useState(false);
   /* Le drapeau posé par « + Commercialiser » de l'écran Commercialisations
      (#346). On l'efface en le lisant : il ne vaut que pour cette arrivée,
@@ -72,6 +77,7 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
      matching : rejouer les critères donnerait un autre résultat dès qu'une
      recherche a bougé depuis, et ferait disparaître les ajouts manuels. */
   const rouvrir = (m: Record<string, unknown>) => {
+    if (!d) return;
     const ids = new Set(
       (Array.isArray(m.RECHERCHEs_FINAL) ? (m.RECHERCHEs_FINAL as unknown[]) : []).map(String),
     );
@@ -110,7 +116,47 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
     });
   };
 
-  if (resultat) {
+  /* Retour #431 — « la commercialisation a été stoppée, je la vois mais je ne
+     peux pas cliquer dessus pour y revenir ». On rouvre le matching dont elle
+     est partie, puis on pose dans la mémoire d'écran ce que l'assistant lira
+     en montant : l'identifiant de la commercialisation, l'étape des e-mails,
+     ses textes. Rien n'est recréé : les propositions existent déjà. */
+  const rouvrirComm = (c: Record<string, unknown>) => {
+    const m = hist.matchs.find((x) => String(x._id) === String(c.MATCH ?? ""));
+    if (!m || !d) return;
+    rouvrir(m);
+    const mid = String(m._id);
+    const pose = (k: string, v: unknown) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* rien */ } };
+    pose(`${memo}:matchId`, mid);
+    pose(`${memo}:assistant`, true);
+    pose(`com:${mid}:commId`, String(c._id));
+    pose(`com:${mid}:etape`, c.prop_sent === true ? "SMS" : "E-mails");
+    pose(`com:${mid}:creees`, Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0);
+    pose(`com:${mid}:mails`, c.prop_sent === true);
+    pose(`com:${mid}:sms-envoyes`, c.prop_sms_sent === true);
+    if (S(c.DOSSIER)) pose(`com:${mid}:dossier`, S(c.DOSSIER));
+    if (S(c.MANDAT)) pose(`com:${mid}:mandat`, S(c.MANDAT));
+    if (S(c.wetransfer_link)) pose(`com:${mid}:lien`, S(c.wetransfer_link));
+    if (S(c.prop_mail_objet)) pose(`com:${mid}:objet`, S(c.prop_mail_objet));
+    if (S(c.prop_mail_text)) pose(`com:${mid}:message`, S(c.prop_mail_text));
+    if (S(c.prop_sms_text)) pose(`com:${mid}:sms`, S(c.prop_sms_text));
+  };
+
+  /* Retour #425 — le bouton « page précédente » du navigateur ne faisait
+     rien de visible sur les résultats. La sélection vit dans la mémoire
+     d'écran, pas dans l'adresse : revenir en arrière quittait la fiche.
+     On pose une entrée d'historique en entrant dans les résultats ; le retour
+     du navigateur les replie (la sélection reste, « Reprendre » la rouvre). */
+  const [replie, setReplie] = useState(false);
+  useEffect(() => {
+    if (!resultat || replie) return;
+    try { window.history.pushState({ ...(window.history.state ?? {}), achResultats: true }, ""); } catch { /* rien */ }
+    const retour = () => setReplie(true);
+    window.addEventListener("popstate", retour);
+    return () => window.removeEventListener("popstate", retour);
+  }, [resultat, replie]);
+
+  if (resultat && d && !replie) {
     return (
       <Resultats
         b={b} d={d} r={resultat} memo={memo}
@@ -123,14 +169,20 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
   return (
     <>
       <div className="mrow" style={{ marginBottom: 12 }}>
-        <button className="fadd" type="button" onClick={() => setOuvrir(true)}>
-          + Rechercher de nouveaux acquéreurs
+        {resultat && (
+          <button className="kgo" type="button" onClick={() => setReplie(false)}>
+            <span className="ch">›</span> Reprendre la sélection en cours ({resultat.acquereurs.length} recherches)
+          </button>
+        )}
+        <button className="fadd" type="button" onClick={() => setOuvrir(true)}
+          title={d ? undefined : "Le vivier d'acquéreurs se charge…"}>
+          + Rechercher de nouveaux acquéreurs{d ? "" : " (vivier en cours de chargement…)"}
         </button>
       </div>
 
-      <Historique d={d} onRouvrir={rouvrir} />
+      <Historique hist={hist} d={d} onRouvrir={rouvrir} onRouvrirComm={rouvrirComm} />
 
-      {ouvrir && (
+      {ouvrir && d && (
         <ModaleMatching
           b={b} d={d}
           onFermer={() => setOuvrir(false)}
@@ -143,68 +195,120 @@ export function Acheteurs({ b, d }: { b: BienData; d: AcheteursData }) {
 
 /* ---------- Historique des matchings et commercialisations ---------- */
 
-function Historique({ d, onRouvrir }: {
-  d: AcheteursData;
+function Historique({ hist, d, onRouvrir, onRouvrirComm }: {
+  hist: HistoriqueAcheteurs;
+  d: AcheteursData | null;
   /* Retour #347 — « il faut que je puisse avoir accès au matching et que je
      puisse le modifier ». Les cartes de l'historique étaient inertes : le
      travail de tri fait un jour ne se reprenait jamais, il fallait relancer un
      matching et refaire les exclusions à la main. */
   onRouvrir: (m: Record<string, unknown>) => void;
+  onRouvrirComm: (c: Record<string, unknown>) => void;
 }) {
-  if (d.matchs.length === 0 && d.commercialisations.length === 0) {
+  if (hist.matchs.length === 0 && hist.commercialisations.length === 0) {
     return <div className="fempty">Aucun matching lancé sur cet immeuble.</div>;
   }
-  const src = (m: Record<string, unknown>) =>
-    ({ from_est: "estimation", from_imm: "prix", from_doss: "dossier" })[S(m.Source_mode)] ?? "critères";
+  /* Les comptes par grade demandent le vivier (les contacts) : ils
+     apparaissent quand il est là, les totaux du matching sont là tout de
+     suite. */
+  const comptes = (m: Record<string, unknown>) => {
+    if (!d) return undefined;
+    const ids = new Set((Array.isArray(m.RECHERCHEs_FINAL) ? (m.RECHERCHEs_FINAL as unknown[]) : []).map(String));
+    const acq = d.recherches.filter((x) => ids.has(String(x._id))).map((x) => carte(x, d.contacts, true));
+    return comptesParGrade(acq).parGrade;
+  };
+  const commsDe = (m: Record<string, unknown>) => hist.commercialisations.filter((c) => String(c.MATCH ?? "") === String(m._id));
+
   return (
     <>
-      {d.matchs.map((m) => (
-        <button key={S(m._id)} type="button" className="mt-h ouvrable"
-          title="Rouvrir ce matching pour le modifier"
-          onClick={() => onRouvrir(m)}>
-          <div className="mt-h-t">
-            Matching du {dmy(m["Created Date"])}
-            <span className="mt-src">à partir d&apos;un{src(m) === "estimation" ? "e" : ""} {src(m)}</span>
-            <span className="mt-ouvrir">Rouvrir ↗</span>
-          </div>
-          <div className="mt-crit">
-            {[
-              typeof m.in_surface === "number" ? `${Math.round(m.in_surface as number)} m²` : "",
-              typeof m.in_occup === "number" ? `${Math.round(m.in_occup as number)} %` : "",
-              euros(m.in_prix) ?? "",
-              typeof m.in_renta === "number" ? `${m.in_renta} %` : "",
-            ].filter(Boolean).join(" · ")}
-          </div>
-          <div className="mt-tags">
-            {m.in_proposed === true && <span>Déjà vus exclus</span>}
-            {m.in_agents === true && <span>Agents exclus</span>}
-            <span>{m.in_man_only === true ? "Mandat obligatoire" : "Mandat facultatif"}</span>
-            {Array.isArray(m.in_Notes) && (m.in_Notes as string[]).length > 0 && (
-              <span>Grades {(m.in_Notes as string[]).join(" ")}</span>
-            )}
-          </div>
-          <div className="mt-res">
-            <b>{S(m.mails_count) || 0}</b> emails · <b>{S(m.tels_count) || 0}</b> téléphones
-            <span className="mt-n">{S(m.recherches_count) || 0} recherches retenues</span>
-          </div>
-        </button>
-      ))}
-
-      {d.commercialisations.map((c) => (
-        <div key={S(c._id)} className="mt-h co">
-          <div className="mt-h-t">
-            Commercialisation du {dmy(c["Created Date"])}
-            {c.prop_sent === true ? <Pastille ton="vert" plein>E-mails envoyés</Pastille> : <Pastille ton="gris" plein>E-mails à envoyer</Pastille>}
-            {c.prop_sms_sent === true ? <Pastille ton="vert" plein>SMS envoyés</Pastille> : <Pastille ton="gris" plein>SMS à envoyer</Pastille>}
-          </div>
-          <div className="mt-res">
-            <b>{Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as string[]).length : 0}</b> propositions créées
-            {S(c.wetransfer_link) && <a className="mt-lien" href={S(c.wetransfer_link)} target="_blank" rel="noreferrer">Lien du dossier</a>}
-          </div>
+      {hist.matchs.map((m) => (
+        <div key={S(m._id)} className="cm-groupe">
+          <CarteMatching
+            r={resumeDepuisMatch(m)}
+            titre={<>Matching du {dmy(m["Created Date"])}<span className="mt-ouvrir">Rouvrir ↗</span></>}
+            parGrade={comptes(m)}
+            total={{ mails: Number(m.mails_count) || 0, tels: Number(m.tels_count) || 0 }}
+            onOuvrir={d ? () => onRouvrir(m) : undefined}
+          />
+          {commsDe(m).map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={d ? () => onRouvrirComm(c) : undefined} />)}
         </div>
       ))}
+      {/* Les commercialisations dont le matching n'est plus là. */}
+      {hist.commercialisations
+        .filter((c) => !hist.matchs.some((m) => String(m._id) === String(c.MATCH ?? "")))
+        .map((c) => <CarteCommercialisation key={S(c._id)} c={c} />)}
     </>
   );
+}
+
+/** Les critères d'un matching enregistré, dans la forme de la carte. */
+export function resumeDepuisMatch(m: Record<string, unknown>): ResumeMatching {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const l = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(String) : []);
+  return {
+    date: dmy(m["Created Date"]),
+    source: S(m.Source_mode) || "from_imm",
+    dossierLabel: S(m.in_DOSSIER) ? "dossier joint" : undefined,
+    notes: l(m.in_Notes),
+    cibles: l(m.in_Cibles),
+    destinations: l(m.in_Destinations),
+    ville: S(m.in_ville) || undefined,
+    departement: S(m.in_dpt) || undefined,
+    surface: n(m.in_surface),
+    occupation: n(m.in_occup),
+    prix: n(m.in_prix),
+    renta: n(m.in_renta),
+    exclureDejaVus: m.in_proposed === true,
+    exclureAgents: m.in_agents === true,
+    mandatObligatoire: m.in_man_only === true,
+  };
+}
+
+/**
+ * La carte d'une commercialisation (#431) : ce qui est parti, en direct.
+ * « j'ai un bouton pour bien voir ce qui a été envoyé en temps réel en termes
+ * d'e-mails, je veux le même compteur » — envoyés / total, et les SMS.
+ */
+function CarteCommercialisation({ c, onOuvrir }: { c: Record<string, unknown>; onOuvrir?: () => void }) {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const props = Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0;
+  const total = n(c.mails_total) || props;
+  const faits = n(c.mails_envoyes);
+  const mailsOk = c.prop_sent === true;
+  const smsOk = c.prop_sms_sent === true;
+  const corps = (
+    <>
+      <span className="cm-ic"><svg viewBox="0 0 24 24" aria-hidden><path d="M3 10v4a1 1 0 0 0 1 1h3l8 4V5L7 9H4a1 1 0 0 0-1 1z" /><path d="M18 9.5a3.5 3.5 0 0 1 0 5" /><path d="M7 15v4.5" /></svg></span>
+      <div className="cm-c">
+        <div className="cm-t">
+          Commercialisation du {dmy(c["Created Date"])}
+          {!mailsOk && faits > 0 && <span className="cm-enc">interrompue — {total - faits} e-mails restants</span>}
+          {onOuvrir && <span className="mt-ouvrir">{mailsOk && smsOk ? "Voir ↗" : "Reprendre ↗"}</span>}
+        </div>
+        <div className="cm-l">
+          {S(c.DOSSIER) && <span className="cm-chip">Dossier joint</span>}
+          {S(c.MANDAT) && <span className="cm-chip">Mandat</span>}
+          {S(c.wetransfer_link) && <a className="cm-chip lien" href={S(c.wetransfer_link)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Lien du dossier ↗</a>}
+          <span className="cm-chip"><b>{props}</b> propositions</span>
+        </div>
+      </div>
+      <div className="cm-comptes">
+        <span className={`cm-envoi${mailsOk ? " ok" : faits > 0 ? " encours" : ""}`}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M3 7.5 12 13l9-5.5" /><rect x="3" y="5" width="18" height="14" rx="2" /></svg>
+          <b>{faits}{total ? ` / ${total}` : ""}</b>
+          <span>mails envoyés</span>
+        </span>
+        <span className={`cm-envoi${smsOk ? " ok" : ""}`}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H9l-5 4z" /></svg>
+          <b>{smsOk ? (n(c.sms_envoyes) || "✓") : "—"}</b>
+          <span>SMS envoyés</span>
+        </span>
+      </div>
+    </>
+  );
+  return onOuvrir
+    ? <button type="button" className="cm co ouvrable" onClick={onOuvrir}>{corps}</button>
+    : <div className="cm co">{corps}</div>;
 }
 
 /* ---------- Modale de lancement ---------- */
@@ -495,6 +599,12 @@ function Resultats({
   const [avecTel, setAvecTel] = useState<Tri>("tous");
   const [avecDetails, setAvecDetails] = useState<Tri>("tous");
   const [q, setQ] = useState("");
+  /* Retour #423 : trier par grade, type de recherche, type de bien. */
+  const [fNotes, setFNotes] = useState<string[]>([]);
+  const [fCibles, setFCibles] = useState<string[]>([]);
+  const [fDest, setFDest] = useState<string[]>([]);
+  const bascule = (set: (f: (l: string[]) => string[]) => void, v: string) =>
+    set((l) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v]));
   const [pending, start] = useTransition();
   const [matchId, setMatchId] = useMemoire<string | undefined>(`${memo}:matchId`, r.matchId);
   /* La recherche qu'on est en train de corriger sans quitter le matching
@@ -559,12 +669,39 @@ function Resultats({
       : ciblees;
     const tri = (v: Tri, val: boolean) => v === "tous" || (v === "oui" ? val : !val);
     const qq = q.trim().toLowerCase();
+    /* Retour #424 : la recherche lit aussi les détails de la recherche du
+       client — « si un client avait dit hôtel, je cherche hôtel et je le vois ». */
+    const texte = (a: Acquereur) =>
+      `${a.nom} ${a.secteur} ${a.email ?? ""} ${a.telephone ?? ""} ${a.cible ?? ""} ${a.destinations.join(" ")} ${a.criteres} ${a.commentaire ?? ""}`.toLowerCase();
     return base.filter(
       (a) =>
         tri(avecContact, a.aContact) && tri(avecTel, a.aTelephone) && tri(avecDetails, a.aDetails) &&
-        (!qq || `${a.nom} ${a.secteur} ${a.email ?? ""} ${a.telephone ?? ""}`.toLowerCase().includes(qq)),
+        (fNotes.length === 0 || fNotes.includes(a.note ?? "")) &&
+        (fCibles.length === 0 || fCibles.includes(a.cible ?? "")) &&
+        (fDest.length === 0 || a.destinations.some((x) => fDest.includes(x))) &&
+        (!qq || texte(a).includes(qq)),
     );
-  }, [vue, r.acquereurs, ecartees, ajoutees, retirees, ciblees, avecContact, avecTel, avecDetails, q]);
+  }, [vue, r.acquereurs, ecartees, ajoutees, retirees, ciblees, avecContact, avecTel, avecDetails, q, fNotes, fCibles, fDest]);
+
+  /* Retour #424 : « aller chercher des gens qui ne sont pas matchés
+     automatiquement et les ajouter ». Quand la recherche tape dans les
+     recherches hors matching, on le dit, et un clic y mène. */
+  const horsMatching = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq || vue === "ajoutees") return 0;
+    return ecartees.filter((a) =>
+      `${a.nom} ${a.secteur} ${a.cible ?? ""} ${a.destinations.join(" ")} ${a.criteres} ${a.commentaire ?? ""}`.toLowerCase().includes(qq)).length;
+  }, [q, vue, ecartees]);
+
+  const comptes = useMemo(() => comptesParGrade(ciblees), [ciblees]);
+  const resume: ResumeMatching = {
+    source: r.source, dossierLabel: r.dossierId ? "dossier joint" : undefined,
+    notes: r.filtres.notes, cibles: r.criteres.cibles ?? [], destinations: r.criteres.destinations ?? [],
+    ville: r.criteres.ville, departement: r.criteres.departement,
+    surface: r.criteres.surface, occupation: r.criteres.occupation, prix: r.criteres.prix, renta: r.criteres.renta,
+    exclureDejaVus: r.filtres.exclureDejaVus, exclureAgents: r.filtres.exclureAgents, mandatObligatoire: r.filtres.mandatObligatoire,
+    bien: { libelle: [b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble", prix: r.criteres.prix },
+  };
 
   const dest = destinataires(ciblees);
 
@@ -604,29 +741,36 @@ function Resultats({
 
   const vues: { k: Vue; l: string; n: number }[] = [
     { k: "matchees", l: "Recherches matchées", n: r.acquereurs.length },
-    { k: "ajoutees", l: "Ajoutées", n: ajoutees.length },
+    { k: "ajoutees", l: "Hors matching (à ajouter)", n: ajoutees.length },
     { k: "retirees", l: "Retirées", n: retirees.size },
     { k: "ciblees", l: "Ciblées", n: ciblees.length },
   ];
 
   return (
     <>
-      <div className="mrow" style={{ marginBottom: 10, alignItems: "center" }}>
-        {/* Retour #329 : « ← Retour » effaçait la sélection sans le dire. Comme
-            elle survit maintenant à la navigation, seul un abandon explicite la
-            jette — et le bouton dit ce qu'il fait. */}
-        <button className="fadd" type="button" onClick={onFermer}
-          title="Jeter cette sélection et repartir de zéro">Abandonner</button>
-        <button className="fadd" type="button" onClick={onRelancer}>Relancer une recherche</button>
-        <span className="sp" style={{ flex: 1 }} />
-        <span className="mt-apercu" style={{ margin: 0 }}>
-          <b>{ciblees.length}</b> ciblés · <b>{dest.emails.length}</b> emails · <b>{dest.telephones.length}</b> téléphones
-        </span>
-        <button
-          className="kgo" type="button" disabled={pending || ciblees.length === 0}
-          style={pending || ciblees.length === 0 ? { opacity: 0.5 } : undefined}
-          onClick={() => enregistrer(() => setAssistant(true))}
-        ><span className="ch">›</span> Commercialiser</button>
+      {/* Retour #422 — « retrouver ce sticky où je voyais le nombre de A B C D
+          choisis et le nombre d'e-mails et téléphones avec le total en
+          dessous, et les infos sur la recherche ». Le bandeau reste collé en
+          haut pendant qu'on trie la liste. */}
+      <div className="cm ac-sticky">
+        <span className="cm-ic"><svg viewBox="0 0 24 24" aria-hidden><circle cx="9" cy="8" r="3.2" /><circle cx="16.5" cy="9.5" r="2.4" /><path d="M3.5 19c.5-3.4 2.8-5.2 5.5-5.2s5 1.8 5.5 5.2M14.5 18.5c.3-2.2 1.6-3.6 3.5-3.6 1.4 0 2.6.8 3 2.6" /></svg></span>
+        <div className="cm-c">
+          <div className="cm-t">
+            Matching en cours
+            <span className="cm-enc">{ciblees.length} ciblés</span>
+            <span className="sp" style={{ flex: 1 }} />
+            <button className="fadd" type="button" onClick={onFermer}
+              title="Jeter cette sélection et repartir de zéro">Abandonner</button>
+            <button className="fadd" type="button" onClick={onRelancer}>Relancer une recherche</button>
+            <button
+              className="kgo" type="button" disabled={pending || ciblees.length === 0}
+              style={pending || ciblees.length === 0 ? { opacity: 0.5 } : undefined}
+              onClick={() => enregistrer(() => setAssistant(true))}
+            ><span className="ch">›</span> Commercialiser</button>
+          </div>
+          <CriteresMatching r={resume} />
+        </div>
+        <ComptesGrades parGrade={comptes.parGrade} total={comptes.total} compact />
       </div>
 
       <div className="ac-vues">
@@ -648,6 +792,38 @@ function Resultats({
         <span className="sp" style={{ flex: 1 }} />
         <span className="ac-n">{liste.length} résultat{liste.length > 1 ? "s" : ""}</span>
       </div>
+      {/* Retour #423 : les filtres — grade, type de recherche, type de bien. */}
+      <div className="ac-filtres ac-f2">
+        <span className="ac-fl">Grade</span>
+        {NOTES.map((g) => (
+          <button key={g} type="button" className={`note n${g}${fNotes.includes(g) ? "" : " off"}`}
+            title={fNotes.includes(g) ? "Retirer ce grade du filtre" : "Ne voir que ce grade"}
+            onClick={() => bascule(setFNotes, g)}>{g}</button>
+        ))}
+        <span className="ac-fl">Recherche</span>
+        {CIBLES.map((c) => (
+          <button key={c.cle} type="button" className={`ac-pic${fCibles.includes(c.cle) ? " on" : ""}`} title={c.titre}
+            onClick={() => bascule(setFCibles, c.cle)}>
+            <svg viewBox="0 0 24 24" aria-hidden>{c.d}</svg>
+          </button>
+        ))}
+        <span className="ac-fl">Bien</span>
+        {DESTINATIONS_BIEN.map((x) => (
+          <button key={x.cle} type="button" className={`ac-pic${fDest.includes(x.cle) ? " on" : ""}`} title={x.titre}
+            onClick={() => bascule(setFDest, x.cle)}>
+            <svg viewBox="0 0 24 24" aria-hidden>{x.d}</svg>
+          </button>
+        ))}
+        {(fNotes.length + fCibles.length + fDest.length > 0) && (
+          <button type="button" className="ac-tri" onClick={() => { setFNotes([]); setFCibles([]); setFDest([]); }}>Tout afficher</button>
+        )}
+      </div>
+      {horsMatching > 0 && (
+        <div className="ac-hors">
+          {horsMatching} recherche{horsMatching > 1 ? "s" : ""} hors matching correspond{horsMatching > 1 ? "ent" : ""} à « {q.trim()} » —{" "}
+          <button type="button" onClick={() => setVue("ajoutees")}>les voir et les ajouter</button>
+        </div>
+      )}
 
       {liste.length === 0 && <div className="fempty">Aucun acquéreur dans cette vue.</div>}
       <div className="ac-grid">

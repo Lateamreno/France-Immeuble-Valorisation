@@ -211,7 +211,7 @@ export function champsDuDocument(x: Mandant): { naissance: boolean; adresse: boo
 /** Les pièces d'identité obligatoires pour ce mandant. */
 export function piecesMandant(x: Mandant): { cle: "cni" | "kbis"; label: string; url?: string }[] {
   const pieces: { cle: "cni" | "kbis"; label: string; url?: string }[] = [
-    { cle: "cni", label: "Pièce d'identité", url: x.cni },
+    { cle: "cni", label: x.personne === "morale" ? "Pièce d'identité du représentant (gérant)" : "Pièce d'identité", url: x.cni },
   ];
   if (x.personne === "morale") pieces.push({ cle: "kbis", label: "Kbis (moins de 3 mois)", url: x.kbis });
   return pieces;
@@ -744,7 +744,11 @@ export function manques(
     if (x.personne === "morale" && !x.societe?.siege) push(`m${i}-siege`, `Siège social de ${x.societe?.nom ?? qui}`, "Mandants");
     if (x.personne === "morale" && !(x.prenom && x.nom)) push(`m${i}-rep`, `Représentant de ${x.societe?.nom ?? qui}`, "Mandants");
     if (champsDuDocument(x).adresse && !x.adresse) push(`m${i}-adr`, `Adresse de ${qui}`, "Mandants");
-    if (!x.cni) push(`m${i}-cni`, `Pièce d'identité de ${qui}`, "Mandants");
+    /* Retour #429 : « NIM c'est une société, c'est forcément la pièce
+       d'identité du gérant ». */
+    if (!x.cni) push(`m${i}-cni`, x.personne === "morale"
+      ? `Pièce d'identité du représentant de ${x.societe?.nom ?? qui}${x.prenom || x.nom ? ` (${[x.prenom, x.nom].filter(Boolean).join(" ")})` : ""}`
+      : `Pièce d'identité de ${qui}`, "Mandants");
     if (x.personne === "morale" && !x.kbis) push(`m${i}-kbis`, `Kbis de ${x.societe?.nom ?? qui}`, "Mandants");
   });
 

@@ -2587,6 +2587,22 @@ export type AcheteursData = {
   criteres: import("@/lib/bo/matching").CriteresBien;
 };
 
+/**
+ * L'historique seul — matchings et commercialisations — sans le vivier
+ * (retour #420 : « chargement du vivier d'acquéreurs, ça ne sert à rien, ça
+ * devrait se faire que lorsqu'on fait une recherche de nouveaux acquéreurs »).
+ * Deux requêtes courtes : l'onglet s'affiche tout de suite.
+ */
+export async function getHistoriqueAcheteurs(immeubleId: string) {
+  const [matchs, commercialisations] = await Promise.all([
+    fetchAll("match", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
+    fetchAll("commercialisation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
+  ]);
+  const tri = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? ""));
+  return { matchs: [...matchs].sort(tri), commercialisations: [...commercialisations].sort(tri) };
+}
+
 /** Vivier acquéreurs + historique des campagnes d'un immeuble. */
 export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | null> {
   const one = await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: immeubleId }], limit: 1 });

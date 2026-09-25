@@ -58,7 +58,7 @@ export type BienMail = {
 };
 
 /**
- * L'objet : « Immeuble à vendre à Lille (59), 425 k€, 9,2 %, 2 203 €/m² ».
+ * L'objet : « Immeuble à vendre à Lille (59) - 425 k€ - 9,2 % - 2 203 €/m² ».
  *
  * Chaque élément manquant disparaît plutôt que de laisser un « n.c. » : un
  * objet d'e-mail est le seul endroit du BO où la place est comptée, et une
@@ -73,7 +73,8 @@ export function objetCommercialisation(b: BienMail): string {
     nb(b.renta) !== undefined ? `${fr(nb(b.renta)!)} %` : undefined,
     nb(b.prixM2) !== undefined ? `${fr(Math.round(nb(b.prixM2)!), 0)} €/m²` : undefined,
   ].filter(Boolean);
-  return bouts.join(", ");
+  /* Retour #430 : « à la place des virgules, un espace et un tiret ». */
+  return bouts.join(" - ");
 }
 
 /**

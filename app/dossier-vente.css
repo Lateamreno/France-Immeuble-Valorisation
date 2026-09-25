@@ -194,7 +194,8 @@
   display: flex; align-items: center; justify-content: center; gap: 2.5mm;
 }
 /* MAV (25/09) : le même picto que la tranche, dans le bandeau. */
-.dv-bande-ic { width: 5.5mm; height: 5.5mm; fill: none; stroke: var(--dv-or-clair); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* MAV (25/09, soir) : « je ne les veux pas en couleur » — blanc, comme le titre. */
+.dv-bande-ic { width: 5.5mm; height: 5.5mm; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .dv-page.serre .dv-bande { padding: 1.6mm; font-size: 11pt; margin-bottom: 2mm; }
 .dv-ph-grid img {
   width: 100%; height: 58mm; object-fit: cover; object-position: center;

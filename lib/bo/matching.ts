@@ -300,3 +300,31 @@ export function paquets<T>(items: T[], taille = 50): T[][] {
   for (let i = 0; i < items.length; i += taille) out.push(items.slice(i, i + taille));
   return out;
 }
+
+/**
+ * Les comptes par grade d'une sélection (retours #422 et #431) : combien
+ * d'acquéreurs, d'e-mails et de téléphones distincts derrière chaque lettre —
+ * la présentation du BO, à droite du matching.
+ */
+export type ComptesGrade = { n: number; mails: number; tels: number };
+export function comptesParGrade(acquereurs: Acquereur[]): { parGrade: Record<string, ComptesGrade>; total: ComptesGrade } {
+  const vide = (): ComptesGrade => ({ n: 0, mails: 0, tels: 0 });
+  const parGrade: Record<string, ComptesGrade> = { A: vide(), B: vide(), C: vide(), D: vide(), "": vide() };
+  const mails: Record<string, Set<string>> = {};
+  const tels: Record<string, Set<string>> = {};
+  const tousMails = new Set<string>();
+  const tousTels = new Set<string>();
+  for (const a of acquereurs) {
+    const g = a.note && parGrade[a.note] ? a.note : "";
+    parGrade[g].n += 1;
+    const m = (a.email ?? "").trim().toLowerCase();
+    const t = (a.telephone ?? "").replace(/\s/g, "");
+    if (m) { (mails[g] ??= new Set()).add(m); tousMails.add(m); }
+    if (t) { (tels[g] ??= new Set()).add(t); tousTels.add(t); }
+  }
+  for (const g of Object.keys(parGrade)) {
+    parGrade[g].mails = mails[g]?.size ?? 0;
+    parGrade[g].tels = tels[g]?.size ?? 0;
+  }
+  return { parGrade, total: { n: acquereurs.length, mails: tousMails.size, tels: tousTels.size } };
+}

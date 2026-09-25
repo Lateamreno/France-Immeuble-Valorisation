@@ -2288,6 +2288,61 @@ export async function genererEtatLocatif(immeubleId: string) {
   }
 }
 
+/**
+ * L'état locatif en TABLEUR (retour #426 : « un Excel ou éventuellement un
+ * CSV, et qu'on puisse le voir »). Un CSV en point-virgule, avec la marque
+ * d'ordre des octets : Excel en français l'ouvre en colonnes d'un double-clic.
+ *
+ * GARDE-FOU §8.3 : ce fichier part chez des acquéreurs. Aucun nom de
+ * locataire, aucune coordonnée — la NATURE du preneur, comme le PDF.
+ */
+export async function genererEtatLocatifCsv(immeubleId: string) {
+  try {
+    const b = await getBien(immeubleId);
+    if (!b) throw new Error("Immeuble introuvable");
+    const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+    const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+    const num = (v: unknown) => (N(v) === undefined ? "" : String(N(v)).replace(".", ","));
+    const jourFr = (v: unknown) => {
+      const t = S(v);
+      return /^\d{4}-\d{2}-\d{2}/.test(t) ? `${t.slice(8, 10)}/${t.slice(5, 7)}/${t.slice(0, 4)}` : t;
+    };
+    const cell = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const lots = [...b.lots].sort((a, c) => (N(a.numero) ?? 0) - (N(c.numero) ?? 0));
+    const entete = ["Lot", "Bâtiment", "Étage", "Destination", "Type", "Carrez (m²)", "Au sol (m²)", "État", "Bail", "Preneur", "Entrée", "Loyer HC / mois (€)", "Loyer de marché / mois (€)", "DPE"];
+    const lignes = lots.map((l) => {
+      const loue = (N(l.loyer) ?? 0) > 0;
+      return [
+        S(l.numero), S(l.batiment), S(l.etage), S(l.Destination), S(l.Type_lot),
+        num(l.surface_carrez), num(l.surface_sol), S(l.Etat), S(l.Type_bail),
+        loue ? (S(l.locataire_nature) === "personne_morale" ? "Personne morale" : "Personne physique") : "",
+        loue ? jourFr(l.date_entree) : "",
+        num(l.loyer), num(l.loyer_max ?? l.loyer), S(l.dpe ?? l.DPE),
+      ].map(cell).join(";");
+    });
+    const totalCarrez = lots.reduce((t, l) => t + (N(l.surface_carrez) ?? 0), 0);
+    const totalLoyer = lots.reduce((t, l) => t + (N(l.loyer) ?? 0), 0);
+    const pied = ["Total", "", "", "", "", num(totalCarrez), "", "", "", "", "", num(totalLoyer), "", ""].join(";");
+    const titre = `État locatif — ${[b.adresse, b.ville].filter(Boolean).join(", ")} — édité le ${new Date().toLocaleDateString("fr-FR")}`;
+    const csv = "\uFEFF" + [titre, "", entete.join(";"), ...lignes, pied, "", "Document remis à titre d'information par France Immeuble. Les noms et coordonnées des locataires ne sont pas communiqués à ce stade."].join("\r\n");
+    const octets = Buffer.from(csv, "utf8");
+    if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+    const jour = new Date().toISOString().slice(0, 10);
+    const path = `etats-locatifs/${immeubleId}/${jour}.csv`;
+    const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "text/csv; charset=utf-8", "x-upsert": "true" },
+      body: new Uint8Array(octets),
+    });
+    if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+    return { ok: true as const, path, nom: `Etat-locatif-${jour}.csv`, octets: octets.length, url: `/api/photo?s=${encodeURIComponent(path)}` };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[etat locatif csv]", message);
+    return { ok: false as const, message };
+  }
+}
+
 async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
   const { pdfDepuisUrl } = await import("./pdf");
   const { headers } = await import("next/headers");
@@ -3322,10 +3377,22 @@ export async function deposerPieceMandat(
          dans l'état de l'écran : changer d'onglet avant d'enregistrer la
          faisait disparaître, alors que le fichier, lui, était bien déposé. */
       const m = await bqOne("bo_mandat", mandatId).catch(() => null);
-      const liste = Array.isArray(m?.mandants) ? (m!.mandants as MandantEnregistre[]) : [];
+      /* Retour #429 — « je l'avais bien mise, j'ai l'impression qu'elle se perd
+         parfois ». Trouvé : sur un mandat repris de Bubble, la liste
+         `mandants` n'existe pas en base (les mandants vivent dans les champs
+         plats : MANDANTs, cni_m1…). L'écran, lui, la reconstitue à la volée.
+         La pièce cherchait donc sa ligne dans une liste vide, ne la trouvait
+         pas, et n'était écrite NULLE PART sur le mandat — le fichier était
+         bien au coffre, le mandat n'en savait rien. On part maintenant de la
+         liste telle que l'écran la lit (lireMandants, avec son repli plat) et
+         on l'écrit : à partir de là, elle existe. */
+      const liste: MandantEnregistre[] = m
+        ? (lireMandants(m) as unknown as MandantEnregistre[])
+        : [];
       const vise = (x: MandantEnregistre) =>
         (mandantUid && x.uid === mandantUid) || (!!contactId && x.contactId === contactId);
-      const i = liste.findIndex(vise);
+      let i = liste.findIndex(vise);
+      if (i < 0 && liste.length === 1) i = 0;
       if (i >= 0) {
         liste[i] = { ...liste[i], [cle]: url };
         const patch: Record<string, unknown> = { mandants: liste, "Modified Date": new Date().toISOString() };
@@ -3333,6 +3400,12 @@ export async function deposerPieceMandat(
         if (cle === "cni") patch[i === 0 ? "cni_m1" : "cni_m2"] = url;
         else patch.kbis = url;
         await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: patch });
+      } else if (cle === "cni") {
+        /* Aucun mandant reconnaissable : au moins le champ plat du premier,
+           que l'écran relit — plutôt que rien. */
+        await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: { cni_m1: url, "Modified Date": new Date().toISOString() } });
+      } else {
+        await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: { kbis: url, "Modified Date": new Date().toISOString() } });
       }
 
       // Et elle enrichit la fiche contact : elle resservira au mandat suivant,
@@ -4464,6 +4537,22 @@ export async function createCommercialisation(input: CommercialisationInput) {
  *   • la route de masse, refusée si elle n'est pas configurée — une salve ne
  *     part jamais d'une boîte personnelle.
  */
+/** Adresses servies par appel : quelques secondes, loin des 60 s de Vercel. */
+const LOT_MAILS = 12;
+
+/** Où en est l'envoi des e-mails d'une commercialisation (reprise, compteur). */
+export async function etatMailsCommercialisation(commId: string) {
+  const doc = await bqOne("bo_commercialisation", commId).catch(() => null);
+  const faits = Array.isArray(doc?.mails_faits) ? (doc!.mails_faits as unknown[]).map(String) : [];
+  return {
+    faits,
+    total: typeof doc?.mails_total === "number" ? (doc!.mails_total as number) : undefined,
+    echecs: Array.isArray(doc?.mails_echecs) ? (doc!.mails_echecs as { email: string; raison: string }[]) : [],
+    termine: doc?.prop_sent === true,
+    smsEnvoyes: doc?.prop_sms_sent === true,
+  };
+}
+
 export async function envoyerMailsCommercialisation(input: {
   immeubleId: string;
   commId: string;
@@ -4478,6 +4567,8 @@ export async function envoyerMailsCommercialisation(input: {
    *  au navigateur, et c'est très bien ainsi — le `Reply-To` d'une salve n'a
    *  rien à faire dans du code côté client. */
   agentId?: string;
+  /** Le nombre total d'adresses de la salve, pour le compteur (#431). */
+  total?: number;
 }) {
   try {
     if (!input.objet.trim()) return { ok: false as const, message: "L'objet est vide." };
@@ -4530,7 +4621,9 @@ export async function envoyerMailsCommercialisation(input: {
         cache: "no-store",
       }).catch(() => null);
       if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
-      pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type: "application/pdf" });
+      const type = /\.csv$/i.test(p.nom) ? "text/csv" : /\.xlsx$/i.test(p.nom)
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
+      pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type });
     }
     const pesee = peserPiecesJointes(pieces.map((p) => p.contenu.length));
     if (pesee.depasse) {
@@ -4572,30 +4665,54 @@ export async function envoyerMailsCommercialisation(input: {
         };
       }
     }
+    /* Retour #431 — « la commercialisation a buggé quand j'ai essayé d'envoyer
+       les e-mails ». Vercel a coupé la fonction après 60 secondes : cent
+       cinquante-neuf messages à la suite, avec la poignée de main SMTP de
+       chacun, tiennent dans deux minutes, pas dans une. L'écran envoie donc
+       PAR LOTS (`LOT_MAILS` adresses par appel, quelques secondes) et rappelle
+       cette fonction jusqu'au bout ; ce qui est parti s'inscrit ici même, sur
+       la commercialisation, pour que le compteur soit vrai et qu'un envoi
+       interrompu reprenne là où il s'est arrêté. */
+    const adresses = controle.adresses.slice(0, LOT_MAILS);
     let envoyes = 0;
+    const faitsIci: string[] = [];
     const echecs: { email: string; raison: string }[] = [];
-    for (const to of controle.adresses) {
+    for (const to of adresses) {
       try {
         await envoyerEnMasse({
           to, subject: input.objet, text: input.message,
           replyTo: agent.email, agent, pieces, differeA,
         });
         envoyes += 1;
+        faitsIci.push(to);
       } catch (e) {
         echecs.push({ email: to, raison: e instanceof Error ? e.message : String(e) });
       }
       /* Séquentiel et espacé : une rafale de connexions se fait limiter aussi
          sûrement qu'un volume excessif (§7.1). */
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 150));
     }
 
-    if (envoyes > 0) {
+    /* L'avancement, sur la commercialisation elle-même : la liste des adresses
+       servies (la reprise l'utilise), le compte, le total attendu. */
+    let fait = faitsIci.length;
+    let total = input.total ?? adresses.length;
+    if (faitsIci.length > 0 || echecs.length > 0) {
+      const doc = await bqOne("bo_commercialisation", input.commId).catch(() => null);
+      const deja = Array.isArray(doc?.mails_faits) ? (doc!.mails_faits as unknown[]).map(String) : [];
+      const faits = [...new Set([...deja, ...faitsIci])];
+      const rates = Array.isArray(doc?.mails_echecs) ? (doc!.mails_echecs as { email: string; raison: string }[]) : [];
+      fait = faits.length;
+      total = input.total ?? Math.max(fait, typeof doc?.mails_total === "number" ? (doc!.mails_total as number) : 0);
       await rpc("bo_patch_doc", {
         p_table: "bo_commercialisation",
         p_id: input.commId,
         p_patch: {
-          prop_sent: true,
-          mails_envoyes: envoyes,
+          prop_sent: fait >= total,
+          mails_envoyes: fait,
+          mails_total: total,
+          mails_faits: faits,
+          mails_echecs: [...rates.filter((r) => !faitsIci.includes(r.email)), ...echecs].slice(-200),
           mails_programmes_pour: differe ? quand!.toISOString() : null,
           mails_date: new Date().toISOString(),
           "Modified Date": new Date().toISOString(),
@@ -4603,10 +4720,12 @@ export async function envoyerMailsCommercialisation(input: {
       }).catch(() => undefined);
     }
 
-    revalidatePath(`/bien/${input.immeubleId}`);
+    if (fait >= total) revalidatePath(`/bien/${input.immeubleId}`);
     return {
-      ok: envoyes > 0,
+      ok: envoyes > 0 || adresses.length === 0,
       envoyes,
+      fait,
+      total,
       echecs,
       programmePour: differe ? quand!.toISOString() : undefined,
       pieces: pieces.length,
@@ -5084,6 +5203,12 @@ export async function traiterAProposer(
 
 /** Charge le vivier acquéreurs à la demande : 1 900 recherches et leurs
  *  contacts n'ont pas à être chargés à l'ouverture de chaque fiche. */
+/** L'historique des matchings et commercialisations, sans le vivier (#420). */
+export async function chargerHistoriqueAcheteurs(immeubleId: string) {
+  const { getHistoriqueAcheteurs } = await import("@/lib/bubble/server");
+  return getHistoriqueAcheteurs(immeubleId);
+}
+
 export async function chargerAcheteurs(immeubleId: string) {
   const { getAcheteurs } = await import("@/lib/bubble/server");
   return getAcheteurs(immeubleId);

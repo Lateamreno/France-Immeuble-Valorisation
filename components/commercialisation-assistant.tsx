@@ -13,6 +13,7 @@
 // c'est une programmation ». Ce n'est pas un envoi automatique : le contenu,
 // la liste ET l'heure sont validés dans le même geste ; la machine attend,
 // elle ne décide de rien.
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
@@ -22,7 +23,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, genererEtatLocatif, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -121,6 +122,73 @@ export function AssistantCommercialisation({
   /* Envoi des e-mails : date facultative, et compte rendu. */
   const [quandMail, setQuandMail] = useMemoire(`${memo}:quand-mail`, "");
   const [envoiMail, setEnvoiMail] = useState<string | null>(null);
+
+  /* Retour #431 — l'envoi par lots, son compteur, et sa reprise.
+     Vercel coupe une fonction à 60 s : cent cinquante-neuf e-mails à la suite
+     n'y tenaient pas, et « la commercialisation a buggé ». L'écran demande
+     maintenant douze adresses à la fois et recommence jusqu'au bout ; ce qui
+     est parti est inscrit sur la commercialisation, d'où le compteur — et la
+     reprise, si l'on ferme la page au milieu. Pendant ce temps, l'étape SMS
+     reste ouverte : l'envoi tourne, l'agent avance. */
+  const [progres, setProgres] = useMemoire<{ fait: number; total: number; echecs: number; enCours: boolean; message?: string } | null>(`${memo}:progres`, null);
+  const [faits, setFaits] = useState<string[]>([]);
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  useEffect(() => {
+    if (!commId) return;
+    let vivant = true;
+    etatMailsCommercialisation(commId)
+      .then((e) => {
+        if (!vivant) return;
+        setFaits(e.faits);
+        if (e.termine) setMailsEnvoyes(true);
+        if (e.smsEnvoyes) setSmsEnvoyes(true);
+        if (e.faits.length > 0 && !e.termine) {
+          setProgres((p) => p?.enCours ? p : { fait: e.faits.length, total: e.total ?? e.faits.length, echecs: e.echecs.length, enCours: false });
+        }
+      })
+      .catch(() => undefined);
+    return () => { vivant = false; };
+    // Relu à l'arrivée sur une commercialisation : pas à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commId]);
+
+  const envoyerParLots = async (adresses: string[], quand?: string) => {
+    if (!commId) return;
+    const LOT = 12;
+    const total = faits.length + adresses.length;
+    let fait = faits.length;
+    const rates: { email: string; raison: string }[] = [];
+    setEnvoiEnCours(true);
+    setEnvoiMail(null);
+    setProgres({ fait, total, echecs: 0, enCours: true });
+    for (let i = 0; i < adresses.length; i += LOT) {
+      const r = await envoyerMailsCommercialisation({
+        immeubleId: String(b.im._id), commId, objet, message,
+        destinataires: adresses.slice(i, i + LOT),
+        pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
+        quand, agentId: String(b.im.AGENT ?? "") || undefined,
+        total,
+      }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
+      if (!r.ok || !("fait" in r)) {
+        setProgres({ fait, total, echecs: rates.length, enCours: false, message: ("message" in r && r.message) || "L'envoi s'est interrompu — cliquez pour reprendre." });
+        setEnvoiEnCours(false);
+        return;
+      }
+      fait = r.fait;
+      rates.push(...(r.echecs ?? []));
+      setFaits((f) => [...new Set([...f, ...adresses.slice(i, i + LOT).filter((a) => !(r.echecs ?? []).some((x) => x.email === a))])]);
+      setProgres({ fait, total: r.total || total, echecs: rates.length, enCours: true });
+    }
+    setProgres({ fait, total, echecs: rates.length, enCours: false });
+    setEnvoiEnCours(false);
+    setMailsEnvoyes(true);
+    setEnvoiMail(
+      (quand ? `${fait} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${fait} e-mails envoyés`)
+      + (pj2?.path ? " avec pièce jointe" : "")
+      + "."
+      + (rates.length ? ` ${rates.length} en échec : ${rates.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}` : ""),
+    );
+  };
   /* Le poids du dossier, mesuré par `PieceJointe`. Remonté ici pour que le
      plafond porte sur le TOTAL, comme MAV l'a demandé. */
   const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
@@ -136,6 +204,8 @@ export function AssistantCommercialisation({
   const controle = useMemo(() => controlerEnvoi(cibles.map((a) => ({
     rechercheId: a.rechercheId, contactId: a.contactId, nom: a.nom, email: a.email,
   }))), [cibles]);
+  /** Les adresses qu'il reste à servir (#431) : tout, moins ce qui est déjà parti. */
+  const restantes = useMemo(() => controle.adresses.filter((a) => !faits.includes(a)), [controle.adresses, faits]);
   const douteux = useMemo(
     () => controle.adresses
       .map((v) => ({ valeur: v, propose: domaineSuspect(v) }))
@@ -145,6 +215,20 @@ export function AssistantCommercialisation({
 
   // Alerte du BO : le prix du dossier peut avoir divergé de celui de la fiche.
   const doc = dossiers.find((x) => S(x._id) === dossier);
+  /* Retour #427 — ce qui a bougé depuis le dernier dossier : le prix de la
+     fiche, ou un lot / une charge modifié après sa création. */
+  const dossierPerime = useMemo(() => {
+    const dernier = dossiers[0];
+    if (!dernier) return null;
+    const cree = S(dernier["Created Date"]);
+    const raisons: string[] = [];
+    const pd = typeof dernier.prix_hai === "number" ? (dernier.prix_hai as number) : undefined;
+    if (pd !== undefined && prixHai !== undefined && Math.round(pd) !== Math.round(prixHai)) raisons.push("le prix n'est plus le même");
+    const apres = (rows: Record<string, unknown>[]) => rows.filter((r) => S(r["Modified Date"]) > cree).length;
+    const nl = apres(b.lots); if (nl) raisons.push(`${nl} lot${nl > 1 ? "s" : ""} modifié${nl > 1 ? "s" : ""}`);
+    const nc = apres(b.charges); if (nc) raisons.push(`${nc} charge${nc > 1 ? "s" : ""} modifiée${nc > 1 ? "s" : ""}`);
+    return raisons.length ? raisons.join(", ") : null;
+  }, [dossiers, prixHai, b.lots, b.charges]);
   const prixDossier = typeof doc?.prix_hai === "number" ? (doc.prix_hai as number) : undefined;
   /* Ne compter que les pièces qui EXISTENT : passer `undefined` pour une
      seconde pièce absente la faisait compter comme « un fichier de poids
@@ -253,6 +337,18 @@ export function AssistantCommercialisation({
         <button className="fadd" type="button" onClick={fermer}>Fermer</button>
       </div>
 
+      {progres && (
+        <div className={`asst-prog${progres.enCours ? " encours" : progres.fait >= progres.total && progres.total > 0 ? " ok" : ""}`}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M3 7.5 12 13l9-5.5" /><rect x="3" y="5" width="18" height="14" rx="2" /></svg>
+          <b>{progres.fait} / {progres.total}</b> e-mails envoyés
+          {progres.enCours && <i className="asst-spin" aria-hidden />}
+          {progres.echecs > 0 && <span className="rouge">· {progres.echecs} en échec</span>}
+          {progres.message && <span className="rouge">· {progres.message}</span>}
+          {!progres.enCours && progres.fait < progres.total && etape !== "E-mails" && (
+            <button type="button" className="fadd" onClick={() => setEtape("E-mails")}>Reprendre l&apos;envoi</button>
+          )}
+        </div>
+      )}
       <div className="asst-steps">
         {ETAPES.map((e, i) => (
           <button
@@ -278,15 +374,23 @@ export function AssistantCommercialisation({
       {etape === "Dossier" && (
         <div className="asst-b">
           <span className="mlab">Dossier de commercialisation</span>
+          {/* Retour #427 : « je ne veux pas qu'on puisse choisir une version
+              ancienne : soit le dossier actuel, soit créer une nouvelle version
+              si et seulement si il y a une différence entre le dernier dossier
+              et ce qu'il y a dans le BO ». */}
           {dossiers.length === 0 ? (
             <div className="fempty">Aucun dossier généré. Vous pouvez commercialiser sans dossier, mais l&apos;e-mail n&apos;aura rien à joindre.</div>
           ) : (
             <select className="min" value={dossier} onChange={(e) => setDossier(e.target.value)}>
               <option value="">Sans dossier</option>
-              {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{libelleDossierChiffre(x)}</option>
-              ))}
+              <option value={S(dossiers[0]._id)}>{libelleDossierChiffre(dossiers[0])} — dossier actuel</option>
             </select>
+          )}
+          {dossierPerime && (
+            <div className="dif-simu">
+              <b>La fiche a changé depuis le dossier V{S(dossiers[0]?.version)}</b> — {dossierPerime}.{" "}
+              <Link className="dos-lien" href={`/bien/${String(b.im._id)}?ecran=dossiers`}>Créer une nouvelle version →</Link>
+            </div>
           )}
           {/* Retour #355 — « à côté de la version et de la date tu mettras
               aussi le prix HAI, la renta et le prix au m², en rouge ou vert
@@ -311,6 +415,9 @@ export function AssistantCommercialisation({
                 {pj2.octets ? ` — ${(pj2.octets / 1_048_576).toFixed(1)} Mo` : ""}
                 <i>{pj2.source === "genere" ? "généré depuis l'état locatif de la fiche" : "déposé à la main"}</i>
               </span>
+              {pj2.path && (
+                <a className="fadd" href={`/api/photo?s=${encodeURIComponent(pj2.path)}`} target="_blank" rel="noreferrer">Voir</a>
+              )}
               <button className="fadd" type="button" onClick={() => { setPj2(null); setPj2Erreur(null); }}>Retirer</button>
             </div>
           ) : (
@@ -318,11 +425,12 @@ export function AssistantCommercialisation({
               <button className="fadd" type="button" disabled={pending}
                 onClick={() => start(async () => {
                   setPj2Erreur(null);
-                  const r = await genererEtatLocatif(String(b.im._id));
+                  /* Retour #426 : un tableur (CSV lisible par Excel), pas un PDF. */
+                  const r = await genererEtatLocatifCsv(String(b.im._id));
                   if (r.ok) setPj2({ nom: r.nom, octets: r.octets, path: r.path, source: "genere" });
                   else setPj2Erreur(r.message);
                 })}>
-                {pending ? "Génération…" : "Générer l'état locatif"}
+                {pending ? "Génération…" : "Générer l'état locatif (Excel / CSV)"}
               </button>
               <label className="fadd" style={{ cursor: "pointer" }}>
                 Déposer un fichier
@@ -564,10 +672,10 @@ export function AssistantCommercialisation({
             <span className="sp" style={{ flex: 1 }} />
             <button
               className="kgo" type="button"
-              disabled={pending || mailsEnvoyes || controle.personnes === 0 || pesee.depasse}
+              disabled={pending || envoiEnCours || mailsEnvoyes || restantes.length === 0 || pesee.depasse}
               onClick={async () => {
                 if (!commId) return;
-                const n = controle.personnes;
+                const n = restantes.length;
                 const d = quandMail ? new Date(quandMail) : undefined;
                 const differe = d && !Number.isNaN(d.getTime()) && d.getTime() > Date.now();
                 if (!(await confirmer(
@@ -584,37 +692,12 @@ export function AssistantCommercialisation({
                   </>,
                   { oui: differe ? "Programmer" : "Envoyer" },
                 ))) return;
-                setEnvoiMail(null);
-                start(async () => {
-                  const r = await envoyerMailsCommercialisation({
-                    immeubleId: String(b.im._id), commId,
-                    objet, message,
-                    destinataires: controle.adresses,
-                    pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
-                    quand: differe ? d!.toISOString() : undefined,
-                    agentId: String(b.im.AGENT ?? "") || undefined,
-                  });
-                  if (r.ok) {
-                    setMailsEnvoyes(true);
-                    setEnvoiMail(
-                      (r.programmePour
-                        ? `${r.envoyes} e-mails programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
-                        : `${r.envoyes} e-mails envoyés`)
-                      + (r.pieces ? ` avec ${r.pieces} pièce${r.pieces > 1 ? "s" : ""} jointe${r.pieces > 1 ? "s" : ""}` : " sans pièce jointe")
-                      + "."
-                      + (r.echecs && r.echecs.length
-                        ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}`
-                        : ""),
-                    );
-                  } else {
-                    setEnvoiMail(r.message ?? "L'envoi n'a pas abouti.");
-                  }
-                });
+                void envoyerParLots(restantes, differe ? d!.toISOString() : undefined);
               }}
             >
               <span className="ch">›</span>{" "}
-              {quandMail ? "Programmer" : "Envoyer"}{" "}
-              {controle.personnes > 1 ? `les ${controle.personnes} e-mails` : "l'e-mail"}
+              {faits.length > 0 ? "Reprendre l'envoi : " : quandMail ? "Programmer" : "Envoyer"}{" "}
+              {restantes.length > 1 ? `les ${restantes.length} e-mails` : "l'e-mail"}
             </button>
           </div>
         </div>
