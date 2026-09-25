@@ -4790,6 +4790,32 @@ export async function etatEnvoiSms() {
 }
 
 /**
+ * Un SMS d'ESSAI, sur un seul numéro — le sien (demande MAV, 25/09, avant le
+ * premier envoi de Sens : « je veux qu'il soit concluant »).
+ *
+ * Même texte, même route, même mention STOP que la campagne : ce qu'on reçoit
+ * est exactement ce que recevront les acquéreurs. Mais rien n'est marqué sur
+ * la commercialisation, et la campagne porte un nom qui le dit — un essai
+ * n'est pas un envoi.
+ */
+export async function envoyerSmsEssai(input: { texte: string; numero: string }) {
+  const { envoyerSms } = await import("./sms");
+  const { telE164 } = await import("./matching");
+  const numero = telE164(input.numero);
+  if (!numero) return { ok: false as const, message: `Numéro d'essai illisible : « ${input.numero} ».` };
+  if (!input.texte.trim()) return { ok: false as const, message: "Le message est vide." };
+  try {
+    const r = await envoyerSms([numero], input.texte, { nom: "Essai BO" });
+    if (r.simulation) {
+      return { ok: false as const, message: "Mode simulation : MAILINGVOX_KEY n'est pas renseignée, rien n'est parti." };
+    }
+    return { ok: true as const, segments: r.segments, campagne: r.campagne };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * Envoie les SMS d'une commercialisation, et marque la ligne.
  *
  * Doctrine §7.1 : l'application prépare, l'agent envoie. Cette fonction n'est
