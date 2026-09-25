@@ -8,8 +8,8 @@
 // données — une liste déroulante qui change de contenu selon ce qu'on a sous
 // les yeux ne se mémorise pas.
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import type { ListCard } from "@/lib/bubble/server";
+import { Modale } from "@/components/modale";
 
 export type Filtres = {
   ideal: string;
@@ -273,54 +273,54 @@ export function PanneauFiltres({
       {/* Retour #364 — « on voit les photos à travers ». La colonne de filtres
           est collante (position: sticky), ce qui en fait un contexte
           d'empilement : la fenêtre, pourtant fixée au-dessus de tout, restait
-          dessinée SOUS les cartes de la liste, photos comprises. Elle est
-          donc montée au niveau du document, hors de la colonne. */}
-      {lieuOuvert && createPortal(
-        <div className="modal-ov" onClick={() => setLieuOuvert(false)}>
-          <div className="modal lieu-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              <b>Emplacement</b>
-              <button type="button" onClick={() => setLieuOuvert(false)}>✕</button>
-            </div>
-            <div className="lieu-corps">
-              <p className="lieu-aide">
-                Plusieurs choix possibles. Un bien sort s&apos;il correspond à <b>l&apos;un</b>{" "}
-                d&apos;eux.
-              </p>
-              {([
-                ["Régions", lieuxDispo().regions],
-                ["Départements", lieuxDispo().deps],
-                ["Villes", lieuxDispo().villes],
-              ] as const).map(([titre, liste]) =>
-                liste.length ? (
-                  <div className="lieu-groupe" key={titre}>
-                    <div className="lieu-titre">{titre}</div>
-                    <div className="lieu-puces">
-                      {liste.map((l) => (
-                        <button
-                          key={l} type="button"
-                          className={`lieu-puce${f.lieux.includes(l) ? " on" : ""}`}
-                          onClick={() => basculerLieu(l)}
-                        >
-                          {libelleLieu(l)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null,
-              )}
-            </div>
-            <div className="modal-f">
+          dessinée SOUS les cartes de la liste, photos comprises. La Modale
+          partagée se pose dans <body>, hors de la colonne. */}
+      {lieuOuvert && (
+        <Modale
+          titre={<b>Emplacement</b>}
+          onFermer={() => setLieuOuvert(false)}
+          className="lieu-modal"
+          brut
+          pied={
+            <>
               <button type="button" className="fltr-raz" disabled={!f.lieux.length}
                 onClick={() => set({ lieux: [] })}>Tout effacer</button>
               <span style={{ flex: 1 }} />
               <button type="button" className="savebar-go" onClick={() => setLieuOuvert(false)}>
                 <span className="ch">›</span> Appliquer
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="lieu-corps">
+            <p className="lieu-aide">
+              Plusieurs choix possibles. Un bien sort s&apos;il correspond à <b>l&apos;un</b>{" "}
+              d&apos;eux.
+            </p>
+            {([
+              ["Régions", lieuxDispo().regions],
+              ["Départements", lieuxDispo().deps],
+              ["Villes", lieuxDispo().villes],
+            ] as const).map(([titre, liste]) =>
+              liste.length ? (
+                <div className="lieu-groupe" key={titre}>
+                  <div className="lieu-titre">{titre}</div>
+                  <div className="lieu-puces">
+                    {liste.map((l) => (
+                      <button
+                        key={l} type="button"
+                        className={`lieu-puce${f.lieux.includes(l) ? " on" : ""}`}
+                        onClick={() => basculerLieu(l)}
+                      >
+                        {libelleLieu(l)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null,
+            )}
           </div>
-        </div>,
-        document.body,
+        </Modale>
       )}
     </aside>
   );

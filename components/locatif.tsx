@@ -5,8 +5,9 @@
 import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
-import { euros } from "@/lib/format";
+import { euros, S } from "@/lib/format";
 import { LotsEditor } from "@/components/lots-editor";
+import { Modale, useQuestion } from "@/components/modale";
 import {
   addCharge, addLocataire, bailDuLot,
   deleteCharge, updateCharge, updateLocataire,
@@ -26,7 +27,6 @@ const STATUTS_BAIL = [
   { key: "expulsion", label: "Expulsion en cours" },
 ] as const;
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 
@@ -516,58 +516,52 @@ function ModaleCharge({ b, charge, onFermer }: {
     });
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          {charge ? "Modifier la charge" : "Nouvelle charge"}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <span className="mlab">Type de charge</span>
-          <div className="mrow">
-            {TYPES_CHARGE.map((tc) => (
-              <button key={tc} type="button" className={`mopt${type === tc ? " on" : ""}`} onClick={() => setType(tc)}>{tc}</button>
-            ))}
-          </div>
-          {type === "Autre" && (
-            <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le type" value={autre} onChange={(e) => setAutre(e.target.value)} />
-          )}
-          {/* Retour #256 : chaque case dit ce qu'elle attend, et porte son
-              unité. « Total €/an » en gris dans la case disparaissait dès la
-              première frappe — on ne savait plus laquelle était laquelle. */}
-          <span className="mlab">Montants</span>
-          <div className="chg-mnt">
-            <label>
-              <span>Montant total</span>
-              <span className="u">
-                <input value={totalAn} inputMode="decimal" onChange={(e) => setTotalAn(e.target.value)} />
-                <i>€/an</i>
-              </span>
-            </label>
-            <label>
-              <span>Montant récupérable</span>
-              <span className="u">
-                <input value={recup} inputMode="decimal" onChange={(e) => setRecup(e.target.value)} />
-                <i>€/an</i>
-              </span>
-            </label>
-            {/* Une charge entièrement récupérable pèse zéro sur le vendeur :
-                il faut l'écrire. `euros` ne rend rien en dessous de 1 €, d'où
-                le « /an » orphelin d'avant (retour #256). */}
-            {nonRecup !== undefined && (
-              <span className="chg-nr">non récupérable<b>{euros(nonRecup) ?? "0 €"}/an</b></span>
-            )}
-          </div>
-          <span className="mlab">Commentaire</span>
-          <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
-        </div>
-        <div className="modal-f">
-          <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={submit}>
-            <span className="ch">›</span> {charge ? "Enregistrer la charge" : "Créer la charge"}
-          </button>
-        </div>
+    <Modale
+      titre={charge ? "Modifier la charge" : "Nouvelle charge"} onFermer={onFermer}
+      pied={
+        <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={submit}>
+          <span className="ch">›</span> {charge ? "Enregistrer la charge" : "Créer la charge"}
+        </button>
+      }
+    >
+      <span className="mlab">Type de charge</span>
+      <div className="mrow">
+        {TYPES_CHARGE.map((tc) => (
+          <button key={tc} type="button" className={`mopt${type === tc ? " on" : ""}`} onClick={() => setType(tc)}>{tc}</button>
+        ))}
       </div>
-    </div>
+      {type === "Autre" && (
+        <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le type" value={autre} onChange={(e) => setAutre(e.target.value)} />
+      )}
+      {/* Retour #256 : chaque case dit ce qu'elle attend, et porte son
+          unité. « Total €/an » en gris dans la case disparaissait dès la
+          première frappe — on ne savait plus laquelle était laquelle. */}
+      <span className="mlab">Montants</span>
+      <div className="chg-mnt">
+        <label>
+          <span>Montant total</span>
+          <span className="u">
+            <input value={totalAn} inputMode="decimal" onChange={(e) => setTotalAn(e.target.value)} />
+            <i>€/an</i>
+          </span>
+        </label>
+        <label>
+          <span>Montant récupérable</span>
+          <span className="u">
+            <input value={recup} inputMode="decimal" onChange={(e) => setRecup(e.target.value)} />
+            <i>€/an</i>
+          </span>
+        </label>
+        {/* Une charge entièrement récupérable pèse zéro sur le vendeur :
+            il faut l'écrire. `euros` ne rend rien en dessous de 1 €, d'où
+            le « /an » orphelin d'avant (retour #256). */}
+        {nonRecup !== undefined && (
+          <span className="chg-nr">non récupérable<b>{euros(nonRecup) ?? "0 €"}/an</b></span>
+        )}
+      </div>
+      <span className="mlab">Commentaire</span>
+      <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+    </Modale>
   );
 }
 
@@ -626,6 +620,7 @@ function LigneChargeSaisie({
 function ChargesTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [ouverte, setOuverte] = useState<Record<string, unknown> | null>(null);
   const [creation, setCreation] = useState(false);
 
@@ -684,8 +679,8 @@ function ChargesTab({ b }: { b: BienData }) {
       valeur={saisie[cle] ?? { total: "", recup: "" }}
       onValeur={(v) => maj(cle, v)}
       onOuvrir={charge ? () => setOuverte(charge) : undefined}
-      onSupprimer={charge && type !== LIGNE_TF ? () => {
-        if (!confirm("Supprimer cette charge ? (récupérable dans la corbeille)")) return;
+      onSupprimer={charge && type !== LIGNE_TF ? async () => {
+        if (!(await confirmer("Supprimer cette charge ? (récupérable dans la corbeille)", { danger: true, oui: "Supprimer" }))) return;
         start(() => deleteCharge(immeubleId, String(charge._id)));
       } : undefined}
     />
@@ -723,6 +718,7 @@ function ChargesTab({ b }: { b: BienData }) {
 
       {creation && <ModaleCharge b={b} onFermer={() => setCreation(false)} />}
       {ouverte && <ModaleCharge b={b} charge={ouverte} onFermer={() => setOuverte(null)} />}
+      {question}
     </div>
   );
 }

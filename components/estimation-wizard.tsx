@@ -10,8 +10,10 @@ import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
-import { euros, group } from "@/lib/format";
+import { euros, group, S } from "@/lib/format";
 import { Copier } from "@/components/copier";
+import { useQuestion } from "@/components/modale";
+import { Pastille } from "@/components/pastille";
 import { AdressesInput } from "@/components/adresses-input";
 import { EditSecteurBtn } from "@/components/emplacement";
 import { comparerEstimation, type Ecart } from "@/lib/bo/estimation-ecarts";
@@ -32,7 +34,6 @@ const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as cons
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const fr1 = (x: number) => x.toFixed(1).replace(".", ",");
 const dmyfr = (v: unknown) => (typeof v === "string" ? v.slice(0, 10).split("-").reverse().join("/") : "");
 const heure = (v: string) =>
@@ -227,6 +228,7 @@ export function EstimationWizard({
 
   const [step, setStep] = useMem("step", reprise ? 4 : 0);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [estId, setEstId] = useMem<string | null>("estId", reprise?.id ?? null);
   /** Le PDF du dossier, fabriqué juste après l'estimation. */
   const [pdf, setPdf] = useMem<{ url: string; ko: number } | null>(
@@ -764,8 +766,8 @@ export function EstimationWizard({
           <button
             type="button" className="est-reset"
             title="Vider la saisie et repartir de zéro"
-            onClick={() => {
-              if (!confirm("Effacer la saisie en cours et recommencer l'estimation ?")) return;
+            onClick={async () => {
+              if (!(await confirmer("Effacer la saisie en cours et recommencer l'estimation ?", { danger: true, oui: "Recommencer" }))) return;
               oublier(NS);
               window.location.reload();
             }}
@@ -1415,6 +1417,7 @@ export function EstimationWizard({
       </div>
 
       <HistoriqueEstimations b={b} immeubleId={immeubleId} />
+      {question}
     </div>
   );
 }
@@ -1437,9 +1440,9 @@ function HistoriqueEstimations({ b, immeubleId }: { b: BienData; immeubleId: str
       <span className="t">{S(e.titre) || "Estimation"}</span>
       <span className="d">figée au {dmyfr(e["Created Date"])}</span>
       <span className="p">{euros(num(e.prix_hai)) ?? "—"}</span>
-      <span className={String(e.Statut ?? "").startsWith("3") ? "badge-g" : "badge-o"}>
+      <Pastille ton={String(e.Statut ?? "").startsWith("3") ? "vert" : "gris"} plein>
         {S(e.Statut).replace(/^\d+ - /, "") || "?"}
-      </span>
+      </Pastille>
       {derniere && (
         /* #159 — « qu'elle soit déroulable pour voir ce qu'il y avait dedans à
            l'époque » : les chiffres tels qu'ils ont été figés, sans rouvrir

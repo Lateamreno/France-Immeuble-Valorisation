@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ContactPicker } from "@/components/contact-picker";
+import { Modale } from "@/components/modale";
 import {
   addOffre, addVisite, chercherImmeubles, deposerOffrePdf, traiterAProposer,
   type ImmeubleTrouve,
@@ -201,57 +202,10 @@ export function ModaleProposition({
     });
 
   return (
-    <div className="modal-ov">
-      <div className="modal lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Nouvelle proposition<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Immeuble proposé</span>
-          <ChoixBien valeur={b} onChoisir={setB} />
-
-          <span className="mlab">Acquéreur(s)</span>
-          <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
-
-          <span className="mlab">Que fait-on ?</span>
-          <div className="mrow">
-            <button type="button" className={`mopt${mode === "envoyer" ? " on" : ""}`}
-              onClick={() => setMode("envoyer")}>Envoyer le dossier</button>
-            <button type="button" className={`mopt${mode === "deja_envoye" ? " on" : ""}`}
-              onClick={() => setMode("deja_envoye")}>Déjà envoyé</button>
-          </div>
-
-          {mode === "envoyer" ? (
-            <>
-              <span className="mlab">Objet</span>
-              <input className="min" value={objetFinal} onChange={(e) => setObjet(e.target.value)} />
-              <span className="mlab">Message</span>
-              <textarea className="min" rows={8} value={messageFinal}
-                onChange={(e) => setMessage(e.target.value)} />
-              <p className="rm-aide">
-                Le dernier dossier du bien part en pièce jointe. Rien n&apos;est envoyé
-                d&apos;ici : la proposition est préparée, vous l&apos;envoyez.
-              </p>
-            </>
-          ) : (
-            <>
-              <span className="mlab">A-t-on eu un retour ?</span>
-              <div className="mrow">
-                {([["aucun", "Pas encore"], ["interesse", "Intéressé"], ["refus", "Refus"]] as const)
-                  .map(([k, l]) => (
-                    <button key={k} type="button" className={`mopt${retour === k ? " on" : ""}`}
-                      onClick={() => setRetour(k)}>{l}</button>
-                  ))}
-              </div>
-              {retour !== "aucun" && (
-                <>
-                  <span className="mlab">Ce qu&apos;il a dit</span>
-                  <input className="min" value={retourTexte}
-                    onChange={(e) => setRetourTexte(e.target.value)} />
-                </>
-              )}
-            </>
-          )}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Nouvelle proposition" onFermer={onFermer} className="lg" fermeDehors={false}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <button className="kgo" type="button" disabled={pending || !pret}
@@ -259,9 +213,55 @@ export function ModaleProposition({
             <span className="ch">›</span>{" "}
             {pending ? "Enregistrement…" : `Créer ${gens.length > 1 ? `${gens.length} propositions` : "la proposition"}`}
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Immeuble proposé</span>
+      <ChoixBien valeur={b} onChoisir={setB} />
+
+      <span className="mlab">Acquéreur(s)</span>
+      <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
+
+      <span className="mlab">Que fait-on ?</span>
+      <div className="mrow">
+        <button type="button" className={`mopt${mode === "envoyer" ? " on" : ""}`}
+          onClick={() => setMode("envoyer")}>Envoyer le dossier</button>
+        <button type="button" className={`mopt${mode === "deja_envoye" ? " on" : ""}`}
+          onClick={() => setMode("deja_envoye")}>Déjà envoyé</button>
       </div>
-    </div>
+
+      {mode === "envoyer" ? (
+        <>
+          <span className="mlab">Objet</span>
+          <input className="min" value={objetFinal} onChange={(e) => setObjet(e.target.value)} />
+          <span className="mlab">Message</span>
+          <textarea className="min" rows={8} value={messageFinal}
+            onChange={(e) => setMessage(e.target.value)} />
+          <p className="rm-aide">
+            Le dernier dossier du bien part en pièce jointe. Rien n&apos;est envoyé
+            d&apos;ici : la proposition est préparée, vous l&apos;envoyez.
+          </p>
+        </>
+      ) : (
+        <>
+          <span className="mlab">A-t-on eu un retour ?</span>
+          <div className="mrow">
+            {([["aucun", "Pas encore"], ["interesse", "Intéressé"], ["refus", "Refus"]] as const)
+              .map(([k, l]) => (
+                <button key={k} type="button" className={`mopt${retour === k ? " on" : ""}`}
+                  onClick={() => setRetour(k)}>{l}</button>
+              ))}
+          </div>
+          {retour !== "aucun" && (
+            <>
+              <span className="mlab">Ce qu&apos;il a dit</span>
+              <input className="min" value={retourTexte}
+                onChange={(e) => setRetourTexte(e.target.value)} />
+            </>
+          )}
+        </>
+      )}
+    </Modale>
   );
 }
 
@@ -290,42 +290,10 @@ export function ModaleVisite({
   const pret = !!b && !!date;
 
   return (
-    <div className="modal-ov">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Nouvelle visite<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Immeuble visité</span>
-          <ChoixBien valeur={b} onChoisir={setB} />
-
-          <span className="mlab">Visiteur(s)</span>
-          <ChoixPersonnes libelle="Rattacher un visiteur" valeur={gens} onChange={setGens} />
-          <p className="rm-aide">
-            C&apos;est le rattachement qui fait apparaître la visite sur la fiche de
-            l&apos;acquéreur — un nom tapé à la main ne remonte nulle part.
-          </p>
-
-          <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
-            <label style={{ flex: 1, minWidth: 200 }}>
-              <span className="mlab">Date et heure</span>
-              <input className="min" type="datetime-local" style={{ width: "100%" }}
-                value={date} onChange={(e) => setDate(e.target.value)} />
-            </label>
-            <label style={{ flex: 1, minWidth: 180 }}>
-              <span className="mlab">Source</span>
-              <select className="min" style={{ width: "100%" }} value={source}
-                onChange={(e) => setSource(e.target.value)}>
-                <option value="">Non précisée</option>
-                {SOURCES_VISITE.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <span className="mlab">Commentaire interne</span>
-          <textarea className="min" rows={3} value={commentaire}
-            onChange={(e) => setCommentaire(e.target.value)}
-            placeholder="Ce qu'il faut savoir avant d'y aller…" />
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Nouvelle visite" onFermer={onFermer} fermeDehors={false}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <button className="kgo" type="button" disabled={pending || !pret}
@@ -344,9 +312,40 @@ export function ModaleVisite({
             })}>
             <span className="ch">›</span> {pending ? "Enregistrement…" : "Programmer la visite"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Immeuble visité</span>
+      <ChoixBien valeur={b} onChoisir={setB} />
+
+      <span className="mlab">Visiteur(s)</span>
+      <ChoixPersonnes libelle="Rattacher un visiteur" valeur={gens} onChange={setGens} />
+      <p className="rm-aide">
+        C&apos;est le rattachement qui fait apparaître la visite sur la fiche de
+        l&apos;acquéreur — un nom tapé à la main ne remonte nulle part.
+      </p>
+
+      <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
+        <label style={{ flex: 1, minWidth: 200 }}>
+          <span className="mlab">Date et heure</span>
+          <input className="min" type="datetime-local" style={{ width: "100%" }}
+            value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label style={{ flex: 1, minWidth: 180 }}>
+          <span className="mlab">Source</span>
+          <select className="min" style={{ width: "100%" }} value={source}
+            onChange={(e) => setSource(e.target.value)}>
+            <option value="">Non précisée</option>
+            {SOURCES_VISITE.map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </label>
       </div>
-    </div>
+
+      <span className="mlab">Commentaire interne</span>
+      <textarea className="min" rows={3} value={commentaire}
+        onChange={(e) => setCommentaire(e.target.value)}
+        placeholder="Ce qu'il faut savoir avant d'y aller…" />
+    </Modale>
   );
 }
 
@@ -397,66 +396,10 @@ export function ModaleOffre({
   };
 
   return (
-    <div className="modal-ov">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Nouvelle offre<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Immeuble concerné</span>
-          <ChoixBien valeur={b} onChoisir={setB} />
-
-          <span className="mlab">Acquéreur(s)</span>
-          <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
-
-          <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
-            <label style={{ flex: 1, minWidth: 160 }}>
-              <span className="mlab">Prix net vendeur</span>
-              <input className="min" style={{ width: "100%" }} value={prix}
-                onChange={(e) => setPrix(e.target.value)} placeholder="€" />
-            </label>
-            <label style={{ flex: 1, minWidth: 160 }}>
-              <span className="mlab">Honoraires HT</span>
-              <input className="min" style={{ width: "100%" }} value={honos}
-                onChange={(e) => setHonos(e.target.value)} placeholder="€" />
-            </label>
-            <label style={{ flex: 1, minWidth: 180 }}>
-              <span className="mlab">Validité de l&apos;offre</span>
-              <input className="min" type="date" style={{ width: "100%" }} value={expiration}
-                onChange={(e) => setExpiration(e.target.value)} />
-            </label>
-          </div>
-
-          {/* Retour #335 : le PDF de l'offre se dépose ici, dans le coffre du
-              bien. L'offre signée est la pièce qui compte. */}
-          <span className="mlab">Offre en PDF</span>
-          <div className="mrow" style={{ alignItems: "center" }}>
-            <input ref={fichier} type="file" accept="application/pdf,image/*" hidden
-              onChange={(e) => deposer(e.target.files?.[0])} />
-            <button type="button" className="fadd" disabled={!b || pending}
-              title={b ? undefined : "Choisissez d'abord l'immeuble"}
-              onClick={() => fichier.current?.click()}>
-              {pdf ? "Remplacer le PDF" : "+ Joindre l'offre en PDF"}
-            </button>
-            {pdf && <span className="fchip">{pdf.nom}</span>}
-          </div>
-          {envoiErr && <p className="rm-avert">{envoiErr}</p>}
-
-          <span className="mlab">Commentaire</span>
-          <textarea className="min" rows={3} value={commentaire}
-            onChange={(e) => setCommentaire(e.target.value)}
-            placeholder="Conditions, financement, délais…" />
-
-          <label className="arp-case">
-            <input type="checkbox" checked={prevenir} onChange={() => setPrevenir(!prevenir)} />
-            <span>
-              <b>Écrire aux propriétaires pour leur transmettre l&apos;offre</b>
-              <em>
-                L&apos;offre est enregistrée, puis l&apos;écran de rédaction s&apos;ouvre sur la
-                fiche du bien. Rien ne part sans vous.
-              </em>
-            </span>
-          </label>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Nouvelle offre" onFermer={onFermer} fermeDehors={false}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <button className="kgo" type="button" disabled={pending || !pret}
@@ -477,8 +420,63 @@ export function ModaleOffre({
             })}>
             <span className="ch">›</span> {pending ? "Enregistrement…" : "Enregistrer l'offre"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Immeuble concerné</span>
+      <ChoixBien valeur={b} onChoisir={setB} />
+
+      <span className="mlab">Acquéreur(s)</span>
+      <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
+
+      <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
+        <label style={{ flex: 1, minWidth: 160 }}>
+          <span className="mlab">Prix net vendeur</span>
+          <input className="min" style={{ width: "100%" }} value={prix}
+            onChange={(e) => setPrix(e.target.value)} placeholder="€" />
+        </label>
+        <label style={{ flex: 1, minWidth: 160 }}>
+          <span className="mlab">Honoraires HT</span>
+          <input className="min" style={{ width: "100%" }} value={honos}
+            onChange={(e) => setHonos(e.target.value)} placeholder="€" />
+        </label>
+        <label style={{ flex: 1, minWidth: 180 }}>
+          <span className="mlab">Validité de l&apos;offre</span>
+          <input className="min" type="date" style={{ width: "100%" }} value={expiration}
+            onChange={(e) => setExpiration(e.target.value)} />
+        </label>
       </div>
-    </div>
+
+      {/* Retour #335 : le PDF de l'offre se dépose ici, dans le coffre du
+          bien. L'offre signée est la pièce qui compte. */}
+      <span className="mlab">Offre en PDF</span>
+      <div className="mrow" style={{ alignItems: "center" }}>
+        <input ref={fichier} type="file" accept="application/pdf,image/*" hidden
+          onChange={(e) => deposer(e.target.files?.[0])} />
+        <button type="button" className="fadd" disabled={!b || pending}
+          title={b ? undefined : "Choisissez d'abord l'immeuble"}
+          onClick={() => fichier.current?.click()}>
+          {pdf ? "Remplacer le PDF" : "+ Joindre l'offre en PDF"}
+        </button>
+        {pdf && <span className="fchip">{pdf.nom}</span>}
+      </div>
+      {envoiErr && <p className="rm-avert">{envoiErr}</p>}
+
+      <span className="mlab">Commentaire</span>
+      <textarea className="min" rows={3} value={commentaire}
+        onChange={(e) => setCommentaire(e.target.value)}
+        placeholder="Conditions, financement, délais…" />
+
+      <label className="arp-case">
+        <input type="checkbox" checked={prevenir} onChange={() => setPrevenir(!prevenir)} />
+        <span>
+          <b>Écrire aux propriétaires pour leur transmettre l&apos;offre</b>
+          <em>
+            L&apos;offre est enregistrée, puis l&apos;écran de rédaction s&apos;ouvre sur la
+            fiche du bien. Rien ne part sans vous.
+          </em>
+        </span>
+      </label>
+    </Modale>
   );
 }

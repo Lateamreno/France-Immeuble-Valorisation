@@ -6,12 +6,14 @@ import { useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy } from "@/lib/format";
 import { deleteDocument, uploadDocument } from "@/lib/bo/actions";
+import { useQuestion } from "@/components/modale";
 
 export function DocumentsCoffre({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [label, setLabel] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const submit = () =>
@@ -42,8 +44,8 @@ export function DocumentsCoffre({ b }: { b: BienData }) {
           <a className="fadd" href={`/api/photo?s=${encodeURIComponent(String(d.path ?? ""))}`} target="_blank" rel="noreferrer">Ouvrir</a>
           <button
             className="xdel" type="button" title="Retirer le document" disabled={pending}
-            onClick={() => {
-              if (!confirm("Retirer ce document ? (récupérable dans la corbeille)")) return;
+            onClick={async () => {
+              if (!(await confirmer("Retirer ce document ? (récupérable dans la corbeille)", { danger: true, oui: "Retirer" }))) return;
               start(() => deleteDocument(immeubleId, String(d._id)));
             }}
           >✕</button>
@@ -60,6 +62,7 @@ export function DocumentsCoffre({ b }: { b: BienData }) {
       <div style={{ fontSize: 11.5, color: "var(--gray-lt)", marginTop: 8 }}>
         RGPD : caviarder les baux avant tout partage externe — le coffre est privé (accès service uniquement).
       </div>
+      {question}
     </>
   );
 }

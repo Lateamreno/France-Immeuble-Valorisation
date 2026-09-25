@@ -15,6 +15,8 @@
 import { useState, useTransition } from "react";
 import { majReglages } from "@/lib/bo/actions";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { Modale } from "@/components/modale";
+import { Champ } from "@/components/champ";
 import type { Reglages } from "@/lib/bo/reglages";
 
 const CHAMPS_AGENCE: { cle: keyof Reglages["agence"]; label: string; aide?: string; large?: boolean }[] = [
@@ -75,11 +77,10 @@ export function ReglagesAgence({ initial }: { initial: Reglages }) {
       <h2 className="fsub">L&apos;agence sur les documents</h2>
       <div className="rgl-grid">
         {CHAMPS_AGENCE.map((c) => (
-          <label key={c.cle} className={`rgl-ch${c.large ? " large" : ""}`}>
-            <span className="l">{c.label}</span>
-            <input className="mi" value={v.agence[c.cle]} onChange={(e) => majAgence(c.cle, e.target.value)} />
-            {c.aide && <span className="a">{c.aide}</span>}
-          </label>
+          <Champ key={c.cle} libelle={c.label} capitales className="rgl-ch" large={c.large}
+            aide={c.aide} htmlFor={`rgl-${c.cle}`}>
+            <input id={`rgl-${c.cle}`} className="mi" value={v.agence[c.cle]} onChange={(e) => majAgence(c.cle, e.target.value)} />
+          </Champ>
         ))}
       </div>
 
@@ -118,14 +119,11 @@ export function ReglagesAgence({ initial }: { initial: Reglages }) {
       </table>
 
       <h2 className="fsub">Vente directe au locataire</h2>
-      <label className="rgl-ch">
-        <span className="l">Remise consentie au vendeur</span>
-        <input className="mi" inputMode="decimal" value={String(v.remiseLocataire)}
+      <Champ libelle="Remise consentie au vendeur" capitales className="rgl-ch" htmlFor="rgl-remise"
+        aide={<>En pourcentage des honoraires. Le prix HAI ne bouge pas : c&apos;est le net vendeur qui monte.</>}>
+        <input id="rgl-remise" className="mi" inputMode="decimal" value={String(v.remiseLocataire)}
           onChange={(e) => setV((x) => ({ ...x, remiseLocataire: Number(e.target.value.replace(",", ".")) || 0 }))} />
-        <span className="a">
-          En pourcentage des honoraires. Le prix HAI ne bouge pas : c&apos;est le net vendeur qui monte.
-        </span>
-      </label>
+      </Champ>
 
       {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
 
@@ -140,25 +138,25 @@ export function ReglagesAgence({ initial }: { initial: Reglages }) {
       {/* La confirmation : un barème changé par mégarde se retrouve sur des
           mandats avant qu'on s'en aperçoive. */}
       {confirme && (
-        <div className="modal-ov" onClick={() => setConfirme(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Confirmer le changement<button type="button" onClick={() => setConfirme(false)}>✕</button></div>
-            <div className="modal-b">
-              <p>
-                Ces réglages pilotent le site entier. Le barème servira à calculer les honoraires de
-                <b> tous les mandats créés à partir de maintenant</b> ; l&apos;identité s&apos;imprimera
-                sur tous les documents générés.
-              </p>
-              <p className="rgl-aide">Les mandats déjà signés ne sont pas touchés.</p>
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre="Confirmer le changement"
+          onFermer={() => setConfirme(false)}
+          pied={
+            <>
               <button type="button" className="fchip" onClick={() => setConfirme(false)}>Annuler</button>
               <button type="button" className="savebar-go" disabled={pending} onClick={enregistrer}>
                 {pending ? "Enregistrement…" : "Confirmer et enregistrer"}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p>
+            Ces réglages pilotent le site entier. Le barème servira à calculer les honoraires de
+            <b> tous les mandats créés à partir de maintenant</b> ; l&apos;identité s&apos;imprimera
+            sur tous les documents générés.
+          </p>
+          <p className="rgl-aide">Les mandats déjà signés ne sont pas touchés.</p>
+        </Modale>
       )}
     </div>
   );

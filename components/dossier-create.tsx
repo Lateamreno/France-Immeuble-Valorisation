@@ -5,14 +5,14 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
-import { euros } from "@/lib/format";
+import { euros, S } from "@/lib/format";
 import { apercuPdfDossier, createDossier, genererPdfDossier } from "@/lib/bo/actions";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
 import { descriptifAVerifier } from "@/lib/bo/descriptif";
+import { Modale } from "@/components/modale";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
 export function AddDossierButton({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
@@ -163,156 +163,10 @@ export function AddDossierButton({ b }: { b: BienData }) {
         </p>
       )}
       {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Nouveau dossier — V{version}<button type="button" onClick={close}>✕</button></div>
-            <div className="modal-b">
-              {/* Retour #321 — « comme c'est pas immédiat on a l'impression
-                  qu'il y a un bug et on est tenté de faire un deuxième dossier
-                  alors qu'il n'y a pas lieu. »
-
-                  Un dossier, c'est vingt pages, six cartes Google et un PDF :
-                  dix à trente secondes. Le seul signe qu'il se passait quelque
-                  chose était le libellé d'un bouton grisé, en bas de la modale,
-                  là où l'œil n'est plus une fois qu'on a cliqué. D'où un
-                  bandeau qui occupe le haut de l'écran, dit à quelle étape on
-                  est, et demande explicitement de ne pas relancer. */}
-              {pending && (
-                <div className="dos-encours" role="status" aria-live="polite">
-                  <span className="dos-encours-r" aria-hidden="true" />
-                  <div>
-                    <b>
-                      {createdId
-                        ? `Dossier V${version} enregistré — fabrication du PDF…`
-                        : vu
-                        ? "Enregistrement du dossier…"
-                        : "Fabrication de l'aperçu…"}
-                    </b>
-                    <span>
-                      Une vingtaine de pages, les cartes et le PDF : comptez quelques
-                      secondes. Ne relancez pas, cela créerait un dossier en double.
-                    </span>
-                  </div>
-                </div>
-              )}
-              {/* #182 — « tu peux reprendre la modale en une seule page ». Le
-                  stepper Immeuble → Prix → PDF faisait trois écrans pour deux
-                  chiffres : tout tient sur une page, les données de l'immeuble
-                  en chips, le prix en dessous. */}
-              {!createdId ? (
-                <>
-                  <div className="dos-chips">
-                    <span className="fchip">{b.lots.length} lots</span>
-                    <span className="fchip">{Math.round(agg.surface)} m²</span>
-                    <span className="fchip">Occupation {agg.occupation} %</span>
-                    <span className="fchip">{euros(agg.loyersAn)}/an</span>
-                    <span className="fchip">Potentiel {euros(agg.loyersMaxAn)}/an</span>
-                    <span className="fchip">Travaux {euros(agg.travaux) ?? "0 €"}</span>
-                    {agg.dests.map((d) => <span key={d} className="fchip">{d}</span>)}
-                  </div>
-
-                  {/* Retour #238 — « attention, ici il faut pas du tout qu'on
-                      puisse modifier le prix ni les honoraires. C'est vraiment
-                      du pur génératif. » Le dossier reprend le prix de la
-                      fiche, un point c'est tout : deux endroits pour saisir un
-                      prix, c'est deux prix qui finissent par diverger. Il se
-                      change là où il vit, sur Description et prix. */}
-                  <div className="dos-fige">
-                    <div>
-                      <span>Prix HAI</span>
-                      <b>{euros(vHai) ?? "—"}</b>
-                    </div>
-                    <div>
-                      <span>Honoraires</span>
-                      <b>{vPct.toString().replace(".", ",")} % TTC</b>
-                    </div>
-                    <span className="fine">
-                      Repris de la fiche — ils se modifient sur <b>Description et prix</b>.
-                    </span>
-                  </div>
-                  {vHai > 0 && (
-                    <div style={{ fontSize: 13, marginTop: 8 }}>
-                      Net vendeur <b>{euros(nv)}</b> + honoraires <b>{euros(vHai - nv)}</b> = <b>{euros(vHai)} HAI</b><br />
-                      Rendement brut <b>{agg.loyersAn > 0 ? `${((agg.loyersAn / vHai) * 100).toFixed(1).replace(".", ",")} %` : "—"}</b>
-                      {" · "}potentiel <b>{agg.loyersMaxAn > 0 ? `${((agg.loyersMaxAn / (vHai + agg.travaux)) * 100).toFixed(1).replace(".", ",")} %` : "—"}</b>
-                    </div>
-                  )}
-
-                  {/* L'historique des prix, déroulable. Ses lignes se
-                      reprenaient d'un clic pour remplir la case au-dessus ;
-                      depuis #238 il n'y a plus de case à remplir, il ne reste
-                      donc que la lecture — savoir d'où vient le prix affiché. */}
-                  {histo.length > 0 && (
-                    <>
-                      <button type="button" className="hest-plus" style={{ marginTop: 12 }}
-                        onClick={() => setVoirHisto(!voirHisto)}>
-                        {voirHisto ? "Masquer l'historique des prix" : `Historique des prix (${histo.length})`}
-                      </button>
-                      {voirHisto && (
-                        <div className="dos-histo">
-                          {histo.map((p) => (
-                            <div key={S(p._id)} className="dos-histo-l lecture">
-                              <b>{euros(num(p.in_prix_hai)) ?? "—"}</b>
-                              <span>
-                                {S(p.in_Motif) || "Prix"}
-                                {p["Created Date"] ? ` · ${new Date(S(p["Created Date"])).toLocaleDateString("fr-FR")}` : ""}
-                                {num(p.out_prix_m2) ? ` · ${Math.round(num(p.out_prix_m2)!)} €/m²` : ""}
-                                {num(p.out_rba) ? ` · ${num(p.out_rba)!.toFixed(1).replace(".", ",")} %` : ""}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* L'aperçu (#219) : on le relit, puis on enregistre. Tant
-                      qu'on n'a pas enregistré, aucune version n'existe. */}
-                  {pdf && vu ? (
-                    <div className="dos-apercu">
-                      <b>Aperçu prêt — relisez-le avant d&apos;enregistrer.</b>
-                      <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
-                        Ouvrir le PDF ({pdf.ko} ko)
-                      </a>
-                      <Link className="lnk" target="_blank"
-                        href={`/bien/${immeubleId}/dossier/apercu?hai=${vHai}&pct=${vPct}&v=${prochaine}`}>
-                        Ouvrir la version imprimable
-                      </Link>
-                      <span className="fine">
-                        Rien n&apos;est enregistré pour l&apos;instant : la version V{prochaine} ne
-                        sera créée qu&apos;au moment où vous l&apos;enregistrerez.
-                      </span>
-                    </div>
-                  ) : errPdf ? (
-                    <div className="warnbox" style={{ marginTop: 12, color: "var(--red)", borderColor: "var(--red)" }}>
-                      Aperçu impossible : {errPdf}
-                    </div>
-                  ) : (
-                    <div className="warnbox" style={{ marginTop: 12 }}>
-                      Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-                  Dossier <b>V{version}</b> généré ✓<br />
-                  {pdf ? (
-                    <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
-                      Ouvrir le PDF ({pdf.ko} ko)
-                    </a>
-                  ) : errPdf ? (
-                    <span style={{ color: "var(--red)" }}>PDF impossible : {errPdf}</span>
-                  ) : (
-                    <span style={{ color: "var(--gray-lt)" }}>Fabrication du PDF…</span>
-                  )}
-                  <br />
-                  <Link className="lnk" href={`/bien/${immeubleId}/dossier/${createdId}/imprimer`} target="_blank">
-                    Ouvrir la version imprimable
-                  </Link>
-                </div>
-              )}
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre={<>Nouveau dossier — V{version}</>} onFermer={close} fermeDehors={false}
+          pied={
+            <>
               <span style={{ flex: 1 }} />
               {!createdId ? (
                 <>
@@ -334,9 +188,154 @@ export function AddDossierButton({ b }: { b: BienData }) {
               ) : (
                 <button className="kgo" type="button" onClick={close}>Fermer</button>
               )}
+            </>
+          }
+        >
+          {/* Retour #321 — « comme c'est pas immédiat on a l'impression
+              qu'il y a un bug et on est tenté de faire un deuxième dossier
+              alors qu'il n'y a pas lieu. »
+
+              Un dossier, c'est vingt pages, six cartes Google et un PDF :
+              dix à trente secondes. Le seul signe qu'il se passait quelque
+              chose était le libellé d'un bouton grisé, en bas de la modale,
+              là où l'œil n'est plus une fois qu'on a cliqué. D'où un
+              bandeau qui occupe le haut de l'écran, dit à quelle étape on
+              est, et demande explicitement de ne pas relancer. */}
+          {pending && (
+            <div className="dos-encours" role="status" aria-live="polite">
+              <span className="dos-encours-r" aria-hidden="true" />
+              <div>
+                <b>
+                  {createdId
+                    ? `Dossier V${version} enregistré — fabrication du PDF…`
+                    : vu
+                    ? "Enregistrement du dossier…"
+                    : "Fabrication de l'aperçu…"}
+                </b>
+                <span>
+                  Une vingtaine de pages, les cartes et le PDF : comptez quelques
+                  secondes. Ne relancez pas, cela créerait un dossier en double.
+                </span>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+          {/* #182 — « tu peux reprendre la modale en une seule page ». Le
+              stepper Immeuble → Prix → PDF faisait trois écrans pour deux
+              chiffres : tout tient sur une page, les données de l'immeuble
+              en chips, le prix en dessous. */}
+          {!createdId ? (
+            <>
+              <div className="dos-chips">
+                <span className="fchip">{b.lots.length} lots</span>
+                <span className="fchip">{Math.round(agg.surface)} m²</span>
+                <span className="fchip">Occupation {agg.occupation} %</span>
+                <span className="fchip">{euros(agg.loyersAn)}/an</span>
+                <span className="fchip">Potentiel {euros(agg.loyersMaxAn)}/an</span>
+                <span className="fchip">Travaux {euros(agg.travaux) ?? "0 €"}</span>
+                {agg.dests.map((d) => <span key={d} className="fchip">{d}</span>)}
+              </div>
+
+              {/* Retour #238 — « attention, ici il faut pas du tout qu'on
+                  puisse modifier le prix ni les honoraires. C'est vraiment
+                  du pur génératif. » Le dossier reprend le prix de la
+                  fiche, un point c'est tout : deux endroits pour saisir un
+                  prix, c'est deux prix qui finissent par diverger. Il se
+                  change là où il vit, sur Description et prix. */}
+              <div className="dos-fige">
+                <div>
+                  <span>Prix HAI</span>
+                  <b>{euros(vHai) ?? "—"}</b>
+                </div>
+                <div>
+                  <span>Honoraires</span>
+                  <b>{vPct.toString().replace(".", ",")} % TTC</b>
+                </div>
+                <span className="fine">
+                  Repris de la fiche — ils se modifient sur <b>Description et prix</b>.
+                </span>
+              </div>
+              {vHai > 0 && (
+                <div style={{ fontSize: 13, marginTop: 8 }}>
+                  Net vendeur <b>{euros(nv)}</b> + honoraires <b>{euros(vHai - nv)}</b> = <b>{euros(vHai)} HAI</b><br />
+                  Rendement brut <b>{agg.loyersAn > 0 ? `${((agg.loyersAn / vHai) * 100).toFixed(1).replace(".", ",")} %` : "—"}</b>
+                  {" · "}potentiel <b>{agg.loyersMaxAn > 0 ? `${((agg.loyersMaxAn / (vHai + agg.travaux)) * 100).toFixed(1).replace(".", ",")} %` : "—"}</b>
+                </div>
+              )}
+
+              {/* L'historique des prix, déroulable. Ses lignes se
+                  reprenaient d'un clic pour remplir la case au-dessus ;
+                  depuis #238 il n'y a plus de case à remplir, il ne reste
+                  donc que la lecture — savoir d'où vient le prix affiché. */}
+              {histo.length > 0 && (
+                <>
+                  <button type="button" className="hest-plus" style={{ marginTop: 12 }}
+                    onClick={() => setVoirHisto(!voirHisto)}>
+                    {voirHisto ? "Masquer l'historique des prix" : `Historique des prix (${histo.length})`}
+                  </button>
+                  {voirHisto && (
+                    <div className="dos-histo">
+                      {histo.map((p) => (
+                        <div key={S(p._id)} className="dos-histo-l lecture">
+                          <b>{euros(num(p.in_prix_hai)) ?? "—"}</b>
+                          <span>
+                            {S(p.in_Motif) || "Prix"}
+                            {p["Created Date"] ? ` · ${new Date(S(p["Created Date"])).toLocaleDateString("fr-FR")}` : ""}
+                            {num(p.out_prix_m2) ? ` · ${Math.round(num(p.out_prix_m2)!)} €/m²` : ""}
+                            {num(p.out_rba) ? ` · ${num(p.out_rba)!.toFixed(1).replace(".", ",")} %` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* L'aperçu (#219) : on le relit, puis on enregistre. Tant
+                  qu'on n'a pas enregistré, aucune version n'existe. */}
+              {pdf && vu ? (
+                <div className="dos-apercu">
+                  <b>Aperçu prêt — relisez-le avant d&apos;enregistrer.</b>
+                  <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
+                    Ouvrir le PDF ({pdf.ko} ko)
+                  </a>
+                  <Link className="lnk" target="_blank"
+                    href={`/bien/${immeubleId}/dossier/apercu?hai=${vHai}&pct=${vPct}&v=${prochaine}`}>
+                    Ouvrir la version imprimable
+                  </Link>
+                  <span className="fine">
+                    Rien n&apos;est enregistré pour l&apos;instant : la version V{prochaine} ne
+                    sera créée qu&apos;au moment où vous l&apos;enregistrerez.
+                  </span>
+                </div>
+              ) : errPdf ? (
+                <div className="warnbox" style={{ marginTop: 12, color: "var(--red)", borderColor: "var(--red)" }}>
+                  Aperçu impossible : {errPdf}
+                </div>
+              ) : (
+                <div className="warnbox" style={{ marginTop: 12 }}>
+                  Pensez à relire l&apos;état locatif et l&apos;état technique avant de générer le dossier.
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+              Dossier <b>V{version}</b> généré ✓<br />
+              {pdf ? (
+                <a className="lnk" href={pdf.url} target="_blank" rel="noreferrer">
+                  Ouvrir le PDF ({pdf.ko} ko)
+                </a>
+              ) : errPdf ? (
+                <span style={{ color: "var(--red)" }}>PDF impossible : {errPdf}</span>
+              ) : (
+                <span style={{ color: "var(--gray-lt)" }}>Fabrication du PDF…</span>
+              )}
+              <br />
+              <Link className="lnk" href={`/bien/${immeubleId}/dossier/${createdId}/imprimer`} target="_blank">
+                Ouvrir la version imprimable
+              </Link>
+            </div>
+          )}
+        </Modale>
       )}
     </>
   );

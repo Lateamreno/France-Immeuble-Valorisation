@@ -7,6 +7,8 @@
 import Link from "next/link";
 import type { RechercheCard } from "@/lib/bubble/server";
 import { VignetteContact } from "@/components/vignette-contact";
+import { Modale } from "@/components/modale";
+import { Avatar } from "@/components/avatar";
 
 /* Les quatre destinations du BO, dans son ordre. Un picto éteint dit « pas
    recherché » — l'absence de picto ne dirait rien du tout. */
@@ -77,7 +79,7 @@ export function CarteRecherche({
         <span className="rc-jum">
           <svg viewBox="0 0 24 24"><circle cx="7" cy="14" r="3.6" /><circle cx="17" cy="14" r="3.6" /><path d="M7 10.4V6h3.4M17 10.4V6h-3.4M10.6 14h2.8" /></svg>
         </span>
-        <span className="lav" style={r.agentCouleur ? { background: r.agentCouleur } : undefined}>{r.agent}</span>
+        <Avatar initiales={r.agent} couleur={r.agentCouleur} />
       </div>
 
       <div className="rc-corps">
@@ -156,30 +158,12 @@ export function ModaleRecherche({
   onModifier?: (r: RechercheCard) => void;
 }) {
   return (
-    <div className="modal-ov" onClick={onClose}>
-      <div className="modal lieu-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          <b>{detail.contact?.nom ?? "Recherche"} — {detail.cible ?? "Recherche"}</b>
-          <button type="button" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-b">
-          <div className="rc-det">
-            <b>Où</b><span>{detail.lieux.join(", ")}</span>
-            <b>Destinations</b><span>{detail.destinations.join(", ") || "Toutes"}</span>
-            <b>Surface</b><span>{detail.surface ?? "Non précisée"}</span>
-            <b>Occupation</b><span>{detail.occupation ?? "Non précisée"}</span>
-            <b>Budget</b><span>{detail.prix ?? "Non précisé"}</span>
-            <b>Rendement</b><span>{detail.renta ?? "Non précisé"}</span>
-            <b>À proposer</b>
-            <span>
-              {detail.aProposer > 0
-                ? `${detail.aProposer} immeuble(s) en mandat correspondent et ne lui ont jamais été envoyés.`
-                : "Rien de nouveau : tout ce qui correspond lui a déjà été envoyé."}
-            </span>
-          </div>
-          {detail.commentaire && <p className="rc-com">{detail.commentaire}</p>}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre={<b>{detail.contact?.nom ?? "Recherche"} — {detail.cible ?? "Recherche"}</b>}
+      onFermer={onClose}
+      className="lieu-modal"
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           {onModifier && (
             <button type="button" className="fadd" onClick={() => onModifier(detail)}>
@@ -197,8 +181,24 @@ export function ModaleRecherche({
               </Link>
             )
           )}
-        </div>
+        </>
+      }
+    >
+      <div className="rc-det">
+        <b>Où</b><span>{detail.lieux.join(", ")}</span>
+        <b>Destinations</b><span>{detail.destinations.join(", ") || "Toutes"}</span>
+        <b>Surface</b><span>{detail.surface ?? "Non précisée"}</span>
+        <b>Occupation</b><span>{detail.occupation ?? "Non précisée"}</span>
+        <b>Budget</b><span>{detail.prix ?? "Non précisé"}</span>
+        <b>Rendement</b><span>{detail.renta ?? "Non précisé"}</span>
+        <b>À proposer</b>
+        <span>
+          {detail.aProposer > 0
+            ? `${detail.aProposer} immeuble(s) en mandat correspondent et ne lui ont jamais été envoyés.`
+            : "Rien de nouveau : tout ce qui correspond lui a déjà été envoyé."}
+        </span>
       </div>
-    </div>
+      {detail.commentaire && <p className="rc-com">{detail.commentaire}</p>}
+    </Modale>
   );
 }

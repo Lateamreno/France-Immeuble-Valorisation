@@ -22,8 +22,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { createMandat } from "@/lib/bo/actions";
-
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+import { S } from "@/lib/format";
 
 export function AddMandatButton({ b }: { b: BienData }) {
   const router = useRouter();

@@ -10,18 +10,19 @@ import {
   carte, destinataires, FILTRES_MATCH_DEFAUT, matcher,
   type Acquereur, type CriteresBien, type FiltresMatch,
 } from "@/lib/bo/matching";
-import { dmy, euros, libelleDossier } from "@/lib/format";
+import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
 import { saveMatch } from "@/lib/bo/actions";
 import { AssistantCommercialisation } from "@/components/commercialisation-assistant";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
+import { Modale } from "@/components/modale";
+import { Pastille } from "@/components/pastille";
 
 const NOTES = ["A", "B", "C", "D"];
 /** Un nombre à la française : la virgule décimale, et pas de zéro inutile. */
 const fr = (n: number) => String(n).replace(".", ",");
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const parse = (s: string) => {
   const v = parseFloat(s.replace(/[^\d.,-]/g, "").replace(",", "."));
   return Number.isFinite(v) ? v : undefined;
@@ -193,8 +194,8 @@ function Historique({ d, onRouvrir }: {
         <div key={S(c._id)} className="mt-h co">
           <div className="mt-h-t">
             Commercialisation du {dmy(c["Created Date"])}
-            {c.prop_sent === true ? <span className="badge-g">E-mails envoyés</span> : <span className="badge-o">E-mails à envoyer</span>}
-            {c.prop_sms_sent === true ? <span className="badge-g">SMS envoyés</span> : <span className="badge-o">SMS à envoyer</span>}
+            {c.prop_sent === true ? <Pastille ton="vert" plein>E-mails envoyés</Pastille> : <Pastille ton="gris" plein>E-mails à envoyer</Pastille>}
+            {c.prop_sms_sent === true ? <Pastille ton="vert" plein>SMS envoyés</Pastille> : <Pastille ton="gris" plein>SMS à envoyer</Pastille>}
           </div>
           <div className="mt-res">
             <b>{Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as string[]).length : 0}</b> propositions créées
@@ -291,161 +292,13 @@ function ModaleMatching({
   const [voirRegles, setVoirRegles] = useState(false);
 
   return (
-    <div className="modal-ov">
-      <div className="modal lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Trouver des acquéreurs<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Source des critères</span>
-          <div className="mrow">
-            <button type="button" className={`mopt${source === "from_est" ? " on" : ""}`}
-              disabled={estimations.length === 0} onClick={() => choisirSource("from_est")}>
-              À partir d&apos;une estimation
-            </button>
-            <button type="button" className={`mopt${source === "from_imm" ? " on" : ""}`} onClick={() => choisirSource("from_imm")}>
-              À partir d&apos;un prix
-            </button>
-            <button type="button" className={`mopt${source === "from_doss" ? " on" : ""}`}
-              disabled={dossiers.length === 0} onClick={() => choisirSource("from_doss")}>
-              À partir d&apos;un dossier
-            </button>
-          </div>
-
-          {source === "from_est" && estimations.length > 0 && (
-            <select className="min" value={estimationId} onChange={(e) => { setEstimationId(e.target.value); choisirSource("from_est"); }}>
-              {estimations.map((e) => (
-                <option key={S(e._id)} value={S(e._id)}>{S(e.titre) || "Estimation"} — {dmy(e["Created Date"])}</option>
-              ))}
-            </select>
-          )}
-          {source === "from_doss" && dossiers.length > 0 && (
-            <select className="min" value={dossierId} onChange={(e) => { setDossierId(e.target.value); choisirSource("from_doss"); }}>
-              {dossiers.map((x) => (
-                <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
-              ))}
-            </select>
-          )}
-
-          {/* Retour #324 — le prix se tirait à la main dans une case, sans rien
-              qui dise s'il tenait la route. Il se règle à la barre, avec les
-              repères du secteur, et le tableau juste dessous dit ce que ça
-              donne en loyer au m², prix au m² et rendement, actuel comme
-              potentiel. Retour #326 : quand la source est un dossier ou une
-              estimation, le prix est celui du document — pas de curseur, on ne
-              refait pas le prix ici. */}
-          <span className="mlab">
-            {source === "from_imm" ? "Prix de mise en marché" : "Prix figé par le document"}
-          </span>
-          {source === "from_imm" ? (
-            <CurseurPrix bornes={pistes.bornes} pRendementMax={pistes.pRendementMax}
-              pM2={pistes.pM2} hai={prixN} honosPct={honosPct}
-              onHai={(v) => setPrix(String(v))} />
-          ) : (
-            <div className="mt-prixfige">
-              <b>{euros(prixN) ?? "—"}</b> HAI
-              <span>
-                repris {source === "from_doss" ? "du dossier" : "de l'estimation"} — il se change
-                là où il vit
-              </span>
-            </div>
-          )}
-
-          <TableauActuelPotentiel agg={agg} refs={refs} hai={prixN}
-            travaux={travauxTot} chargesTot={chargesTot} />
-
-          <span className="mlab">Autres critères</span>
-          <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap" }}>
-            <label style={{ fontSize: 12 }}>Surface m² <input className="min" style={{ width: 80 }} value={surface} onChange={(e) => setSurface(e.target.value)} /></label>
-            <label style={{ fontSize: 12 }}>Occupation % <input className="min" style={{ width: 70 }} value={occupation} onChange={(e) => setOccupation(e.target.value)} /></label>
-            <label style={{ fontSize: 12 }}>Rentabilité % <input className="min" style={{ width: 70 }} value={renta} onChange={(e) => setRenta(e.target.value)} /></label>
-          </div>
-          <div className="mt-geo">
-            Secteur : <b>{criteres.ville || "n.c."}</b>{criteres.departement ? ` (${criteres.departement})` : ""}
-            {criteres.destinations && criteres.destinations.length > 0 ? ` · ${criteres.destinations.join(", ")}` : ""}
-          </div>
-
-          {/* Retour #326 — « en dessous je veux que tu me mettes les recherches
-              que ça va matcher dans un menu déroulant ». Le compteur disait
-              combien, jamais pourquoi : on ne pouvait ni faire confiance au
-              résultat ni comprendre une absence. Voici la règle, en clair,
-              appliquée à cet immeuble. */}
-          <button type="button" className="mt-regles-b" onClick={() => setVoirRegles(!voirRegles)}>
-            {voirRegles ? "Masquer" : "Voir"} les recherches que ça va toucher
-            <span className="ch">{voirRegles ? "▾" : "▸"}</span>
-          </button>
-          {voirRegles && (
-            <ul className="mt-regles">
-              <li>
-                <b>Destination</b> — les recherches qui visent{" "}
-                {criteres.destinations && criteres.destinations.length > 0
-                  ? criteres.destinations.join(" ou ").toLowerCase()
-                  : "n'importe quelle destination"}, ou du mixte, ou qui n&apos;en précisent aucune.
-                Celles qui excluent une de ces destinations sont écartées.
-              </li>
-              <li>
-                <b>Budget</b> — celles dont la fourchette contient{" "}
-                <b>{euros(prixN) ?? "le prix"}</b>, et celles sans budget déclaré.
-              </li>
-              <li>
-                <b>Occupation</b> — celles qui n&apos;en font pas un critère, et celles dont
-                la fourchette contient {criteres.occupation === undefined ? "?" : fr(criteres.occupation)} %.
-              </li>
-              <li>
-                <b>Secteur</b> — celles sans secteur déclaré, et celles qui couvrent{" "}
-                <b>{criteres.ville || "la ville"}</b>
-                {criteres.departement ? `, le ${criteres.departement}` : ""} ou sa région.
-              </li>
-              <li>
-                <b>Rentabilité</b> — celles qui n&apos;en exigent pas plus que{" "}
-                {criteres.renta === undefined ? "?" : fr(criteres.renta)} %.
-              </li>
-              <li>
-                <b>Classe</b> — {f.notes.length === 0
-                  ? "aucune classe retenue : rien ne sortira."
-                  : `les acquéreurs classés ${f.notes.join(", ")}.`}
-              </li>
-            </ul>
-          )}
-
-          <span className="mlab">Classes d&apos;acquéreurs</span>
-          {/* Retour #324 — « les mêmes codes couleurs que ce qu'on a mis dans
-              le BO pour les ABCD, et quand ils ne sont pas sélectionnés il faut
-              qu'ils soient gris. » A, B, C et D sont une échelle de qualité
-              d'acquéreur : quatre boutons identiques ne disaient pas laquelle
-              on écartait. La pastille reprend donc la couleur qu'elle a partout
-              ailleurs dans le BO, et se décolore quand la classe est exclue. */}
-          <div className="mrow">
-            {NOTES.map((n) => {
-              const on = f.notes.includes(n);
-              return (
-                <button key={n} type="button" className={`mt-note${on ? " on" : ""}`}
-                  aria-pressed={on}
-                  title={on ? `Classe ${n} incluse — cliquez pour l'exclure` : `Classe ${n} exclue — cliquez pour l'inclure`}
-                  onClick={() => toggleNote(n)}>
-                  <span className={`note n${n}`}>{n}</span>
-                  Classe {n}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mrow" style={{ marginTop: 10, flexWrap: "wrap" }}>
-            <button type="button" className={`mopt${f.exclureDejaVus ? " on" : ""}`} onClick={() => setF({ ...f, exclureDejaVus: !f.exclureDejaVus })}>
-              Déjà vus exclus
-            </button>
-            <button type="button" className={`mopt${f.exclureAgents ? " on" : ""}`} onClick={() => setF({ ...f, exclureAgents: !f.exclureAgents })}>
-              Agents exclus
-            </button>
-            <button type="button" className={`mopt${f.mandatObligatoire ? " on" : ""}`} onClick={() => setF({ ...f, mandatObligatoire: !f.mandatObligatoire })}>
-              {f.mandatObligatoire ? "Mandat obligatoire" : "Mandat facultatif"}
-            </button>
-          </div>
-
-          <div className="mt-apercu">
-            <b>{apercu.length}</b> recherche{apercu.length > 1 ? "s" : ""} · <b>{dest.emails.length}</b> emails ·{" "}
-            <b>{dest.telephones.length}</b> téléphones
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Trouver des acquéreurs"
+      onFermer={onFermer}
+      className="lg"
+      fermeDehors={false}
+      pied={
+        <>
           {/* Retour #324 : « tu mets le bouton trouver des acquéreurs à droite
               en vert aussi. » Il était centré dans le pied, à égalité visuelle
               avec rien — un pied de modale se lit par la droite. */}
@@ -460,9 +313,159 @@ function ModaleMatching({
               acquereurs: apercu,
             })}
           ><span className="ch">›</span> Trouver des acquéreurs</button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Source des critères</span>
+      <div className="mrow">
+        <button type="button" className={`mopt${source === "from_est" ? " on" : ""}`}
+          disabled={estimations.length === 0} onClick={() => choisirSource("from_est")}>
+          À partir d&apos;une estimation
+        </button>
+        <button type="button" className={`mopt${source === "from_imm" ? " on" : ""}`} onClick={() => choisirSource("from_imm")}>
+          À partir d&apos;un prix
+        </button>
+        <button type="button" className={`mopt${source === "from_doss" ? " on" : ""}`}
+          disabled={dossiers.length === 0} onClick={() => choisirSource("from_doss")}>
+          À partir d&apos;un dossier
+        </button>
       </div>
-    </div>
+
+      {source === "from_est" && estimations.length > 0 && (
+        <select className="min" value={estimationId} onChange={(e) => { setEstimationId(e.target.value); choisirSource("from_est"); }}>
+          {estimations.map((e) => (
+            <option key={S(e._id)} value={S(e._id)}>{S(e.titre) || "Estimation"} — {dmy(e["Created Date"])}</option>
+          ))}
+        </select>
+      )}
+      {source === "from_doss" && dossiers.length > 0 && (
+        <select className="min" value={dossierId} onChange={(e) => { setDossierId(e.target.value); choisirSource("from_doss"); }}>
+          {dossiers.map((x) => (
+            <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
+          ))}
+        </select>
+      )}
+
+      {/* Retour #324 — le prix se tirait à la main dans une case, sans rien
+          qui dise s'il tenait la route. Il se règle à la barre, avec les
+          repères du secteur, et le tableau juste dessous dit ce que ça
+          donne en loyer au m², prix au m² et rendement, actuel comme
+          potentiel. Retour #326 : quand la source est un dossier ou une
+          estimation, le prix est celui du document — pas de curseur, on ne
+          refait pas le prix ici. */}
+      <span className="mlab">
+        {source === "from_imm" ? "Prix de mise en marché" : "Prix figé par le document"}
+      </span>
+      {source === "from_imm" ? (
+        <CurseurPrix bornes={pistes.bornes} pRendementMax={pistes.pRendementMax}
+          pM2={pistes.pM2} hai={prixN} honosPct={honosPct}
+          onHai={(v) => setPrix(String(v))} />
+      ) : (
+        <div className="mt-prixfige">
+          <b>{euros(prixN) ?? "—"}</b> HAI
+          <span>
+            repris {source === "from_doss" ? "du dossier" : "de l'estimation"} — il se change
+            là où il vit
+          </span>
+        </div>
+      )}
+
+      <TableauActuelPotentiel agg={agg} refs={refs} hai={prixN}
+        travaux={travauxTot} chargesTot={chargesTot} />
+
+      <span className="mlab">Autres critères</span>
+      <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12 }}>Surface m² <input className="min" style={{ width: 80 }} value={surface} onChange={(e) => setSurface(e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Occupation % <input className="min" style={{ width: 70 }} value={occupation} onChange={(e) => setOccupation(e.target.value)} /></label>
+        <label style={{ fontSize: 12 }}>Rentabilité % <input className="min" style={{ width: 70 }} value={renta} onChange={(e) => setRenta(e.target.value)} /></label>
+      </div>
+      <div className="mt-geo">
+        Secteur : <b>{criteres.ville || "n.c."}</b>{criteres.departement ? ` (${criteres.departement})` : ""}
+        {criteres.destinations && criteres.destinations.length > 0 ? ` · ${criteres.destinations.join(", ")}` : ""}
+      </div>
+
+      {/* Retour #326 — « en dessous je veux que tu me mettes les recherches
+          que ça va matcher dans un menu déroulant ». Le compteur disait
+          combien, jamais pourquoi : on ne pouvait ni faire confiance au
+          résultat ni comprendre une absence. Voici la règle, en clair,
+          appliquée à cet immeuble. */}
+      <button type="button" className="mt-regles-b" onClick={() => setVoirRegles(!voirRegles)}>
+        {voirRegles ? "Masquer" : "Voir"} les recherches que ça va toucher
+        <span className="ch">{voirRegles ? "▾" : "▸"}</span>
+      </button>
+      {voirRegles && (
+        <ul className="mt-regles">
+          <li>
+            <b>Destination</b> — les recherches qui visent{" "}
+            {criteres.destinations && criteres.destinations.length > 0
+              ? criteres.destinations.join(" ou ").toLowerCase()
+              : "n'importe quelle destination"}, ou du mixte, ou qui n&apos;en précisent aucune.
+            Celles qui excluent une de ces destinations sont écartées.
+          </li>
+          <li>
+            <b>Budget</b> — celles dont la fourchette contient{" "}
+            <b>{euros(prixN) ?? "le prix"}</b>, et celles sans budget déclaré.
+          </li>
+          <li>
+            <b>Occupation</b> — celles qui n&apos;en font pas un critère, et celles dont
+            la fourchette contient {criteres.occupation === undefined ? "?" : fr(criteres.occupation)} %.
+          </li>
+          <li>
+            <b>Secteur</b> — celles sans secteur déclaré, et celles qui couvrent{" "}
+            <b>{criteres.ville || "la ville"}</b>
+            {criteres.departement ? `, le ${criteres.departement}` : ""} ou sa région.
+          </li>
+          <li>
+            <b>Rentabilité</b> — celles qui n&apos;en exigent pas plus que{" "}
+            {criteres.renta === undefined ? "?" : fr(criteres.renta)} %.
+          </li>
+          <li>
+            <b>Classe</b> — {f.notes.length === 0
+              ? "aucune classe retenue : rien ne sortira."
+              : `les acquéreurs classés ${f.notes.join(", ")}.`}
+          </li>
+        </ul>
+      )}
+
+      <span className="mlab">Classes d&apos;acquéreurs</span>
+      {/* Retour #324 — « les mêmes codes couleurs que ce qu'on a mis dans
+          le BO pour les ABCD, et quand ils ne sont pas sélectionnés il faut
+          qu'ils soient gris. » A, B, C et D sont une échelle de qualité
+          d'acquéreur : quatre boutons identiques ne disaient pas laquelle
+          on écartait. La pastille reprend donc la couleur qu'elle a partout
+          ailleurs dans le BO, et se décolore quand la classe est exclue. */}
+      <div className="mrow">
+        {NOTES.map((n) => {
+          const on = f.notes.includes(n);
+          return (
+            <button key={n} type="button" className={`mt-note${on ? " on" : ""}`}
+              aria-pressed={on}
+              title={on ? `Classe ${n} incluse — cliquez pour l'exclure` : `Classe ${n} exclue — cliquez pour l'inclure`}
+              onClick={() => toggleNote(n)}>
+              <span className={`note n${n}`}>{n}</span>
+              Classe {n}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mrow" style={{ marginTop: 10, flexWrap: "wrap" }}>
+        <button type="button" className={`mopt${f.exclureDejaVus ? " on" : ""}`} onClick={() => setF({ ...f, exclureDejaVus: !f.exclureDejaVus })}>
+          Déjà vus exclus
+        </button>
+        <button type="button" className={`mopt${f.exclureAgents ? " on" : ""}`} onClick={() => setF({ ...f, exclureAgents: !f.exclureAgents })}>
+          Agents exclus
+        </button>
+        <button type="button" className={`mopt${f.mandatObligatoire ? " on" : ""}`} onClick={() => setF({ ...f, mandatObligatoire: !f.mandatObligatoire })}>
+          {f.mandatObligatoire ? "Mandat obligatoire" : "Mandat facultatif"}
+        </button>
+      </div>
+
+      <div className="mt-apercu">
+        <b>{apercu.length}</b> recherche{apercu.length > 1 ? "s" : ""} · <b>{dest.emails.length}</b> emails ·{" "}
+        <b>{dest.telephones.length}</b> téléphones
+      </div>
+    </Modale>
   );
 }
 

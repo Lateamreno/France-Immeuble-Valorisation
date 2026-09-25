@@ -10,6 +10,7 @@
 import { useState, useTransition } from "react";
 import { publierVitrine, verifierLogo } from "@/lib/bo/diffusion";
 import { LIMITES, type VitrineSaisie } from "@/lib/vitrine";
+import { useQuestion } from "@/components/modale";
 
 type Etat =
   | { sorte: "logo"; ok: boolean; message: string }
@@ -20,6 +21,7 @@ export function Vitrine({ initial, configuree }: { initial: VitrineSaisie; confi
   const [etat, setEtat] = useState<Etat | null>(null);
   const [ouvert, setOuvert] = useState(false);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
 
   const maj = (k: keyof VitrineSaisie) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setV((x) => ({ ...x, [k]: e.target.value }));
@@ -36,9 +38,11 @@ export function Vitrine({ initial, configuree }: { initial: VitrineSaisie; confi
       });
     });
 
-  const publier = () =>
+  /* La question se pose AVANT la transition : posée dedans, la fenêtre
+     n'apparaît jamais (React retient l'écran pendant l'action). */
+  const publier = async () => {
+    if (!(await confirmer("Publier la vitrine sur la page publique France Immeuble ?", { oui: "Publier" }))) return;
     start(async () => {
-      if (!confirm("Publier la vitrine sur la page publique France Immeuble ?")) return;
       const r = await publierVitrine(v);
       setEtat(
         r.ok
@@ -46,6 +50,7 @@ export function Vitrine({ initial, configuree }: { initial: VitrineSaisie; confi
           : { sorte: "envoi", ok: false, message: r.message ?? "Échec." },
       );
     });
+  };
 
   const compteur = (valeur: string, max: number) => (
     <span className={`vit-cpt${valeur.length > max ? " vit-trop" : ""}`}>
@@ -145,6 +150,7 @@ export function Vitrine({ initial, configuree }: { initial: VitrineSaisie; confi
           </p>
         </div>
       )}
+      {question}
     </section>
   );
 }

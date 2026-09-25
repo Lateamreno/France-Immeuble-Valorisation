@@ -27,6 +27,8 @@ import {
   type BilanRelances, type ClientRelance,
 } from "@/lib/bo/relances";
 import { couperRelancesLot, envoyerRelances, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
+import { Modale } from "@/components/modale";
+import { PuceImmeuble } from "@/components/puce-immeuble";
 
 const jrs = (j?: number) => (j === undefined ? "date inconnue" : j >= 999 ? "jamais relancé" : `${j} j`);
 
@@ -211,39 +213,37 @@ function ModaleSalve({ envois, agent, pending, onFermer, onEnvoyer }: {
   const lot = envois.slice(0, PLAFOND_RELANCES);
   const dossiers = lot.reduce((s, e) => s + e.dossiers, 0);
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Envoyer {lot.length} relance{lot.length > 1 ? "s" : ""}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <div className="asst-note">
-            <b>{lot.length} message{lot.length > 1 ? "s" : ""}</b>, un par personne, couvrant{" "}
-            <b>{dossiers} dossier{dossiers > 1 ? "s" : ""}</b>. Ils partent de la boîte
-            de {agent?.nom ?? "l'agent"}, un à un, et chaque proposition n&apos;est marquée
-            relancée que si son message est bien parti.
-            {envois.length > lot.length && (
-              <> Les {envois.length - lot.length} restantes attendront un second clic.</>
-            )}
-          </div>
-          <span className="mlab">Destinataires</span>
-          <div className="rlz-dest">
-            {lot.slice(0, 12).map((e) => (
-              <span key={e.email}>{e.email} <i>{e.dossiers}</i></span>
-            ))}
-            {lot.length > 12 && <span className="pl">et {lot.length - 12} autres…</span>}
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre={`Envoyer ${lot.length} relance${lot.length > 1 ? "s" : ""}`}
+      onFermer={onFermer}
+      largeur={560}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending} onClick={onEnvoyer}>
             <span className="ch">›</span> Envoyer maintenant
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="asst-note">
+        <b>{lot.length} message{lot.length > 1 ? "s" : ""}</b>, un par personne, couvrant{" "}
+        <b>{dossiers} dossier{dossiers > 1 ? "s" : ""}</b>. Ils partent de la boîte
+        de {agent?.nom ?? "l'agent"}, un à un, et chaque proposition n&apos;est marquée
+        relancée que si son message est bien parti.
+        {envois.length > lot.length && (
+          <> Les {envois.length - lot.length} restantes attendront un second clic.</>
+        )}
       </div>
-    </div>
+      <span className="mlab">Destinataires</span>
+      <div className="rlz-dest">
+        {lot.slice(0, 12).map((e) => (
+          <span key={e.email}>{e.email} <i>{e.dossiers}</i></span>
+        ))}
+        {lot.length > 12 && <span className="pl">et {lot.length - 12} autres…</span>}
+      </div>
+    </Modale>
   );
 }
 
@@ -306,7 +306,7 @@ function CarteClient({
           const off = retires.has(i.propositionId);
           return (
             <div key={i.propositionId} className={`rlz-l${off ? " off" : ""}`}>
-              <a href={`/bien/${i.immeubleId}`} target="_blank" rel="noreferrer">{i.libelle}</a>
+              <PuceImmeuble nouvelOnglet id={i.immeubleId} libelle={i.libelle} petit plat />
               {i.prix && <span className="rlz-prix">{i.prix}</span>}
               <span className="rlz-j">{jrs(i.jours)}</span>
               <span className="sp" style={{ flex: 1 }} />

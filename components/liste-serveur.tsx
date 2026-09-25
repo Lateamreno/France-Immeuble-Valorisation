@@ -8,6 +8,8 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ListCard } from "@/lib/bubble/server";
+import { Avatar } from "@/components/avatar";
+import { Pastille } from "@/components/pastille";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -85,9 +87,7 @@ export function ListeServeur({
       {rows.map((r) => {
         const inner = (
           <>
-            <span className="lav" style={r.avatarCouleur ? { background: r.avatarCouleur } : undefined}>
-              {r.avatar}
-            </span>
+            <Avatar initiales={r.avatar} couleur={r.avatarCouleur} />
             {/* Un agent immobilier ne se présente pas comme un client : le
                 BO lui donne une silhouette distincte, et c'est ce qui évite
                 d'écrire à un confrère comme on écrit à un vendeur. */}
@@ -140,10 +140,12 @@ export function ListeServeur({
             {r.right && r.right.length > 0 && (
               <div className="lright">{r.right.map((x, i) => <span key={i}>{x}</span>)}</div>
             )}
+            {/* Le ton « orange » de la carte était dessiné en gris (badge-o) :
+                on garde le gris, le dessin ne bouge pas. */}
             {r.badge && (
-              <span className={r.badge.tone === "green" ? "badge-g" : r.badge.tone === "red" ? "badge-r" : "badge-o"}>
+              <Pastille ton={r.badge.tone === "green" ? "vert" : r.badge.tone === "red" ? "rouge" : "gris"} plein>
                 {r.badge.label}
-              </span>
+              </Pastille>
             )}
           </>
         );

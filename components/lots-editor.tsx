@@ -8,7 +8,7 @@
 // import/export, typologies filtrées par destination.
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
-import { euros } from "@/lib/format";
+import { euros, S } from "@/lib/format";
 import {
   addLocataire, addLot, ajouterTypologie, bailDuLot, deleteLot, duplicateLot, locataireDuLot,
   setLotTravaux, updateLots, type LotPatch,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/referentiels";
 import { typesFor } from "@/lib/typologies";
 import { ModaleDpe } from "@/components/dpe-modale";
+import { Modale } from "@/components/modale";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -149,37 +150,33 @@ function ModaleOccupation({ b, lotId, titre, onFermer }: {
     });
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Occupation du {titre.toLowerCase()}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <span className="mlab">Date d&apos;entrée</span>
-          <ChampDate valeur={entree} onChange={setEntree} />
-          <span className="mlab">Locataire</span>
-          <input
-            className="min" style={{ width: "100%" }} value={nom}
-            placeholder="Nom du locataire"
-            onChange={(e) => setNom(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }}
-          />
-          <p className="mhint">
-            Le nom va tel quel sur la fiche du locataire : l&apos;onglet Locataires
-            permet ensuite de séparer le prénom du nom, et d&apos;ajouter le
-            téléphone et l&apos;e-mail.
-          </p>
-          {erreur && <p className="mhint" style={{ color: "var(--red)" }}>{erreur}</p>}
-        </div>
-        <div className="modal-f">
-          <button className="kgo" type="button" disabled={pending}
-            style={pending ? { opacity: 0.5 } : undefined} onClick={enregistrer}>
-            <span className="ch">›</span> {pending ? "Enregistrement…" : "Enregistrer"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modale
+      titre={<>Occupation du {titre.toLowerCase()}</>}
+      onFermer={onFermer}
+      className="etroit"
+      pied={
+        <button className="kgo" type="button" disabled={pending}
+          style={pending ? { opacity: 0.5 } : undefined} onClick={enregistrer}>
+          <span className="ch">›</span> {pending ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      }
+    >
+      <span className="mlab">Date d&apos;entrée</span>
+      <ChampDate valeur={entree} onChange={setEntree} />
+      <span className="mlab">Locataire</span>
+      <input
+        className="min" style={{ width: "100%" }} value={nom}
+        placeholder="Nom du locataire"
+        onChange={(e) => setNom(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }}
+      />
+      <p className="mhint">
+        Le nom va tel quel sur la fiche du locataire : l&apos;onglet Locataires
+        permet ensuite de séparer le prénom du nom, et d&apos;ajouter le
+        téléphone et l&apos;e-mail.
+      </p>
+      {erreur && <p className="mhint" style={{ color: "var(--red)" }}>{erreur}</p>}
+    </Modale>
   );
 }
 
@@ -227,32 +224,24 @@ function CelluleBail({ r, lots, onBail, onLot }: {
         </button>
       )}
       {choix && (
-        <div className="modal-ov" onClick={() => setChoix(false)}>
-          <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              Rattaché à quel lot ?
-              <button type="button" onClick={() => setChoix(false)}>✕</button>
-            </div>
-            <div className="modal-b">
-              <p className="mhint">
-                Le loyer est encaissé sur l&apos;autre lot : celui-ci reste occupé mais ne
-                compte pas une deuxième fois dans les revenus.
-              </p>
-              <div className="ratt-liste">
-                {lots.filter((x) => x.id !== r.id).map((x) => (
-                  <button
-                    key={x.id} type="button"
-                    className={`ratt-l${x.id === r.lot_rattache ? " on" : ""}`}
-                    onClick={() => { onLot(x.id); setChoix(false); }}
-                  >
-                    <b>{libelleLot(x)}</b>
-                    <span>{x.surface_carrez ? `${x.surface_carrez} m²` : ""}{x.loyer ? ` · ${x.loyer} €/mois` : ""}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+        <Modale titre="Rattaché à quel lot ?" onFermer={() => setChoix(false)} className="etroit">
+          <p className="mhint">
+            Le loyer est encaissé sur l&apos;autre lot : celui-ci reste occupé mais ne
+            compte pas une deuxième fois dans les revenus.
+          </p>
+          <div className="ratt-liste">
+            {lots.filter((x) => x.id !== r.id).map((x) => (
+              <button
+                key={x.id} type="button"
+                className={`ratt-l${x.id === r.lot_rattache ? " on" : ""}`}
+                onClick={() => { onLot(x.id); setChoix(false); }}
+              >
+                <b>{libelleLot(x)}</b>
+                <span>{x.surface_carrez ? `${x.surface_carrez} m²` : ""}{x.loyer ? ` · ${x.loyer} €/mois` : ""}</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </Modale>
       )}
     </>
   );
@@ -284,7 +273,6 @@ type Row = {
   impLoc?: Record<string, string>;
 };
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (s: string) => {
   const v = parseFloat(s.replace(",", "."));
   return Number.isFinite(v) ? v : undefined;
@@ -1210,43 +1198,39 @@ export function LotsEditor({ b }: { b: BienData }) {
         if (!r) return null;
         const fermer = () => setObjetDe(null);
         return (
-          <div className="modal-ov" onClick={fermer}>
-            <div className="modal etroit" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-h">
-                Travaux du {libelleLot(r).toLowerCase()}
-                <button type="button" onClick={fermer}>✕</button>
-              </div>
-              <div className="modal-b">
-                <p className="mhint">
-                  {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi"}
-                  correspondent-ils ? Ce que vous écrivez ici s&apos;affiche dans l&apos;onglet Travaux
-                  et sur le dossier, à la place de « Travaux lot {r.numero || "?"} ».
-                </p>
-                <span className="mlab">Objet des travaux</span>
-                <input
-                  className="min" autoFocus value={r.travaux_objet}
-                  placeholder="Réfection de la salle de bains, remise aux normes électriques…"
-                  onChange={(e) => edit(r.id, "travaux_objet", e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") fermer(); }}
-                />
-                <span className="mlab">Urgence</span>
-                <div className="mrow">
-                  {["Haute", "Moyenne", "Basse"].map((u) => (
-                    <button
-                      key={u} type="button"
-                      className={`mopt${r.travaux_urgence === u ? " on" : ""}`}
-                      onClick={() => edit(r.id, "travaux_urgence", r.travaux_urgence === u ? "" : u)}
-                    >{u}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="modal-f">
-                <button className="kgo" type="button" onClick={fermer}>
-                  <span className="ch">›</span> C&apos;est noté
-                </button>
-              </div>
+          <Modale
+            titre={<>Travaux du {libelleLot(r).toLowerCase()}</>}
+            onFermer={fermer}
+            className="etroit"
+            pied={
+              <button className="kgo" type="button" onClick={fermer}>
+                <span className="ch">›</span> C&apos;est noté
+              </button>
+            }
+          >
+            <p className="mhint">
+              {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi"}
+              correspondent-ils ? Ce que vous écrivez ici s&apos;affiche dans l&apos;onglet Travaux
+              et sur le dossier, à la place de « Travaux lot {r.numero || "?"} ».
+            </p>
+            <span className="mlab">Objet des travaux</span>
+            <input
+              className="min" autoFocus value={r.travaux_objet}
+              placeholder="Réfection de la salle de bains, remise aux normes électriques…"
+              onChange={(e) => edit(r.id, "travaux_objet", e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") fermer(); }}
+            />
+            <span className="mlab">Urgence</span>
+            <div className="mrow">
+              {["Haute", "Moyenne", "Basse"].map((u) => (
+                <button
+                  key={u} type="button"
+                  className={`mopt${r.travaux_urgence === u ? " on" : ""}`}
+                  onClick={() => edit(r.id, "travaux_urgence", r.travaux_urgence === u ? "" : u)}
+                >{u}</button>
+              ))}
             </div>
-          </div>
+          </Modale>
         );
       })()}
 
@@ -1262,38 +1246,36 @@ export function LotsEditor({ b }: { b: BienData }) {
       })()}
 
       {aSupprimer && (
-        <div className="modal-ov" onClick={() => setASupprimer(false)}>
-          <div className="modal sup-mod" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              Supprimer {sel.size > 1 ? `${sel.size} lots` : "un lot"}
-              <button type="button" onClick={() => setASupprimer(false)}>✕</button>
-            </div>
-            <div className="modal-b">
-              <table className="sup-t">
-                <thead><tr><th>N°</th><th>Type</th><th>Surface</th><th>Loyer HC</th></tr></thead>
-                <tbody>
-                  {rows.filter((r) => sel.has(r.id)).map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.numero || "—"}</td>
-                      <td>{r.Type_lot || r.Destination || "—"}</td>
-                      <td>{r.surface_carrez ? `${r.surface_carrez} m²` : "—"}</td>
-                      <td>{r.loyer ? `${r.loyer} €` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="sup-n">
-                Les lots enregistrés partent à la corbeille : ils restent récupérables.
-              </p>
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre={<>Supprimer {sel.size > 1 ? `${sel.size} lots` : "un lot"}</>}
+          onFermer={() => setASupprimer(false)}
+          className="sup-mod"
+          pied={
+            <>
               <button type="button" className="ltb annul" onClick={() => setASupprimer(false)}>Annuler</button>
               <button type="button" className="sup-go" disabled={pending} onClick={remove}>
                 Supprimer {sel.size > 1 ? `les ${sel.size} lots` : "le lot"}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <table className="sup-t">
+            <thead><tr><th>N°</th><th>Type</th><th>Surface</th><th>Loyer HC</th></tr></thead>
+            <tbody>
+              {rows.filter((r) => sel.has(r.id)).map((r) => (
+                <tr key={r.id}>
+                  <td>{r.numero || "—"}</td>
+                  <td>{r.Type_lot || r.Destination || "—"}</td>
+                  <td>{r.surface_carrez ? `${r.surface_carrez} m²` : "—"}</td>
+                  <td>{r.loyer ? `${r.loyer} €` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="sup-n">
+            Les lots enregistrés partent à la corbeille : ils restent récupérables.
+          </p>
+        </Modale>
       )}
     </div>
   );

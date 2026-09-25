@@ -24,8 +24,8 @@ import {
   type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { copierTexte } from "@/components/copier";
+import { S } from "@/lib/format";
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const parse = (s: string) => {
   const v = parseFloat(s.replace(",", "."));
   return Number.isFinite(v) ? v : undefined;

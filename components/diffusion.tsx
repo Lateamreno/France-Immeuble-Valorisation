@@ -10,6 +10,7 @@ import Link from "next/link";
 import { dmy, euros } from "@/lib/format";
 import { LIBELLE_STATUT, type Blocage, type ChargeUtile } from "@/lib/diffusion";
 import { BadgeDpe } from "@/components/pictos";
+import { useQuestion } from "@/components/modale";
 import {
   apercuAnnonce, audienceAnnonce, deposerBrouillon, publierAnnonce, retirerAnnonce,
   type Apercu, type Audience, type Branchement,
@@ -32,6 +33,7 @@ export function SectionDiffusion({
   const [aud, setAud] = useState<Audience | null>(null);
   const [detail, setDetail] = useState(false);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
 
   useEffect(() => {
     apercuAnnonce(immeubleId).then(setA).catch(() => setA(null));
@@ -65,36 +67,48 @@ export function SectionDiffusion({
      autres agences. C'est ce qui permet de mesurer avant d'avoir un mandat
      signé, donc avant d'avoir le droit de publier — la distinction n'est pas
      cosmétique, et la confirmation le dit en toutes lettres. */
-  const sonder = () =>
-    start(async () => {
-      setMsg(null);
-      let r = await audienceAnnonce(immeubleId);
-      if (!r.ok && r.sansAnnonce) {
-        const ok = confirm(
-          "Aucune annonce n'est déposée chez Plein Bail.\n\n" +
-            "Déposer un BROUILLON pour mesurer l'audience ? Un brouillon n'est visible de " +
-            "personne — ni du public, ni des autres agences. Rien n'est publié.",
-        );
-        if (!ok) return;
+  /* Une question ne se pose PAS dans une transition : React retient l'écran
+     tant que l'action asynchrone court, et la fenêtre n'apparaîtrait jamais
+     (trouvé le 25/09 sur ce bouton). On lit d'abord, on demande, puis on
+     lance la transition pour ce qui écrit. */
+  const [lecture, setLecture] = useState(false);
+  const sonder = async () => {
+    setMsg(null);
+    setLecture(true);
+    const r = await audienceAnnonce(immeubleId).finally(() => setLecture(false));
+    if (!r.ok && r.sansAnnonce) {
+      const ok = await confirmer(
+        "Aucune annonce n'est déposée chez Plein Bail.\n\n" +
+          "Déposer un BROUILLON pour mesurer l'audience ? Un brouillon n'est visible de " +
+          "personne — ni du public, ni des autres agences. Rien n'est publié.",
+        { oui: "Déposer un brouillon" },
+      );
+      if (!ok) return;
+      start(async () => {
         const d = await deposerBrouillon(immeubleId);
         if (!d.ok) {
           setMsg(d.message);
           return;
         }
-        r = await audienceAnnonce(immeubleId);
+        const r2 = await audienceAnnonce(immeubleId);
         setA(await apercuAnnonce(immeubleId));
-      }
-      if (r.ok) setAud(r.a);
-      else setMsg(r.message);
-    });
+        if (r2.ok) setAud(r2.a);
+        else setMsg(r2.message);
+      });
+      return;
+    }
+    if (r.ok) setAud(r.a);
+    else setMsg(r.message);
+  };
 
-  const retirer = () =>
+  const retirer = async () => {
+    if (!(await confirmer("Retirer l'annonce de Plein Bail ?", { danger: true, oui: "Retirer l'annonce" }))) return;
     start(async () => {
-      if (!confirm("Retirer l'annonce de Plein Bail ?")) return;
       const r = await retirerAnnonce(immeubleId, "Retrait manuel depuis le BO");
       setMsg(r.ok ? "Annonce retirée." : r.message);
       setA(await apercuAnnonce(immeubleId));
     });
+  };
 
   if (!a) return <div className="fempty">Lecture de l&apos;état de diffusion…</div>;
 
@@ -209,7 +223,7 @@ export function SectionDiffusion({
             Retirer l&apos;annonce
           </button>
         )}
-        <button className="dif-x" type="button" disabled={pending || !a.configuree} onClick={sonder}>
+        <button className="dif-x" type="button" disabled={pending || lecture || !a.configuree} onClick={sonder}>
           Sonder l&apos;audience
         </button>
         <span style={{ flex: 1 }} />
@@ -262,6 +276,7 @@ export function SectionDiffusion({
         L&apos;annonce se retire d&apos;elle-même à la fin du mandat, et se met à jour dès que l&apos;état
         locatif, les photos, les travaux, les charges ou le prix changent.
       </div>
+      {question}
     </div>
   );
 }

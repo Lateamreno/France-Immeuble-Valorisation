@@ -12,6 +12,7 @@ import type { OperationDecoupe } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { PHASES, STATUTS_OPERATION, avancement, phase } from "@/lib/decoupe";
 import { cloturerOperation, majOperation, ouvrirOperation } from "@/lib/bo/actions";
+import { Modale, useQuestion } from "@/components/modale";
 
 /** Bouton d'ouverture, quand l'immeuble n'est pas encore en découpe. */
 export function PasserEnDecoupe({ immeubleId, valeurBloc }: { immeubleId: string; valeurBloc?: number }) {
@@ -21,21 +22,10 @@ export function PasserEnDecoupe({ immeubleId, valeurBloc }: { immeubleId: string
     <>
       <button type="button" className="fadd" onClick={() => setConfirme(true)}>Passer en découpe</button>
       {confirme && (
-        <div className="modal-ov">
-          <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Passer en découpe<button type="button" onClick={() => setConfirme(false)}>✕</button></div>
-            <div className="modal-b">
-              <p style={{ fontSize: 13, margin: "0 0 10px" }}>
-                Une opération de découpe sera ouverte sur cet immeuble, en phase 1 (Urbanisme).
-              </p>
-              <div className="warnbox" style={{ marginTop: 0 }}>
-                L&apos;immeuble ne bouge pas : ni son statut de vente, ni ses lots, ni ses photos.
-                La fiche gagne simplement une section « Découpe ». Vous pourrez continuer à le
-                suivre en vente en bloc en parallèle — c&apos;est même ce qui permet de comparer
-                les deux valeurs.
-              </div>
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre="Passer en découpe" onFermer={() => setConfirme(false)} largeur={460} fermeDehors={false}
+          pied={
+            <>
               <button type="button" className="fadd" onClick={() => setConfirme(false)}>Annuler</button>
               <button
                 type="button" className="savebar-go" disabled={pending}
@@ -43,9 +33,19 @@ export function PasserEnDecoupe({ immeubleId, valeurBloc }: { immeubleId: string
               >
                 {pending ? "Ouverture…" : "Ouvrir l'opération"}
               </button>
-            </div>
+            </>
+          }
+        >
+          <p style={{ fontSize: 13, margin: "0 0 10px" }}>
+            Une opération de découpe sera ouverte sur cet immeuble, en phase 1 (Urbanisme).
+          </p>
+          <div className="warnbox" style={{ marginTop: 0 }}>
+            L&apos;immeuble ne bouge pas : ni son statut de vente, ni ses lots, ni ses photos.
+            La fiche gagne simplement une section « Découpe ». Vous pourrez continuer à le
+            suivre en vente en bloc en parallèle — c&apos;est même ce qui permet de comparer
+            les deux valeurs.
           </div>
-        </div>
+        </Modale>
       )}
     </>
   );
@@ -54,6 +54,7 @@ export function PasserEnDecoupe({ immeubleId, valeurBloc }: { immeubleId: string
 /** La section « Découpe » du contenu de la fiche. */
 export function SectionDecoupe({ o, immeubleId }: { o: OperationDecoupe; immeubleId: string }) {
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [notes, setNotes] = useState(o.notes ?? "");
   const [bloc, setBloc] = useState(o.valeurBloc ? String(o.valeurBloc) : "");
   const [dec, setDec] = useState(o.valeurDecoupe ? String(o.valeurDecoupe) : "");
@@ -129,8 +130,8 @@ export function SectionDecoupe({ o, immeubleId }: { o: OperationDecoupe; immeubl
         <span style={{ flex: 1 }} />
         <button
           type="button" className="fadd"
-          onClick={() => {
-            if (!confirm("Clôturer l'opération de découpe ? La ligne reste dans l'historique.")) return;
+          onClick={async () => {
+            if (!(await confirmer("Clôturer l'opération de découpe ? La ligne reste dans l'historique.", { danger: true, oui: "Clôturer" }))) return;
             start(() => cloturerOperation(immeubleId, o.id));
           }}
         >Clôturer</button>
@@ -143,6 +144,7 @@ export function SectionDecoupe({ o, immeubleId }: { o: OperationDecoupe; immeubl
           >{pending ? "Enregistrement…" : "Enregistrer"}</button>
         )}
       </div>
+      {question}
     </>
   );
 }

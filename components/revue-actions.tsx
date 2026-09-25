@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { deleteFeedback, modifierFeedback, setFeedbackStatut } from "@/lib/bo/feedback";
+import { useQuestion } from "@/components/modale";
 
 const GRAVITES = [
   { v: "bloquant", l: "Bloquant" },
@@ -22,6 +23,7 @@ export function FeedbackActions({ id, statut, commentaire, gravite }: {
   const [grav, setGrav] = useState(gravite ?? "ecart");
   const [ajouts, setAjouts] = useState<File[]>([]);
   const zone = useRef<HTMLTextAreaElement>(null);
+  const { confirmer, saisir, question } = useQuestion();
 
   const enregistrer = () =>
     start(async () => {
@@ -92,8 +94,10 @@ export function FeedbackActions({ id, statut, commentaire, gravite }: {
       )}
       {statut !== "ecarte" && (
         <button className="fadd" type="button" disabled={pending}
-          onClick={() => {
-            const r = prompt("Pourquoi écarter ce retour ? (optionnel)") ?? undefined;
+          onClick={async () => {
+            /* Comme avec l'ancien `prompt()` : annuler la question n'annule pas
+               l'écart, il part simplement sans motif. */
+            const r = (await saisir("Pourquoi écarter ce retour ? (optionnel)", { oui: "Écarter" })) ?? undefined;
             start(() => setFeedbackStatut(id, "ecarte", r));
           }}>
           Écarter
@@ -106,10 +110,11 @@ export function FeedbackActions({ id, statut, commentaire, gravite }: {
         </button>
       )}
       <button className="xdel" type="button" disabled={pending} title="Supprimer"
-        onClick={() => {
-          if (!confirm("Supprimer ce retour ?")) return;
+        onClick={async () => {
+          if (!(await confirmer("Supprimer ce retour ?", { danger: true, oui: "Supprimer" }))) return;
           start(() => deleteFeedback(id));
         }}>✕</button>
+      {question}
     </div>
   );
 }

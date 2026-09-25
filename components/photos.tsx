@@ -15,6 +15,7 @@
 //   · une corbeille sur chaque photo, avec confirmation.
 import { useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
+import { Modale } from "@/components/modale";
 import {
   associerPhoto, basculerDiffusionPhoto, definirPhotoPrincipale, deletePhoto,
   fixerPhotosDossier, ordonnerPhotos, rafraichirFiche, uploadPhoto,
@@ -299,22 +300,20 @@ export function PhotosEcran({ b }: { b: BienData }) {
       </div>
 
       {plein && (
-        <div className="modal-ov" onClick={() => setPlein(false)}>
-          <div className="modal att" onClick={(e) => e.stopPropagation()}>
-            <div className="tr-head">Le dossier est complet<button type="button" onClick={() => setPlein(false)}>✕</button></div>
-            <div className="tr-body">
-              <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                Le dossier de vente imprime <b>deux planches de huit photos</b>, soit{" "}
-                {MAX_PHOTOS_DOSSIER} au maximum. Pour en ajouter une, retirez-en une d&apos;abord —
-                sinon la dix-septième serait tombée sans que personne le voie.
-              </p>
-            </div>
-            <div className="tr-foot">
-              <span style={{ flex: 1 }} />
-              <button className="vf-go" type="button" onClick={() => setPlein(false)}>Compris</button>
-            </div>
+        <Modale onFermer={() => setPlein(false)} className="att" entete={false} brut>
+          <div className="tr-head">Le dossier est complet<button type="button" onClick={() => setPlein(false)}>✕</button></div>
+          <div className="tr-body">
+            <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+              Le dossier de vente imprime <b>deux planches de huit photos</b>, soit{" "}
+              {MAX_PHOTOS_DOSSIER} au maximum. Pour en ajouter une, retirez-en une d&apos;abord —
+              sinon la dix-septième serait tombée sans que personne le voie.
+            </p>
           </div>
-        </div>
+          <div className="tr-foot">
+            <span style={{ flex: 1 }} />
+            <button className="vf-go" type="button" onClick={() => setPlein(false)}>Compris</button>
+          </div>
+        </Modale>
       )}
 
       {err && (
@@ -373,13 +372,13 @@ export function PhotosEcran({ b }: { b: BienData }) {
         />
       )}
       {zoom && (
-        <div className="modal-ov" onClick={() => setZoom(null)}>
-          <div className="gph-zoom" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="xdel" onClick={() => setZoom(null)}>✕</button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={zoom.urlPleine ?? zoom.url} alt="" />
-          </div>
-        </div>
+        /* La loupe n'est pas une fenêtre `.modal` : elle prend la taille de
+           l'image. Le style inline défait la largeur que `.modal` imposerait. */
+        <Modale onFermer={() => setZoom(null)} className="gph-zoom" entete={false} brut style={{ width: "auto", maxWidth: "92vw" }}>
+          <button type="button" className="xdel" onClick={() => setZoom(null)}>✕</button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={zoom.urlPleine ?? zoom.url} alt="" />
+        </Modale>
       )}
     </div>
   );
@@ -395,72 +394,68 @@ function ModaleAssocier({ b, photo, onClose }: { b: BienData; photo: Photo; onCl
   const complet = !!type && (type !== "Lot" || !!lotId);
 
   return (
-    <div className="modal-ov">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Associer la photo<button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Cette photo montre…</span>
-          <div className="mrow" style={{ flexWrap: "wrap" }}>
-            {TYPES_PHOTO.map((t) => (
-              <button key={t.valeur} type="button" className={`mopt${type === t.valeur ? " on" : ""}`} onClick={() => setType(t.valeur)}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {type === "Lot" && (
-            <>
-              <span className="mlab">Lot concerné</span>
-              <select className={`min${lotId ? "" : " vide"}`} value={lotId} onChange={(e) => setLotId(e.target.value)}>
-                <option value="">Sélectionnez un lot…</option>
-                {b.lots.map((l) => (
-                  <option key={String(l._id)} value={String(l._id)}>
-                    Lot {String(l.numero ?? "?")} · {String(l.Type_lot ?? l.Destination ?? "")}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11.5, color: "var(--gray-lt)", marginTop: 6 }}>
-                La photo remontera dans l&apos;état locatif, sur la ligne du lot.
-              </div>
-            </>
-          )}
-        </div>
-        <div className="modal-f">
-          <button
-            className="kgo" type="button" disabled={!complet || pending}
-            style={!complet || pending ? { opacity: 0.5 } : undefined}
-            onClick={() => start(async () => {
-              await associerPhoto(immeubleId, photo.id, type, type === "Lot" ? lotId : null);
-              onClose();
-            })}
-          >
-            <span className="ch">›</span> {pending ? "Enregistrement…" : "Associer"}
+    <Modale
+      titre="Associer la photo" onFermer={onClose} fermeDehors={false}
+      pied={
+        <button
+          className="kgo" type="button" disabled={!complet || pending}
+          style={!complet || pending ? { opacity: 0.5 } : undefined}
+          onClick={() => start(async () => {
+            await associerPhoto(immeubleId, photo.id, type, type === "Lot" ? lotId : null);
+            onClose();
+          })}
+        >
+          <span className="ch">›</span> {pending ? "Enregistrement…" : "Associer"}
+        </button>
+      }
+    >
+      <span className="mlab">Cette photo montre…</span>
+      <div className="mrow" style={{ flexWrap: "wrap" }}>
+        {TYPES_PHOTO.map((t) => (
+          <button key={t.valeur} type="button" className={`mopt${type === t.valeur ? " on" : ""}`} onClick={() => setType(t.valeur)}>
+            {t.label}
           </button>
-        </div>
+        ))}
       </div>
-    </div>
+      {type === "Lot" && (
+        <>
+          <span className="mlab">Lot concerné</span>
+          <select className={`min${lotId ? "" : " vide"}`} value={lotId} onChange={(e) => setLotId(e.target.value)}>
+            <option value="">Sélectionnez un lot…</option>
+            {b.lots.map((l) => (
+              <option key={String(l._id)} value={String(l._id)}>
+                Lot {String(l.numero ?? "?")} · {String(l.Type_lot ?? l.Destination ?? "")}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11.5, color: "var(--gray-lt)", marginTop: 6 }}>
+            La photo remontera dans l&apos;état locatif, sur la ligne du lot.
+          </div>
+        </>
+      )}
+    </Modale>
   );
 }
 
 function ModaleSupprimer({ photo, onClose, onOk }: { photo: Photo; onClose: () => void; onOk: () => void }) {
   return (
-    <div className="modal-ov">
-      <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Supprimer la photo<button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          {photo.url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photo.url} alt="" style={{ width: "100%", borderRadius: 4, marginBottom: 10 }} />
-          )}
-          <div style={{ fontSize: 13 }}>
-            Cette photo sera retirée de la fiche et du dossier de vente. Elle reste récupérable dans la corbeille.
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Supprimer la photo" onFermer={onClose} fermeDehors={false} largeur={420}
+      pied={
+        <>
           <button type="button" className="fadd" onClick={onClose}>Annuler</button>
           <button type="button" className="kgo danger" onClick={onOk}><span className="ch">›</span> Supprimer</button>
-        </div>
+        </>
+      }
+    >
+      {photo.url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photo.url} alt="" style={{ width: "100%", borderRadius: 4, marginBottom: 10 }} />
+      )}
+      <div style={{ fontSize: 13 }}>
+        Cette photo sera retirée de la fiche et du dossier de vente. Elle reste récupérable dans la corbeille.
       </div>
-    </div>
+    </Modale>
   );
 }
 
@@ -478,21 +473,16 @@ export function PhotosDuLot({ b, lotId }: { b: BienData; lotId: string }) {
         {photos.length}
       </button>
       {ouvert && (
-        <div className="modal-ov" onClick={() => setOuvert(false)}>
-          <div className="modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Photos du lot<button type="button" onClick={() => setOuvert(false)}>✕</button></div>
-            <div className="modal-b">
-              <div className="gph-grid">
-                {photos.map((p) => (
-                  <figure key={p.id} className="gph">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {p.url && <a href={p.urlPleine ?? p.url} target="_blank" rel="noreferrer"><img src={p.url} alt="" /></a>}
-                  </figure>
-                ))}
-              </div>
-            </div>
+        <Modale titre="Photos du lot" onFermer={() => setOuvert(false)} largeur={720}>
+          <div className="gph-grid">
+            {photos.map((p) => (
+              <figure key={p.id} className="gph">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {p.url && <a href={p.urlPleine ?? p.url} target="_blank" rel="noreferrer"><img src={p.url} alt="" /></a>}
+              </figure>
+            ))}
           </div>
-        </div>
+        </Modale>
       )}
     </>
   );
