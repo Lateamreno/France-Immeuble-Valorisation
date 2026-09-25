@@ -105,7 +105,13 @@ export function expediteurDe(agent?: { nom?: string; email?: string }) {
   if (!local) return c.from ?? "";
   const nom = (agent?.nom ?? "").trim();
   const adresse = `${local}@${c.domaine}`;
-  return nom ? `${nom} — France Immeuble <${adresse}>` : adresse;
+  /* MAV (25/09, premier envoi) : « d'habitude je suis identifié quand j'envoie
+     un e-mail, et là il y a écrit MF en miniature ». La vignette, c'est la
+     messagerie du destinataire qui la fabrique à partir du nom affiché — « M »
+     de Marc-Antoine, « F » de France Immeuble. Le nom affiché est donc celui
+     de l'agent, seul : la vignette porte ses initiales, et la messagerie qui
+     le connaît déjà le reconnaît sur le nom. La marque reste dans l'adresse. */
+  return nom ? `${nom} <${adresse}>` : adresse;
 }
 
 /**
@@ -203,9 +209,19 @@ export async function envoyerEnMasse(m: {
        destinataire ait à écrire quoi que ce soit d'autre. */
     entetes["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }
-  if (m.differeA && m.differeA > Math.floor(Date.now() / 1000)) {
-    entetes["X-SMTPAPI"] = JSON.stringify({ send_at: Math.floor(m.differeA) });
-  }
+  /* MAV (25/09, premier envoi) : « le lien qui était censé être un transfer.it,
+     c'est un lien de ouf à rallonge ». SendGrid réécrit chaque lien pour
+     compter les clics (url9542.agence.france-immeuble.fr/ls/click?upn=…) et
+     glisse un pixel d'ouverture. On ne veut ni l'un ni l'autre : le lien reste
+     celui qu'on a écrit. Le même en-tête porte l'envoi différé. */
+  const smtpapi: Record<string, unknown> = {
+    filters: {
+      clicktrack: { settings: { enable: 0 } },
+      opentrack: { settings: { enable: 0 } },
+    },
+  };
+  if (m.differeA && m.differeA > Math.floor(Date.now() / 1000)) smtpapi.send_at = Math.floor(m.differeA);
+  entetes["X-SMTPAPI"] = JSON.stringify(smtpapi);
 
   const info = await t.sendMail({
     from: expediteur,

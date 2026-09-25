@@ -4559,8 +4559,9 @@ export async function envoyerMailsCommercialisation(input: {
   objet: string;
   message: string;
   destinataires: string[];
-  /** Chemins dans le coffre (`bo-files`). */
-  pieces?: { nom: string; path: string }[];
+  /** Chemins dans le coffre (`bo-files`), ou l'adresse d'un fichier déjà en
+   *  ligne (le PDF d'un dossier venu de Bubble). */
+  pieces?: { nom: string; path?: string; url?: string }[];
   /** Envoi différé (ISO). SendGrid retient le message jusqu'à l'heure dite. */
   quand?: string;
   /** L'agent qui signe. Son e-mail est résolu ICI : la fiche ne le descend pas
@@ -4616,11 +4617,25 @@ export async function envoyerMailsCommercialisation(input: {
     const pieces: { nom: string; contenu: Buffer; type?: string }[] = [];
     for (const p of input.pieces ?? []) {
       if (!SB_KEY) break;
-      const res = await fetch(`${SB_URL}/storage/v1/object/bo-files/${p.path}`, {
-        headers: { Authorization: `Bearer ${SB_KEY}` },
+      /* MAV (25/09, premier envoi) : « dans les e-mails envoyés il n'y avait
+         pas la PJ ». Le dossier choisi n'était jamais joint — seule la seconde
+         pièce l'était. Il l'est maintenant, qu'il vive dans notre coffre
+         (`path`) ou chez Bubble (`url`, un PDF « fileupload » du site). */
+      const source = p.path
+        ? `${SB_URL}/storage/v1/object/bo-files/${p.path}`
+        : p.url && /^https:\/\/(vente\.france-immeuble\.fr|[a-z0-9-]+\.supabase\.co)\//i.test(p.url) ? p.url : "";
+      if (!source) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
+      /* Bubble sert ses `fileupload` en 401 à toute requête anonyme (voir
+         diffusion.ts) : le jeton d'API ouvre la porte, et il ne sort pas d'ici. */
+      const jetonBubble = process.env.BUBBLE_API_TOKEN;
+      const res = await fetch(source, {
+        headers: p.path
+          ? { Authorization: `Bearer ${SB_KEY}` }
+          : jetonBubble && /^https:\/\/vente\.france-immeuble\.fr\//i.test(source) ? { Authorization: `Bearer ${jetonBubble}` } : undefined,
+        redirect: "follow",
         cache: "no-store",
       }).catch(() => null);
-      if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
+      if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}${res ? ` (réponse ${res.status})` : ""}.` };
       const type = /\.csv$/i.test(p.nom) ? "text/csv" : /\.xlsx$/i.test(p.nom)
         ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
       pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type });
