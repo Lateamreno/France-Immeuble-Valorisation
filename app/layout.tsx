@@ -41,7 +41,10 @@ export default async function RootLayout({
      agents et les retours du BO pour une page que lit un vendeur — le chemin
      vient du middleware, qui existe pour ça. */
   const chemin = (await headers()).get("x-chemin") ?? "";
-  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")) {
+  /* #382 bis — l'aperçu de l'espace vendeur est une page du BO, mais il doit
+     montrer l'écran tel que le propriétaire le verra : sans le rail. */
+  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")
+    || /^\/bien\/[^/]+\/apercu-vendeur\/?$/.test(chemin)) {
     return (
       <html lang="fr">
         <body className="hors-bo">{children}</body>

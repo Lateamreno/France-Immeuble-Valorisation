@@ -48,10 +48,14 @@ function jalonDuStatut(statut: string): number {
   return 0;
 }
 
-export function EspaceProprietaire({ immeubleId, bien, pieces }: {
+export function EspaceProprietaire({ immeubleId, bien, pieces, apercu = false }: {
   immeubleId: string;
   bien: BienVendeur | null;
   pieces: PieceClient[];
+  /** #382 bis — l'aperçu du BO : même écran, mais rien ne s'écrit. Les gestes
+   *  d'écriture (arrêter son prix, déposer ou retirer une pièce) sont remplacés
+   *  par leur libellé « (désactivé dans l'aperçu) ». */
+  apercu?: boolean;
 }) {
   return (
     <main className="ep-wrap">
@@ -65,8 +69,8 @@ export function EspaceProprietaire({ immeubleId, bien, pieces }: {
         </p>
       </header>
 
-      <BlocPrix immeubleId={immeubleId} bien={bien} />
-      <BlocPieces immeubleId={immeubleId} pieces={pieces} />
+      <BlocPrix immeubleId={immeubleId} bien={bien} apercu={apercu} />
+      <BlocPieces immeubleId={immeubleId} pieces={pieces} apercu={apercu} />
       <BlocAvancement bien={bien} />
 
       <footer className="ep-pied">
@@ -82,7 +86,9 @@ export function EspaceProprietaire({ immeubleId, bien, pieces }: {
 
 /* ---------- Le prix ---------- */
 
-function BlocPrix({ immeubleId, bien }: { immeubleId: string; bien: BienVendeur | null }) {
+function BlocPrix({ immeubleId, bien, apercu }: {
+  immeubleId: string; bien: BienVendeur | null; apercu: boolean;
+}) {
   const [pending, start] = useTransition();
   const ref = bien?.prixNv ?? undefined;
   const taux = bien?.prixNv && bien?.honos && bien.prixNv > 0
@@ -149,13 +155,17 @@ function BlocPrix({ immeubleId, bien }: { immeubleId: string; bien: BienVendeur 
         placeholder="Une contrainte de calendrier, un point à discuter…" />
 
       <div className="ep-actions">
-        <button className="ep-go" type="button" disabled={pending || !nv}
+        {/* #382 bis — dans l'aperçu, la case et la molette restent vivantes
+            (l'agent voit ce que fait l'écran), seul l'envoi est coupé. */}
+        <button className="ep-go" type="button" disabled={apercu || pending || !nv}
           onClick={() => start(async () => {
+            if (apercu) return;
             const r = await poserPrix(immeubleId, nv!, mot);
             setAvis(r);
             if (r.ok) setEnvoye(true);
           })}>
           {envoye ? "Mettre à jour mon prix" : "Valider mon prix"}
+          {apercu ? " (désactivé dans l'aperçu)" : ""}
         </button>
         {avis && <span className={`ep-avis${avis.ok ? " ok" : " ko"}`}>{avis.message}</span>}
       </div>
@@ -171,7 +181,9 @@ function BlocPrix({ immeubleId, bien }: { immeubleId: string; bien: BienVendeur 
 
 /* ---------- Les pièces ---------- */
 
-function BlocPieces({ immeubleId, pieces }: { immeubleId: string; pieces: PieceClient[] }) {
+function BlocPieces({ immeubleId, pieces, apercu }: {
+  immeubleId: string; pieces: PieceClient[]; apercu: boolean;
+}) {
   const [pending, start] = useTransition();
   const [avis, setAvis] = useState<Reponse | null>(null);
 
@@ -193,24 +205,36 @@ function BlocPieces({ immeubleId, pieces }: { immeubleId: string; pieces: PieceC
               <div className="ep-pf">
                 {dedans.map((f) => (
                   <span className="ep-fich" key={f.id}>
-                    <a href={`/espace/piece/${f.id}`} target="_blank" rel="noreferrer">{f.nom}</a>
+                    {/* #382 bis — le fichier se sert par la session du client ;
+                        dans l'aperçu il n'y en a pas, le nom reste un nom. */}
+                    {apercu
+                      ? <a aria-disabled="true" title="Lecture désactivée dans l'aperçu">{f.nom}</a>
+                      : <a href={`/espace/piece/${f.id}`} target="_blank" rel="noreferrer">{f.nom}</a>}
                     <em>{f.taille_ko ? `${Math.round(f.taille_ko)} Ko` : ""}</em>
-                    <button type="button" title="Retirer"
-                      onClick={() => start(async () => { setAvis(await retirerPiece(f.id, immeubleId)); })}>✕</button>
+                    {!apercu && (
+                      <button type="button" title="Retirer"
+                        onClick={() => start(async () => { setAvis(await retirerPiece(f.id, immeubleId)); })}>✕</button>
+                    )}
                   </span>
                 ))}
-                <label className="ep-depot">
-                  <input type="file" onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) start(async () => {
-                      const fd = new FormData();
-                      fd.set("file", f);
-                      setAvis(await deposerPiece(immeubleId, p.cle, fd));
-                    });
-                    e.target.value = "";
-                  }} />
-                  {dedans.length ? "Ajouter un autre fichier" : "Déposer un fichier"}
-                </label>
+                {apercu ? (
+                  <span className="ep-depot apercu">
+                    {dedans.length ? "Ajouter un autre fichier" : "Déposer un fichier"} (désactivé dans l&apos;aperçu)
+                  </span>
+                ) : (
+                  <label className="ep-depot">
+                    <input type="file" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) start(async () => {
+                        const fd = new FormData();
+                        fd.set("file", f);
+                        setAvis(await deposerPiece(immeubleId, p.cle, fd));
+                      });
+                      e.target.value = "";
+                    }} />
+                    {dedans.length ? "Ajouter un autre fichier" : "Déposer un fichier"}
+                  </label>
+                )}
               </div>
             </li>
           );

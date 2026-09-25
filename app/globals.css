@@ -7864,3 +7864,80 @@ button { font-family: var(--font-title); letter-spacing: .01em; }
 }
 .sv-ok:hover { background: #35a121; }
 .sv-ok:disabled { opacity: .5; cursor: default; }
+
+/* ---- #401 bis : contacts en cartes ----
+   « Les fiches contact sont trop larges, ça bloque la lecture » : la liste
+   des contacts se rend avec la carte de visite de la vignette (même objet,
+   même JSX), posée en place, deux par ligne, dans une colonne d'environ
+   900 px. La carte n'a plus la largeur fixe de 312 px du popup : elle prend
+   sa colonne. Règle de MAV : pas de couleur au survol de la carte, seul le
+   nom — qui ouvre la fiche — réagit. */
+.lstx-corps .lst-col-simple.cartes { max-width: 900px; }
+.cc-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 7px; }
+.cc-carte {
+  min-width: 0; background: #fff; border: 1px solid var(--line-lt); border-radius: 5px;
+  cursor: pointer; outline: none;
+}
+.cc-carte:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 1px; }
+.cc-carte .vgn-card { width: auto; padding: 12px 14px; }
+.cc-carte .vgn-card .nom { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-carte:hover .vgn-card .nom { color: var(--gold-bo); }
+.cc-carte .vgn-card .ligne > .note { margin: 0; }
+@media (max-width: 900px) { .cc-grille { grid-template-columns: 1fr; } }
+
+/* ---- 25/09 : compteur + / − des fenêtres Ajouter / Dupliquer ---- */
+.stepper { display: flex; align-items: stretch; gap: 0; }
+.stepper input.min { flex: 1; text-align: center; border-radius: 0; font-size: 16px; font-weight: 700; }
+.stepper button { width: 40px; border: 1px solid var(--line); background: #fff; font-size: 18px; font-weight: 700; color: var(--slate); cursor: pointer; }
+.stepper button:first-child { border-radius: 4px 0 0 4px; border-right: 0; }
+.stepper button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+.stepper button:hover:not(:disabled) { background: #f6f6f6; }
+.stepper button:disabled { color: var(--gray-lt); cursor: default; }
+/* Vignette du secteur : plus de bouton, une invitation à ouvrir. */
+.sv-ouvrir { font-size: 11.5px; color: var(--gray-txt); font-weight: 600; }
+/* Le cadre rouge du refus, en ligne sous la date (25/09). */
+.cfc-l2 .cfc-refuse { margin-top: 0; display: inline-block; }
+
+/* ---- #382 bis : aperçu vendeur ---- */
+/* Le bandeau qui coiffe l'aperçu de l'espace vendeur (/bien/…/apercu-vendeur) :
+   collé en haut, dans les tons du BO pour qu'on ne le confonde pas avec la
+   page du propriétaire, qui commence juste dessous. */
+.apv-bandeau {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 18px; background: #121110; color: #f3efe4;
+  font-size: 13px; line-height: 1.4;
+}
+.apv-txt b { color: #d9c48a; font-weight: 700; letter-spacing: 0.02em; }
+.apv-fermer {
+  flex: none; border: 1px solid #d9c48a; background: transparent; color: #f3efe4;
+  border-radius: 6px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.apv-fermer:hover { background: #d9c48a; color: #121110; }
+/* Les gestes d'écriture, coupés dans l'aperçu : même dessin, mais grisés. */
+.ep-depot.apercu { cursor: default; color: #a19d95; border-style: dashed; }
+.ep-depot.apercu:hover { background: transparent; }
+.ep-fich a[aria-disabled="true"] { text-decoration: none; cursor: default; color: #56534d; }
+@media (max-width: 560px) {
+  .apv-bandeau { flex-wrap: wrap; padding: 8px 14px; }
+}
+
+/* ---- #378 : direction B « Franc », choisie par MAV le 25/09 ----
+   Titres et noms en Poppins 700, boutons en capitales espacées, pictos au
+   trait à 2,6 px, contours des cases un peu plus sombres. Ce bloc prime sur
+   le cran précédent (Poppins 600, pictos 2). */
+h1, h2, h3, .fsub, .lsum-titre, .sect-title, .modal-h, .modal-t { font-weight: 700; }
+.lt, .lmid .lt, .vgn-card .nom, .cc-carte .nom, .cfc-t, .kt, .chp-l, .rgl-ch .chp-l { font-weight: 700; }
+button { font-weight: 700; }
+.fadd, .kgo, .savebar-go, .savebar-x, .mdt-btn, .dif-go, .dif-x, .est-suiv, .est-prec, .bsc .bsc-m, .cfc-refus-go, .cfc-refus-x, .ltb.lbl, .sv-ok, .lstx-f, .mopt, .ftab, .lstx-sw button {
+  font-family: var(--font-title); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 12px;
+}
+.ftab, .lstx-sw button { font-size: 12.5px; }
+.fadd { padding: 7px 13px; }
+.savebar-go, .kgo { font-size: 12.5px; }
+.chip, .fchip, .lsum .chip, .pim, .pst { font-weight: 700; }
+.chip, .fchip, .lsum-top .fchip, .pim, input, select, textarea, .fadd, .ltb, .ltog, .lst-search { border-color: #cfd3d8; }
+.main svg, .fiche svg, .modal svg, .side svg, .bottbar svg,
+.main svg[stroke-width], .modal svg[stroke-width],
+.lsum svg, .ltb svg, .ltog svg, .ftab svg, .fadd svg, .pim svg, .cfx-ic svg, .lsum-titre svg { stroke-width: 2.6; }
+.vgn-chip svg, .cfc-rch svg, .pgb svg { stroke-width: 2.4; }

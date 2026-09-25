@@ -357,16 +357,25 @@ function ChargesTab({ b }: { b: BienData }) {
       {lignes.filter((l) => TAXES.has(l.type)).map(rendreLigne)}
 
       <div className="fsub" style={{ marginTop: 16 }}>Charges</div>
-      {autres.length === 0
-        ? <div className="fempty">Aucune charge saisie.</div>
-        : lignes.filter((l) => !TAXES.has(l.type)).map(rendreLigne)}
-      {/* Retour #384 — « mets le bouton ajouter une charge en dessous de la
-          taxe foncière, sous la partie charges, ça me semble plus logique ».
-          Il coiffait tout l'onglet, au-dessus des taxes qu'on n'ajoute pas :
-          il vient après la liste qu'il allonge. */}
-      <div className="blor-add bas">
-        <button className="fadd" type="button" onClick={() => setCreation(true)}>+ Ajouter une charge</button>
-      </div>
+      {/* Retour #384, précisé le 25/09 : le bouton est AU-DESSUS de « Aucune
+          charge saisie » quand la liste est vide, et EN DESSOUS des charges
+          quand il y en a — « pour bien lire ce qu'il y a avant de rajouter,
+          pour éviter les doublons ». */}
+      {autres.length === 0 ? (
+        <>
+          <div className="blor-add bas">
+            <button className="fadd" type="button" onClick={() => setCreation(true)}>+ Ajouter une charge</button>
+          </div>
+          <div className="fempty">Aucune charge saisie.</div>
+        </>
+      ) : (
+        <>
+          {lignes.filter((l) => !TAXES.has(l.type)).map(rendreLigne)}
+          <div className="blor-add bas">
+            <button className="fadd" type="button" onClick={() => setCreation(true)}>+ Ajouter une charge</button>
+          </div>
+        </>
+      )}
 
       <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} onAnnuler={annuler} />
 

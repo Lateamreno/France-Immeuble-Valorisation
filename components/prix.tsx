@@ -343,19 +343,18 @@ export function EspaceVendeur({
           </span>
           {/* Retour #382 — « mets-moi un bouton pour annuler l'espace vendeur
               et un lien pour voir à quoi ça ressemble ».
-              Voir : ce que le propriétaire voit derrière son mot de passe est
-              SA session — le BO ne peut pas s'y glisser, c'est tout l'édifice
-              de l'espace client (§10 bis). On ouvre donc la page du lien secret,
-              qui montre la même fiche, quand un lien court ; sinon l'entrée de
-              l'espace client, qui est ce qu'il voit en premier.
+              #382 bis — MAV : « je voulais juste voir un aperçu de ce que le
+              client verra avant de lui envoyer un lien. » Ce que le propriétaire
+              voit derrière son mot de passe est SA session — le BO ne s'y glisse
+              pas (§10 bis). L'aperçu est donc une page du BO qui rend le même
+              écran avec les mêmes données, sans lien ni session : il s'ouvre
+              que le lien secret existe ou non.
               Fermer : le compte reste, l'accès tombe (`desactiverCompteClient`),
               après une confirmation — c'est un geste qu'on ne devine pas. */}
           <div className="espv-cli-act">
-            <a className="espv-lien" href={jeton ? url : "/espace"} target="_blank" rel="noreferrer"
-              title={jeton
-                ? "Ouvre, dans un nouvel onglet, la page du propriétaire telle qu'il la voit"
-                : "Aucun lien secret ouvert : ouvre la page d'entrée de l'espace client"}>
-              Voir l&apos;espace ↗
+            <a className="espv-lien" href={`/bien/${immeubleId}/apercu-vendeur`} target="_blank" rel="noreferrer"
+              title="Ouvre, dans un nouvel onglet, l'écran tel que le propriétaire le verra. Rien n'est envoyé.">
+              Aperçu de l&apos;espace ↗
             </a>
             <button type="button" className="espv-b" disabled={pending || !proprietaireEmail}
               onClick={() => start(async () => {
@@ -660,9 +659,7 @@ export function PrixEcran({ b, espace }: {
      dans bien-fiche.tsx) : ses pastilles vivent maintenant dans le résumé. */
   return (
     <div className="px-page" style={pending ? { opacity: 0.6 } : undefined}>
-      <ResumeImmeuble b={b} ctx={ctx} occupationPct={occupationPct} />
-
-      <div className="px-hd" style={{ marginTop: 18 }}>
+      <div className="px-hd">
         <div className="fsub">Prix actuel</div>
         <button className="fadd" type="button" onClick={() => setModale(true)}>✎ Modifier le prix</button>
       </div>
@@ -687,6 +684,12 @@ export function PrixEcran({ b, espace }: {
       <div className="pxt-row">
         <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
         <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
+      </div>
+
+      {/* MAV, 25/09 : « le résumé de l'immeuble, tu le mets en dessous du prix
+          et du tableau, juste avant la marge de négo ». */}
+      <div style={{ marginTop: 18 }}>
+        <ResumeImmeuble b={b} ctx={ctx} occupationPct={occupationPct} />
       </div>
 
       <div className="fsub" style={{ marginTop: 18 }}>Marge de négociation</div>

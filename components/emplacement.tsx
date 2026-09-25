@@ -191,11 +191,16 @@ function AdresseTab({ b }: { b: BienData }) {
     if (!insee || !tensionVideEnBase || tensionDemandee.current === insee) return;
     tensionDemandee.current = insee;
     tensionLocservice(insee)
-      .then((t) => {
+      .then(async (t) => {
         // L'agent a pu choisir entre-temps : sa valeur prime.
         if (!t || tensionRef.current) return;
         setTension(t);
         setTensionProposee(true);
+        /* MAV, 25/09 : « Bubble a directement la bonne mention enregistrée
+           sans intervention de ma part ». Donc on l'inscrit dans la fiche
+           tout de suite, sans attendre Enregistrer — seulement quand la case
+           était vide, jamais par-dessus une valeur choisie. */
+        await updateEmplacement(immeubleId, { emp_tension_locative: t } as EmplacementPatch).catch(() => undefined);
       })
       .catch(() => undefined);
   }, [insee, tensionVideEnBase, setTension]);
@@ -1442,16 +1447,14 @@ function VignetteSecteur({ b, dest, poids, commune }: {
               <span className="sv-etat">✓ Vérifié</span>
             ) : (
               <>
+                {/* MAV, 25/09 : « pas de bouton Confirmer sur la vignette,
+                    c'est seulement quand on ouvre — ça permet de vérifier sur
+                    les sites avant de confirmer ». La vignette dit l'état, la
+                    fenêtre porte la confirmation. */}
                 <span className="sv-etat">
                   {v.auto ? `Repères ${v.quoi} — à vérifier` : complet ? "À vérifier" : "À renseigner"}
                 </span>
-                {/* Le bouton vit dans la vignette cliquable : on arrête le
-                    clic, sinon il ouvrirait aussi la modale. */}
-                <button
-                  type="button" className="sv-ok" disabled={pending || !complet}
-                  title={complet ? "Confirmer ces valeurs pour le secteur" : "Loyer et prix attendus"}
-                  onClick={(e) => { e.stopPropagation(); confirmerValeurs(); }}
-                >{pending ? "…" : "✓ Confirmer"}</button>
+                <span className="sv-ouvrir">ouvrir pour confirmer ›</span>
               </>
             )}
           </div>

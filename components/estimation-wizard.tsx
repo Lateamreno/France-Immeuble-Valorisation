@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group, S } from "@/lib/format";
+import { RATTACHE } from "@/lib/referentiels";
 import { Copier } from "@/components/copier";
 import { useQuestion } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
@@ -627,18 +628,31 @@ export function EstimationWizard({
         bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
       });
     } else {
-      /* Une surface absente n'est pas un trou : le dossier écrit « n.c. » et
-         estime au revenu (les murs d'un hôtel). On prévient, sans bloquer. */
-      if (agg.carrez <= 0) {
+      /* MAV, 25/09 : « Carrez et loyers c'est important, sauf pour les lots
+         qui n'ont pas de Carrez. Pour ceux qui n'ont pas de loyer il faut
+         indiquer zéro, ou loué avec, mais pas laisser vide. » Donc, lot par
+         lot : une surface manquante bloque sur un lot principal (les annexes
+         — caves, parkings, boxes — n'ont pas de Carrez) ; un loyer VIDE
+         bloque, sauf lot rattaché à un autre ; un zéro est un lot libre. */
+      const SANS_CARREZ = new Set(["Annexe", "Annexes", "Parking", "Cave", "Garage", "Box", "Boxes"]);
+      const num0 = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
+      const nomLot = (l: Record<string, unknown>) => `lot ${String(l.numero ?? "?")}`;
+      const sansSurface = b.lots.filter((l) => !SANS_CARREZ.has(String(l.Destination ?? "")) && !(num0(l.surface_carrez) ?? 0));
+      if (sansSurface.length) {
         out.push({
-          cle: "surface", libelle: "Aucune surface Carrez sur les lots", ou: "couverture et page 4 — « n.c. », pas de méthode au m²",
-          bloquant: false, action: { section: "locatif", label: "Ouvrir l'état locatif" },
+          cle: "surface",
+          libelle: `Surface Carrez manquante sur ${sansSurface.length} lot${sansSurface.length > 1 ? "s" : ""} (${sansSurface.slice(0, 4).map(nomLot).join(", ")}${sansSurface.length > 4 ? "…" : ""})`,
+          ou: "couverture et page 4 — pas de méthode au m²",
+          bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
         });
       }
-      if (agg.loyersAn <= 0) {
+      const sansLoyer = b.lots.filter((l) => num0(l.loyer) === undefined && String(l.Type_bail ?? "") !== RATTACHE);
+      if (sansLoyer.length) {
         out.push({
-          cle: "loyers", libelle: "Aucun loyer saisi", ou: "couverture et page 2 — 0 € de revenus, normal si l'immeuble est vide",
-          bloquant: false, action: { section: "locatif", label: "Ouvrir l'état locatif" },
+          cle: "loyers",
+          libelle: `Loyer non renseigné sur ${sansLoyer.length} lot${sansLoyer.length > 1 ? "s" : ""} (${sansLoyer.slice(0, 4).map(nomLot).join(", ")}${sansLoyer.length > 4 ? "…" : ""}) — mettre 0 s'il est libre, ou « rattaché à un lot »`,
+          ou: "couverture et page 2 — les revenus seraient faux",
+          bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
         });
       }
     }
