@@ -16,7 +16,7 @@ import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
-import { saveMatch } from "@/lib/bo/actions";
+import { chargerCommercialisation, saveMatch } from "@/lib/bo/actions";
 import { AssistantCommercialisation } from "@/components/commercialisation-assistant";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import { Modale } from "@/components/modale";
@@ -121,14 +121,23 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
      est partie, puis on pose dans la mémoire d'écran ce que l'assistant lira
      en montant : l'identifiant de la commercialisation, l'étape des e-mails,
      ses textes. Rien n'est recréé : les propositions existent déjà. */
+  /* Elle ne dépend PAS du vivier : les cibles sont relues depuis les
+     propositions de la commercialisation, et l'assistant s'ouvre seul. */
+  const [reprise, setReprise] = useMemoire<{ commId: string; matchId: string; dossierId?: string } | null>(`${memo}:reprise`, null);
+  const [cibles, setCibles] = useState<Acquereur[] | null>(null);
+  const [repriseErreur, setRepriseErreur] = useState<string | null>(null);
+  useEffect(() => {
+    if (!reprise) { setCibles(null); return; }
+    let vivant = true;
+    chargerCommercialisation(reprise.commId)
+      .then((r) => { if (!vivant) return; if (r) setCibles(r.cibles); else setRepriseErreur("Commercialisation introuvable."); })
+      .catch(() => { if (vivant) setRepriseErreur("La commercialisation n'a pas pu être relue."); });
+    return () => { vivant = false; };
+  }, [reprise]);
+
   const rouvrirComm = (c: Record<string, unknown>) => {
-    const m = hist.matchs.find((x) => String(x._id) === String(c.MATCH ?? ""));
-    if (!m || !d) return;
-    rouvrir(m);
-    const mid = String(m._id);
+    const mid = String(c.MATCH ?? "") || String(c._id);
     const pose = (k: string, v: unknown) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* rien */ } };
-    pose(`${memo}:matchId`, mid);
-    pose(`${memo}:assistant`, true);
     pose(`com:${mid}:commId`, String(c._id));
     pose(`com:${mid}:etape`, c.prop_sent === true ? "SMS" : "E-mails");
     pose(`com:${mid}:creees`, Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0);
@@ -140,6 +149,8 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
     if (S(c.prop_mail_objet)) pose(`com:${mid}:objet`, S(c.prop_mail_objet));
     if (S(c.prop_mail_text)) pose(`com:${mid}:message`, S(c.prop_mail_text));
     if (S(c.prop_sms_text)) pose(`com:${mid}:sms`, S(c.prop_sms_text));
+    setRepriseErreur(null);
+    setReprise({ commId: String(c._id), matchId: mid, dossierId: S(c.DOSSIER) || undefined });
   };
 
   /* Retour #425 — le bouton « page précédente » du navigateur ne faisait
@@ -155,6 +166,23 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
     window.addEventListener("popstate", retour);
     return () => window.removeEventListener("popstate", retour);
   }, [resultat, replie]);
+
+  if (reprise) {
+    if (!cibles) {
+      return (
+        <div className="fempty">
+          {repriseErreur ?? "Réouverture de la commercialisation…"}
+          {repriseErreur && <> <button type="button" className="fadd" onClick={() => setReprise(null)}>Retour</button></>}
+        </div>
+      );
+    }
+    return (
+      <AssistantCommercialisation
+        b={b} matchId={reprise.matchId} dossierId={reprise.dossierId}
+        cibles={cibles} onFermer={() => setReprise(null)}
+      />
+    );
+  }
 
   if (resultat && d && !replie) {
     return (
@@ -230,13 +258,13 @@ function Historique({ hist, d, onRouvrir, onRouvrirComm }: {
             total={{ mails: Number(m.mails_count) || 0, tels: Number(m.tels_count) || 0 }}
             onOuvrir={d ? () => onRouvrir(m) : undefined}
           />
-          {commsDe(m).map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={d ? () => onRouvrirComm(c) : undefined} />)}
+          {commsDe(m).map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={() => onRouvrirComm(c)} />)}
         </div>
       ))}
       {/* Les commercialisations dont le matching n'est plus là. */}
       {hist.commercialisations
         .filter((c) => !hist.matchs.some((m) => String(m._id) === String(c.MATCH ?? "")))
-        .map((c) => <CarteCommercialisation key={S(c._id)} c={c} />)}
+        .map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={() => onRouvrirComm(c)} />)}
     </>
   );
 }
