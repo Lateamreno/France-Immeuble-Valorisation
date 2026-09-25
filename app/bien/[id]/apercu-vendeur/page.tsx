@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { bien, pieces } = await apercuVendeur(id);
+  const { bien, pieces, secteur } = await apercuVendeur(id);
 
   return (
     <>
@@ -37,7 +37,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           {/* Le renvoi « ← Votre espace » de la vraie page, sans le lien :
               il mènerait à l'entrée de l'espace client, qui n'est pas à lui. */}
           <div className="ep-retour"><span>← Votre espace</span></div>
-          <EspaceProprietaire immeubleId={id} bien={bien} pieces={pieces} apercu />
+          <EspaceProprietaire immeubleId={id} bien={bien} pieces={pieces} secteur={secteur} apercu />
         </>
       ) : (
         <main className="ep-wrap etroit">

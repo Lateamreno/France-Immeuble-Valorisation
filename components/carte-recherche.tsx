@@ -5,10 +5,14 @@
  * définition : les deux écrans ne peuvent pas diverger. */
 
 import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { RechercheCard } from "@/lib/bubble/server";
 import { VignetteContact } from "@/components/vignette-contact";
 import { Modale } from "@/components/modale";
 import { Avatar } from "@/components/avatar";
+import { Champ } from "@/components/champ";
+import { autresRecherchesEnCours, mettreRecherchesEnAttente, reactiverRecherche } from "@/lib/bo/actions";
 
 /* Les quatre destinations du BO, dans son ordre. Un picto éteint dit « pas
    recherché » — l'absence de picto ne dirait rien du tout. */
@@ -130,6 +134,9 @@ export function CarteRecherche({
             </button>
           )}
           {mention && <span className="rc-mention">● {mention}</span>}
+          {!mention && r.attente && (
+            <span className="rc-mention att">● En attente{r.attente.fin ? ` jusqu'au ${r.attente.fin}` : ""}</span>
+          )}
         </div>
 
         <div className="rc-ligne3">
@@ -157,6 +164,9 @@ export function ModaleRecherche({
   onAProposer?: (r: RechercheCard) => void;
   onModifier?: (r: RechercheCard) => void;
 }) {
+  const router = useRouter();
+  const [attente, setAttente] = useState(false);
+  const [pending, start] = useTransition();
   return (
     <Modale
       titre={<b>{detail.contact?.nom ?? "Recherche"} — {detail.cible ?? "Recherche"}</b>}
@@ -164,6 +174,17 @@ export function ModaleRecherche({
       className="lieu-modal"
       pied={
         <>
+          {/* MAV, 25/09 : la mise en attente d'une recherche, jusqu'à une
+              date. Une recherche archivée ne se repousse pas, elle est finie. */}
+          {detail.group === "en_cours" && (
+            <button type="button" className="fadd" onClick={() => setAttente(true)}>Mettre en attente…</button>
+          )}
+          {detail.group === "en_attente" && (
+            <button type="button" className="fadd" disabled={pending}
+              onClick={() => start(async () => { await reactiverRecherche(detail.id, detail.contact?.id); router.refresh(); onClose(); })}>
+              {pending ? "Réactivation…" : "Réactiver la recherche"}
+            </button>
+          )}
           <span style={{ flex: 1 }} />
           {onModifier && (
             <button type="button" className="fadd" onClick={() => onModifier(detail)}>
@@ -197,8 +218,148 @@ export function ModaleRecherche({
             ? `${detail.aProposer} immeuble(s) en mandat correspondent et ne lui ont jamais été envoyés.`
             : "Rien de nouveau : tout ce qui correspond lui a déjà été envoyé."}
         </span>
+        {detail.attente && (
+          <>
+            <b>En attente</b>
+            <span>
+              {detail.attente.fin ? `Jusqu'au ${detail.attente.fin}` : "Sans date"}
+              {detail.attente.motif && ` — ${detail.attente.motif}`}
+            </span>
+          </>
+        )}
       </div>
       {detail.commentaire && <p className="rc-com">{detail.commentaire}</p>}
+      {attente && (
+        <ModaleAttenteRecherche
+          r={detail}
+          onFermer={() => setAttente(false)}
+          onFait={() => { setAttente(false); router.refresh(); onClose(); }}
+        />
+      )}
+    </Modale>
+  );
+}
+
+/** La date par défaut : dans trois mois, au format de la case `date`. */
+function dansTroisMois() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 3);
+  return d.toISOString().slice(0, 10);
+}
+
+const dateFr = (iso: string) => {
+  const [a, m, j] = iso.split("-");
+  return a && m && j ? `${j}/${m}/${a}` : iso;
+};
+
+/**
+ * Mettre une recherche en attente — et, quand la personne en a d'autres en
+ * cours, proposer de les repousser à la même date (MAV, 25/09 : « on peut
+ * les cocher pour toutes les mettre en attente à la même date »).
+ *
+ * Deux temps dans la même fenêtre : la date et le motif d'abord, puis, une
+ * fois la première recherche écrite, la liste des autres à cocher. Les cases
+ * partent décochées : c'est un choix, pas un réflexe.
+ */
+export function ModaleAttenteRecherche({ r, onFermer, onFait }: {
+  r: RechercheCard; onFermer: () => void; onFait: () => void;
+}) {
+  const [fin, setFin] = useState(dansTroisMois);
+  const [motif, setMotif] = useState("");
+  const [etape, setEtape] = useState<"date" | "autres">("date");
+  const [autres, setAutres] = useState<{ id: string; libelle: string }[] | null>(null);
+  const [coches, setCoches] = useState<Set<string>>(() => new Set());
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    let vivant = true;
+    autresRecherchesEnCours(r.id).then((l) => { if (vivant) setAutres(l); }).catch(() => { if (vivant) setAutres([]); });
+    return () => { vivant = false; };
+  }, [r.id]);
+
+  const qui = r.contact?.nom ?? "Cette personne";
+  const cocher = (id: string) => setCoches((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const valider = () =>
+    start(async () => {
+      const x = await mettreRecherchesEnAttente({ ids: [r.id], fin, motif, contactId: r.contact?.id });
+      if (!x.ok) { setMsg(x.message); return; }
+      if ((autres ?? []).length > 0) setEtape("autres");
+      else onFait();
+    });
+
+  const validerAutres = () =>
+    start(async () => {
+      if (coches.size > 0) {
+        const x = await mettreRecherchesEnAttente({ ids: [...coches], fin, motif, contactId: r.contact?.id });
+        if (!x.ok) { setMsg(x.message); return; }
+      }
+      onFait();
+    });
+
+  return (
+    <Modale
+      titre={etape === "date" ? "Mettre la recherche en attente" : "Mettre d'autres recherches en attente ?"}
+      onFermer={etape === "date" ? onFermer : onFait}
+      largeur={520}
+      pied={etape === "date" ? (
+        <>
+          <button type="button" className="fchip" onClick={onFermer}>Annuler</button>
+          <button type="button" className="savebar-go" disabled={pending || !fin} onClick={valider}>
+            {pending ? "Enregistrement…" : `Mettre en attente jusqu'au ${dateFr(fin)}`}
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="fchip" disabled={pending} onClick={onFait}>Non, seulement celle-ci</button>
+          <button type="button" className="savebar-go" disabled={pending || coches.size === 0} onClick={validerAutres}>
+            {pending ? "Enregistrement…" : `Mettre en attente ${coches.size > 1 ? `les ${coches.size} cochées` : "la recherche cochée"}`}
+          </button>
+        </>
+      )}
+    >
+      {etape === "date" ? (
+        <>
+          <p className="rgl-aide">
+            La recherche sort du « en cours » sans être archivée : elle reviendra à la date choisie.
+            Aucun e-mail ne part.
+          </p>
+          <Champ libelle="Jusqu'au" capitales htmlFor="att-fin">
+            <input id="att-fin" className="mi" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
+          </Champ>
+          <Champ libelle="Motif" capitales htmlFor="att-motif" aide="Facultatif — ce que la personne a dit">
+            <input id="att-motif" className="mi" value={motif} placeholder="Budget bloqué jusqu'à la vente de…"
+              onChange={(e) => setMotif(e.target.value)} />
+          </Champ>
+          {autres === null && <p className="rgl-aide">Lecture des autres recherches…</p>}
+          {autres && autres.length > 0 && (
+            <p className="rgl-aide">
+              {qui} a {autres.length} autre{autres.length > 1 ? "s" : ""} recherche{autres.length > 1 ? "s" : ""} en cours :
+              on vous proposera de les mettre en attente à la même date.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p>
+            <b>C&apos;est fait</b> : la recherche est en attente jusqu&apos;au <b>{dateFr(fin)}</b>.
+            {" "}{qui} a {autres!.length} autre{autres!.length > 1 ? "s" : ""} recherche{autres!.length > 1 ? "s" : ""} en cours.
+            Cochez celles à mettre en attente à la même date.
+          </p>
+          <ul className="att-liste">
+            {autres!.map((a) => (
+              <li key={a.id}>
+                <label>
+                  <input type="checkbox" checked={coches.has(a.id)} onChange={() => cocher(a.id)} />
+                  <span>{a.libelle}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {msg && <p className="rgl-err">{msg}</p>}
     </Modale>
   );
 }

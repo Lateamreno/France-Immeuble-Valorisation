@@ -25,7 +25,8 @@ import { ModaleRechercheEdition } from "@/components/recherche-modale";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import type { VignetteData } from "@/components/vignette-contact";
 import {
-  BoutonScinde, CarteProposition, ModaleRelance, STATUTS_CLOS_PROP, type ModeRelance,
+  BoutonScinde, CarteProposition, ModaleRelance, STATUTS_CLOS_PROP, VuesPropositions, categorieProposition,
+  messageVidePropositions, type ModeRelance, type VuePropositions,
 } from "@/components/propositions";
 import { archiverContact, retirerPieceContact, updateContact } from "@/lib/bo/actions";
 import { envoyerRelances } from "@/lib/bo/relances-actions";
@@ -989,14 +990,16 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
   const [maintenant] = useState(() => Date.now());
   const [relance, setRelance] = useState<{ ids: string[] } | null>(null);
   const [rapport, setRapport] = useState<string | null>(null);
+  const [vue, setVue] = useState<VuePropositions>("toutes");
   const [pending, start] = useTransition();
   const agent = d.agent ? { id: d.agent.id, nom: d.agent.nom, tel: d.agent.tel } : undefined;
   const chemins = [`/contact/${contactId}`];
 
-  /** Les propositions ouvertes, avec leur ancienneté. */
+  /** Les propositions ouvertes, avec leur ancienneté. Un immeuble archivé,
+   *  vendu ou retiré n'y est plus : la relance groupée le saute (25/09). */
   const ouvertes = useMemo(
     () => d.propositions
-      .filter((p) => !p.refusee && !p.stop && !STATUTS_CLOS_PROP.has(p.statut ?? "") && p.immeuble)
+      .filter((p) => !p.refusee && !p.archivee && !p.stop && !STATUTS_CLOS_PROP.has(p.statut ?? "") && p.immeuble)
       .map((p) => ({ p, libelle: p.immeuble!.libelle, jours: joursDepuis(p.depuis, maintenant) })),
     [d.propositions, maintenant],
   );
@@ -1066,6 +1069,14 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
             </div>
           )}
           {rapport && <div className={`cfx-rapport${/Échec|Aucune|non envoyé/.test(rapport) ? " ko" : ""}`}>{rapport}</div>}
+          {d.propositions.length > 0 && (
+            <div className="prop-barre">
+              <VuesPropositions lignes={d.propositions} vue={vue} onVue={setVue} />
+            </div>
+          )}
+          {vue !== "toutes" && !d.propositions.some((p) => categorieProposition(p) === vue) && (
+            <div className="fempty">{messageVidePropositions(vue)}</div>
+          )}
           {relance && (
             <ModaleRelance
               lignes={ouvertes} ids={relance.ids} client={client} agent={agent} email={email} tel={tel}
@@ -1076,7 +1087,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
           )}
         </>
       )}
-      cartes={d.propositions.map((p) => (
+      cartes={d.propositions.filter((p) => vue === "toutes" || categorieProposition(p) === vue).map((p) => (
         <CarteProposition
           key={p.id} p={p} contexte={{ contactId }} vignette={vignette} note={note} montrerImmeuble
           jours={joursDepuis(p.depuis, maintenant)}

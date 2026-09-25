@@ -15,6 +15,7 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
+import { motifHorsVente } from "@/lib/bo/relances";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
@@ -1831,6 +1832,9 @@ export type PropositionLigne = {
   immeuble?: { id: string; libelle: string; prix?: string };
   /** Vraie quand la proposition entre dans le compteur « à relancer ». */
   aRelancer: boolean;
+  /** L'immeuble n'est plus à la vente — « Archivé le 03/03/26 car Mandat
+   *  périmé », « Vendu » : la proposition se lit, ne se relance plus (25/09). */
+  archivee?: string;
   /* Retours #365 et #366 : la carte de la fiche contact porte ce que porte
      celle du BO — les recherches matchées, le dossier envoyé, la relance. */
   refusee: boolean;
@@ -1868,11 +1872,13 @@ export type PropositionLigne = {
  */
 export async function propositionsDuBien(immeubleId: string): Promise<PropositionLigne[]> {
   await loadInitials();
-  const [rows, dossiersBien] = await Promise.all([
+  const [rows, dossiersBien, [imBien]] = await Promise.all([
     fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 3000,
       { field: "date_envoi", desc: true }).catch(() => []),
     fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 50).catch(() => []),
+    parIds("immeuble", [immeubleId], 1, CHAMPS_HORS_VENTE),
   ]);
+  const archivee = phraseHorsVente(imBien);
   const ids = (k: string) => [...new Set(rows.flatMap((p) => (Array.isArray(p[k]) ? (p[k] as unknown[]).map(String) : [String(p[k] ?? "")])).filter(Boolean))];
   const [contacts, recherches, dossiers] = await Promise.all([
     parIds("contact", ids("ACHETEUR")),
@@ -1920,7 +1926,8 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
         immeuble: undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !archivee,
+        archivee,
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
@@ -2010,6 +2017,15 @@ function phraseArchivage(im: Record<string, unknown>) {
      « Autre ». On montre le texte quand il existe. */
   const motif = S2(im.motif_archivage_txt) ?? S2(im.Motif_archivage);
   return `Archivé${quand ? ` le ${quand}` : ""}${motif ? ` car ${motif}` : ""}`;
+}
+
+/** Les champs qui disent si un immeuble est encore à la vente. */
+const CHAMPS_HORS_VENTE = ["archived", "Statut", "date_archivage", "motif_archivage_txt", "Motif_archivage"];
+
+/** « Archivé le … car … », « Vendu », « Retiré de la vente » — ou rien. */
+function phraseHorsVente(im?: Record<string, unknown>) {
+  if (!im) return undefined;
+  return phraseArchivage(im) ?? motifHorsVente(im);
 }
 
 const nomFichier = (u: unknown) => {
@@ -2139,7 +2155,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
         immeuble: im ? { id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined } : undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im),
+        archivee: phraseHorsVente(im),
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
@@ -2215,7 +2232,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
         immeuble: lien(premier(s.IMMEUBLEs)),
       } satisfies SuiviLigne)),
 
-    aRelancer: propositions.filter((p) => S2(p.Statut) === "Envoyée" && p.stop_relances_yn !== true).length,
+    aRelancer: propositions.filter((p) => S2(p.Statut) === "Envoyée" && p.stop_relances_yn !== true
+      && !phraseHorsVente(ims.get(String(p.IMMEUBLE ?? "")))).length,
 
     mandatRechercheActif: mandats.some((m) =>
       String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),
@@ -2925,6 +2943,8 @@ export type RechercheCard = {
   /** Immeubles en mandat qui correspondent et qu'on ne lui a jamais envoyés. */
   aProposer: number;
   group: "en_cours" | "en_attente" | "archivees";
+  /** Mise en attente : jusqu'à quand, et pourquoi (25/09). */
+  attente?: { fin?: string; motif?: string };
   date?: string;
 };
 
@@ -3092,6 +3112,7 @@ export async function listRecherchesBO(
       },
       aProposer,
       group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",
+      attente: r.standby === true ? { fin: jjmmaa(r.standby_fin), motif: S2(r.standby_motif) } : undefined,
       date: typeof r["Modified Date"] === "string" ? (r["Modified Date"] as string) : undefined,
     } satisfies RechercheCard;
   });

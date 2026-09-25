@@ -5644,3 +5644,78 @@ export async function majReglages(valeurs: Record<string, unknown>) {
   revalidatePath("/", "layout");
   return { ok: true as const };
 }
+
+/* ---------- Mise en attente d'une recherche (MAV, 25/09) ----------
+ *
+ * Le BO Bubble savait le faire ; pas le nôtre. Champs Bubble : `standby`,
+ * `standby_start`, `standby_fin`, `standby_motif`. Une recherche en attente
+ * sort du « en cours » de l'écran Recherches sans être archivée : le dossier
+ * n'est pas mort, il est repoussé jusqu'à une date.
+ *
+ * MAV : « quand un client a plusieurs recherches et qu'on en met une en
+ * attente, quand on valide la date d'attente il nous demande si on veut mettre
+ * une autre ou plusieurs recherches en attente et on peut les cocher pour
+ * toutes les mettre en attente à la même date ». D'où `autresRecherchesEnCours`
+ * — ce que la fenêtre propose de cocher — et une écriture qui prend une liste.
+ */
+
+/** Les autres recherches EN COURS de la même personne — celles qu'on peut
+ *  proposer de mettre en attente à la même date. */
+export async function autresRecherchesEnCours(rechercheId: string): Promise<{ id: string; libelle: string }[]> {
+  const r = await bqOne("bo_recherche", rechercheId);
+  const contactId = typeof r?.ACHETEUR === "string" ? r.ACHETEUR : "";
+  if (!contactId) return [];
+  const c = await bqOne("bo_contact", contactId);
+  const ids = (Array.isArray(c?.RECHERCHEs) ? (c!.RECHERCHEs as unknown[]).map(String) : []).filter((id) => id !== rechercheId);
+  if (ids.length === 0) return [];
+  const TITRES: Record<string, string> = {
+    Investisseur: "Investissement locatif", Marchand: "Opération marchande",
+    Promoteur: "Opération de promotion", Patrimonial: "Immeuble patrimonial",
+  };
+  return (await bqIn("bo_recherche", ids))
+    .filter((x) => x.archived !== true && x.standby !== true)
+    .map((x) => {
+      const lieux = Array.isArray(x.dpts) ? (x.dpts as unknown[]).map(String).filter(Boolean) : [];
+      const prix = typeof x.prix_max === "number" ? `≤ ${Math.round(x.prix_max as number).toLocaleString("fr-FR")} €` : "";
+      return {
+        id: String(x._id),
+        libelle: [TITRES[String(x.Cible ?? "")] ?? (String(x.Cible ?? "") || "Recherche"), lieux.join(", ") || "France entière", prix]
+          .filter(Boolean).join(" · "),
+      };
+    });
+}
+
+/** Met une ou plusieurs recherches en attente jusqu'à une date (yyyy-mm-dd). */
+export async function mettreRecherchesEnAttente(input: { ids: string[]; fin: string; motif?: string; contactId?: string }) {
+  const fin = new Date(input.fin);
+  if (Number.isNaN(fin.getTime())) return { ok: false as const, message: "La date n'est pas lisible." };
+  const now = new Date().toISOString();
+  const ids = [...new Set(input.ids.filter(Boolean))];
+  for (const id of ids) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_recherche",
+      p_id: id,
+      p_patch: cleanPatch({
+        standby: true,
+        standby_start: now,
+        standby_fin: fin.toISOString(),
+        standby_motif: input.motif?.trim() || undefined,
+        "Modified Date": now,
+      }),
+    });
+  }
+  revalidatePath("/recherches");
+  if (input.contactId) revalidatePath(`/contact/${input.contactId}`);
+  return { ok: true as const, n: ids.length };
+}
+
+/** Réactive une recherche mise en attente. */
+export async function reactiverRecherche(id: string, contactId?: string) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_recherche",
+    p_id: id,
+    p_patch: { standby: false, "Modified Date": new Date().toISOString() },
+  });
+  revalidatePath("/recherches");
+  if (contactId) revalidatePath(`/contact/${contactId}`);
+}

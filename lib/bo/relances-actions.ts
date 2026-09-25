@@ -12,7 +12,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis,
+  FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis, motifHorsVente,
   type BilanRelances, type PropositionRelance,
 } from "./relances";
 
@@ -88,8 +88,9 @@ async function rpc(fn: string, args: Record<string, unknown>) {
 const dernierGeste = (p: Record<string, unknown>) =>
   S(p.date_last_relance) ?? S(p.date_envoi) ?? S(p["Created Date"]);
 
-function versRelance(p: Record<string, unknown>, nom: string): PropositionRelance {
+function versRelance(p: Record<string, unknown>, nom: string, horsVente?: string): PropositionRelance {
   return {
+    horsVente,
     id: String(p._id),
     immeubleId: String(p.IMMEUBLE ?? ""),
     contactId: S(p.ACHETEUR),
@@ -156,7 +157,8 @@ export async function relancesDues(
     ]),
   );
 
-  const props = brutes.map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? ""))));
+  /* Un immeuble archivé, vendu ou retiré sort de la relance (MAV, 25/09). */
+  const props = brutes.map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsVente(immeubles.get(String(p.IMMEUBLE ?? "")))));
   const clients = grouperParClient(props, libelles, maintenant, jours);
 
   /* Ce que la fenêtre laisse dehors. On le compte plutôt que de le taire :
@@ -477,14 +479,15 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
     3000,
   );
   const contactIds = [...new Set(rows.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
-  const contacts = await parPaquets("bo_contact", contactIds);
+  const [contacts, ims] = await Promise.all([parPaquets("bo_contact", contactIds), parPaquets("bo_immeuble", [immeubleId])]);
+  const horsVente = motifHorsVente(ims.get(immeubleId));
   const nomDe = (id: string) => {
     const c = contacts.get(id);
     if (!c) return "Acquéreur";
     return `${S(c["prénom"]) ?? ""} ${S(c.nom) ?? ""}`.trim() || S(c.email) || "Acquéreur";
   };
   return rows
-    .map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? ""))))
+    .map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente))
     .filter((p) => aRelancer(p, maintenant, jours))
     .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant) }))
     .sort((a, b) => (b.jours ?? 999) - (a.jours ?? 999));

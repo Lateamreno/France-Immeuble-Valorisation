@@ -12,7 +12,7 @@
 //     changé par mégarde se retrouve sur des mandats signés avant qu'on s'en
 //     aperçoive. Le code personnel à six chiffres viendra s'ajouter à cette
 //     confirmation quand l'authentification existera.
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { majReglages } from "@/lib/bo/actions";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { Modale } from "@/components/modale";
@@ -32,7 +32,7 @@ const CHAMPS_AGENCE: { cle: keyof Reglages["agence"]; label: string; aide?: stri
   { cle: "site", label: "Site web", aide: "C'est là que le barème est réputé consultable" },
 ];
 
-export function ReglagesAgence({ initial }: { initial: Reglages }) {
+export function ReglagesAgence({ initial, envois }: { initial: Reglages; envois?: ReactNode }) {
   const [v, setV] = useState<Reglages>(initial);
   const [pending, start] = useTransition();
   const [confirme, setConfirme] = useState(false);
@@ -126,6 +126,10 @@ export function ReglagesAgence({ initial }: { initial: Reglages }) {
       </Champ>
 
       {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
+
+      {/* L'état des envois vient du serveur : il ne fait pas partie des
+          réglages enregistrables, il se lit. */}
+      {envois}
 
       <BarreEnregistrer
         modifie={modifie} pending={pending} plein

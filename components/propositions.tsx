@@ -165,7 +165,7 @@ export function CarteProposition({
   const contactId = contexte.contactId ?? p.contact?.id ?? "";
   const qui: VignetteData | undefined = p.contact ?? vignette;
   const classe = p.contact?.note ?? note;
-  const ouverte = !p.refusee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
+  const ouverte = !p.refusee && !p.archivee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
   const tropTot = jours !== undefined && jours < JOURS_ENTRE_RELANCES;
   const aRelancer = ouverte && !p.stop && !tropTot;
 
@@ -207,6 +207,10 @@ export function CarteProposition({
           )}
         </div>
         <div className="cfc-l2">
+          {/* MAV, 25/09 : un immeuble qui n'est plus à la vente (archivé, vendu,
+              retiré) ferme la proposition — elle se lit, elle ne se relance
+              plus, et la relance groupée la saute. */}
+          {p.archivee && <span className="cfc-arch">{p.archivee}</span>}
           {/* MAV, 25/09 : « le refusé juste en dessous de la relance ou de la
               date de proposition, avec la date dessus ». Une personne qui a
               refusé n'est plus relancée (statut clos). */}
@@ -270,6 +274,10 @@ export function CarteProposition({
                 Relancer
               </BoutonScinde>
             </span>
+          ) : p.archivee ? (
+            /* L'immeuble n'est plus à la vente : rien à rouvrir ici, c'est
+               l'immeuble qu'il faudrait désarchiver. */
+            <span className="cfc-num off" title="L'immeuble n'est plus à la vente">Immeuble hors vente</span>
           ) : (
             <button className="fadd" type="button" disabled={pending}
               onClick={() => start(async () => {
@@ -447,6 +455,51 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
  * terminées, avec la recherche, le tri par classe, la barre de pages collée
  * en bas, et la carte partagée.
  */
+/* ------------------------------------------------------------------------
+   Le filtre des propositions — objet partagé de la fiche immeuble et de la
+   fiche contact (MAV, 25/09 : « qu'on puisse trier les propositions, même si
+   elles sont toutes affichées par défaut, avec la possibilité de faire
+   afficher les en cours, les refusées et les archivées »).
+   ------------------------------------------------------------------------ */
+
+export type VuePropositions = "toutes" | "en_cours" | "refusees" | "terminees" | "archivees";
+
+/** La catégorie d'une proposition, dans l'ordre de priorité : l'immeuble
+ *  hors vente d'abord, puis le refus, puis les statuts clos. */
+export function categorieProposition(p: PropositionLigne): Exclude<VuePropositions, "toutes"> {
+  if (p.archivee) return "archivees";
+  if (p.refusee) return "refusees";
+  if (STATUTS_CLOS_PROP.has(p.statut ?? "")) return "terminees";
+  return "en_cours";
+}
+
+const VUES_PROP: [VuePropositions, string, string][] = [
+  ["toutes", "Toutes", "gris"], ["en_cours", "En cours", "vert"], ["refusees", "Refusées", "rouge"],
+  ["terminees", "Terminées", "gris"], ["archivees", "Archivées", "gris"],
+];
+
+export function VuesPropositions({ lignes, vue, onVue }: {
+  lignes: PropositionLigne[]; vue: VuePropositions; onVue: (v: VuePropositions) => void;
+}) {
+  const nb = (v: VuePropositions) => (v === "toutes" ? lignes.length : lignes.filter((p) => categorieProposition(p) === v).length);
+  return (
+    <div className="lstx-sw" role="group" aria-label="Vue">
+      {VUES_PROP.filter(([k]) => k === "toutes" || k === "en_cours" || nb(k) > 0).map(([k, l, ton]) => (
+        <button key={k} type="button" className={vue === k ? "on" : undefined} onClick={() => onVue(k)}>
+          {k !== "toutes" && <i className={`prop-pt ${ton}`} />}
+          {l}{nb(k) > 0 && <span className="n">{nb(k)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const VIDE_PROP: Record<VuePropositions, string> = {
+  toutes: "Aucune proposition.", en_cours: "Aucune proposition en cours.", refusees: "Aucune proposition refusée.",
+  terminees: "Aucune proposition terminée.", archivees: "Aucune proposition sur un immeuble archivé.",
+};
+export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
+
 export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre, actions }: {
   immeubleId: string;
   /** « Ville (CP) — adresse », cité dans les relances. */
@@ -460,7 +513,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
 }) {
   const [lignes, setLignes] = useState<PropositionLigne[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [vue, setVue] = useState<"en_cours" | "terminees">("en_cours");
+  const [vue, setVue] = useState<VuePropositions>("toutes");
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<"date" | "classe">("date");
   const [page, setPage] = useState(1);
@@ -479,14 +532,13 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
     return () => { vivant = false; };
   }, [immeubleId, version]);
 
-  const enCours = (p: PropositionLigne) => !p.refusee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
-  const nbEnCours = (lignes ?? []).filter(enCours).length;
+  const nbEnCours = (lignes ?? []).filter((p) => categorieProposition(p) === "en_cours").length;
   const nbTerminees = (lignes ?? []).length - nbEnCours;
 
   const filtrees = useMemo(() => {
     const qq = q.trim().toLowerCase();
     const liste = (lignes ?? []).filter((p) => {
-      if (enCours(p) !== (vue === "en_cours")) return false;
+      if (vue !== "toutes" && categorieProposition(p) !== vue) return false;
       if (!qq) return true;
       return [p.contact?.nom, p.contact?.email, p.contact?.tel, p.email, p.contact?.qualite, p.commentaire, p.motif]
         .filter(Boolean).join(" ").toLowerCase().includes(qq);
@@ -554,15 +606,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
           <input placeholder="Recherchez une proposition — nom, téléphone, e-mail…" value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }} />
         </div>
-        <div className="lstx-sw" role="group" aria-label="Vue">
-          {([["en_cours", "En cours", nbEnCours], ["terminees", "Terminées", nbTerminees]] as const).map(([k, l, n]) => (
-            <button key={k} type="button" className={vue === k ? "on" : undefined}
-              onClick={() => { setVue(k); setPage(1); }}>
-              {k === "en_cours" ? <i className="prop-pt vert" /> : <i className="prop-pt gris" />}
-              {l}{n > 0 && <span className="n">{n}</span>}
-            </button>
-          ))}
-        </div>
+        <VuesPropositions lignes={lignes ?? []} vue={vue} onVue={(v) => { setVue(v); setPage(1); }} />
         <select className="pgs" value={tri} onChange={(e) => setTri(e.target.value as "date" | "classe")} title="Tri">
           <option value="date">Tri : date d&apos;envoi</option>
           <option value="classe">Tri : classe A → D</option>
@@ -572,7 +616,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
       {rapport && <div className={`cfx-rapport${/Échec|non envoyé|Pas d'/.test(rapport) ? " ko" : ""}`}>{rapport}</div>}
       {lignes === null && <div className="fempty">Lecture des propositions…</div>}
       {lignes !== null && tranche.length === 0 && (
-        <div className="fempty">{vue === "en_cours" ? "Aucune proposition en cours." : "Aucune proposition terminée."}</div>
+        <div className="fempty">{messageVidePropositions(vue)}</div>
       )}
       {tranche.map((p) => (
         <CarteProposition

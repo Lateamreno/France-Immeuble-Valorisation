@@ -7941,3 +7941,106 @@ button { font-weight: 700; }
 .main svg[stroke-width], .modal svg[stroke-width],
 .lsum svg, .ltb svg, .ltog svg, .ftab svg, .fadd svg, .pim svg, .cfx-ic svg, .lsum-titre svg { stroke-width: 2.6; }
 .vgn-chip svg, .cfc-rch svg, .pgb svg { stroke-width: 2.4; }
+
+/* ---- 25/09 : contacts sur une seule colonne, la vignette entière ---- */
+.cc-grille { grid-template-columns: 1fr; max-width: 720px; margin: 0 auto 7px; }
+@media (max-width: 900px) { .cc-grille { grid-template-columns: 1fr; } }
+.cc-carte .vgn-act { display: flex; border-top: 1px solid var(--line-lt); margin-top: 6px; }
+/* Style B, précisé : les menus (onglets, bascules, filtres) restent en
+   minuscules ; seuls les boutons d'action passent en capitales. Et les puces
+   de chiffres des cadres de rubrique (« 5 lots », « 136 m² », « 35 100 € /an »)
+   prennent le gras : c'est elles que MAV visait. */
+.ftab, .lstx-sw button, .lstx-f, .mopt, .lstx-rail-t { text-transform: none; letter-spacing: 0; }
+.ftab, .lstx-sw button { font-size: 13.5px; }
+.lstx-f { font-size: 13px; }
+.lsum-top .fchip, .lsum .fchip, .fchip { font-family: var(--font-title); font-weight: 600; font-size: 13.5px; color: var(--slate); border-color: #cfd3d8; padding: 5px 13px; }
+.lsum-top .fchip b, .fchip b { font-weight: 700; font-size: 15px; }
+.fchip svg { width: 15px; height: 15px; stroke-width: 2.6; }
+
+/* ---- MAV 25/09 — espace propriétaire : le secteur, le tableau, les comparables ---- */
+/* Trois tuiles : le loyer, le prix, le rendement du secteur. */
+.ep-sect { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 14px; }
+.ep-sect-c {
+  background: #f8f6f1; border: 1px solid #e6e3dd; border-radius: 10px;
+  padding: 12px 12px 11px; text-align: center;
+}
+.ep-sect-c i { display: block; font-style: normal; font-size: 12.5px; color: #6b6862; }
+.ep-sect-c b { display: block; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 3px 0 1px; font-variant-numeric: tabular-nums; }
+.ep-sect-c em { display: block; font-style: normal; font-size: 12px; color: #8b8781; }
+.ep-liens { display: flex; flex-wrap: wrap; gap: 8px; }
+.ep-liens a {
+  display: inline-block; font-size: 13.5px; font-weight: 500; color: #6d5f38;
+  border: 1px solid #d9cfb1; border-radius: 8px; padding: 7px 12px; background: #fdfcf9;
+  text-decoration: none;
+}
+.ep-liens a:hover { background: #faf7ef; text-decoration: underline; }
+
+/* Le tableau Actuel / Potentiel — l'esprit des grilles du BO, dans la charte
+   claire de l'espace client : lisible sur un téléphone, sans fond sombre. */
+.ep-tab-wrap { overflow-x: auto; }
+.ep-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ep-tab thead th {
+  font-size: 12.5px; font-weight: 600; color: #6b6862; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 6px 10px; text-align: center; border-bottom: 1px solid #e6e3dd;
+}
+.ep-tab tbody th { text-align: left; font-weight: 500; color: #56534d; padding: 11px 10px 11px 0; border-top: 1px solid #eeebe5; }
+.ep-tab tbody tr:first-child th, .ep-tab tbody tr:first-child td { border-top: 0; }
+.ep-tab tbody td { text-align: center; padding: 11px 10px; border-top: 1px solid #eeebe5; white-space: nowrap; }
+.ep-tab tbody td b { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ep-tab .ep-pct {
+  display: inline-block; margin-top: 3px; font-style: normal; font-size: 12px; font-weight: 600;
+  border-radius: 999px; padding: 1px 8px; background: #f0eee9; color: #56534d;
+}
+.ep-tab .ep-pct.ok { background: #e6f3e2; color: #2f6b34; }
+.ep-tab .ep-pct.ko { background: #fbe9e5; color: #a5341f; }
+.ep-tab .ep-nc { color: #9c9891; font-size: 13px; }
+
+/* Les comparables : une carte par immeuble, sans adresse. */
+.ep-comp { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ep-comp li { border: 1px solid #e6e3dd; border-radius: 10px; padding: 12px 13px 11px; background: #fff; }
+.ep-comp li.vendu { background: #fbfaf7; }
+.ep-comp-tag {
+  display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+  border-radius: 999px; padding: 2px 9px; margin-bottom: 8px;
+}
+.ep-comp-tag.vendu { background: #ece5d3; color: #6d5f38; }
+.ep-comp-tag.a_vendre { background: #e6f3e2; color: #2f6b34; }
+.ep-comp li > b { display: block; font-size: 15px; font-weight: 600; }
+.ep-comp li > i { display: block; font-style: normal; font-size: 12.5px; color: #8b8781; margin: 1px 0 8px; }
+.ep-comp-ch { display: flex; gap: 14px; }
+.ep-comp-ch > span { display: flex; flex-direction: column; }
+.ep-comp-ch b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ep-comp-ch em { font-style: normal; font-size: 11.5px; color: #8b8781; }
+
+@media (max-width: 560px) {
+  .ep-sect { grid-template-columns: 1fr; gap: 8px; }
+  .ep-sect-c { display: grid; grid-template-columns: 1fr auto; text-align: left; align-items: baseline; column-gap: 10px; }
+  .ep-sect-c i { grid-column: 1; }
+  .ep-sect-c b { grid-column: 2; grid-row: 1 / span 2; font-size: 20px; margin: 0; }
+  .ep-sect-c em { grid-column: 1; }
+  .ep-tab tbody th { font-size: 13px; }
+  .ep-tab tbody td b { font-size: 15px; }
+}
+
+/* Réglages › Envois : l'état des routes e-mail de masse / SMS. */
+.rgl-env { list-style: none; margin: 10px 0 12px; padding: 0; display: grid; gap: 7px; }
+.rgl-env-l { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; }
+.rgl-env-l b { font-weight: 700; }
+.rgl-env-p { flex: none; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 12px; font-weight: 800; margin-top: 1px; }
+.rgl-env-l.ok .rgl-env-p { background: #e4f3e8; color: #1c7a3a; }
+.rgl-env-l.ko .rgl-env-p { background: #fbe4e2; color: #b42318; }
+.rgl-env-l.info .rgl-env-p { background: #eef0f3; color: var(--slate); }
+.rgl-env-act { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.rgl-env-act .rgl-aide { margin: 0; flex: 1; min-width: 240px; }
+
+/* Mise en attente d'une recherche (25/09). */
+.rc-mention.att { color: #b8730f; }
+.att-liste { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.att-liste label { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line, #d9dde2);
+  border-radius: 6px; cursor: pointer; font-size: 13.5px; }
+.att-liste label:hover { background: #f7f8fa; }
+.att-liste input { width: 16px; height: 16px; }
+/* La grille des contacts est un enfant flex : sans largeur, elle se serre sur
+   sa carte. Elle prend sa colonne (720 px au plus). */
+.cc-grille { width: 100%; }
