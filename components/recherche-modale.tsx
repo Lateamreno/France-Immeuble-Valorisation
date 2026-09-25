@@ -24,6 +24,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { ContactPicker } from "@/components/contact-picker";
 import { DESTINATIONS } from "@/components/carte-recherche";
+import { Modale } from "@/components/modale";
+import { Champ } from "@/components/champ";
+import { Copier } from "@/components/copier";
 import { CIBLES } from "@/lib/referentiels";
 import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
 import {
@@ -95,22 +98,15 @@ function initiales(nom: string) {
 }
 
 /**
- * Une coordonnée du client, avec son bouton de copie (#342).
- *
- * L'écriture dans le presse-papiers peut être refusée : on ne dit « copié »
- * qu'une fois la promesse tenue, et un échec se dit plutôt que de passer pour
- * un succès.
+ * Une coordonnée du client, avec son bouton de copie (#342) — le `Copier`
+ * partagé, qui sait déjà dire quand la copie a pris ou a été refusée.
  */
-function Copiable({ valeur, vide }: { valeur?: string; vide: string }) {
-  const [etat, setEtat] = useState<"" | "ok" | "ko">("");
+function Coordonnee({ valeur, vide }: { valeur?: string; vide: string }) {
   if (!valeur) return <span className="off">{vide}</span>;
   return (
     <span className="rmod-co">
       {valeur}
-      <button type="button" title={etat === "ok" ? "Copié" : etat === "ko" ? "Copie refusée" : `Copier ${valeur}`}
-        onClick={() => {
-          navigator.clipboard.writeText(valeur).then(() => setEtat("ok")).catch(() => setEtat("ko"));
-        }}>{etat === "ok" ? "✓" : etat === "ko" ? "!" : "⧉"}</button>
+      <Copier valeur={valeur} titre={`Copier ${valeur}`} petit />
     </span>
   );
 }
@@ -384,17 +380,33 @@ export function ModaleRechercheEdition({
   const REG_OPT = REGIONS.map((r) => ({ cle: r, nom: r }));
 
   return (
-    <div className="modal-ov">
+    <>
       {/* Retour #341 — « fais la modale un peu moins grande, je veux voir la
           totalité des infos à l'intérieur quand je suis en 100 % de zoom ».
           Le corps passe sur DEUX COLONNES : ce qui était une colonne de
-          quatorze champs empilés tient maintenant en une hauteur d'écran. */}
-      <div className="modal rmod" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          {creation ? "Nouvelle recherche" : "Modifier la recherche"}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
+          quatorze champs empilés tient maintenant en une hauteur d'écran.
 
+          `brut` : le corps garde sa classe `rmod-b` (hauteur bornée, défilement).
+          Tant que le sélecteur de contact est ouvert par-dessus, la fenêtre ne
+          reçoit pas la fermeture : Échap doit refermer le sélecteur, pas la
+          recherche en cours de saisie. */}
+      <Modale
+        titre={creation ? "Nouvelle recherche" : "Modifier la recherche"}
+        onFermer={picker ? undefined : onFermer}
+        className="rmod"
+        fermeDehors={false}
+        brut
+        pied={
+          <>
+            <span style={{ flex: 1 }} />
+            <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
+            <button className="kgo" type="button" disabled={pending} onClick={enregistrer}>
+              <span className="ch">›</span>{" "}
+              {pending ? "Enregistrement…" : creation ? "Créer la recherche" : "Enregistrer"}
+            </button>
+          </>
+        }
+      >
         <div className="modal-b rmod-b">
           {/* --- La carte du client, comme sur le BO (#341) --------------- */}
           <div className="rmod-cli">
@@ -406,8 +418,8 @@ export function ModaleRechercheEdition({
                     {contact.nom} ↗
                   </a>
                   <div className="rmod-cli-co">
-                    <Copiable valeur={depart?.contact?.tel} vide="pas de téléphone" />
-                    <Copiable valeur={depart?.contact?.email} vide="pas d'e-mail" />
+                    <Coordonnee valeur={depart?.contact?.tel} vide="pas de téléphone" />
+                    <Coordonnee valeur={depart?.contact?.email} vide="pas d'e-mail" />
                   </div>
                 </div>
               </>
@@ -430,20 +442,23 @@ export function ModaleRechercheEdition({
             {/* --- Colonne de gauche : ce qu'il cherche ------------------- */}
             <div className="rmod-col">
               <Section titre="Ce qu'il cherche" ic={IC.cible} />
-              <span className="mlab">Type d&apos;opération</span>
-              <select className="min" value={cible} onChange={(e) => setCible(e.target.value)}>
-                <option value="">Non précisé</option>
-                {CIBLES.map((c) => <option key={c}>{c}</option>)}
-              </select>
+              <Champ libelle="Type d'opération">
+                <select className="min" value={cible} onChange={(e) => setCible(e.target.value)}>
+                  <option value="">Non précisé</option>
+                  {CIBLES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </Champ>
 
-              <span className="mlab">Destinations recherchées</span>
-              <ChoixMultiple options={DEST_OPT} valeur={destinations} onChange={setDestinations}
-                placeholder="Logement, Commerce, Bureau…" />
+              <Champ libelle="Destinations recherchées">
+                <ChoixMultiple options={DEST_OPT} valeur={destinations} onChange={setDestinations}
+                  placeholder="Logement, Commerce, Bureau…" />
+              </Champ>
 
               <Section titre="Secteur" ic={IC.geo} />
-              <span className="mlab">Régions</span>
-              <ChoixMultiple options={REG_OPT} valeur={regions} onChange={setRegions}
-                placeholder="Île-de-France, Hauts-de-France…" />
+              <Champ libelle="Régions">
+                <ChoixMultiple options={REG_OPT} valeur={regions} onChange={setRegions}
+                  placeholder="Île-de-France, Hauts-de-France…" />
+              </Champ>
               {regions.length > 0 && (
                 <p className="rm-aide">
                   À l&apos;enregistrement, une région devient ses{" "}
@@ -452,12 +467,14 @@ export function ModaleRechercheEdition({
                   listés ci-dessous en rouvrant la recherche.
                 </p>
               )}
-              <span className="mlab">Départements</span>
-              <ChoixMultiple options={DPT_OPT} valeur={dpts} onChange={setDpts}
-                placeholder="93, seine-saint, 2A…" />
-              <span className="mlab">Villes</span>
-              <ChoixMultiple options={[]} valeur={villes} onChange={setVilles} libre
-                placeholder="Taper une ville puis Entrée…" />
+              <Champ libelle="Départements">
+                <ChoixMultiple options={DPT_OPT} valeur={dpts} onChange={setDpts}
+                  placeholder="93, seine-saint, 2A…" />
+              </Champ>
+              <Champ libelle="Villes">
+                <ChoixMultiple options={[]} valeur={villes} onChange={setVilles} libre
+                  placeholder="Taper une ville puis Entrée…" />
+              </Champ>
               <p className="rm-aide">
                 Rien ici veut dire <b>France entière</b> : c&apos;est une recherche sans exigence
                 de secteur, pas une recherche sans résultat.
@@ -467,6 +484,10 @@ export function ModaleRechercheEdition({
             {/* --- Colonne de droite : à quelles conditions --------------- */}
             <div className="rmod-col">
               <Section titre="À quelles conditions" ic={IC.euro} />
+              {/* Les paires « de … à » gardent leur ligne en texte : le titre y
+                  est posé EN LIGNE devant la case (12 px gris), ce que `Champ`
+                  ne dessine pas — sa variante « gauche » réserve une colonne de
+                  150 px au titre, et la grille se casserait. */}
               <div className="rm-grille">
                 <label>Budget de <ChampChiffre valeur={prixMin} onChange={setPrixMin} unite="€" large /></label>
                 <label>à <ChampChiffre valeur={prixMax} onChange={setPrixMax} unite="€" large /></label>
@@ -499,18 +520,22 @@ export function ModaleRechercheEdition({
                     Cocher « Logement » à gauche laisse passer les immeubles mixtes — c&apos;est
                     voulu. Exclure « Commerce » ici les écarte.
                   </p>
-                  <span className="mlab">Destinations exclues</span>
-                  <ChoixMultiple options={DEST_OPT} valeur={exDest} onChange={setExDest}
-                    placeholder="Commerce, Bureau…" />
-                  <span className="mlab">Régions exclues</span>
-                  <ChoixMultiple options={REG_OPT} valeur={exRegions} onChange={setExRegions}
-                    placeholder="Une région à écarter…" />
-                  <span className="mlab">Départements exclus</span>
-                  <ChoixMultiple options={DPT_OPT} valeur={exDpts} onChange={setExDpts}
-                    placeholder="62, pas-de-calais…" />
-                  <span className="mlab">Villes exclues</span>
-                  <ChoixMultiple options={[]} valeur={exVilles} onChange={setExVilles} libre
-                    placeholder="Taper une ville puis Entrée…" />
+                  <Champ libelle="Destinations exclues">
+                    <ChoixMultiple options={DEST_OPT} valeur={exDest} onChange={setExDest}
+                      placeholder="Commerce, Bureau…" />
+                  </Champ>
+                  <Champ libelle="Régions exclues">
+                    <ChoixMultiple options={REG_OPT} valeur={exRegions} onChange={setExRegions}
+                      placeholder="Une région à écarter…" />
+                  </Champ>
+                  <Champ libelle="Départements exclus">
+                    <ChoixMultiple options={DPT_OPT} valeur={exDpts} onChange={setExDpts}
+                      placeholder="62, pas-de-calais…" />
+                  </Champ>
+                  <Champ libelle="Villes exclues">
+                    <ChoixMultiple options={[]} valeur={exVilles} onChange={setExVilles} libre
+                      placeholder="Taper une ville puis Entrée…" />
+                  </Champ>
                 </div>
               )}
 
@@ -521,16 +546,7 @@ export function ModaleRechercheEdition({
             </div>
           </div>
         </div>
-
-        <div className="modal-f">
-          <span style={{ flex: 1 }} />
-          <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
-          <button className="kgo" type="button" disabled={pending} onClick={enregistrer}>
-            <span className="ch">›</span>{" "}
-            {pending ? "Enregistrement…" : creation ? "Créer la recherche" : "Enregistrer"}
-          </button>
-        </div>
-      </div>
+      </Modale>
 
       {picker && (
         <ContactPicker
@@ -541,6 +557,6 @@ export function ModaleRechercheEdition({
           onValider={(c) => { setContact({ id: c.id, nom: c.nom }); setPicker(false); }}
         />
       )}
-    </div>
+    </>
   );
 }

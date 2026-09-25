@@ -95,3 +95,13 @@ export const euros = (n?: unknown): string | undefined =>
 
 export const keur = (n?: unknown): string | undefined =>
   typeof n === "number" && n > 0 ? `${Math.round(n / 1000)} k€` : undefined;
+
+/* --- Objet n° 9 du catalogue (25/09) : les deux petits utilitaires que
+   quatorze fichiers recopiaient en tête. Rien de visible ; c'est du rangement. */
+
+/** Une chaîne, quoi qu'il arrive : vide si la valeur est absente. */
+export const S = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+
+/** Un nombre fini, ou rien : jamais NaN, jamais une chaîne. */
+export const N = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;

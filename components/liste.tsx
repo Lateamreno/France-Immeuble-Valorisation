@@ -8,6 +8,8 @@ import type { ListCard } from "@/lib/bubble/server";
 import { appliquerFiltres, FILTRES_VIDES, PanneauFiltres, type Filtres } from "@/components/filtres-liste";
 import { Facade } from "@/components/facade";
 import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
+import { Avatar } from "@/components/avatar";
+import { Pastille } from "@/components/pastille";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -153,9 +155,7 @@ export function ListeShell({
             )}
             {/* La couleur du commercial vient de la base : c'est elle qui fait
                 qu'on repère à qui appartient une fiche sans lire les initiales. */}
-            <span className="lav" style={r.avatarCouleur ? { background: r.avatarCouleur } : undefined}>
-              {r.avatar}
-            </span>
+            <Avatar initiales={r.avatar} couleur={r.avatarCouleur} />
             <div className="lmid">
               <div className="lt">{r.title}{r.note && <span className="lnote"> · {r.note}</span>}</div>
               {r.sub && <div className="ls">{r.sub}</div>}
@@ -173,10 +173,12 @@ export function ListeShell({
             {r.right && r.right.length > 0 && (
               <div className="lright">{r.right.map((x, i) => <span key={i}>{x}</span>)}</div>
             )}
+            {/* Le ton « orange » de la carte était dessiné en gris (badge-o) :
+                on garde le gris, le dessin ne bouge pas. */}
             {r.badge && (
-              <span className={r.badge.tone === "green" ? "badge-g" : r.badge.tone === "red" ? "badge-r" : "badge-o"}>
+              <Pastille ton={r.badge.tone === "green" ? "vert" : r.badge.tone === "red" ? "rouge" : "gris"} plein>
                 {r.badge.label}
-              </span>
+              </Pastille>
             )}
             {/* La façade en Street View, dans une autre fenêtre : on regarde la
                 rue sans perdre sa place dans la liste (retour #122). La ligne

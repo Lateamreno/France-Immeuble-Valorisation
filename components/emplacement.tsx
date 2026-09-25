@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto as PictoOnglet } from "@/components/pictos";
-import { euros } from "@/lib/format";
+import { euros, S } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
   updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
@@ -16,6 +16,7 @@ import { oublier, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { Modale, useQuestion } from "@/components/modale";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
 import { annoncesLot, loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
@@ -25,7 +26,6 @@ import type { Reperes } from "@/lib/bo/reperes";
 import { MOYENS, itineraireGoogle } from "@/lib/bo/itineraire";
 import { TENSIONS_LOCATIVES } from "@/lib/referentiels";
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
@@ -864,6 +864,7 @@ function LigneParcelle({ immeubleId, p }: {
 }) {
   const id = String(p._id);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [refP, setRefP] = useState(S(p.ref_cadastre));
   const [supP, setSupP] = useState(S(num(p.superficie)));
   const [facP, setFacP] = useState(S(num(p.facade)));
@@ -905,10 +906,11 @@ function LigneParcelle({ immeubleId, p }: {
         </label>
       </div>
       <button className="xdel" type="button" title="Retirer la parcelle"
-        onClick={() => {
-          if (!confirm("Retirer cette parcelle ?")) return;
+        onClick={async () => {
+          if (!(await confirmer("Retirer cette parcelle ?", { danger: true, oui: "Retirer" }))) return;
           start(() => deleteParcelle(immeubleId, id));
         }}>✕</button>
+      {question}
     </div>
   );
 }
@@ -918,6 +920,7 @@ function LigneParcelle({ immeubleId, p }: {
 function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [url, setUrl] = useState(() => proxy(source));
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -949,8 +952,8 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
             </button>
             <button
               type="button" className="mopt" disabled={pending}
-              onClick={() => {
-                if (!confirm("Retirer le plan de la parcelle ?")) return;
+              onClick={async () => {
+                if (!(await confirmer("Retirer le plan de la parcelle ?", { danger: true, oui: "Retirer" }))) return;
                 start(async () => { await supprimerPhotoParcelle(immeubleId); setUrl(undefined); });
               }}
             >Retirer</button>
@@ -981,6 +984,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
       )}
       <input ref={input} type="file" accept="image/*" hidden
         onChange={(e) => envoyer(e.target.files?.[0])} />
+      {question}
     </>
   );
 }
@@ -1396,96 +1400,10 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
         ? declencheur(() => setOpen(true))
         : <button className="fadd" type="button" onClick={() => setOpen(true)}>Modifier</button>}
       {open && (
-        <div className="modal-ov" onClick={() => setOpen(false)}>
-          <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              Modifier les valeurs du secteur
-              <button type="button" onClick={() => setOpen(false)}>✕</button>
-            </div>
-            <div className="modal-b">
-              <div className="sm-liens">
-                <b>{PLURIELS[dest] ?? `${dest}s`}</b>
-                <span className="sp" />
-                {/* #175 — ouvrir un site extérieur met l'adresse au presse-
-                    papiers : sur toutes ces pages, le premier geste est de la
-                    coller dans leur champ de recherche. */}
-                {liens.map((l, i) => (
-                  <a key={i} className="sm-lk" href={l.href} target="_blank" rel="noreferrer"
-                    onClick={() => copierTexte(adresse)}>
-                    {MARQUES[l.cle]}{l.label}
-                  </a>
-                ))}
-                <a
-                  className="sm-lk"
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`}
-                  target="_blank" rel="noreferrer"
-                >{MARQUES.maps}Maps</a>
-                <button type="button" className="sm-lk" title="Copier l'adresse" onClick={() => copierTexte(adresse)}>
-                  {MARQUES.copie}Adresse
-                </button>
-              </div>
-
-              <ChampSecteur
-                icone={<><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>}
-                libelle="Loyer du secteur"
-                unite={unite.loyerUnite}
-                aide={unite.loyerAide}
-                valeur={loyer}
-                onChange={(v) => { prerempli.current.loyer = false; setLoyer(v); }}
-                decimales={2}
-                lien={ueLoyer ? {
-                  href: ueLoyer, titre: "Loyers du secteur sur unemplacement.com",
-                  marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
-                } : undefined}
-                repere={ue?.loyer ? (
-                  <>
-                    <b>{fr2(ue.loyer.valeur)} €/m²/mois</b> — unemplacement.com
-                    {ue.loyer.au ? `, au ${ue.loyer.au}` : ""}
-                    {ue.loyer.bas !== undefined && ` · fourchette ${fr2(ue.loyer.bas)} à ${fr2(ue.loyer.haut!)} €`}
-                  </>
-                ) : reperes?.loyer && (
-                  <>
-                    <b>{fr2(reperes.loyer.valeur)} €/m²/mois</b> — loyers d&apos;annonce {reperes.loyer.millesime}
-                    {reperes.loyer.commune ? "" : ", estimé sur les communes voisines"}
-                    {reperes.loyer.bas !== undefined && ` · fourchette ${fr2(reperes.loyer.bas)} à ${fr2(reperes.loyer.haut!)} €`}
-                  </>
-                )}
-                aRemplacer={prerempli.current.loyer}
-              />
-              <ChampSecteur
-                icone={<><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>}
-                libelle="Prix du secteur" unite={unite.prixUnite}
-                valeur={prix}
-                onChange={(v) => { prerempli.current.prix = false; setPrix(v); }}
-                lien={uePrix ? {
-                  href: uePrix, titre: "Prix de vente du secteur sur unemplacement.com",
-                  marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
-                } : undefined}
-                repere={ue?.prix ? (
-                  <>
-                    <b>{Math.round(ue.prix.valeur).toLocaleString("fr-FR")} €/m²</b> — unemplacement.com
-                    {ue.prix.au ? `, au ${ue.prix.au}` : ""}
-                    {ue.prix.bas !== undefined && ` · fourchette ${Math.round(ue.prix.bas).toLocaleString("fr-FR")} à ${Math.round(ue.prix.haut!).toLocaleString("fr-FR")} €`}
-                  </>
-                ) : reperes?.prix && (
-                  <>
-                    <b>{reperes.prix.valeur.toLocaleString("fr-FR")} €/m²</b> — médiane des ventes DVF {reperes.prix.millesime},
-                    {` sur ${reperes.prix.ventes.toLocaleString("fr-FR")} vente${reperes.prix.ventes > 1 ? "s" : ""} d'appartement`}
-                  </>
-                )}
-                aRemplacer={prerempli.current.prix}
-              />
-              <ChampSecteur
-                icone={<><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></>}
-                libelle="Rendement du secteur" unite="%"
-                valeur={renta} calcule
-              />
-
-              <span className="mlab">Commentaire</span>
-              <textarea className="min" rows={2} placeholder="Commentaire" value={comment}
-                onChange={(e) => setComment(e.target.value)} />
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre="Modifier les valeurs du secteur" onFermer={() => setOpen(false)} className="sect-mod"
+          pied={
+            <>
               <span className="sp" />
               <button
                 className="savebar-go" type="button" disabled={pending || !complet}
@@ -1503,9 +1421,91 @@ export function EditSecteurBtn({ b, dest, poids, commune, declencheur }: {
                   })
                 }
               >{pending ? "Enregistrement…" : "❯ Enregistrer"}</button>
-            </div>
+            </>
+          }
+        >
+          <div className="sm-liens">
+            <b>{PLURIELS[dest] ?? `${dest}s`}</b>
+            <span className="sp" />
+            {/* #175 — ouvrir un site extérieur met l'adresse au presse-
+                papiers : sur toutes ces pages, le premier geste est de la
+                coller dans leur champ de recherche. */}
+            {liens.map((l, i) => (
+              <a key={i} className="sm-lk" href={l.href} target="_blank" rel="noreferrer"
+                onClick={() => copierTexte(adresse)}>
+                {MARQUES[l.cle]}{l.label}
+              </a>
+            ))}
+            <a
+              className="sm-lk"
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`}
+              target="_blank" rel="noreferrer"
+            >{MARQUES.maps}Maps</a>
+            <button type="button" className="sm-lk" title="Copier l'adresse" onClick={() => copierTexte(adresse)}>
+              {MARQUES.copie}Adresse
+            </button>
           </div>
-        </div>
+
+          <ChampSecteur
+            icone={<><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>}
+            libelle="Loyer du secteur"
+            unite={unite.loyerUnite}
+            aide={unite.loyerAide}
+            valeur={loyer}
+            onChange={(v) => { prerempli.current.loyer = false; setLoyer(v); }}
+            decimales={2}
+            lien={ueLoyer ? {
+              href: ueLoyer, titre: "Loyers du secteur sur unemplacement.com",
+              marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
+            } : undefined}
+            repere={ue?.loyer ? (
+              <>
+                <b>{fr2(ue.loyer.valeur)} €/m²/mois</b> — unemplacement.com
+                {ue.loyer.au ? `, au ${ue.loyer.au}` : ""}
+                {ue.loyer.bas !== undefined && ` · fourchette ${fr2(ue.loyer.bas)} à ${fr2(ue.loyer.haut!)} €`}
+              </>
+            ) : reperes?.loyer && (
+              <>
+                <b>{fr2(reperes.loyer.valeur)} €/m²/mois</b> — loyers d&apos;annonce {reperes.loyer.millesime}
+                {reperes.loyer.commune ? "" : ", estimé sur les communes voisines"}
+                {reperes.loyer.bas !== undefined && ` · fourchette ${fr2(reperes.loyer.bas)} à ${fr2(reperes.loyer.haut!)} €`}
+              </>
+            )}
+            aRemplacer={prerempli.current.loyer}
+          />
+          <ChampSecteur
+            icone={<><circle cx="12" cy="12" r="8.5" /><path d="M15 9.2c-.7-.8-1.8-1.2-3-1.2-1.7 0-2.7.8-2.7 1.9 0 2.7 5.7 1.3 5.7 4.1 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.4-3.1-1.2M12 6.2v11.6" /></>}
+            libelle="Prix du secteur" unite={unite.prixUnite}
+            valeur={prix}
+            onChange={(v) => { prerempli.current.prix = false; setPrix(v); }}
+            lien={uePrix ? {
+              href: uePrix, titre: "Prix de vente du secteur sur unemplacement.com",
+              marque: MARQUES.unemplacement, onClick: () => copierTexte(adresse),
+            } : undefined}
+            repere={ue?.prix ? (
+              <>
+                <b>{Math.round(ue.prix.valeur).toLocaleString("fr-FR")} €/m²</b> — unemplacement.com
+                {ue.prix.au ? `, au ${ue.prix.au}` : ""}
+                {ue.prix.bas !== undefined && ` · fourchette ${Math.round(ue.prix.bas).toLocaleString("fr-FR")} à ${Math.round(ue.prix.haut!).toLocaleString("fr-FR")} €`}
+              </>
+            ) : reperes?.prix && (
+              <>
+                <b>{reperes.prix.valeur.toLocaleString("fr-FR")} €/m²</b> — médiane des ventes DVF {reperes.prix.millesime},
+                {` sur ${reperes.prix.ventes.toLocaleString("fr-FR")} vente${reperes.prix.ventes > 1 ? "s" : ""} d'appartement`}
+              </>
+            )}
+            aRemplacer={prerempli.current.prix}
+          />
+          <ChampSecteur
+            icone={<><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></>}
+            libelle="Rendement du secteur" unite="%"
+            valeur={renta} calcule
+          />
+
+          <span className="mlab">Commentaire</span>
+          <textarea className="min" rows={2} placeholder="Commentaire" value={comment}
+            onChange={(e) => setComment(e.target.value)} />
+        </Modale>
       )}
     </>
   );

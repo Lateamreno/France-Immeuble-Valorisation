@@ -9,6 +9,7 @@ import { contactParEmail, createContact, createImmeuble, type ContactTrouve } fr
 import { DoublonContact } from "@/components/doublon-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
+import { Modale } from "@/components/modale";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
 
@@ -92,69 +93,66 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   const completContact = !!nom.trim() && emailOk;
 
   return (
-    <div className="modal-ov">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Nouveau contact<button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          {doublon && (
-            <DoublonContact
-              existant={doublon}
-              onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
-              onChanger={() => setDoublon(null)}
-            />
-          )}
-          <div className="mrow" style={{ alignItems: "center" }}>
-            <select className="min" style={{ width: 110 }} value={civ} onChange={(e) => setCiv(e.target.value)}>
-              <option>Monsieur</option><option>Madame</option>
-            </select>
-            <input className="min" style={{ width: 130 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
-            <input className={`min${!nom.trim() ? " requis" : ""}`} style={{ width: 150 }}
-              placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
-          </div>
-          <div className="mrow" style={{ marginTop: 6 }}>
-            <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
-              style={{ width: 200 }} placeholder="E-mail (obligatoire)" value={email}
-              onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
-            <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
-          </div>
-          <span className="mlab">Projet</span>
-          <div className="mrow">
-            <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
-            <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
-          </div>
-          <span className="mlab">Suivi par</span>
-          <div className="mrow">
-            {agents.map((a) => (
-              <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
-            ))}
-          </div>
-        </div>
-        <div className="modal-f">
-          <button
-            className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
-            disabled={pending || !completContact}
-            title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
-            onClick={() =>
-              start(async () => {
-                /* Retour #248 : l'adresse est-elle déjà connue ? On demande
-                   avant d'écrire — un doublon créé se rattrape mal, les mails
-                   entrants s'y accrochent aussitôt. */
-                const dejaLa = await contactParEmail(email).catch(() => null);
-                if (dejaLa) { setDoublon(dejaLa); return; }
-                const id = await createContact({
-                  "Civilité": civ, "prénom": prenom || undefined, nom,
-                  email: email || undefined, portable: portable || undefined,
-                  acheteur, vendeur,
-                  agentId: agents.find((a) => a.slug === agent)?.id,
-                });
-                onClose();
-                router.push(`/contact/${id}`);
-              })
-            }
-          ><span className="ch">›</span> Créer le contact</button>
-        </div>
+    <Modale
+      titre="Nouveau contact" onFermer={onClose} fermeDehors={false}
+      pied={
+        <button
+          className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
+          disabled={pending || !completContact}
+          title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
+          onClick={() =>
+            start(async () => {
+              /* Retour #248 : l'adresse est-elle déjà connue ? On demande
+                 avant d'écrire — un doublon créé se rattrape mal, les mails
+                 entrants s'y accrochent aussitôt. */
+              const dejaLa = await contactParEmail(email).catch(() => null);
+              if (dejaLa) { setDoublon(dejaLa); return; }
+              const id = await createContact({
+                "Civilité": civ, "prénom": prenom || undefined, nom,
+                email: email || undefined, portable: portable || undefined,
+                acheteur, vendeur,
+                agentId: agents.find((a) => a.slug === agent)?.id,
+              });
+              onClose();
+              router.push(`/contact/${id}`);
+            })
+          }
+        ><span className="ch">›</span> Créer le contact</button>
+      }
+    >
+      {doublon && (
+        <DoublonContact
+          existant={doublon}
+          onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
+          onChanger={() => setDoublon(null)}
+        />
+      )}
+      <div className="mrow" style={{ alignItems: "center" }}>
+        <select className="min" style={{ width: 110 }} value={civ} onChange={(e) => setCiv(e.target.value)}>
+          <option>Monsieur</option><option>Madame</option>
+        </select>
+        <input className="min" style={{ width: 130 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+        <input className={`min${!nom.trim() ? " requis" : ""}`} style={{ width: 150 }}
+          placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
       </div>
-    </div>
+      <div className="mrow" style={{ marginTop: 6 }}>
+        <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
+          style={{ width: 200 }} placeholder="E-mail (obligatoire)" value={email}
+          onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
+        <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
+      </div>
+      <span className="mlab">Projet</span>
+      <div className="mrow">
+        <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
+        <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
+      </div>
+      <span className="mlab">Suivi par</span>
+      <div className="mrow">
+        {agents.map((a) => (
+          <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
+        ))}
+      </div>
+    </Modale>
   );
 }
 
@@ -179,84 +177,81 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
   const pret = !!adresse?.ville && !!source;
 
   return (
-    <div className="modal-ov">
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Créer un nouvel immeuble<button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          <div className="mrow" style={{ alignItems: "flex-start", gap: 14 }}>
-            <label style={{ flex: 1 }}>
-              <span className="mlab">Source</span>
-              <select className={`min${source ? "" : " vide"}`} style={{ width: "100%" }} value={source} onChange={(e) => setSource(e.target.value)}>
-                <option value="" />
-                {SOURCES_IMMEUBLE.map((s2) => <option key={s2}>{s2}</option>)}
-              </select>
-            </label>
-            <label style={{ flex: 1 }}>
-              <span className="mlab">Suivi par</span>
-              <select className="min" style={{ width: "100%" }} value={agent} onChange={(e) => setAgent(e.target.value)}>
-                {agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}
-              </select>
-            </label>
-          </div>
+    <Modale
+      titre="Créer un nouvel immeuble" onFermer={onClose} fermeDehors={false}
+      pied={
+        <button
+          className="kgo" type="button" disabled={pending || !pret}
+          style={pending || !pret ? { opacity: 0.5 } : undefined}
+          onClick={() =>
+            start(async () => {
+              if (!adresse) return;
+              const id = await createImmeuble({
+                agentId: agents.find((a) => a.slug === agent)?.id ?? "",
+                ville: adresse.ville ?? "", zipcode: adresse.cp,
+                rue: adresse.rue, numero_rue: adresse.numero,
+                proprietaireId: proprio?.id,
+                source,
+                geo: adresse.lat !== undefined && adresse.lon !== undefined
+                  ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
+                  : undefined,
+              });
+              onClose();
+              router.push(`/bien/${id}`);
+            })
+          }
+        ><span className="ch">›</span> Créer l&apos;immeuble</button>
+      }
+    >
+      <div className="mrow" style={{ alignItems: "flex-start", gap: 14 }}>
+        <label style={{ flex: 1 }}>
+          <span className="mlab">Source</span>
+          <select className={`min${source ? "" : " vide"}`} style={{ width: "100%" }} value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="" />
+            {SOURCES_IMMEUBLE.map((s2) => <option key={s2}>{s2}</option>)}
+          </select>
+        </label>
+        <label style={{ flex: 1 }}>
+          <span className="mlab">Suivi par</span>
+          <select className="min" style={{ width: "100%" }} value={agent} onChange={(e) => setAgent(e.target.value)}>
+            {agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}
+          </select>
+        </label>
+      </div>
 
-          <span className="mlab">Propriétaire</span>
-          <div className="mrow" style={{ alignItems: "center" }}>
-            {proprio ? (
-              <>
-                <span className="fchip">{proprio.nom}</span>
-                <button type="button" className="fadd" onClick={() => setPicker(true)}>Changer</button>
-                <button type="button" className="fadd" onClick={() => setProprio(null)}>Retirer</button>
-              </>
-            ) : (
-              <button type="button" className="fadd" onClick={() => setPicker(true)}>
-                + Sélectionner ou créer un propriétaire
-              </button>
-            )}
-          </div>
-
-          <span className="mlab">Adresse</span>
-          <AdresseInput autoFocus onChoisir={setAdresse} />
-          {adresse && (
-            <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4 }}>✓ {adresse.label}</div>
-          )}
-
-          <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
-            L&apos;immeuble est créé dans « Immeubles à estimer » ; lots et suivi se
-            complètent ensuite sur la fiche.
-          </div>
-        </div>
-        <div className="modal-f">
-          <button
-            className="kgo" type="button" disabled={pending || !pret}
-            style={pending || !pret ? { opacity: 0.5 } : undefined}
-            onClick={() =>
-              start(async () => {
-                if (!adresse) return;
-                const id = await createImmeuble({
-                  agentId: agents.find((a) => a.slug === agent)?.id ?? "",
-                  ville: adresse.ville ?? "", zipcode: adresse.cp,
-                  rue: adresse.rue, numero_rue: adresse.numero,
-                  proprietaireId: proprio?.id,
-                  source,
-                  geo: adresse.lat !== undefined && adresse.lon !== undefined
-                    ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
-                    : undefined,
-                });
-                onClose();
-                router.push(`/bien/${id}`);
-              })
-            }
-          ><span className="ch">›</span> Créer l&apos;immeuble</button>
-        </div>
-        {picker && (
-          <ContactPicker
-            titre="Sélectionner le propriétaire"
-            libelleValider="Choisir ce contact"
-            onAnnuler={() => setPicker(false)}
-            onValider={(c) => { setProprio({ id: c.id, nom: c.nom }); setPicker(false); }}
-          />
+      <span className="mlab">Propriétaire</span>
+      <div className="mrow" style={{ alignItems: "center" }}>
+        {proprio ? (
+          <>
+            <span className="fchip">{proprio.nom}</span>
+            <button type="button" className="fadd" onClick={() => setPicker(true)}>Changer</button>
+            <button type="button" className="fadd" onClick={() => setProprio(null)}>Retirer</button>
+          </>
+        ) : (
+          <button type="button" className="fadd" onClick={() => setPicker(true)}>
+            + Sélectionner ou créer un propriétaire
+          </button>
         )}
       </div>
-    </div>
+
+      <span className="mlab">Adresse</span>
+      <AdresseInput autoFocus onChoisir={setAdresse} />
+      {adresse && (
+        <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4 }}>✓ {adresse.label}</div>
+      )}
+
+      <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
+        L&apos;immeuble est créé dans « Immeubles à estimer » ; lots et suivi se
+        complètent ensuite sur la fiche.
+      </div>
+      {picker && (
+        <ContactPicker
+          titre="Sélectionner le propriétaire"
+          libelleValider="Choisir ce contact"
+          onAnnuler={() => setPicker(false)}
+          onValider={(c) => { setProprio({ id: c.id, nom: c.nom }); setPicker(false); }}
+        />
+      )}
+    </Modale>
   );
 }

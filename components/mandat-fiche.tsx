@@ -15,11 +15,13 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
-import { dmy, euros, group, jourIso } from "@/lib/format";
+import { dmy, euros, group, jourIso, S } from "@/lib/format";
 import { baremeTexte, plafondTaux, type Tranche } from "@/lib/bareme";
 import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { Champ } from "@/components/champ";
+import { Modale, useQuestion } from "@/components/modale";
 import { ContactPicker } from "@/components/contact-picker";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
 import {
@@ -109,7 +111,6 @@ function completerDepuisContact(x: Mandant, f: MandantDepuisContact, basculer: b
 
 type Data = NonNullable<Awaited<ReturnType<typeof getMandat>>>;
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => {
   const n = parseFloat(s.replace(/\s/g, "").replace(",", "."));
@@ -549,32 +550,12 @@ function OngletMandants({
       )}
 
       {ecarts && (
-        <div className="modal-ov" onClick={() => setEcarts(null)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              Vous avez modifié des informations du contact
-              <button type="button" onClick={() => setEcarts(null)}>✕</button>
-            </div>
-            <div className="modal-b">
-              {ecarts.map((e) => (
-                <div key={e.contactId} className="mdt-ecart">
-                  <b>{e.nom}</b>
-                  <table>
-                    <thead><tr><th></th><th>Sur la fiche</th><th>Au mandat</th></tr></thead>
-                    <tbody>
-                      {e.lignes.map((l) => (
-                        <tr key={l.cle}><td>{l.champ}</td><td className="av">{l.avant}</td><td className="ap">{l.apres}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-              <div className="asst-note">
-                Le mandat garde ce que vous avez saisi. Faut-il aussi corriger la fiche contact, pour que
-                le prochain mandat, les propositions et les e-mails repartent de la bonne identité ?
-              </div>
-            </div>
-            <div className="modal-f">
+        <Modale
+          titre="Vous avez modifié des informations du contact"
+          onFermer={() => setEcarts(null)}
+          largeur={560}
+          pied={
+            <>
               <button className="fadd" type="button" onClick={() => setEcarts(null)}>Annuler</button>
               <span style={{ flex: 1 }} />
               <button className="fadd" type="button" disabled={pending}
@@ -585,9 +566,27 @@ function OngletMandants({
                 onClick={() => start(() => enregistrer(true, ecarts))}>
                 <span className="ch">›</span> Enregistrer aussi sur la fiche
               </button>
+            </>
+          }
+        >
+          {ecarts.map((e) => (
+            <div key={e.contactId} className="mdt-ecart">
+              <b>{e.nom}</b>
+              <table>
+                <thead><tr><th></th><th>Sur la fiche</th><th>Au mandat</th></tr></thead>
+                <tbody>
+                  {e.lignes.map((l) => (
+                    <tr key={l.cle}><td>{l.champ}</td><td className="av">{l.avant}</td><td className="ap">{l.apres}</td></tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ))}
+          <div className="asst-note">
+            Le mandat garde ce que vous avez saisi. Faut-il aussi corriger la fiche contact, pour que
+            le prochain mandat, les propositions et les e-mails repartent de la bonne identité ?
           </div>
-        </div>
+        </Modale>
       )}
     </>
   );
@@ -768,8 +767,8 @@ function CarteMandant({
         {/* Retour #367 : la civilité, le prénom et le nom se corrigent ici.
             À l'enregistrement, ce qui diffère de la fiche est rappelé avant /
             après, et on choisit de le reporter sur la fiche ou non. */}
-        <Champ label="Civilité">
-          <select className="mi" value={x.qualite ?? ""} disabled={locked}
+        <Champ libelle="Civilité" className="mdt-ch" htmlFor={`mdt-${x.uid}-civ`}>
+          <select id={`mdt-${x.uid}-civ`} className="mi" value={x.qualite ?? ""} disabled={locked}
             onChange={(e) => onMaj({ qualite: e.target.value || undefined })}>
             <option value="">—</option>
             {[...new Set(["Monsieur", "Madame", x.qualite].filter(Boolean))].map((c) => (
@@ -777,13 +776,13 @@ function CarteMandant({
             ))}
           </select>
         </Champ>
-        <Champ label="Prénom">
-          <input className="mi" value={x.prenom ?? ""} disabled={locked}
+        <Champ libelle="Prénom" className="mdt-ch" htmlFor={`mdt-${x.uid}-prenom`}>
+          <input id={`mdt-${x.uid}-prenom`} className="mi" value={x.prenom ?? ""} disabled={locked}
             placeholder={x.contactId ? "—" : "à reprendre du contact"}
             onChange={(e) => onMaj({ prenom: e.target.value || undefined })} />
         </Champ>
-        <Champ label="Nom">
-          <input className="mi maj" value={x.nom ?? ""} disabled={locked}
+        <Champ libelle="Nom" className="mdt-ch" htmlFor={`mdt-${x.uid}-nom`}>
+          <input id={`mdt-${x.uid}-nom`} className="mi maj" value={x.nom ?? ""} disabled={locked}
             placeholder={x.contactId ? "—" : "à reprendre du contact"}
             onChange={(e) => onMaj({ nom: e.target.value || undefined })} />
           {x.contactId && (
@@ -799,13 +798,13 @@ function CarteMandant({
             qualité : naissance et adresse ne se demandent qu'à la personne
             physique, qui, elle, est désignée par son état civil complet. */}
         {demande.naissance && (
-          <Champ label="Né(e) le">
-            <input className="mi" type="date" value={jourIso(x.dateNaissance) ?? ""} disabled={locked}
+          <Champ libelle="Né(e) le" className="mdt-ch" htmlFor={`mdt-${x.uid}-naissance`}>
+            <input id={`mdt-${x.uid}-naissance`} className="mi" type="date" value={jourIso(x.dateNaissance) ?? ""} disabled={locked}
               onChange={(e) => onMaj({ dateNaissance: e.target.value || undefined })} />
           </Champ>
         )}
         {demande.naissance && (
-          <Champ label="Lieu de naissance">
+          <Champ libelle="Lieu de naissance" className="mdt-ch">
             {/* Retour #207 : la commune se complète dès les premières lettres,
                 sur la même base que l'adresse — gratuite et sans clé. La frappe
                 reste libre : on naît aussi hors de France. */}
@@ -815,14 +814,14 @@ function CarteMandant({
               onChoisir={(a) => onMaj({ lieuNaissance: a.label })} />
           </Champ>
         )}
-        <Champ label="Qualité au mandat">
+        <Champ libelle="Qualité au mandat" className="mdt-ch" htmlFor={`mdt-${x.uid}-fonction`}>
           {/* Champ libre avec suggestions : le BO contient « Gérant dûment
               habilité », « Gérant - Associé »… qu'une liste fermée perdrait.
               L'identifiant de la liste porte l'uid du mandant (retour #230) :
               il était fixe, si bien qu'une indivision à deux posait deux
               éléments de même identifiant dans la page — les suggestions du
               second mandant venaient alors de la liste du premier. */}
-          <input className="mi" list={`mdt-fonctions-${x.uid}`} value={x.fonction ?? ""} disabled={locked}
+          <input id={`mdt-${x.uid}-fonction`} className="mi" list={`mdt-fonctions-${x.uid}`} value={x.fonction ?? ""} disabled={locked}
             placeholder={morale ? "Gérant, Président…" : "Propriétaire, Indivisaire…"}
             onChange={(e) => onMaj({ fonction: e.target.value || undefined })} />
           <datalist id={`mdt-fonctions-${x.uid}`}>
@@ -831,7 +830,7 @@ function CarteMandant({
         </Champ>
 
         {demande.adresse ? (
-          <Champ label="Adresse" pleine>
+          <Champ libelle="Adresse" className="mdt-ch pleine">
             {/* Adresse géolocalisée : on tape les premières lettres, la Base
                 Adresse Nationale complète (retour #134). */}
             <AdresseInput classe="mi" valeur={x.adresse ?? ""} disabled={locked}
@@ -913,8 +912,8 @@ function CarteMandant({
             />
           )}
           <div className="mdt-grid">
-            <Champ label="Raison sociale" large>
-              <input className="mi maj" value={x.societe?.nom ?? ""} disabled={locked}
+            <Champ libelle="Raison sociale" className="mdt-ch lg" htmlFor={`mdt-${x.uid}-soc-nom`}>
+              <input id={`mdt-${x.uid}-soc-nom`} className="mi maj" value={x.societe?.nom ?? ""} disabled={locked}
                 onChange={(e) => onMaj({ societe: { ...x.societe, nom: e.target.value || undefined } })} />
               {/* Retour #290 — « quand on trouve la société en question, ce
                   serait bien que tu nous mettes un lien à côté de telle façon
@@ -932,19 +931,19 @@ function CarteMandant({
                 </a>
               )}
             </Champ>
-            <Champ label="SIREN">
-              <input className="mi" value={x.societe?.siren ?? ""} disabled={locked} inputMode="numeric"
+            <Champ libelle="SIREN" className="mdt-ch" htmlFor={`mdt-${x.uid}-soc-siren`}>
+              <input id={`mdt-${x.uid}-soc-siren`} className="mi" value={x.societe?.siren ?? ""} disabled={locked} inputMode="numeric"
                 onChange={(e) => onMaj({ societe: { ...x.societe, siren: e.target.value || undefined } })} />
             </Champ>
-            <Champ label="RCS">
-              <input className="mi" value={x.societe?.rcs ?? ""} disabled={locked}
+            <Champ libelle="RCS" className="mdt-ch" htmlFor={`mdt-${x.uid}-soc-rcs`}>
+              <input id={`mdt-${x.uid}-soc-rcs`} className="mi" value={x.societe?.rcs ?? ""} disabled={locked}
                 onChange={(e) => onMaj({ societe: { ...x.societe, rcs: e.target.value || undefined } })} />
             </Champ>
-            <Champ label="Capital (€)">
-              <input className="mi" value={x.societe?.capital ?? ""} disabled={locked} inputMode="numeric"
+            <Champ libelle="Capital (€)" className="mdt-ch" htmlFor={`mdt-${x.uid}-soc-capital`}>
+              <input id={`mdt-${x.uid}-soc-capital`} className="mi" value={x.societe?.capital ?? ""} disabled={locked} inputMode="numeric"
                 onChange={(e) => onMaj({ societe: { ...x.societe, capital: parse(e.target.value) } })} />
             </Champ>
-            <Champ label="Siège social" large>
+            <Champ libelle="Siège social" className="mdt-ch lg">
               {/* Même champ que l'adresse du mandant (retour #136). */}
               <AdresseInput classe="mi" valeur={x.societe?.siege ?? ""} disabled={locked}
                 placeholder="N°, rue, code postal, ville"
@@ -973,8 +972,8 @@ function CarteMandant({
           </label>
           {x.representante && (
             <div className="mdt-grid">
-              <Champ label="Société représentante" large>
-                <input className="mi maj" value={x.representante.nom ?? ""} disabled={locked}
+              <Champ libelle="Société représentante" className="mdt-ch lg" htmlFor={`mdt-${x.uid}-rep-nom`}>
+                <input id={`mdt-${x.uid}-rep-nom`} className="mi maj" value={x.representante.nom ?? ""} disabled={locked}
                   onChange={(e) => onMaj({ representante: { ...x.representante, nom: e.target.value || undefined } })} />
                 {(x.representante.siren || x.representante.nom) && (
                   <a className="mdt-lien" target="_blank" rel="noreferrer"
@@ -985,19 +984,19 @@ function CarteMandant({
                   </a>
                 )}
               </Champ>
-              <Champ label="SIREN">
-                <input className="mi" value={x.representante.siren ?? ""} disabled={locked} inputMode="numeric"
+              <Champ libelle="SIREN" className="mdt-ch" htmlFor={`mdt-${x.uid}-rep-siren`}>
+                <input id={`mdt-${x.uid}-rep-siren`} className="mi" value={x.representante.siren ?? ""} disabled={locked} inputMode="numeric"
                   onChange={(e) => onMaj({ representante: { ...x.representante, siren: e.target.value || undefined } })} />
               </Champ>
-              <Champ label="RCS">
-                <input className="mi" value={x.representante.rcs ?? ""} disabled={locked}
+              <Champ libelle="RCS" className="mdt-ch" htmlFor={`mdt-${x.uid}-rep-rcs`}>
+                <input id={`mdt-${x.uid}-rep-rcs`} className="mi" value={x.representante.rcs ?? ""} disabled={locked}
                   onChange={(e) => onMaj({ representante: { ...x.representante, rcs: e.target.value || undefined } })} />
               </Champ>
-              <Champ label="Capital (€)">
-                <input className="mi" value={x.representante.capital ?? ""} disabled={locked} inputMode="numeric"
+              <Champ libelle="Capital (€)" className="mdt-ch" htmlFor={`mdt-${x.uid}-rep-capital`}>
+                <input id={`mdt-${x.uid}-rep-capital`} className="mi" value={x.representante.capital ?? ""} disabled={locked} inputMode="numeric"
                   onChange={(e) => onMaj({ representante: { ...x.representante, capital: parse(e.target.value) } })} />
               </Champ>
-              <Champ label="Siège social" large>
+              <Champ libelle="Siège social" className="mdt-ch lg">
                 <AdresseInput classe="mi" valeur={x.representante.siege ?? ""} disabled={locked}
                   placeholder="N°, rue, code postal, ville"
                   onSaisie={(v) => onMaj({ representante: { ...x.representante, siege: v || undefined } })}
@@ -1197,21 +1196,6 @@ function ChercheSociete({ onChoisir, onChoisirConnue }: {
         <div className="mdt-soc-v">Aucune société trouvée — la saisie reste possible ci-dessous.</div>
       )}
     </div>
-  );
-}
-
-function Champ({ label, children, large, pleine }: {
-  label: string; children: React.ReactNode;
-  /** Deux colonnes de large. */
-  large?: boolean;
-  /** Toute la ligne — pour l'adresse, qu'on ne coupe pas (retour #205). */
-  pleine?: boolean;
-}) {
-  return (
-    <label className={`mdt-ch${large ? " lg" : ""}${pleine ? " pleine" : ""}`}>
-      <span>{label}</span>
-      {children}
-    </label>
   );
 }
 
@@ -1458,9 +1442,9 @@ function OngletObjet({
           occupait la place d'une information qui, elle, manque souvent. */}
       <div className="mdt-sub">Ce qui reste à saisir</div>
       <div className="mdt-grid deux">
-        <Champ label="Références cadastrales">
+        <Champ libelle="Références cadastrales" className="mdt-ch" htmlFor="mdt-obj-cad">
           <input
-            className={`mi${cadVerrouille ? " gris" : ""}`} value={cad}
+            id="mdt-obj-cad" className={`mi${cadVerrouille ? " gris" : ""}`} value={cad}
             disabled={locked} readOnly={cadVerrouille} placeholder="ex. AB 0123"
             title={cadVerrouille
               ? "Renseignée sur l'onglet Emplacement du bien — c'est là qu'elle se modifie."
@@ -1481,9 +1465,9 @@ function OngletObjet({
             <RemplirParcelles immeubleId={immeubleId} lat={geo.lat} lon={geo.lon} />
           )}
         </Champ>
-        <Champ label="Surface du terrain (m²)">
+        <Champ libelle="Surface du terrain (m²)" className="mdt-ch" htmlFor="mdt-obj-terrain">
           <input
-            className={`mi${terrainVerrouille ? " gris" : ""}`} value={terrain}
+            id="mdt-obj-terrain" className={`mi${terrainVerrouille ? " gris" : ""}`} value={terrain}
             disabled={locked} readOnly={terrainVerrouille} inputMode="numeric"
             title={terrainVerrouille
               ? "Renseignée sur l'onglet Emplacement du bien — c'est là qu'elle se modifie."
@@ -1496,12 +1480,12 @@ function OngletObjet({
         </Champ>
       </div>
       <div className="mdt-grid deux">
-        <Champ label="Surface bâtie (m²)">
-          <input className="mi gris" value={s.surface ? group(s.surface) : ""} readOnly title="Somme des lots" />
+        <Champ libelle="Surface bâtie (m²)" className="mdt-ch" htmlFor="mdt-obj-bati">
+          <input id="mdt-obj-bati" className="mi gris" value={s.surface ? group(s.surface) : ""} readOnly title="Somme des lots" />
         </Champ>
-        <Champ label="Loyer actuel">
+        <Champ libelle="Loyer actuel" className="mdt-ch" htmlFor="mdt-obj-loyer">
           <input
-            className="mi gris"
+            id="mdt-obj-loyer" className="mi gris"
             value={s.loyerMensuel ? `${group(s.loyerMensuel)} € / mois HC — ${group(s.loyerMensuel * 12)} € / an` : "—"}
             readOnly title="Somme des loyers en cours de l'état locatif"
           />
@@ -1774,6 +1758,7 @@ function LigneAvenant({
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const { confirmer, question } = useQuestion();
   const [dateSig, setDateSig] = useState(dateInput(a.signeLe) || new Date().toISOString().slice(0, 10));
   const sens = sensAvenant(a);
   const ecart = a.avant.hai !== undefined && a.apres.hai !== undefined ? a.apres.hai - a.avant.hai : undefined;
@@ -1826,11 +1811,16 @@ function LigneAvenant({
           )}
           {!signe && (
             <button className="mdt-x" type="button" disabled={pending}
-              onClick={() => start(async () => {
-                if (!window.confirm(`Retirer l'avenant n° ${a.n} ? Il n'a pas été signé, rien n'est inscrit au registre.`)) return;
-                const r = await retirerAvenant(mandatId, immeubleId, a.n);
-                if (!r.ok) setMsg(`Échec : ${r.message}`);
-              })}>
+              onClick={async () => {
+                if (!(await confirmer(
+                  `Retirer l'avenant n° ${a.n} ? Il n'a pas été signé, rien n'est inscrit au registre.`,
+                  { danger: true, oui: "Retirer" },
+                ))) return;
+                start(async () => {
+                  const r = await retirerAvenant(mandatId, immeubleId, a.n);
+                  if (!r.ok) setMsg(`Échec : ${r.message}`);
+                });
+              }}>
               ✕ Retirer
             </button>
           )}
@@ -1866,6 +1856,7 @@ function LigneAvenant({
         )}
         {msg && <span className={msg.startsWith("Échec") ? "er" : "okmsg"}>{msg}</span>}
       </div>
+      {question}
     </div>
   );
 }
@@ -1899,48 +1890,12 @@ function ModaleAvenant({
   const pret = !!p.nv && !!p.hai && !identique && !!dateEffet;
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal lg avenant" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Avenant de prix au mandat n° {S(m.numero)}<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <p style={{ fontSize: 12.5, color: "var(--gray-txt)", lineHeight: 1.6, margin: "0 0 14px" }}>
-            Prix en vigueur : <b>{euros(avant.hai)} HAI</b>, dont {euros(avant.nv)} net vendeur et{" "}
-            {euros(avant.honos)} d&apos;honoraires{avant.taux !== undefined ? ` (${String(avant.taux).replace(".", ",")} %)` : ""}.
-            Tapez le nouveau chiffre : il tient, les autres se déduisent.
-          </p>
-          <div className="mdt-prix">
-            <CasePrix label="Nouveau prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={false} onChange={saisir("hai")} fort />
-            <span className="op sep">dont</span>
-            <CasePrix label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} locked={false} onChange={saisir("nv")} />
-            <span className="op">+</span>
-            <CasePrix label="Honoraires" unite="€" v={p.honos} pilote={pilote("honos")} locked={false} onChange={saisir("honos")} />
-            <span className="op sep">soit</span>
-            <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={false} onChange={saisir("taux")} decimal />
-          </div>
-          {ecart !== undefined && ecart !== 0 && (
-            <div className="mdt-rend">
-              {ecart < 0 ? "Baisse" : "Hausse"} de <b>{euros(Math.abs(ecart))}</b> sur le prix HAI
-              ({avant.hai ? `${(Math.abs(ecart) / avant.hai * 100).toFixed(1).replace(".", ",")} %` : ""}).
-              Le net vendeur passe de {euros(avant.nv)} à <b>{euros(p.nv)}</b>.
-            </div>
-          )}
-          {tropCher && (
-            <p className="mdt-alerte">
-              Le taux dépasse le barème ({plafondTaux(p.nv!, bareme).toFixed(2).replace(".", ",")} % pour ce net vendeur).
-            </p>
-          )}
-          <div className="mdt-grid" style={{ marginTop: 14 }}>
-            <Champ label="Prise d'effet du nouveau prix">
-              <input className="mi" type="date" value={dateEffet} onChange={(e) => setDateEffet(e.target.value)} />
-            </Champ>
-            <Champ label="Motif (facultatif, imprimé sur l'avenant)">
-              <input className="mi" value={motif} placeholder="ex. : retours du marché après trois mois de commercialisation"
-                onChange={(e) => setMotif(e.target.value)} />
-            </Champ>
-          </div>
-          {msg && <p className="mdt-alerte" style={{ marginTop: 10 }}>{msg}</p>}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre={<>Avenant de prix au mandat n° {S(m.numero)}</>}
+      onFermer={onFermer}
+      className="lg avenant"
+      pied={
+        <>
           <span style={{ fontSize: 12, color: "var(--gray-lt)" }}>
             L&apos;avenant est rédigé, pas signé : le prix du mandat ne change qu&apos;au retour signé.
           </span>
@@ -1953,9 +1908,46 @@ function ModaleAvenant({
             })}>
             <span className="ch">›</span> {pending ? "Rédaction…" : "Rédiger l'avenant"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <p style={{ fontSize: 12.5, color: "var(--gray-txt)", lineHeight: 1.6, margin: "0 0 14px" }}>
+        Prix en vigueur : <b>{euros(avant.hai)} HAI</b>, dont {euros(avant.nv)} net vendeur et{" "}
+        {euros(avant.honos)} d&apos;honoraires{avant.taux !== undefined ? ` (${String(avant.taux).replace(".", ",")} %)` : ""}.
+        Tapez le nouveau chiffre : il tient, les autres se déduisent.
+      </p>
+      <div className="mdt-prix">
+        <CasePrix label="Nouveau prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} locked={false} onChange={saisir("hai")} fort />
+        <span className="op sep">dont</span>
+        <CasePrix label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} locked={false} onChange={saisir("nv")} />
+        <span className="op">+</span>
+        <CasePrix label="Honoraires" unite="€" v={p.honos} pilote={pilote("honos")} locked={false} onChange={saisir("honos")} />
+        <span className="op sep">soit</span>
+        <CasePrix label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} locked={false} onChange={saisir("taux")} decimal />
       </div>
-    </div>
+      {ecart !== undefined && ecart !== 0 && (
+        <div className="mdt-rend">
+          {ecart < 0 ? "Baisse" : "Hausse"} de <b>{euros(Math.abs(ecart))}</b> sur le prix HAI
+          ({avant.hai ? `${(Math.abs(ecart) / avant.hai * 100).toFixed(1).replace(".", ",")} %` : ""}).
+          Le net vendeur passe de {euros(avant.nv)} à <b>{euros(p.nv)}</b>.
+        </div>
+      )}
+      {tropCher && (
+        <p className="mdt-alerte">
+          Le taux dépasse le barème ({plafondTaux(p.nv!, bareme).toFixed(2).replace(".", ",")} % pour ce net vendeur).
+        </p>
+      )}
+      <div className="mdt-grid" style={{ marginTop: 14 }}>
+        <Champ libelle="Prise d'effet du nouveau prix" className="mdt-ch" htmlFor="mdt-av-effet">
+          <input id="mdt-av-effet" className="mi" type="date" value={dateEffet} onChange={(e) => setDateEffet(e.target.value)} />
+        </Champ>
+        <Champ libelle="Motif (facultatif, imprimé sur l'avenant)" className="mdt-ch" htmlFor="mdt-av-motif">
+          <input id="mdt-av-motif" className="mi" value={motif} placeholder="ex. : retours du marché après trois mois de commercialisation"
+            onChange={(e) => setMotif(e.target.value)} />
+        </Champ>
+      </div>
+      {msg && <p className="mdt-alerte" style={{ marginTop: 10 }}>{msg}</p>}
+    </Modale>
   );
 }
 
@@ -2088,21 +2080,21 @@ function OngletConditions({
 
       <div className="mdt-sub">Durées</div>
       <div className="mdt-grid">
-        <Champ label="Prise d'effet">
-          <input className="mi" type="date" value={debut} disabled={locked} onChange={(e) => setDebut(e.target.value)} />
+        <Champ libelle="Prise d'effet" className="mdt-ch" htmlFor="mdt-cond-debut">
+          <input id="mdt-cond-debut" className="mi" type="date" value={debut} disabled={locked} onChange={(e) => setDebut(e.target.value)} />
         </Champ>
-        <Champ label="Durée totale (mois)">
-          <input className="mi" value={duree} disabled={locked} inputMode="numeric" onChange={(e) => setDuree(e.target.value)} />
+        <Champ libelle="Durée totale (mois)" className="mdt-ch" htmlFor="mdt-cond-duree">
+          <input id="mdt-cond-duree" className="mi" value={duree} disabled={locked} inputMode="numeric" onChange={(e) => setDuree(e.target.value)} />
         </Champ>
-        <Champ label="Irrévocabilité (jours)">
-          <input className="mi" value={irrevoc} disabled={locked} inputMode="numeric" onChange={(e) => setIrrevoc(e.target.value)} />
+        <Champ libelle="Irrévocabilité (jours)" className="mdt-ch" htmlFor="mdt-cond-irrevoc">
+          <input id="mdt-cond-irrevoc" className="mi" value={irrevoc} disabled={locked} inputMode="numeric" onChange={(e) => setIrrevoc(e.target.value)} />
         </Champ>
         {exclu === "Semi-exclusif" && (
           /* Retour #194 : ce champ porte la DURÉE D'EXCLUSIVITÉ, au terme de
              laquelle elle s'éteint d'elle-même et le mandat se poursuit en
              mandat simple. « Délai de présentation » désignait autre chose. */
-          <Champ label="Durée de l'exclusivité (jours)">
-            <input className="mi" value={dExclu} disabled={locked} inputMode="numeric" onChange={(e) => setDExclu(e.target.value)} />
+          <Champ libelle="Durée de l'exclusivité (jours)" className="mdt-ch" htmlFor="mdt-cond-dexclu">
+            <input id="mdt-cond-dexclu" className="mi" value={dExclu} disabled={locked} inputMode="numeric" onChange={(e) => setDExclu(e.target.value)} />
           </Champ>
         )}
         {exclu === "Exclusif" && (
@@ -2112,9 +2104,9 @@ function OngletConditions({
              qui se poursuit alors en mandat simple.
              Retour #297 : cette période se saisit en durée, jours ou mois, et
              non plus en date. Le plafond est celui de la loi. */
-          <Champ label="Durée de l'exclusivité">
+          <Champ libelle="Durée de l'exclusivité" className="mdt-ch" htmlFor="mdt-cond-revoc">
             <span className="mdt-duo">
-              <input className="mi" value={revocN} disabled={locked} inputMode="numeric"
+              <input id="mdt-cond-revoc" className="mi" value={revocN} disabled={locked} inputMode="numeric"
                 onChange={(e) => setRevocN(e.target.value.replace(/[^\d]/g, ""))} />
               <select className="mi" value={revocU} disabled={locked}
                 onChange={(e) => setRevocU(e.target.value as "jours" | "mois")}>
@@ -2129,8 +2121,8 @@ function OngletConditions({
             </i>
           </Champ>
         )}
-        <Champ label="Fin du mandat">
-          <input className="mi gris" readOnly value={fin ? fin.toLocaleDateString("fr-FR") : "—"} />
+        <Champ libelle="Fin du mandat" className="mdt-ch" htmlFor="mdt-cond-fin">
+          <input id="mdt-cond-fin" className="mi gris" readOnly value={fin ? fin.toLocaleDateString("fr-FR") : "—"} />
         </Champ>
       </div>
 
@@ -2376,22 +2368,25 @@ function ReserveBtn({ mandatId, immeubleId, discret }: {
         {discret ? "→ Attribuer un numéro" : <><span className="ch">›</span> Attribuer un numéro</>}
       </button>
       {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Réserver un numéro<button type="button" onClick={() => setOpen(false)}>✕</button></div>
-            <div className="modal-b" style={{ fontSize: 13, lineHeight: 1.6 }}>
-              Une fois le numéro réservé, il ne sera <b>plus possible de supprimer le mandat</b> ni de
-              modifier le numéro. Le prochain numéro du registre est attribué automatiquement — séquence
-              sans trou, registre loi Hoguet.
-            </div>
-            <div className="modal-f">
-              <button className="kgo" type="button" disabled={pending}
-                onClick={() => start(async () => { await reserveMandatNumero(mandatId, immeubleId); setOpen(false); })}>
-                <span className="ch">›</span> Réserver le numéro
-              </button>
-            </div>
+        <Modale
+          titre="Réserver un numéro"
+          onFermer={() => setOpen(false)}
+          fermeDehors={false}
+          brut
+          pied={
+            <button className="kgo" type="button" disabled={pending}
+              onClick={() => start(async () => { await reserveMandatNumero(mandatId, immeubleId); setOpen(false); })}>
+              <span className="ch">›</span> Réserver le numéro
+            </button>
+          }
+        >
+          {/* `brut` : le corps porte sa propre taille de texte. */}
+          <div className="modal-b" style={{ fontSize: 13, lineHeight: 1.6 }}>
+            Une fois le numéro réservé, il ne sera <b>plus possible de supprimer le mandat</b> ni de
+            modifier le numéro. Le prochain numéro du registre est attribué automatiquement — séquence
+            sans trou, registre loi Hoguet.
           </div>
-        </div>
+        </Modale>
       )}
     </>
   );
@@ -2405,23 +2400,22 @@ function CancelBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: str
     <>
       <button className="mdt-x" type="button" onClick={() => setOpen(true)}>✕ Annuler le mandat</button>
       {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Annuler le mandat<button type="button" onClick={() => setOpen(false)}>✕</button></div>
-            <div className="modal-b">
-              <span className="mlab">Motif de l&apos;annulation</span>
-              <input className="min" value={motif} onChange={(e) => setMotif(e.target.value)}
-                placeholder="ex. Vendeur ne souhaite plus vendre" />
-            </div>
-            <div className="modal-f">
-              <button className="kgo" type="button" disabled={pending || !motif.trim()}
-                style={pending || !motif.trim() ? { opacity: 0.5 } : undefined}
-                onClick={() => start(async () => { await cancelMandat(mandatId, immeubleId, motif); setOpen(false); })}>
-                <span className="ch">›</span> Confirmer l&apos;annulation
-              </button>
-            </div>
-          </div>
-        </div>
+        <Modale
+          titre="Annuler le mandat"
+          onFermer={() => setOpen(false)}
+          fermeDehors={false}
+          pied={
+            <button className="kgo" type="button" disabled={pending || !motif.trim()}
+              style={pending || !motif.trim() ? { opacity: 0.5 } : undefined}
+              onClick={() => start(async () => { await cancelMandat(mandatId, immeubleId, motif); setOpen(false); })}>
+              <span className="ch">›</span> Confirmer l&apos;annulation
+            </button>
+          }
+        >
+          <span className="mlab">Motif de l&apos;annulation</span>
+          <input className="min" value={motif} onChange={(e) => setMotif(e.target.value)}
+            placeholder="ex. Vendeur ne souhaite plus vendre" />
+        </Modale>
       )}
     </>
   );

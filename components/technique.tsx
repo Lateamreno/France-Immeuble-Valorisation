@@ -7,14 +7,14 @@ import { useState, useTransition } from "react";
 import { useBaseSaisie } from "@/lib/base-saisie";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
-import { euros } from "@/lib/format";
+import { euros, S } from "@/lib/format";
 import {
   addComposant, addTravaux, deleteComposant, deleteTravaux, joindreDevis,
   updateComposant, updateTechnique, updateTravaux,
 } from "@/lib/bo/actions";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { Modale, useQuestion } from "@/components/modale";
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 /** Les pièces jointes vivent dans le bucket privé : elles passent par le proxy. */
@@ -160,6 +160,7 @@ function LigneComposant({
 }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const { materiau, etat } = valeur;
   const setMateriau = (v: string) => onChange({ ...valeur, materiau: v });
   const setEtat = (v: string) => onChange({ ...valeur, etat: v });
@@ -171,6 +172,7 @@ function LigneComposant({
   const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
 
   return (
+    <>
       <div className={`cmp${pending ? " att" : ""}`}>
         <span className="cmp-ic"><svg viewBox="0 0 24 24"><path d="M12 2.6 21 7v10l-9 4.4L3 17V7z" /><path d="m3 7 9 4.4L21 7M12 11.4V21.4" /></svg></span>
         {/* Retour #314 — « j'aimerais que le dropdown de sélection d'état soit
@@ -208,9 +210,9 @@ function LigneComposant({
         ) : (
           <button
             className="chg-x" type="button" title="Supprimer le composant"
-            onClick={() => {
+            onClick={async () => {
               if (!composant) return;
-              if (!confirm("Supprimer ce composant ? (récupérable dans la corbeille)")) return;
+              if (!(await confirmer("Supprimer ce composant ? (récupérable dans la corbeille)", { danger: true, oui: "Supprimer" }))) return;
               start(() => deleteComposant(immeubleId, String(composant._id)));
             }}
           >
@@ -218,6 +220,8 @@ function LigneComposant({
           </button>
         )}
       </div>
+      {question}
+    </>
   );
 }
 
@@ -361,42 +365,39 @@ function AddComposantButton({ b }: { b: BienData }) {
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter un composant</button>
       {open && (
-        <div className="modal-ov">
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">Nouveau composant<button type="button" onClick={() => setOpen(false)}>✕</button></div>
-            <div className="modal-b">
-              <span className="mlab">Type</span>
-              <div className="mrow">
-                {TYPES_COMPOSANT.map((t) => (
-                  <button key={t} type="button" className={`mopt${type === t ? " on" : ""}`} onClick={() => { setType(t); setMat(""); }}>{t}</button>
-                ))}
-              </div>
-              {type === "Autre" && <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le type" value={typeAutre} onChange={(e) => setTypeAutre(e.target.value)} />}
-              <span className="mlab">Matériau</span>
-              <div className="mrow">
-                {mats.map((m) => (
-                  <button key={m} type="button" className={`mopt${mat === m ? " on" : ""}`} onClick={() => setMat(mat === m ? "" : m)}>{m}</button>
-                ))}
-              </div>
-              {mat === "Autre" && <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le matériau" value={matAutre} onChange={(e) => setMatAutre(e.target.value)} />}
-              <span className="mlab">État</span>
-              <div className="mrow">
-                {ETATS_COMPOSANT.map((s) => (
-                  <button key={s} type="button" className={`mopt${etat === s ? " on" : ""}`} onClick={() => setEtat(s)}>{s}</button>
-                ))}
-              </div>
-              <div className="mrow" style={{ marginTop: 8, alignItems: "center" }}>
-                <label style={{ fontSize: 12 }}>Année rénov. <input className="min" style={{ width: 70 }} value={renov} onChange={(e) => setRenov(e.target.value)} /></label>
-                <input className="min" style={{ flex: 1 }} placeholder="Description de la rénovation" value={desc} onChange={(e) => setDesc(e.target.value)} />
-              </div>
-            </div>
-            <div className="modal-f">
-              <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={submit}>
-                <span className="ch">›</span> Créer le composant
-              </button>
-            </div>
+        <Modale
+          titre="Nouveau composant" onFermer={() => setOpen(false)} fermeDehors={false}
+          pied={
+            <button className="kgo" type="button" disabled={pending} style={pending ? { opacity: 0.5 } : undefined} onClick={submit}>
+              <span className="ch">›</span> Créer le composant
+            </button>
+          }
+        >
+          <span className="mlab">Type</span>
+          <div className="mrow">
+            {TYPES_COMPOSANT.map((t) => (
+              <button key={t} type="button" className={`mopt${type === t ? " on" : ""}`} onClick={() => { setType(t); setMat(""); }}>{t}</button>
+            ))}
           </div>
-        </div>
+          {type === "Autre" && <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le type" value={typeAutre} onChange={(e) => setTypeAutre(e.target.value)} />}
+          <span className="mlab">Matériau</span>
+          <div className="mrow">
+            {mats.map((m) => (
+              <button key={m} type="button" className={`mopt${mat === m ? " on" : ""}`} onClick={() => setMat(mat === m ? "" : m)}>{m}</button>
+            ))}
+          </div>
+          {mat === "Autre" && <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le matériau" value={matAutre} onChange={(e) => setMatAutre(e.target.value)} />}
+          <span className="mlab">État</span>
+          <div className="mrow">
+            {ETATS_COMPOSANT.map((s) => (
+              <button key={s} type="button" className={`mopt${etat === s ? " on" : ""}`} onClick={() => setEtat(s)}>{s}</button>
+            ))}
+          </div>
+          <div className="mrow" style={{ marginTop: 8, alignItems: "center" }}>
+            <label style={{ fontSize: 12 }}>Année rénov. <input className="min" style={{ width: 70 }} value={renov} onChange={(e) => setRenov(e.target.value)} /></label>
+            <input className="min" style={{ flex: 1 }} placeholder="Description de la rénovation" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          </div>
+        </Modale>
       )}
     </>
   );
@@ -450,6 +451,7 @@ function ModaleTravaux({
 }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const id = travaux ? String(travaux._id) : "";
   const [lotIds, setLotIds] = useState<string[]>(Array.isArray(travaux?.LOTs) ? (travaux!.LOTs as string[]) : []);
   const [compIds, setCompIds] = useState<string[]>(Array.isArray(travaux?.COMPOSANTs) ? (travaux!.COMPOSANTs as string[]) : []);
@@ -499,84 +501,84 @@ function ModaleTravaux({
     });
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          {travaux ? "Modifier les travaux" : "Nouveaux travaux"}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <div className="fsub">Objet des travaux</div>
-          <span className="mlab">Lots concernés</span>
-          <div className="mrow">
-            {b.lots.length === 0 && <span className="tvg-vide">Aucun lot.</span>}
-            {b.lots.map((l) => (
-              <button key={String(l._id)} type="button"
-                className={`mopt${lotIds.includes(String(l._id)) ? " on" : ""}`}
-                onClick={() => toggle(lotIds, setLotIds, String(l._id))}>{lotLabel(l)}</button>
-            ))}
-          </div>
-          <span className="mlab">— ou composants du bâti</span>
-          <div className="mrow">
-            {b.composants.length === 0 && <span className="tvg-vide">Aucun composant.</span>}
-            {b.composants.map((c) => (
-              <button key={String(c._id)} type="button"
-                className={`mopt${compIds.includes(String(c._id)) ? " on" : ""}`}
-                onClick={() => toggle(compIds, setCompIds, String(c._id))}>{S(c.Type_composant)}</button>
-            ))}
-          </div>
-
-          <div className="fsub" style={{ marginTop: 16 }}>Détails des travaux</div>
-          <div className="mrow" style={{ alignItems: "center" }}>
-            <input className={`min${desc.trim() ? "" : " requis"}`} style={{ flex: 1 }} placeholder="Description"
-              value={desc} onChange={(e) => setDesc(e.target.value)} />
-            <select className="min" style={{ width: 120 }} value={urgence}
-              onChange={(e) => setUrgence(e.target.value as "Haute" | "Moyenne" | "Basse")}>
-              {(["Haute", "Moyenne", "Basse"] as const).map((u) => <option key={u}>{u}</option>)}
-            </select>
-            <select className="min" style={{ width: 90 }} value={devis ? "Oui" : "Non"} onChange={(e) => setDevis(e.target.value === "Oui")}>
-              <option>Non</option><option>Oui</option>
-            </select>
-            <input className="min" style={{ width: 110 }} placeholder="Montant €" value={montant}
-              onChange={(e) => setMontant(e.target.value)} />
-          </div>
-
-          <div className="fsub" style={{ marginTop: 16 }}>Documents</div>
-          {joints.map((f, i) => (
-            <a key={i} className="mopt" href={proxyFichier(f)} target="_blank" rel="noreferrer">Pièce jointe {i + 1} ↗</a>
+    <>
+      <Modale
+        titre={travaux ? "Modifier les travaux" : "Nouveaux travaux"} onFermer={onFermer} className="sect-mod"
+        pied={
+          <>
+            {travaux ? (
+              <button type="button" className="sup-go" disabled={pending}
+                onClick={async () => {
+                  if (!(await confirmer("Supprimer ces travaux ? (récupérable dans la corbeille)", { danger: true, oui: "Supprimer" }))) return;
+                  start(async () => { await deleteTravaux(immeubleId, id); onFermer(); });
+                }}>Supprimer les travaux</button>
+            ) : <span />}
+            <button className="savebar-go" type="button" disabled={pending || !complet}
+              title={complet ? undefined : "Une description et au moins un lot ou un composant sont attendus"}
+              onClick={enregistrer}>
+              {pending ? "Enregistrement…" : "❯ Enregistrer"}
+            </button>
+          </>
+        }
+      >
+        <div className="fsub">Objet des travaux</div>
+        <span className="mlab">Lots concernés</span>
+        <div className="mrow">
+          {b.lots.length === 0 && <span className="tvg-vide">Aucun lot.</span>}
+          {b.lots.map((l) => (
+            <button key={String(l._id)} type="button"
+              className={`mopt${lotIds.includes(String(l._id)) ? " on" : ""}`}
+              onClick={() => toggle(lotIds, setLotIds, String(l._id))}>{lotLabel(l)}</button>
           ))}
-          <label className="tvg-fic">
-            <input type="file" hidden onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
-            {fichier ? `📎 ${fichier.name}` : "📎 Joindre un devis"}
-          </label>
+        </div>
+        <span className="mlab">— ou composants du bâti</span>
+        <div className="mrow">
+          {b.composants.length === 0 && <span className="tvg-vide">Aucun composant.</span>}
+          {b.composants.map((c) => (
+            <button key={String(c._id)} type="button"
+              className={`mopt${compIds.includes(String(c._id)) ? " on" : ""}`}
+              onClick={() => toggle(compIds, setCompIds, String(c._id))}>{S(c.Type_composant)}</button>
+          ))}
+        </div>
 
-          <div className="fsub" style={{ marginTop: 16 }}>Commentaire</div>
-          <textarea className="min" rows={3} placeholder="Commentaire" value={comment}
-            onChange={(e) => setComment(e.target.value)} />
-          {erreur && <p className="carte-err" style={{ marginTop: 8 }}>{erreur}</p>}
+        <div className="fsub" style={{ marginTop: 16 }}>Détails des travaux</div>
+        <div className="mrow" style={{ alignItems: "center" }}>
+          <input className={`min${desc.trim() ? "" : " requis"}`} style={{ flex: 1 }} placeholder="Description"
+            value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <select className="min" style={{ width: 120 }} value={urgence}
+            onChange={(e) => setUrgence(e.target.value as "Haute" | "Moyenne" | "Basse")}>
+            {(["Haute", "Moyenne", "Basse"] as const).map((u) => <option key={u}>{u}</option>)}
+          </select>
+          <select className="min" style={{ width: 90 }} value={devis ? "Oui" : "Non"} onChange={(e) => setDevis(e.target.value === "Oui")}>
+            <option>Non</option><option>Oui</option>
+          </select>
+          <input className="min" style={{ width: 110 }} placeholder="Montant €" value={montant}
+            onChange={(e) => setMontant(e.target.value)} />
         </div>
-        <div className="modal-f">
-          {travaux ? (
-            <button type="button" className="sup-go" disabled={pending}
-              onClick={() => {
-                if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
-                start(async () => { await deleteTravaux(immeubleId, id); onFermer(); });
-              }}>Supprimer les travaux</button>
-          ) : <span />}
-          <button className="savebar-go" type="button" disabled={pending || !complet}
-            title={complet ? undefined : "Une description et au moins un lot ou un composant sont attendus"}
-            onClick={enregistrer}>
-            {pending ? "Enregistrement…" : "❯ Enregistrer"}
-          </button>
-        </div>
-      </div>
-    </div>
+
+        <div className="fsub" style={{ marginTop: 16 }}>Documents</div>
+        {joints.map((f, i) => (
+          <a key={i} className="mopt" href={proxyFichier(f)} target="_blank" rel="noreferrer">Pièce jointe {i + 1} ↗</a>
+        ))}
+        <label className="tvg-fic">
+          <input type="file" hidden onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
+          {fichier ? `📎 ${fichier.name}` : "📎 Joindre un devis"}
+        </label>
+
+        <div className="fsub" style={{ marginTop: 16 }}>Commentaire</div>
+        <textarea className="min" rows={3} placeholder="Commentaire" value={comment}
+          onChange={(e) => setComment(e.target.value)} />
+        {erreur && <p className="carte-err" style={{ marginTop: 8 }}>{erreur}</p>}
+      </Modale>
+      {question}
+    </>
   );
 }
 
 function TravauxTab({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [modale, setModale] = useState<{ t?: Record<string, unknown> } | null>(null);
   const isLots = (t: Record<string, unknown>) => Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0;
   const totalLots = b.travaux.filter(isLots).reduce((s, t) => s + (num(t.montant) ?? 0), 0);
@@ -600,8 +602,8 @@ function TravauxTab({ b }: { b: BienData }) {
     return "";
   };
 
-  const supprimer = (t: Record<string, unknown>) => {
-    if (!confirm("Supprimer ces travaux ? (récupérable dans la corbeille)")) return;
+  const supprimer = async (t: Record<string, unknown>) => {
+    if (!(await confirmer("Supprimer ces travaux ? (récupérable dans la corbeille)", { danger: true, oui: "Supprimer" }))) return;
     start(() => deleteTravaux(immeubleId, String(t._id)));
   };
 
@@ -648,6 +650,7 @@ function TravauxTab({ b }: { b: BienData }) {
       )}
 
       {modale && <ModaleTravaux b={b} travaux={modale.t} onFermer={() => setModale(null)} />}
+      {question}
     </div>
   );
 }

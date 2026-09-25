@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
+import { Modale } from "@/components/modale";
+import { Pastille, PastilleStatut } from "@/components/pastille";
 import { ModaleApresRefus } from "@/components/proposition-refus";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES } from "@/components/propositions";
 import Image from "next/image";
@@ -168,24 +169,6 @@ const SOUS_TOUS: readonly string[] = [
   "",
   ...Object.values(SOUS_ONGLETS).flatMap((os) => os.map((o) => o.key)),
 ];
-
-/** Valeur copiable en un clic (retour MAV #11 : tel et e-mail séparés). */
-function Copiable({ valeur, type }: { valeur: string; type: "tel" | "mail" }) {
-  const [ok, setOk] = useState(false);
-  return (
-    <span className="cpv">
-      <a href={`${type === "tel" ? "tel:" : "mailto:"}${valeur}`} className="v">
-        <svg viewBox="0 0 24 24">{type === "tel" ? I.phone : I.mail}</svg>{valeur}
-      </a>
-      <button type="button" title={ok ? "Copié" : "Copier"} onClick={async (e) => {
-        e.preventDefault();
-        await copierTexte(valeur);
-        setOk(true);
-        setTimeout(() => setOk(false), 1200);
-      }}>{ok ? "✓" : "⧉"}</button>
-    </span>
-  );
-}
 
 function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
@@ -753,18 +736,14 @@ function MapsBtn({ b }: { b: BienData }) {
         onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setOuvert(true); } }}>
         <svg viewBox="0 0 24 24">{I.maps}</svg>
       </span>
-      {ouvert && createPortal(
-        <div className="modal-ov">
-          <div className="modal lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h">
-              {adresse || b.ville}
-              {/* La même copie, là où l'adresse est sous les yeux (#274). */}
-              <Copier cls="cop" titre="Copier l'adresse" valeur={adresse || b.ville} />
-              <span style={{ flex: 1 }} />
-              <button type="button" onClick={() => setOuvert(false)}>✕</button>
-            </div>
-            <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />
-            <div className="modal-f">
+      {/* La même copie, là où l'adresse est sous les yeux (#274) : après le titre. */}
+      {ouvert && (
+        <Modale
+          titre={adresse || b.ville}
+          apresTitre={<Copier cls="cop" titre="Copier l'adresse" valeur={adresse || b.ville} />}
+          onFermer={() => setOuvert(false)} fermeDehors={false} className="lg" brut
+          pied={
+            <>
               {cle && (
                 <span className="mrow" style={{ marginRight: 8 }}>
                   <button type="button" className={`mopt${mode === "plan" ? " on" : ""}`} onClick={() => setMode("plan")}>Plan</button>
@@ -773,10 +752,11 @@ function MapsBtn({ b }: { b: BienData }) {
               )}
               <a className="mopt" href={lien} target="_blank" rel="noreferrer">Ouvrir dans Google Maps ↗</a>
               <a className="mopt" href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">Street View ↗</a>
-            </div>
-          </div>
-        </div>,
-        document.body,
+            </>
+          }
+        >
+          <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />
+        </Modale>
       )}
     </>
   );
@@ -932,71 +912,68 @@ function ChangerProprietaire({ b }: { b: BienData }) {
         />
       )}
 
-      {cible && createPortal(
-        <div className="modal-ov">
-          <div className="modal att" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="mod-x" title="Fermer" aria-label="Fermer"
-              onClick={() => setCible(null)}>✕</button>
-            <div className="tr-head">
-              <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
-              Changer de propriétaire
-            </div>
-            <div className="tr-body">
-              <div className="att-bien">
-                {ancienNom ? <><span>{ancienNom} →</span> <b>{cible.nom}</b></> : <b>{cible.nom}</b>}
-              </div>
-              {/* Retour #309 — « là j'ai qu'une option pour le changement de
-                  propriétaire ; en l'occurrence je veux qu'il y ait aussi une
-                  option Autre dans laquelle je peux indiquer ce que je veux à
-                  la main. »
-                  Le champ était DÉJÀ libre — un `input` avec sa liste de
-                  suggestions — mais rien ne le disait : une case préremplie
-                  « Immeuble vendu » se lit comme un choix imposé, et la liste
-                  ne s'ouvrait qu'en devinant qu'elle existait. Un menu montre
-                  les motifs, et « Autre » ouvre franchement la saisie. */}
-              <label className="att-ch">
-                <span>Motif</span>
-                <select value={autre ? "Autre" : motif}
-                  onChange={(e) => {
-                    if (e.target.value === "Autre") { setAutre(true); setMotif(""); }
-                    else { setAutre(false); setMotif(e.target.value); }
-                  }}>
-                  {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m}>{m}</option>)}
-                  <option value="Autre">Autre — à préciser</option>
-                </select>
-              </label>
-              {autre && (
-                <label className="att-ch">
-                  <span>Précisez</span>
-                  <input autoFocus value={motif} placeholder="Ce que vous voulez inscrire au dossier"
-                    onChange={(e) => setMotif(e.target.value)} />
-                </label>
-              )}
-              <p className="att-note">
-                Le motif reste au dossier : c&apos;est lui qui, relu dans six mois, dit
-                si l&apos;immeuble a été vendu ou si l&apos;on a simplement corrigé une saisie.
-                L&apos;ancien propriétaire garde ce bien dans son historique.
-              </p>
-            </div>
-            <div className="tr-foot">
-              <button type="button" className="vf-annuler" onClick={() => setCible(null)}>Annuler</button>
-              <span style={{ flex: 1 }} />
-              <button type="button" className="vf-go" disabled={pending || !motif.trim()}
-                onClick={() => start(async () => {
-                  await changerProprietaire({
-                    immeubleId: String(b.im._id),
-                    nouveauId: cible.id, nouveauNom: cible.nom,
-                    ancienId: c ? String(c._id) : null, ancienNom,
-                    motif: motif.trim(),
-                  });
-                  setCible(null);
-                })}>
-                <span className="ch">›</span> {pending ? "Enregistrement…" : "Changer le propriétaire"}
-              </button>
-            </div>
+      {cible && (
+        <Modale onFermer={() => setCible(null)} fermeDehors={false} className="att" entete={false} brut>
+          <button type="button" className="mod-x" title="Fermer" aria-label="Fermer"
+            onClick={() => setCible(null)}>✕</button>
+          <div className="tr-head">
+            <svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>
+            Changer de propriétaire
           </div>
-        </div>,
-        document.body,
+          <div className="tr-body">
+            <div className="att-bien">
+              {ancienNom ? <><span>{ancienNom} →</span> <b>{cible.nom}</b></> : <b>{cible.nom}</b>}
+            </div>
+            {/* Retour #309 — « là j'ai qu'une option pour le changement de
+                propriétaire ; en l'occurrence je veux qu'il y ait aussi une
+                option Autre dans laquelle je peux indiquer ce que je veux à
+                la main. »
+                Le champ était DÉJÀ libre — un `input` avec sa liste de
+                suggestions — mais rien ne le disait : une case préremplie
+                « Immeuble vendu » se lit comme un choix imposé, et la liste
+                ne s'ouvrait qu'en devinant qu'elle existait. Un menu montre
+                les motifs, et « Autre » ouvre franchement la saisie. */}
+            <label className="att-ch">
+              <span>Motif</span>
+              <select value={autre ? "Autre" : motif}
+                onChange={(e) => {
+                  if (e.target.value === "Autre") { setAutre(true); setMotif(""); }
+                  else { setAutre(false); setMotif(e.target.value); }
+                }}>
+                {MOTIFS_CHANGEMENT_PROPRIETAIRE.map((m) => <option key={m}>{m}</option>)}
+                <option value="Autre">Autre — à préciser</option>
+              </select>
+            </label>
+            {autre && (
+              <label className="att-ch">
+                <span>Précisez</span>
+                <input autoFocus value={motif} placeholder="Ce que vous voulez inscrire au dossier"
+                  onChange={(e) => setMotif(e.target.value)} />
+              </label>
+            )}
+            <p className="att-note">
+              Le motif reste au dossier : c&apos;est lui qui, relu dans six mois, dit
+              si l&apos;immeuble a été vendu ou si l&apos;on a simplement corrigé une saisie.
+              L&apos;ancien propriétaire garde ce bien dans son historique.
+            </p>
+          </div>
+          <div className="tr-foot">
+            <button type="button" className="vf-annuler" onClick={() => setCible(null)}>Annuler</button>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="vf-go" disabled={pending || !motif.trim()}
+              onClick={() => start(async () => {
+                await changerProprietaire({
+                  immeubleId: String(b.im._id),
+                  nouveauId: cible.id, nouveauNom: cible.nom,
+                  ancienId: c ? String(c._id) : null, ancienNom,
+                  motif: motif.trim(),
+                });
+                setCible(null);
+              })}>
+              <span className="ch">›</span> {pending ? "Enregistrement…" : "Changer le propriétaire"}
+            </button>
+          </div>
+        </Modale>
       )}
     </>
   );
@@ -1098,9 +1075,20 @@ function ProprioSection({ b, espace, compteActif }: {
               <div><div className="k">Entreprise</div><div className="v">{entreprise}</div></div>
             </div>
           )}
+          {/* Tel et e-mail séparés, copiables en un clic (retour MAV #11). */}
           <div className="pr-duo">
-            {tel ? <Copiable valeur={tel} type="tel" /> : <span className="pr-case vide">Pas de téléphone</span>}
-            {mail ? <Copiable valeur={mail} type="mail" /> : <span className="pr-case vide">Pas d&apos;e-mail</span>}
+            {tel ? (
+              <span className="cpv">
+                <a href={`tel:${tel}`} className="v"><svg viewBox="0 0 24 24">{I.phone}</svg>{tel}</a>
+                <Copier valeur={tel} titre="Copier le téléphone" petit />
+              </span>
+            ) : <span className="pr-case vide">Pas de téléphone</span>}
+            {mail ? (
+              <span className="cpv">
+                <a href={`mailto:${mail}`} className="v"><svg viewBox="0 0 24 24">{I.mail}</svg>{mail}</a>
+                <Copier valeur={mail} titre="Copier l'e-mail" petit />
+              </span>
+            ) : <span className="pr-case vide">Pas d&apos;e-mail</span>}
           </div>
         </>
       )}
@@ -1122,7 +1110,7 @@ function ProprioSection({ b, espace, compteActif }: {
         <a href={`/bien/${a.id}`} key={a.id}>
           <Row>
             <div className="grow"><div className="t">{a.label}</div></div>
-            <span className="badge-o">{a.statut}</span>
+            <PastilleStatut statut={a.statut} plein />
           </Row>
         </a>
       ))}
@@ -1514,7 +1502,7 @@ function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur }: {
             {/* Le statut est une information — il n'a ni bordure ni picto.
                 L'action, elle, porte l'avion : les deux ne se confondent plus
                 même quand elles disent le même mot (retour #126). */}
-            <span className={st === "Envoyée" ? "badge-g" : st === "PDF manquant" ? "badge-r" : "badge-o"}>{st}</span>
+            <Pastille ton={st === "Envoyée" ? "vert" : st === "PDF manquant" ? "rouge" : "gris"} plein>{st}</Pastille>
             <button type="button" className="fbtn avec-picto" onClick={() => onOuvrir("reprise", eid)}>
               <Avion /> {st === "Envoyée" ? "Renvoyer" : "Envoyer"}
             </button>
@@ -1552,33 +1540,11 @@ function SupprimerEstimation({ immeubleId, e, onFermer }: {
   const [pending, start] = useTransition();
   const [erreur, setErreur] = useState<string | null>(null);
   const envoyee = String(e.Statut ?? "").includes("Envoyée");
-  return createPortal(
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 460 }} onClick={(ev) => ev.stopPropagation()}>
-        <div className="modal-h">
-          Supprimer cette estimation ?
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <p style={{ margin: "0 0 10px" }}>
-            <b>{String(e.titre ?? "Estimation")}</b>
-            {euros(e.prix_hai) ? ` · ${euros(e.prix_hai)}` : ""} — créée le {dmy(e["Created Date"])}.
-          </p>
-          {envoyee ? (
-            <div className="dif-avis">
-              <b>Cette estimation a été envoyée au propriétaire.</b>
-              La supprimer efface du dossier le chiffre qu&apos;il a reçu, et le PDF
-              qui l&apos;accompagnait.
-            </div>
-          ) : (
-            <p style={{ margin: 0, color: "var(--gray-txt)", fontSize: 13 }}>
-              Elle n&apos;a jamais été envoyée : rien ne part du dossier. Le dossier PDF
-              généré, s&apos;il y en a un, est retiré du coffre avec elle.
-            </p>
-          )}
-          {erreur && <div className="dif-avis" style={{ marginTop: 10 }}>{erreur}</div>}
-        </div>
-        <div className="modal-f">
+  return (
+    <Modale
+      titre="Supprimer cette estimation ?" onFermer={onFermer} largeur={460}
+      pied={
+        <>
           <button type="button" className="fadd" onClick={onFermer}>Annuler</button>
           <span style={{ flex: 1 }} />
           <button
@@ -1594,10 +1560,27 @@ function SupprimerEstimation({ immeubleId, e, onFermer }: {
           >
             <Corbeille /> {pending ? "Suppression…" : "Supprimer"}
           </button>
+        </>
+      }
+    >
+      <p style={{ margin: "0 0 10px" }}>
+        <b>{String(e.titre ?? "Estimation")}</b>
+        {euros(e.prix_hai) ? ` · ${euros(e.prix_hai)}` : ""} — créée le {dmy(e["Created Date"])}.
+      </p>
+      {envoyee ? (
+        <div className="dif-avis">
+          <b>Cette estimation a été envoyée au propriétaire.</b>
+          La supprimer efface du dossier le chiffre qu&apos;il a reçu, et le PDF
+          qui l&apos;accompagnait.
         </div>
-      </div>
-    </div>,
-    document.body,
+      ) : (
+        <p style={{ margin: 0, color: "var(--gray-txt)", fontSize: 13 }}>
+          Elle n&apos;a jamais été envoyée : rien ne part du dossier. Le dossier PDF
+          généré, s&apos;il y en a un, est retiré du coffre avec elle.
+        </p>
+      )}
+      {erreur && <div className="dif-avis" style={{ marginTop: 10 }}>{erreur}</div>}
+    </Modale>
   );
 }
 
@@ -1684,7 +1667,7 @@ function MandatsSection({ b, ouvert, onRevenir }: {
               </div>
               <div className="s">{dmy(m.date_effet)} → {dmy(m.date_fin)} · honos {euros(m.honos_ttc) ?? "n.c."}</div>
             </div>
-            <span className={st === "En cours" ? "badge-g" : ["Expiré", "Annulé"].includes(st) ? "badge-r" : "badge-o"}>{st}</span>
+            <PastilleStatut statut={st} plein />
             {typeof m.pdf_signed === "string" && m.pdf_signed && (
               <a className="fbtn" href={(m.pdf_signed as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
             )}
@@ -1720,7 +1703,7 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
         <Row key={d._id as string}>
           <div className="grow">
             <div className="t">
-              Dossier V{String(d.version ?? "?")} {i === 0 && <span className="badge-g">Dernière version</span>}
+              Dossier V{String(d.version ?? "?")} {i === 0 && <Pastille ton="vert" plein>Dernière version</Pastille>}
               {enCours && <span className="badge-encours">PDF en préparation…</span>}
             </div>
             <div className="s">
@@ -2048,51 +2031,10 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   });
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Relancer les propositions en attente
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          {!liste && <div className="fempty">Lecture des propositions…</div>}
-          {liste && liste.length === 0 && (
-            <div className="fempty">
-              Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier
-              envoi date de moins de vingt-quatre heures.
-            </div>
-          )}
-          {liste && liste.length > 0 && (
-            <>
-              <div className="asst-note">
-                <b>{retenus.length}</b> personne{retenus.length > 1 ? "s" : ""} sans réponse
-                sur <b>{libelle}</b>. Les messages partent de la boîte de
-                {" "}{b.agentNom ?? "l'agent"}, un à un, et ne sont marqués relancés que
-                s&apos;ils partent vraiment.
-              </div>
-              <div className="rlz-lignes" style={{ padding: 0, maxHeight: 300, overflowY: "auto" }}>
-                {liste.map((p) => {
-                  const off = retires.has(p.id);
-                  return (
-                    <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
-                      <span>{p.nom}</span>
-                      <span className="rlz-prix">{p.email}</span>
-                      <span className="rlz-j">{p.jours === undefined ? "date inconnue" : `${p.jours} j`}</span>
-                      <span className="sp" style={{ flex: 1 }} />
-                      <button type="button" className="rlz-x" onClick={() => setRetires((s) => {
-                        const n = new Set(s);
-                        if (n.has(p.id)) n.delete(p.id); else n.add(p.id);
-                        return n;
-                      })}>{off ? "remettre" : "retirer"}</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-          {rapport && <div className="rlz-rapport" style={{ marginTop: 12 }}>{rapport}</div>}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Relancer les propositions en attente" onFermer={onFermer} largeur={620}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
           <span className="sp" style={{ flex: 1 }} />
           {retenus.length > 0 && (
@@ -2125,9 +2067,46 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
               </button>
             </>
           )}
+        </>
+      }
+    >
+      {!liste && <div className="fempty">Lecture des propositions…</div>}
+      {liste && liste.length === 0 && (
+        <div className="fempty">
+          Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier
+          envoi date de moins de vingt-quatre heures.
         </div>
-      </div>
-    </div>
+      )}
+      {liste && liste.length > 0 && (
+        <>
+          <div className="asst-note">
+            <b>{retenus.length}</b> personne{retenus.length > 1 ? "s" : ""} sans réponse
+            sur <b>{libelle}</b>. Les messages partent de la boîte de
+            {" "}{b.agentNom ?? "l'agent"}, un à un, et ne sont marqués relancés que
+            s&apos;ils partent vraiment.
+          </div>
+          <div className="rlz-lignes" style={{ padding: 0, maxHeight: 300, overflowY: "auto" }}>
+            {liste.map((p) => {
+              const off = retires.has(p.id);
+              return (
+                <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
+                  <span>{p.nom}</span>
+                  <span className="rlz-prix">{p.email}</span>
+                  <span className="rlz-j">{p.jours === undefined ? "date inconnue" : `${p.jours} j`}</span>
+                  <span className="sp" style={{ flex: 1 }} />
+                  <button type="button" className="rlz-x" onClick={() => setRetires((s) => {
+                    const n = new Set(s);
+                    if (n.has(p.id)) n.delete(p.id); else n.add(p.id);
+                    return n;
+                  })}>{off ? "remettre" : "retirer"}</button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {rapport && <div className="rlz-rapport" style={{ marginTop: 12 }}>{rapport}</div>}
+    </Modale>
   );
 }
 
@@ -2137,7 +2116,7 @@ function EcranVisites({ b }: { b: BienData }) {
   return (
     <>
       <TitreAcheteurs cle="visites" badges={
-        confirmees > 0 ? <span className="acx-b vert">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : undefined
+        confirmees > 0 ? <Pastille ton="vert">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</Pastille> : undefined
       } />
       <div className="acx-add-zone"><AddVisiteButton b={b} /></div>
       {b.visites.map((v) => (
@@ -2147,7 +2126,7 @@ function EcranVisites({ b }: { b: BienData }) {
             <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
           </div>
           <VisiteActions b={b} v={v} />
-          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
+          <PastilleStatut statut={String(v.Statut ?? "")} plein />
         </Row>
       ))}
       {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
@@ -2161,7 +2140,7 @@ function EcranOffres({ b }: { b: BienData }) {
   return (
     <>
       <TitreAcheteurs cle="offres" badges={
-        aTraiter > 0 ? <span className="acx-b rouge">{aTraiter} à traiter</span> : undefined
+        aTraiter > 0 ? <Pastille ton="rouge">{aTraiter} à traiter</Pastille> : undefined
       } />
       <div className="acx-add-zone"><AddOffreButton b={b} /></div>
       {b.offres.map((o) => (
@@ -2171,7 +2150,7 @@ function EcranOffres({ b }: { b: BienData }) {
             <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
           </div>
           <OffreActions b={b} o={o} />
-          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+          <PastilleStatut statut={String(o.Statut ?? "")} plein />
         </Row>
       ))}
       {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}
@@ -2232,37 +2211,33 @@ function ModaleRetour({ initial, onFermer, onNoter, pending }: {
     if (t) requestAnimationFrame(() => { t.focus(); t.setSelectionRange(r.length, r.length); });
   };
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Retour de l&apos;acquéreur
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <span className="mlab">Formulations fréquentes</span>
-          <div className="prop-chips">
-            {RETOURS_RAPIDES.map((r) => (
-              <button key={r} type="button" onClick={() => poser(r)}>{r.trim()}</button>
-            ))}
-          </div>
-          <span className="mlab">Ce qu&apos;il a dit</span>
-          <textarea className="min" rows={4} value={texte} autoFocus ref={zone}
-            onChange={(e) => setTexte(e.target.value)}
-            placeholder="Étudie le dossier, va visiter le 12…" />
-          <div className="asst-note">
-            Le retour se lit sur la ligne de la proposition et <b>repousse la relance</b> :
-            on ne rappelle pas quelqu&apos;un qui vient de répondre.
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Retour de l'acquéreur" onFermer={onFermer} largeur={480}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending} onClick={() => onNoter(texte)}>
             <span className="ch">›</span> Enregistrer le retour
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Formulations fréquentes</span>
+      <div className="prop-chips">
+        {RETOURS_RAPIDES.map((r) => (
+          <button key={r} type="button" onClick={() => poser(r)}>{r.trim()}</button>
+        ))}
       </div>
-    </div>
+      <span className="mlab">Ce qu&apos;il a dit</span>
+      <textarea className="min" rows={4} value={texte} autoFocus ref={zone}
+        onChange={(e) => setTexte(e.target.value)}
+        placeholder="Étudie le dossier, va visiter le 12…" />
+      <div className="asst-note">
+        Le retour se lit sur la ligne de la proposition et <b>repousse la relance</b> :
+        on ne rappelle pas quelqu&apos;un qui vient de répondre.
+      </div>
+    </Modale>
   );
 }
 
@@ -2277,40 +2252,36 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
   const autre = motif === "Autre — à préciser";
   const valeur = autre ? libre.trim() : motif;
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Refuser la proposition
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <span className="mlab">Motif du refus</span>
-          <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
-            {MOTIFS_REFUS.map((m) => <option key={m}>{m}</option>)}
-          </select>
-          {/* Le texte libre est toujours disponible, plus seulement sur
-              « Autre » : un refus motivé « budget insuffisant » ne dit pas
-              « il monte à 900 k€ », qui est pourtant la seule chose utile
-              la fois suivante. */}
-          <span className="mlab">{autre ? "Préciser" : "Ses mots (facultatif)"}</span>
-          <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
-            placeholder="Ce que l'acquéreur a répondu" />
-          <div className="asst-note">
-            Le motif s&apos;affiche sur la ligne de la proposition et reste consultable :
-            c&apos;est lui qui évite de renvoyer le même dossier à quelqu&apos;un qui
-            l&apos;a déjà refusé.
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Refuser la proposition" onFermer={onFermer} largeur={480}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending || (autre && !valeur)}
             onClick={() => onRefuser(valeur, autre ? "" : libre.trim())}>
             <span className="ch">›</span> Marquer refusée
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Motif du refus</span>
+      <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
+        {MOTIFS_REFUS.map((m) => <option key={m}>{m}</option>)}
+      </select>
+      {/* Le texte libre est toujours disponible, plus seulement sur
+          « Autre » : un refus motivé « budget insuffisant » ne dit pas
+          « il monte à 900 k€ », qui est pourtant la seule chose utile
+          la fois suivante. */}
+      <span className="mlab">{autre ? "Préciser" : "Ses mots (facultatif)"}</span>
+      <textarea className="min" rows={3} value={libre} onChange={(e) => setLibre(e.target.value)}
+        placeholder="Ce que l'acquéreur a répondu" />
+      <div className="asst-note">
+        Le motif s&apos;affiche sur la ligne de la proposition et reste consultable :
+        c&apos;est lui qui évite de renvoyer le même dossier à quelqu&apos;un qui
+        l&apos;a déjà refusé.
       </div>
-    </div>
+    </Modale>
   );
 }
 
@@ -2438,7 +2409,7 @@ function Pipeline({ b }: { b: BienData }) {
             <div className="s">Envoyée le {dmy(p.date_envoi)} · {String(p.Source_proposition ?? "")}{p.motif_refus ? ` · refus : ${String(p.motif_refus)}` : ""}</div>
           </div>
           <PropositionActions b={b} p={p} />
-          <span className={String(p.Statut ?? "").startsWith("Refus") ? "badge-r" : "badge-o"}>{String(p.Statut ?? "")}</span>
+          <PastilleStatut statut={String(p.Statut ?? "")} plein />
         </Row>
       ))}
       {b.propositions.rows.length === 0 && <div className="fempty">Aucune proposition.</div>}
@@ -2452,7 +2423,7 @@ function Pipeline({ b }: { b: BienData }) {
             <div className="s">{String(v.rex_fi ?? v.commentaire_interne ?? "")}</div>
           </div>
           <VisiteActions b={b} v={v} />
-          <span className={String(v.Statut) === "Effectuée" ? "badge-g" : String(v.Statut) === "Annulée" ? "badge-r" : "badge-o"}>{String(v.Statut ?? "")}</span>
+          <PastilleStatut statut={String(v.Statut ?? "")} plein />
         </Row>
       ))}
       {b.visites.length === 0 && <div className="fempty">Aucune visite.</div>}
@@ -2466,7 +2437,7 @@ function Pipeline({ b }: { b: BienData }) {
             <div className="s">{euros(o.prix_nv)} + {keur(o.honos_ttc)} honos = {euros(o.prix_hai)} HAI{o.motif_refus ? ` · refusée : ${String(o.motif_refus)}` : ""}</div>
           </div>
           <OffreActions b={b} o={o} />
-          <span className={["Acceptée", "Vendu", "Compromis signé"].includes(String(o.Statut)) ? "badge-g" : String(o.Statut) === "Refusée" ? "badge-r" : "badge-o"}>{String(o.Statut ?? "")}</span>
+          <PastilleStatut statut={String(o.Statut ?? "")} plein />
         </Row>
       ))}
       {b.offres.length === 0 && <div className="fempty">Aucune offre.</div>}

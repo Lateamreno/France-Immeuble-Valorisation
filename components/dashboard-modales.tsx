@@ -6,8 +6,8 @@
 //   • fiche contact en survol — coordonnées seules, sans ouvrir le bien ;
 //   • « Transférer à un collègue » — agent destinataire + transfert éventuel
 //     du propriétaire, avec les droits du BO.
-import { useEffect, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
+import { useState, useTransition } from "react";
+import { Modale } from "@/components/modale";
 
 /* ---------- Validation du formulaire (mode de contact) ---------- */
 
@@ -27,42 +27,35 @@ export function ModaleMoyenContact({
   const [moyen, setMoyen] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onAnnuler]);
+  /* Bandeau sombre et croix à nous : la fenêtre partagée ne pose que le fond,
+     Échap et le portail. Le clic dehors ne ferme pas, comme avant. */
+  return (
+    <Modale onFermer={onAnnuler} className="vf" fermeDehors={false} entete={false} brut>
+      <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
 
-  return createPortal(
-    <div className="modal-ov">
-      <div className="modal vf" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
-
-        <div className="vf-head">Validation du formulaire</div>
-        <div className="vf-body">
-          <p>Indiquez par quel moyen vous avez réussi à joindre le contact :</p>
-          <div className="vf-choix">
-            {MOYENS.map((m) => (
-              <button key={m.key} type="button" className={`vf-opt${moyen === m.key ? " on" : ""}`}
-                onClick={() => setMoyen(m.key)}>
-                <svg viewBox="0 0 24 24">{m.icon}</svg>
-                {m.key}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="vf-foot">
-          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
-          <span style={{ flex: 1 }} />
-          <button type="button" className="vf-go" disabled={!moyen || pending}
-            onClick={() => moyen && start(() => onConfirmer(moyen))}>
-            <svg viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></svg>
-            Confirmer
-          </button>
+      <div className="vf-head">Validation du formulaire</div>
+      <div className="vf-body">
+        <p>Indiquez par quel moyen vous avez réussi à joindre le contact :</p>
+        <div className="vf-choix">
+          {MOYENS.map((m) => (
+            <button key={m.key} type="button" className={`vf-opt${moyen === m.key ? " on" : ""}`}
+              onClick={() => setMoyen(m.key)}>
+              <svg viewBox="0 0 24 24">{m.icon}</svg>
+              {m.key}
+            </button>
+          ))}
         </div>
       </div>
-    </div>,
-    document.body,
+      <div className="vf-foot">
+        <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="vf-go" disabled={!moyen || pending}
+          onClick={() => moyen && start(() => onConfirmer(moyen))}>
+          <svg viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></svg>
+          Confirmer
+        </button>
+      </div>
+    </Modale>
   );
 }
 
@@ -99,91 +92,82 @@ export function ModaleTransfert({
   const [avecProprio, setAvecProprio] = useState(true);
   const [pending, start] = useTransition();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onAnnuler]);
+  return (
+    <Modale onFermer={onAnnuler} className="tr" fermeDehors={false} entete={false} brut>
+      <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
 
-  return createPortal(
-    <div className="modal-ov">
-      <div className="modal tr" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
-
-        <div className="tr-head">
-          <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
-          Transférer à un collègue
-        </div>
-        <div className="tr-body">
-          <div className="tr-lab">
-            <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2" /></svg>
-            Immeuble
-          </div>
-          <div className="tr-bien">
-            <span className="tr-photo">
-              {bien.photoUrl
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={bien.photoUrl} alt="" />
-                : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
-              {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
-            </span>
-            <div className="tr-info">
-              <div className="tr-t">
-                {bien.ville} <span>- {bien.adresse}</span>
-                {bien.contact && (
-                  <span className="tr-c">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                    {bien.contact}
-                  </span>
-                )}
-              </div>
-              {bien.note && <div className="tr-n">{bien.note}</div>}
-            </div>
-          </div>
-
-          <div className="tr-row">
-            <span className="tr-lab dim">
-              <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
-              Transférer à
-            </span>
-            <select className={`tr-sel${dest ? "" : " vide"}`} value={dest} onChange={(e) => setDest(e.target.value)}>
-              <option value="" />
-              {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-
-          <div className="tr-row">
-            <span className="tr-lab">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-              Transférer également le propriétaire
-            </span>
-            <span className="tr-radios">
-              <button type="button" className={avecProprio ? "on" : ""} onClick={() => setAvecProprio(true)}>
-                <i /> Oui
-              </button>
-              <button type="button" className={!avecProprio ? "on" : ""} onClick={() => setAvecProprio(false)}>
-                <i /> Non
-              </button>
-            </span>
-          </div>
-
-          {!peutTransferer && (
-            <div className="warnbox">
-              Vous ne pouvez transférer que les immeubles que vous suivez.
-            </div>
-          )}
-        </div>
-        <div className="tr-foot">
-          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
-          <span style={{ flex: 1 }} />
-          <button type="button" className="vf-go" disabled={!dest || pending || !peutTransferer}
-            onClick={() => dest && start(() => onTransferer(dest, avecProprio))}>
-            <span className="ch">›</span> Transférer
-          </button>
-        </div>
+      <div className="tr-head">
+        <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
+        Transférer à un collègue
       </div>
-    </div>,
-    document.body,
+      <div className="tr-body">
+        <div className="tr-lab">
+          <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2" /></svg>
+          Immeuble
+        </div>
+        <div className="tr-bien">
+          <span className="tr-photo">
+            {bien.photoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={bien.photoUrl} alt="" />
+              : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
+            {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
+          </span>
+          <div className="tr-info">
+            <div className="tr-t">
+              {bien.ville} <span>- {bien.adresse}</span>
+              {bien.contact && (
+                <span className="tr-c">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+                  {bien.contact}
+                </span>
+              )}
+            </div>
+            {bien.note && <div className="tr-n">{bien.note}</div>}
+          </div>
+        </div>
+
+        <div className="tr-row">
+          <span className="tr-lab dim">
+            <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
+            Transférer à
+          </span>
+          <select className={`tr-sel${dest ? "" : " vide"}`} value={dest} onChange={(e) => setDest(e.target.value)}>
+            <option value="" />
+            {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+
+        <div className="tr-row">
+          <span className="tr-lab">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+            Transférer également le propriétaire
+          </span>
+          <span className="tr-radios">
+            <button type="button" className={avecProprio ? "on" : ""} onClick={() => setAvecProprio(true)}>
+              <i /> Oui
+            </button>
+            <button type="button" className={!avecProprio ? "on" : ""} onClick={() => setAvecProprio(false)}>
+              <i /> Non
+            </button>
+          </span>
+        </div>
+
+        {!peutTransferer && (
+          <div className="warnbox">
+            Vous ne pouvez transférer que les immeubles que vous suivez.
+          </div>
+        )}
+      </div>
+      <div className="tr-foot">
+        <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="vf-go" disabled={!dest || pending || !peutTransferer}
+          onClick={() => dest && start(() => onTransferer(dest, avecProprio))}>
+          <span className="ch">›</span> Transférer
+        </button>
+      </div>
+    </Modale>
   );
 }
 
@@ -211,82 +195,73 @@ export function ModaleArchivage({
   const [precision, setPrecision] = useState("");
   const [pending, start] = useTransition();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onAnnuler]);
+  return (
+    <Modale onFermer={onAnnuler} className="tr" fermeDehors={false} entete={false} brut>
+      <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
 
-  return createPortal(
-    <div className="modal-ov">
-      <div className="modal tr" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
-
-        <div className="tr-head">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
-          Archivage
+      <div className="tr-head">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
+        Archivage
+      </div>
+      <div className="tr-body">
+        <div className="tr-lab">
+          <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2" /></svg>
+          Immeuble
         </div>
-        <div className="tr-body">
-          <div className="tr-lab">
-            <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /><path d="M8 6h2M12 6h2M8 10h2M12 10h2" /></svg>
-            Immeuble
-          </div>
-          <div className="tr-bien">
-            <span className="tr-photo">
-              {bien.photoUrl
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={bien.photoUrl} alt="" />
-                : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
-              {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
-            </span>
-            <div className="tr-info">
-              <div className="tr-t">
-                {bien.ville} <span>- {bien.adresse}</span>
-                {bien.contact && (
-                  <span className="tr-c">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                    {bien.contact}
-                  </span>
-                )}
-              </div>
-              {bien.note && <div className="tr-n">{bien.note}</div>}
+        <div className="tr-bien">
+          <span className="tr-photo">
+            {bien.photoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={bien.photoUrl} alt="" />
+              : <svg viewBox="0 0 24 24"><path d="M5 2h11v20H5z" /></svg>}
+            {bien.initiales && <b style={bien.initialesCouleur ? { background: bien.initialesCouleur } : undefined}>{bien.initiales}</b>}
+          </span>
+          <div className="tr-info">
+            <div className="tr-t">
+              {bien.ville} <span>- {bien.adresse}</span>
+              {bien.contact && (
+                <span className="tr-c">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
+                  {bien.contact}
+                </span>
+              )}
             </div>
-          </div>
-
-          <div className="tr-row">
-            <span className="tr-lab dim">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
-              Motif
-            </span>
-            <select className={`tr-sel${motif ? "" : " vide"}`} value={motif} onChange={(e) => setMotif(e.target.value)}>
-              <option value="" />
-              {motifs.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-
-          <div className="tr-row">
-            <span className="tr-lab dim">
-              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
-              Précision
-            </span>
-            <input className="tr-sel" value={precision} placeholder="Facultatif — un mot pour la prochaine fois"
-              onChange={(e) => setPrecision(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && motif && !pending) start(() => onArchiver(motif, precision.trim())); }} />
+            {bien.note && <div className="tr-n">{bien.note}</div>}
           </div>
         </div>
-        <div className="tr-foot">
-          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
-          <span style={{ flex: 1 }} />
-          {/* Fermé tant qu'aucun motif n'est choisi : archiver n'est pas un
-              geste par défaut, c'est le retour #362 tout entier. */}
-          <button type="button" className="vf-go" disabled={!motif || pending}
-            onClick={() => motif && start(() => onArchiver(motif, precision.trim()))}>
-            <span className="ch">›</span> Archiver
-          </button>
+
+        <div className="tr-row">
+          <span className="tr-lab dim">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
+            Motif
+          </span>
+          <select className={`tr-sel${motif ? "" : " vide"}`} value={motif} onChange={(e) => setMotif(e.target.value)}>
+            <option value="" />
+            {motifs.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="tr-row">
+          <span className="tr-lab dim">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
+            Précision
+          </span>
+          <input className="tr-sel" value={precision} placeholder="Facultatif — un mot pour la prochaine fois"
+            onChange={(e) => setPrecision(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && motif && !pending) start(() => onArchiver(motif, precision.trim())); }} />
         </div>
       </div>
-    </div>,
-    document.body,
+      <div className="tr-foot">
+        <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+        <span style={{ flex: 1 }} />
+        {/* Fermé tant qu'aucun motif n'est choisi : archiver n'est pas un
+            geste par défaut, c'est le retour #362 tout entier. */}
+        <button type="button" className="vf-go" disabled={!motif || pending}
+          onClick={() => motif && start(() => onArchiver(motif, precision.trim()))}>
+          <span className="ch">›</span> Archiver
+        </button>
+      </div>
+    </Modale>
   );
 }
 
@@ -338,12 +313,6 @@ export function ModaleAttente({
   const [prevenir, setPrevenir] = useState(false);
   const [pending, start] = useTransition();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onAnnuler(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onAnnuler]);
-
   const indefini = DELAIS[choix].mois === 0;
   const quand = date.split("-").reverse().join("/");
   const objet = `Votre bien ${bien.ville} — nous restons à votre disposition`;
@@ -358,79 +327,76 @@ export function ModaleAttente({
     "Bien à vous,",
   ].join("\n");
 
-  return createPortal(
-    <div className="modal-ov">
-      <div className="modal att" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
+  return (
+    <Modale onFermer={onAnnuler} className="att" fermeDehors={false} entete={false} brut>
+      <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
 
-        <div className="tr-head">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-          Mettre en attente
-        </div>
-
-        <div className="tr-body">
-          <div className="att-bien">
-            <b>{bien.ville}</b> <span>— {bien.adresse}</span>
-          </div>
-
-          <label className="att-ch">
-            <span>Motif</span>
-            <input list="att-motifs" value={motif} onChange={(e) => setMotif(e.target.value)} />
-            <datalist id="att-motifs">
-              {MOTIFS_ATTENTE.map((m) => <option key={m} value={m} />)}
-            </datalist>
-          </label>
-
-          <div className="att-ch">
-            <span>On y revient dans</span>
-            <div className="att-delais">
-              {DELAIS.map((d, i) => (
-                <button key={d.label} type="button" className={choix === i ? "on" : ""}
-                  onClick={() => { setChoix(i); if (d.mois) setDate(dansNMois(d.mois)); }}>
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {!indefini && (
-            <label className="att-ch">
-              {/* La date exacte en plus des raccourcis (retour #141). */}
-              <span>Date exacte</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </label>
-          )}
-
-          <label className="att-prev">
-            <input type="checkbox" checked={prevenir} disabled={!bien.email}
-              onChange={() => setPrevenir(!prevenir)} />
-            Prévenir le propriétaire par e-mail
-            {!bien.email && <i> — pas d&apos;adresse e-mail sur la fiche</i>}
-          </label>
-
-          {prevenir && bien.email && (
-            <div className="att-mail">
-              <b>{objet}</b>
-              <pre>{corps}</pre>
-              <span>Le message s&apos;ouvrira dans la fenêtre de rédaction : rien ne part sans vous.</span>
-            </div>
-          )}
-        </div>
-
-        <div className="tr-foot">
-          <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
-          <span style={{ flex: 1 }} />
-          <button type="button" className="vf-go" disabled={pending || !motif.trim()}
-            onClick={() => start(() => onValider({
-              motif: motif.trim(),
-              dateRelance: indefini ? undefined : date,
-              email: prevenir && bien.email ? { to: bien.email, objet, corps } : undefined,
-            }))}>
-            <span className="ch">›</span> Mettre en attente
-          </button>
-        </div>
+      <div className="tr-head">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        Mettre en attente
       </div>
-    </div>,
-    document.body,
+
+      <div className="tr-body">
+        <div className="att-bien">
+          <b>{bien.ville}</b> <span>— {bien.adresse}</span>
+        </div>
+
+        <label className="att-ch">
+          <span>Motif</span>
+          <input list="att-motifs" value={motif} onChange={(e) => setMotif(e.target.value)} />
+          <datalist id="att-motifs">
+            {MOTIFS_ATTENTE.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        </label>
+
+        <div className="att-ch">
+          <span>On y revient dans</span>
+          <div className="att-delais">
+            {DELAIS.map((d, i) => (
+              <button key={d.label} type="button" className={choix === i ? "on" : ""}
+                onClick={() => { setChoix(i); if (d.mois) setDate(dansNMois(d.mois)); }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!indefini && (
+          <label className="att-ch">
+            {/* La date exacte en plus des raccourcis (retour #141). */}
+            <span>Date exacte</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+        )}
+
+        <label className="att-prev">
+          <input type="checkbox" checked={prevenir} disabled={!bien.email}
+            onChange={() => setPrevenir(!prevenir)} />
+          Prévenir le propriétaire par e-mail
+          {!bien.email && <i> — pas d&apos;adresse e-mail sur la fiche</i>}
+        </label>
+
+        {prevenir && bien.email && (
+          <div className="att-mail">
+            <b>{objet}</b>
+            <pre>{corps}</pre>
+            <span>Le message s&apos;ouvrira dans la fenêtre de rédaction : rien ne part sans vous.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="tr-foot">
+        <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="vf-go" disabled={pending || !motif.trim()}
+          onClick={() => start(() => onValider({
+            motif: motif.trim(),
+            dateRelance: indefini ? undefined : date,
+            email: prevenir && bien.email ? { to: bien.email, objet, corps } : undefined,
+          }))}>
+          <span className="ch">›</span> Mettre en attente
+        </button>
+      </div>
+    </Modale>
   );
 }

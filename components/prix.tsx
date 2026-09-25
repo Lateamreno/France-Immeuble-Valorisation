@@ -10,15 +10,15 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useDepartUrl } from "@/lib/etat-url";
 import type { BienData } from "@/lib/bubble/server";
-import { euros, group } from "@/lib/format";
+import { euros, group, S } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
 import { marquerPrixRepris, ouvrirEspace, revoquerEspace } from "@/lib/bo/espace-actions";
 import { ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import type { Espace } from "@/lib/bo/espace-modele";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { Modale } from "@/components/modale";
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => {
   const n = parseFloat(s.replace(/\s/g, "").replace(",", "."));
@@ -156,31 +156,10 @@ function ModalePrix({
   const r = rendements(hai, ctx);
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal sect-mod" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Nouveau prix
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-        <div className="modal-b">
-          <div className="pxm-bien">
-            <b>{b.ville}</b> — {b.adresse}
-          </div>
-          <BlocPrix nv={nv} honos={honos} hai={hai} onHai={setHai} onReinit={() => setHai(depart)} reference={depart} />
-          <div className="pxt-row">
-            <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
-            <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
-          </div>
-          <div className="fsub" style={{ marginTop: 16 }}>Motif</div>
-          <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
-            {MOTIFS_PRIX.map((m) => <option key={m}>{m}</option>)}
-          </select>
-          <span className="mlab">Remarques</span>
-          <textarea className="min" rows={3} value={remarque} onChange={(e) => setRemarque(e.target.value)}
-            placeholder="Ce qui justifie ce prix" />
-          {erreur && <p className="carte-err" style={{ marginTop: 8 }}>{erreur}</p>}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Nouveau prix" onFermer={onFermer} className="sect-mod"
+      pied={
+        <>
           <span />
           <button className="savebar-go" type="button" disabled={pending || hai <= 0}
             onClick={() =>
@@ -197,9 +176,26 @@ function ModalePrix({
             }>
             {pending ? "Enregistrement…" : "❯ Enregistrer le prix"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="pxm-bien">
+        <b>{b.ville}</b> — {b.adresse}
       </div>
-    </div>
+      <BlocPrix nv={nv} honos={honos} hai={hai} onHai={setHai} onReinit={() => setHai(depart)} reference={depart} />
+      <div className="pxt-row">
+        <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
+        <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
+      </div>
+      <div className="fsub" style={{ marginTop: 16 }}>Motif</div>
+      <select className="min" value={motif} onChange={(e) => setMotif(e.target.value)}>
+        {MOTIFS_PRIX.map((m) => <option key={m}>{m}</option>)}
+      </select>
+      <span className="mlab">Remarques</span>
+      <textarea className="min" rows={3} value={remarque} onChange={(e) => setRemarque(e.target.value)}
+        placeholder="Ce qui justifie ce prix" />
+      {erreur && <p className="carte-err" style={{ marginTop: 8 }}>{erreur}</p>}
+    </Modale>
   );
 }
 

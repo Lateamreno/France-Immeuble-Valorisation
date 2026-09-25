@@ -16,15 +16,15 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
-import { dmy, euros, libelleDossier } from "@/lib/format";
+import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, etatEnvoiSms, genererEtatLocatif, markCommercialisationSent } from "@/lib/bo/actions";
+import { useQuestion } from "@/components/modale";
 
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
 type Etape = (typeof ETAPES)[number];
 
@@ -46,6 +46,7 @@ export function AssistantCommercialisation({
   const memo = `com:${matchId}`;
   const [etape, setEtape] = useMemoire<Etape>(`${memo}:etape`, "Dossier");
   const [pending, start] = useTransition();
+  const { confirmer, question } = useQuestion();
   const [commId, setCommId] = useMemoire<string | undefined>(`${memo}:commId`, undefined);
   const [creees, setCreees] = useMemoire(`${memo}:creees`, 0);
   const [mailsEnvoyes, setMailsEnvoyes] = useMemoire(`${memo}:mails`, false);
@@ -202,21 +203,26 @@ export function AssistantCommercialisation({
   /* Doctrine §7.1 : l'application prépare, l'agent envoie. D'où la
      confirmation qui rappelle le nombre exact de destinataires et de segments
      facturés — c'est le dernier moment où l'erreur de ciblage coûte zéro. */
-  const envoyerLesSms = () =>
-    commId && start(async () => {
-      const nb = dest.telephones.length;
-      const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
-      const quand = quandSms ? new Date(quandSms) : undefined;
-      const differe = quand && !Number.isNaN(quand.getTime()) && quand.getTime() > Date.now();
-      if (!confirm(
-        (differe
+  const envoyerLesSms = async () => {
+    if (!commId) return;
+    const nb = dest.telephones.length;
+    const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
+    const quand = quandSms ? new Date(quandSms) : undefined;
+    const differe = quand && !Number.isNaN(quand.getTime()) && quand.getTime() > Date.now();
+    if (!(await confirmer(
+      <>
+        {differe
           ? `Programmer ce SMS pour le ${quand!.toLocaleString("fr-FR")}, à ${nb} numéro${nb > 1 ? "s" : ""} ?`
-          : `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?`) + "\n\n" +
-        `Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. ` +
-        (differe
+          : `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?`}
+        <br /><br />
+        {`Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. `}
+        {differe
           ? "Une campagne programmée se modifie encore chez MailingVox, mais pas depuis ici."
-          : "Un SMS parti ne se rattrape pas."),
-      )) return;
+          : "Un SMS parti ne se rattrape pas."}
+      </>,
+      { oui: differe ? "Programmer" : "Envoyer" },
+    ))) return;
+    start(async () => {
       const r = await envoyerSmsCommercialisation({
         immeubleId: String(b.im._id), commId, texte: sms, numeros: dest.telephones,
         quand: quandSms ? new Date(quandSms).toISOString() : undefined,
@@ -237,6 +243,7 @@ export function AssistantCommercialisation({
         setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
       }
     });
+  };
 
   return (
     <div className="asst">
@@ -558,44 +565,52 @@ export function AssistantCommercialisation({
             <button
               className="kgo" type="button"
               disabled={pending || mailsEnvoyes || controle.personnes === 0 || pesee.depasse}
-              onClick={() => commId && start(async () => {
+              onClick={async () => {
+                if (!commId) return;
                 const n = controle.personnes;
                 const d = quandMail ? new Date(quandMail) : undefined;
                 const differe = d && !Number.isNaN(d.getTime()) && d.getTime() > Date.now();
-                if (!confirm(
-                  (differe
-                    ? `Programmer cet e-mail pour le ${d!.toLocaleString("fr-FR")}, à ${n} personne${n > 1 ? "s" : ""} ?`
-                    : `Envoyer cet e-mail à ${n} personne${n > 1 ? "s" : ""} ?`)
-                  + "\n\n" + pesee.message
-                  + (differe
-                    ? "\nUne salve confiée à SendGrid ne s'annule plus depuis ici."
-                    : "\nUn e-mail parti ne se rattrape pas."),
-                )) return;
+                if (!(await confirmer(
+                  <>
+                    {differe
+                      ? `Programmer cet e-mail pour le ${d!.toLocaleString("fr-FR")}, à ${n} personne${n > 1 ? "s" : ""} ?`
+                      : `Envoyer cet e-mail à ${n} personne${n > 1 ? "s" : ""} ?`}
+                    <br /><br />
+                    {pesee.message}
+                    <br />
+                    {differe
+                      ? "Une salve confiée à SendGrid ne s'annule plus depuis ici."
+                      : "Un e-mail parti ne se rattrape pas."}
+                  </>,
+                  { oui: differe ? "Programmer" : "Envoyer" },
+                ))) return;
                 setEnvoiMail(null);
-                const r = await envoyerMailsCommercialisation({
-                  immeubleId: String(b.im._id), commId,
-                  objet, message,
-                  destinataires: controle.adresses,
-                  pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
-                  quand: differe ? d!.toISOString() : undefined,
-                  agentId: String(b.im.AGENT ?? "") || undefined,
+                start(async () => {
+                  const r = await envoyerMailsCommercialisation({
+                    immeubleId: String(b.im._id), commId,
+                    objet, message,
+                    destinataires: controle.adresses,
+                    pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
+                    quand: differe ? d!.toISOString() : undefined,
+                    agentId: String(b.im.AGENT ?? "") || undefined,
+                  });
+                  if (r.ok) {
+                    setMailsEnvoyes(true);
+                    setEnvoiMail(
+                      (r.programmePour
+                        ? `${r.envoyes} e-mails programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
+                        : `${r.envoyes} e-mails envoyés`)
+                      + (r.pieces ? ` avec ${r.pieces} pièce${r.pieces > 1 ? "s" : ""} jointe${r.pieces > 1 ? "s" : ""}` : " sans pièce jointe")
+                      + "."
+                      + (r.echecs && r.echecs.length
+                        ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}`
+                        : ""),
+                    );
+                  } else {
+                    setEnvoiMail(r.message ?? "L'envoi n'a pas abouti.");
+                  }
                 });
-                if (r.ok) {
-                  setMailsEnvoyes(true);
-                  setEnvoiMail(
-                    (r.programmePour
-                      ? `${r.envoyes} e-mails programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
-                      : `${r.envoyes} e-mails envoyés`)
-                    + (r.pieces ? ` avec ${r.pieces} pièce${r.pieces > 1 ? "s" : ""} jointe${r.pieces > 1 ? "s" : ""}` : " sans pièce jointe")
-                    + "."
-                    + (r.echecs && r.echecs.length
-                      ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}`
-                      : ""),
-                  );
-                } else {
-                  setEnvoiMail(r.message ?? "L'envoi n'a pas abouti.");
-                }
-              })}
+              }}
             >
               <span className="ch">›</span>{" "}
               {quandMail ? "Programmer" : "Envoyer"}{" "}
@@ -712,6 +727,7 @@ export function AssistantCommercialisation({
           </div>
         </div>
       )}
+      {question}
     </div>
   );
 }

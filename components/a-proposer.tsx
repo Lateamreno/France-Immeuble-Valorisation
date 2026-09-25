@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { APropositions, BienAProposer } from "@/lib/bubble/server";
 import { chargerAProposer, traiterAProposer } from "@/lib/bo/actions";
+import { Modale } from "@/components/modale";
 
 type Mode = "envoyer" | "ne_correspond_pas" | "deja_envoye";
 
@@ -163,137 +164,12 @@ export function PanneauAProposer({
   };
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          {data?.contact?.nom ? `À proposer à ${data.contact.nom}` : "Biens à proposer"}
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-
-        <div className="modal-b">
-          {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
-          {!data && !erreur && <div className="fempty">Recherche des immeubles qui correspondent…</div>}
-
-          {data && restants.length === 0 && (
-            <div className="fempty">
-              {traites.length > 0
-                ? `${traites.length} bien${traites.length > 1 ? "s" : ""} traité${traites.length > 1 ? "s" : ""}. Plus rien à proposer sur cette recherche.`
-                : "Rien de nouveau : tout ce qui correspond lui a déjà été envoyé."}
-            </div>
-          )}
-
-          {restants.length > 0 && (
-            <>
-              <div className="apr-barre">
-                <b>{restants.length} bien{restants.length > 1 ? "s" : ""} à proposer</b>
-                <span style={{ flex: 1 }} />
-                <button type="button" className="fadd"
-                  onClick={() => setChoisis(restants.map((b) => b.id))}>Tout cocher</button>
-                <button type="button" className="fadd"
-                  disabled={choisis.length === 0} onClick={() => setChoisis([])}>Tout décocher</button>
-              </div>
-
-              <div className="apr-liste">
-                {restants.map((b) => (
-                  <label key={b.id} className={`apr${choisis.includes(b.id) ? " on" : ""}`}>
-                    <input type="checkbox" checked={choisis.includes(b.id)} onChange={() => cocher(b.id)} />
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {b.photoUrl ? <img src={b.photoUrl} alt="" /> : <span className="apr-vide" />}
-                    <span className="apr-txt">
-                      <b>{b.libelle}</b>
-                      <span>
-                        {[b.prix && `${b.prix} HAI`, b.surface, b.occupation && `${b.occupation} occupé`, b.renta]
-                          .filter(Boolean).join(" · ") || "Chiffres non renseignés"}
-                      </span>
-                      <em>
-                        {b.destinations.join(", ") || "Destination non précisée"}
-                        {b.dossier
-                          ? ` · dossier V${b.dossier.version} en pièce jointe`
-                          : " · aucun dossier généré"}
-                      </em>
-                    </span>
-                    <Link className="apr-lien" href={`/bien/${b.id}`} target="_blank"
-                      onClick={(e) => e.stopPropagation()}>Fiche ↗</Link>
-                  </label>
-                ))}
-              </div>
-
-              <span className="mlab">Que fait-on de {selection.length > 0 ? `ces ${selection.length}` : "ces"} bien{selection.length > 1 ? "s" : ""} ?</span>
-              <div className="mrow" style={{ flexWrap: "wrap" }}>
-                {MODES.map((m) => (
-                  <button key={m.cle} type="button" className={`mopt${mode === m.cle ? " on" : ""}`}
-                    disabled={selection.length === 0} title={m.aide}
-                    onClick={() => setMode(m.cle)}>{m.titre}</button>
-                ))}
-              </div>
-              {mode && <p className="rm-aide">{MODES.find((m) => m.cle === mode)?.aide}</p>}
-
-              {mode === "envoyer" && (
-                <>
-                  {!data?.contact?.email && (
-                    <p className="rm-avert">
-                      Cet acquéreur n&apos;a pas d&apos;adresse e-mail sur sa fiche : la proposition
-                      sera créée, mais il n&apos;y aura personne à qui envoyer.
-                    </p>
-                  )}
-                  {selection.some((b) => !b.dossier) && (
-                    <p className="rm-avert">
-                      {selection.filter((b) => !b.dossier).length} bien(s) sélectionné(s) n&apos;ont
-                      pas de dossier : l&apos;e-mail partira sans pièce jointe pour ceux-là.
-                    </p>
-                  )}
-                  <span className="mlab">Objet</span>
-                  <input className="min" value={objet} onChange={(e) => setObjetSaisi(e.target.value)} />
-                  <span className="mlab">Message</span>
-                  <textarea className="min" rows={9} value={message}
-                    onChange={(e) => setMessageSaisi(e.target.value)} />
-                </>
-              )}
-
-              {mode === "ne_correspond_pas" && (
-                <div className="apr-motifs">
-                  {selection.map((b) => (
-                    <label key={b.id}>
-                      <b>{b.libelle}</b>
-                      <input className="min" placeholder="Pourquoi ça ne correspond pas…"
-                        value={motifs[b.id] ?? ""}
-                        onChange={(e) => setMotifs({ ...motifs, [b.id]: e.target.value })} />
-                    </label>
-                  ))}
-                </div>
-              )}
-
-              {mode === "deja_envoye" && (
-                <>
-                  <span className="mlab">A-t-on eu un retour ?</span>
-                  <div className="mrow">
-                    {([["aucun", "Pas encore"], ["interesse", "Intéressé"], ["refus", "Refus"]] as const)
-                      .map(([k, l]) => (
-                        <button key={k} type="button" className={`mopt${retour === k ? " on" : ""}`}
-                          onClick={() => setRetour(k)}>{l}</button>
-                      ))}
-                  </div>
-                  {retour !== "aucun" && (
-                    <>
-                      <span className="mlab">Ce qu&apos;il a dit</span>
-                      <input className="min" value={retourTexte}
-                        onChange={(e) => setRetourTexte(e.target.value)}
-                        placeholder={retour === "refus" ? "Motif du refus…" : "Ce qu'il retient…"} />
-                    </>
-                  )}
-                  {retour === "aucun" && (
-                    <p className="rm-aide">
-                      La proposition reste ouverte, comme toutes celles en attente de réponse :
-                      elle rejoindra les relances.
-                    </p>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="modal-f">
+    <Modale
+      titre={data?.contact?.nom ? `À proposer à ${data.contact.nom}` : "Biens à proposer"}
+      onFermer={onFermer}
+      className="lg"
+      pied={
+        <>
           {traites.length > 0 && (
             <span className="apr-fait">
               {traites.length} traité{traites.length > 1 ? "s" : ""}
@@ -312,8 +188,129 @@ export function PanneauAProposer({
               : mode === "deja_envoye" ? "Enregistrer"
               : "Choisissez une action"}
           </button>
+        </>
+      }
+    >
+      {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
+      {!data && !erreur && <div className="fempty">Recherche des immeubles qui correspondent…</div>}
+
+      {data && restants.length === 0 && (
+        <div className="fempty">
+          {traites.length > 0
+            ? `${traites.length} bien${traites.length > 1 ? "s" : ""} traité${traites.length > 1 ? "s" : ""}. Plus rien à proposer sur cette recherche.`
+            : "Rien de nouveau : tout ce qui correspond lui a déjà été envoyé."}
         </div>
-      </div>
-    </div>
+      )}
+
+      {restants.length > 0 && (
+        <>
+          <div className="apr-barre">
+            <b>{restants.length} bien{restants.length > 1 ? "s" : ""} à proposer</b>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="fadd"
+              onClick={() => setChoisis(restants.map((b) => b.id))}>Tout cocher</button>
+            <button type="button" className="fadd"
+              disabled={choisis.length === 0} onClick={() => setChoisis([])}>Tout décocher</button>
+          </div>
+
+          <div className="apr-liste">
+            {restants.map((b) => (
+              <label key={b.id} className={`apr${choisis.includes(b.id) ? " on" : ""}`}>
+                <input type="checkbox" checked={choisis.includes(b.id)} onChange={() => cocher(b.id)} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {b.photoUrl ? <img src={b.photoUrl} alt="" /> : <span className="apr-vide" />}
+                <span className="apr-txt">
+                  <b>{b.libelle}</b>
+                  <span>
+                    {[b.prix && `${b.prix} HAI`, b.surface, b.occupation && `${b.occupation} occupé`, b.renta]
+                      .filter(Boolean).join(" · ") || "Chiffres non renseignés"}
+                  </span>
+                  <em>
+                    {b.destinations.join(", ") || "Destination non précisée"}
+                    {b.dossier
+                      ? ` · dossier V${b.dossier.version} en pièce jointe`
+                      : " · aucun dossier généré"}
+                  </em>
+                </span>
+                <Link className="apr-lien" href={`/bien/${b.id}`} target="_blank"
+                  onClick={(e) => e.stopPropagation()}>Fiche ↗</Link>
+              </label>
+            ))}
+          </div>
+
+          <span className="mlab">Que fait-on de {selection.length > 0 ? `ces ${selection.length}` : "ces"} bien{selection.length > 1 ? "s" : ""} ?</span>
+          <div className="mrow" style={{ flexWrap: "wrap" }}>
+            {MODES.map((m) => (
+              <button key={m.cle} type="button" className={`mopt${mode === m.cle ? " on" : ""}`}
+                disabled={selection.length === 0} title={m.aide}
+                onClick={() => setMode(m.cle)}>{m.titre}</button>
+            ))}
+          </div>
+          {mode && <p className="rm-aide">{MODES.find((m) => m.cle === mode)?.aide}</p>}
+
+          {mode === "envoyer" && (
+            <>
+              {!data?.contact?.email && (
+                <p className="rm-avert">
+                  Cet acquéreur n&apos;a pas d&apos;adresse e-mail sur sa fiche : la proposition
+                  sera créée, mais il n&apos;y aura personne à qui envoyer.
+                </p>
+              )}
+              {selection.some((b) => !b.dossier) && (
+                <p className="rm-avert">
+                  {selection.filter((b) => !b.dossier).length} bien(s) sélectionné(s) n&apos;ont
+                  pas de dossier : l&apos;e-mail partira sans pièce jointe pour ceux-là.
+                </p>
+              )}
+              <span className="mlab">Objet</span>
+              <input className="min" value={objet} onChange={(e) => setObjetSaisi(e.target.value)} />
+              <span className="mlab">Message</span>
+              <textarea className="min" rows={9} value={message}
+                onChange={(e) => setMessageSaisi(e.target.value)} />
+            </>
+          )}
+
+          {mode === "ne_correspond_pas" && (
+            <div className="apr-motifs">
+              {selection.map((b) => (
+                <label key={b.id}>
+                  <b>{b.libelle}</b>
+                  <input className="min" placeholder="Pourquoi ça ne correspond pas…"
+                    value={motifs[b.id] ?? ""}
+                    onChange={(e) => setMotifs({ ...motifs, [b.id]: e.target.value })} />
+                </label>
+              ))}
+            </div>
+          )}
+
+          {mode === "deja_envoye" && (
+            <>
+              <span className="mlab">A-t-on eu un retour ?</span>
+              <div className="mrow">
+                {([["aucun", "Pas encore"], ["interesse", "Intéressé"], ["refus", "Refus"]] as const)
+                  .map(([k, l]) => (
+                    <button key={k} type="button" className={`mopt${retour === k ? " on" : ""}`}
+                      onClick={() => setRetour(k)}>{l}</button>
+                  ))}
+              </div>
+              {retour !== "aucun" && (
+                <>
+                  <span className="mlab">Ce qu&apos;il a dit</span>
+                  <input className="min" value={retourTexte}
+                    onChange={(e) => setRetourTexte(e.target.value)}
+                    placeholder={retour === "refus" ? "Motif du refus…" : "Ce qu'il retient…"} />
+                </>
+              )}
+              {retour === "aucun" && (
+                <p className="rm-aide">
+                  La proposition reste ouverte, comme toutes celles en attente de réponse :
+                  elle rejoindra les relances.
+                </p>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Modale>
   );
 }

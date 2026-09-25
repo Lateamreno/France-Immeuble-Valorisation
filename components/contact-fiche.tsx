@@ -12,8 +12,13 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Copier } from "@/components/copier";
+import { Modale } from "@/components/modale";
+import { Pastille, PastilleStatut } from "@/components/pastille";
+import { PuceImmeuble } from "@/components/puce-immeuble";
+import { Champ } from "@/components/champ";
+import { Avatar } from "@/components/avatar";
 import type { ContactData, FilMail, RechercheCard } from "@/lib/bubble/server";
-import { dmy, jourIso } from "@/lib/format";
+import { dmy, jourIso, S } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
@@ -42,8 +47,6 @@ const ONGLETS: readonly string[] = [
   "infos", "immeubles", "recherches", "mandats", "propositions",
   "questions", "visites", "offres", "suivis", "echanges",
 ];
-
-const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
 /** Une adresse Bubble est un objet `{address, lat, lng}` : la passer à String
  *  affichait « [object Object] » dans la case Adresse. */
@@ -457,7 +460,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
                     <label><input type="checkbox" checked={interagence} onChange={() => setInteragence(!interagence)} /> Interagence</label>
                   </span>
                 </Ligne>
-                <Ligne label="Note">
+                <Champ libelle="Note" gauche className={LIGNE}>
                   {/* La barre pleine largeur du BO : la couleur porte le classement. */}
                   <select className={`cfx-note${note ? ` n${note}` : ""}`} value={note}
                     onChange={(e) => setNote(e.target.value)}>
@@ -472,16 +475,21 @@ export function ContactFiche({ d, echanges = [], compte }: {
                       <i>{d.promotion.motif}</i>
                     </button>
                   )}
-                </Ligne>
+                </Champ>
               </Bloc>
 
               <Bloc titre="Coordonnées" picto="carte">
-                <Ligne label="Portable" duo={{ label: "Fixe", noeud: <input value={fixe} onChange={(e) => setFixe(e.target.value)} /> }}>
+                <div className="cfx-duo">
+                  <Champ libelle="Portable" gauche className={LIGNE}>
                   <input value={portable} onChange={(e) => setPortable(e.target.value)} />
-                </Ligne>
-                <Ligne label="E-mail">
+                </Champ>
+                  <Champ libelle="Fixe" gauche className={LIGNE}>
+                  <input value={fixe} onChange={(e) => setFixe(e.target.value)} />
+                </Champ>
+                </div>
+                <Champ libelle="E-mail" gauche className={LIGNE}>
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                </Ligne>
+                </Champ>
               </Bloc>
 
               {/* L'espace client (tâche #56) : c'est ici qu'on l'ouvre, parce
@@ -490,42 +498,60 @@ export function ContactFiche({ d, echanges = [], compte }: {
               <EspaceCompte contactId={id} email={email} compte={compte} />
 
               <Bloc titre="Informations" picto="info">
-                <Ligne label="Civilité">
+                <Champ libelle="Civilité" gauche className={LIGNE}>
                   <select className={`court${civ ? "" : " requis"}`} value={civ}
                     onChange={(e) => setCiv(e.target.value)}>
                     <option value="">À renseigner</option>
                     {CIVILITES.map((v) => <option key={v}>{v}</option>)}
                   </select>
-                </Ligne>
-                <Ligne label="Prénom" duo={{ label: "Nom", noeud: <input value={nom} onChange={(e) => setNom(e.target.value)} /> }}>
+                </Champ>
+                <div className="cfx-duo">
+                  <Champ libelle="Prénom" gauche className={LIGNE}>
                   <input value={prenom} onChange={(e) => setPrenom(e.target.value)} />
-                </Ligne>
-                <Ligne label="Date de naissance"
-                  duo={{ label: "Lieu de naissance", noeud: <input value={lieuNaissance} onChange={(e) => setLieuNaissance(e.target.value)} /> }}>
+                </Champ>
+                  <Champ libelle="Nom" gauche className={LIGNE}>
+                  <input value={nom} onChange={(e) => setNom(e.target.value)} />
+                </Champ>
+                </div>
+                <div className="cfx-duo">
+                  <Champ libelle="Date de naissance" gauche className={LIGNE}>
                   <input type="date" value={naissance} onChange={(e) => setNaissance(e.target.value)} />
-                </Ligne>
-                <Ligne label="Adresse">
+                </Champ>
+                  <Champ libelle="Lieu de naissance" gauche className={LIGNE}>
+                  <input value={lieuNaissance} onChange={(e) => setLieuNaissance(e.target.value)} />
+                </Champ>
+                </div>
+                <Champ libelle="Adresse" gauche className={LIGNE}>
                   <input value={adresse} onChange={(e) => setAdresse(e.target.value)} />
-                </Ligne>
+                </Champ>
                 <Ligne label="Carte d'identité">
                   <PieceJointe url={c.cni} contactId={id} cle="cni" depose={c.cni_depose_le} />
                 </Ligne>
               </Bloc>
 
               <Bloc titre="Société" picto="societe">
-                <Ligne label="Raison sociale">
+                <Champ libelle="Raison sociale" gauche className={LIGNE}>
                   <input value={entreprise} onChange={(e) => setEntreprise(e.target.value)} />
-                </Ligne>
-                <Ligne label="Poste"
-                  duo={{ label: "Capital Social", noeud: <input className="droite" value={capital} onChange={(e) => setCapital(e.target.value)} /> }}>
+                </Champ>
+                <div className="cfx-duo">
+                  <Champ libelle="Poste" gauche className={LIGNE}>
                   <input value={poste} onChange={(e) => setPoste(e.target.value)} />
-                </Ligne>
-                <Ligne label="SIREN" duo={{ label: "RCS", noeud: <input value={rcs} onChange={(e) => setRcs(e.target.value)} /> }}>
+                </Champ>
+                  <Champ libelle="Capital Social" gauche className={LIGNE}>
+                  <input className="droite" value={capital} onChange={(e) => setCapital(e.target.value)} />
+                </Champ>
+                </div>
+                <div className="cfx-duo">
+                  <Champ libelle="SIREN" gauche className={LIGNE}>
                   <input value={siren} onChange={(e) => setSiren(e.target.value)} />
-                </Ligne>
-                <Ligne label="Siège social">
+                </Champ>
+                  <Champ libelle="RCS" gauche className={LIGNE}>
+                  <input value={rcs} onChange={(e) => setRcs(e.target.value)} />
+                </Champ>
+                </div>
+                <Champ libelle="Siège social" gauche className={LIGNE}>
                   <input value={siege} onChange={(e) => setSiege(e.target.value)} />
-                </Ligne>
+                </Champ>
                 <Ligne label="K-bis">
                   <PieceJointe url={c.entreprise_kbis} contactId={id} cle="kbis"
                     depose={c.entreprise_kbis_depose_le} />
@@ -588,18 +614,16 @@ export function ContactFiche({ d, echanges = [], compte }: {
                   <span className="cfc-pic">
                     <svg viewBox="0 0 24 24">{IC.immeubles}</svg>
                   </span>
-                  <span className="lav" style={im.agentCouleur ? { background: im.agentCouleur } : undefined}>{im.agent}</span>
+                  <Avatar initiales={im.agent} couleur={im.agentCouleur} />
                 </div>
                 <div className="cfc-c">
                   <div className="cfc-l1">
                     <Link className="cfc-t" href={`/bien/${im.id}`}>{im.libelle}</Link>
                   </div>
                   <div className="cfc-l2">
-                    {im.statut && (
-                      <span className={`cfc-st${im.rang >= 11 ? " vert" : im.rang >= 5 ? " bleu" : ""}`}>{im.statut}</span>
-                    )}
-                    <span className={`cfc-st${im.dossier ? " bleu" : " off"}`}>{im.dossier ?? "Pas de dossier"}</span>
-                    <span className={`cfc-st${im.mandat ? "" : " off"}`}>{im.mandat ?? "Pas de mandat"}</span>
+                    {im.statut && <PastilleStatut statut={im.statut} />}
+                    <Pastille ton={im.dossier ? "bleu" : "gris"}>{im.dossier ?? "Pas de dossier"}</Pastille>
+                    <Pastille ton={im.mandat ? "bleu" : "gris"}>{im.mandat ?? "Pas de mandat"}</Pastille>
                     {im.archive && <span className="cfc-arch">{im.archive}</span>}
                   </div>
                   <div className="cfc-l3">
@@ -632,7 +656,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
                   <span className="cfc-pic">
                     <svg viewBox="0 0 24 24">{m.recherche ? IC.recherches : IC.mandats}</svg>
                   </span>
-                  <span className="lav" style={m.agentCouleur ? { background: m.agentCouleur } : undefined}>{m.agent}</span>
+                  <Avatar initiales={m.agent} couleur={m.agentCouleur} />
                 </div>
                 <div className="cfc-c">
                   <div className="cfc-l1">
@@ -640,16 +664,12 @@ export function ContactFiche({ d, echanges = [], compte }: {
                     {m.periode && <span className="cfc-date">{m.periode}</span>}
                   </div>
                   <div className="cfc-l2">
-                    {m.statut && <span className={`cfc-st${["En cours", "Vendu"].includes(m.statut) ? " vert" : ["Annulé", "Expiré"].includes(m.statut) ? " off" : ""}`}>{m.statut}</span>}
+                    {m.statut && <PastilleStatut statut={m.statut} />}
                     {m.numero ? <span className="cfc-num">{m.numero}</span> : <span className="cfc-alerte">⚠ Pas de numéro</span>}
                     {m.pdf && <span className="cfc-doc">📎 {m.pdf}</span>}
                   </div>
                   <div className="cfc-l3">
-                    {m.immeuble && (
-                      <Link className="cfc-im" href={`/bien/${m.immeuble.id}`}>
-                        <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{m.immeuble.libelle}
-                      </Link>
-                    )}
+                    {m.immeuble && <PuceImmeuble id={m.immeuble.id} libelle={m.immeuble.libelle} petit />}
                     <span style={{ flex: 1 }} />
                     {m.prix && <span className="cfc-prix">{m.prix}</span>}
                   </div>
@@ -679,21 +699,19 @@ export function ContactFiche({ d, echanges = [], compte }: {
               <div className={`cfc${q.clos ? " pale" : ""}`} key={q.id}>
                 <div className="cfc-g">
                   <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC.suivis}</svg></span>
-                  <span className="lav" style={q.agentCouleur ? { background: q.agentCouleur } : undefined}>{q.agent}</span>
+                  <Avatar initiales={q.agent} couleur={q.agentCouleur} />
                 </div>
                 <div className="cfc-c">
                   <div className="cfc-l1">
                     <span className="cfc-t">Question du {q.quand}</span>
                     <span className="cfc-date">{q.source}</span>
                     <span style={{ flex: 1 }} />
-                    <span className={`cfc-st${q.clos ? " off" : " vert"}`}>{q.clos ? "Clôturée" : "En cours"}</span>
+                    <Pastille ton={q.clos ? "gris" : "vert"}>{q.clos ? "Clôturée" : "En cours"}</Pastille>
                   </div>
                   <div className="cfc-note">{q.message || <i>Sans message.</i>}</div>
                   {q.immeuble && (
                     <div className="cfc-l3">
-                      <Link className="cfc-im" href={`/bien/${q.immeuble.id}`}>
-                        <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{q.immeuble.libelle}
-                      </Link>
+                      <PuceImmeuble id={q.immeuble.id} libelle={q.immeuble.libelle} petit />
                     </div>
                   )}
                 </div>
@@ -713,20 +731,20 @@ export function ContactFiche({ d, echanges = [], compte }: {
               <div className="cfc" key={a.id}>
                 <div className="cfc-g">
                   <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC[tab]}</svg></span>
-                  <span className="lav" style={a.agentCouleur ? { background: a.agentCouleur } : undefined}>{a.agent}</span>
+                  <Avatar initiales={a.agent} couleur={a.agentCouleur} />
                 </div>
                 <div className="cfc-c">
                   <div className="cfc-l1">
                     <span className="cfc-t">{a.titre}</span>
-                    {a.statut && <span className={`cfc-st ${a.ton === "green" ? "vert" : a.ton === "red" ? "rouge" : ""}`}>{a.statut}</span>}
+                    {a.statut && (
+                      <Pastille ton={a.ton === "green" ? "vert" : a.ton === "red" ? "rouge" : "orange"}>{a.statut}</Pastille>
+                    )}
                   </div>
                   {a.details.length > 0 && <div className="cfc-l2">{a.details.map((x, i) => <span key={i} className="cfc-num">{x}</span>)}</div>}
                   {a.commentaire && <div className="cfc-note">{a.commentaire}</div>}
                   {a.immeuble && (
                     <div className="cfc-l3">
-                      <Link className="cfc-im" href={`/bien/${a.immeuble.id}`}>
-                        <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{a.immeuble.libelle}
-                      </Link>
+                      <PuceImmeuble id={a.immeuble.id} libelle={a.immeuble.libelle} petit />
                     </div>
                   )}
                 </div>
@@ -740,7 +758,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
               <div className="cfc" key={s.id}>
                 <div className="cfc-g">
                   <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC.suivis}</svg></span>
-                  <span className="lav" style={s.agentCouleur ? { background: s.agentCouleur } : undefined}>{s.agent}</span>
+                  <Avatar initiales={s.agent} couleur={s.agentCouleur} />
                 </div>
                 <div className="cfc-c">
                   <div className="cfc-l1">
@@ -748,15 +766,11 @@ export function ContactFiche({ d, echanges = [], compte }: {
                     {s.type && <span className="cfc-date">{s.type}</span>}
                     {s.canal && <span className="cfc-num">{s.canal}</span>}
                     <span style={{ flex: 1 }} />
-                    {s.statut && <span className={`cfc-st${s.statut === "Traité" ? " vert" : ""}`}>{s.statut}</span>}
+                    {s.statut && <PastilleStatut statut={s.statut} />}
                   </div>
                   <div className="cfc-note">{s.notes || <i>Sans note.</i>}</div>
                   <div className="cfc-l3">
-                    {s.immeuble && (
-                      <Link className="cfc-im" href={`/bien/${s.immeuble.id}`}>
-                        <svg viewBox="0 0 24 24">{IC.immeubles}</svg>{s.immeuble.libelle}
-                      </Link>
-                    )}
+                    {s.immeuble && <PuceImmeuble id={s.immeuble.id} libelle={s.immeuble.libelle} petit />}
                     <span style={{ flex: 1 }} />
                     {s.relance && <span className="cfc-date">Relance le {s.relance}</span>}
                   </div>
@@ -836,22 +850,19 @@ function Bloc({ titre, picto, children }: { titre: string; picto: string; childr
   );
 }
 
-/** Une ligne label + champ, éventuellement doublée (Prénom / Nom). */
-function Ligne({ label, children, duo }: {
-  label: string;
-  children: React.ReactNode;
-  duo?: { label: string; noeud: React.ReactNode };
-}) {
+/** Les classes d'enveloppe d'un `Champ` de la fiche : `cfx-r` pour la ligne
+ *  (marge, largeur du titre), `cfx-v` parce que l'habillage des cases —
+ *  bordure, police — est écrit sur `.cfx-v input` et doit continuer à
+ *  s'appliquer. */
+const LIGNE = "cfx-r cfx-v";
+
+/** Une ligne label + contenu, pour ce qui n'est pas « un titre + une case »
+ *  (cases à cocher, pièces jointes, liste de sociétés). */
+function Ligne({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className={`cfx-r${duo ? " duo" : ""}`}>
+    <div className="cfx-r">
       <label>{label}</label>
       <div className="cfx-v">{children}</div>
-      {duo && (
-        <>
-          <label className="d2">{duo.label}</label>
-          <div className="cfx-v">{duo.noeud}</div>
-        </>
-      )}
     </div>
   );
 }
@@ -889,10 +900,13 @@ function PieceJointe({ url, contactId, cle, depose }: {
   depose?: unknown;
 }) {
   const [pending, start] = useTransition();
+  /* L'instant de référence est figé au montage, comme dans l'onglet
+     Propositions : un rendu ne doit pas lire l'horloge. */
+  const [maintenant] = useState(() => Date.now());
   const href = fichier(url);
   const le = S(depose).slice(0, 10);
   const perime = cle === "kbis" && le
-    ? Date.now() - new Date(le).getTime() > 92 * 86400000
+    ? maintenant - new Date(le).getTime() > 92 * 86400000
     : false;
 
   if (!href) return <span className="cfx-pj vide">Aucun fichier</span>;
@@ -1092,29 +1106,29 @@ function Suppression({ id, nom, onClose }: { id: string; nom: string; onClose: (
   const [motif, setMotif] = useState(MOTIFS_ARCHIVAGE[0]);
   const [pending, start] = useTransition();
   return (
-    <div className="modal-ov" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h"><b>Supprimer {nom}</b><button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          <p className="vit-note" style={{ marginTop: 0 }}>
-            La fiche sort des listes et des recherches. Elle est conservée avec son motif :
-            l&apos;historique des propositions et des mandats reste consultable.
-          </p>
-          <label className="vit-l">
-            <span>Motif</span>
-            <select value={motif} onChange={(e) => setMotif(e.target.value)}>
-              {MOTIFS_ARCHIVAGE.map((m) => <option key={m}>{m}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre={`Supprimer ${nom}`}
+      onFermer={onClose}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button type="button" className="cfx-b rouge" disabled={pending}
             onClick={() => start(async () => { await archiverContact(id, motif); onClose(); })}>
             Supprimer ce contact
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="vit-note" style={{ marginTop: 0 }}>
+        La fiche sort des listes et des recherches. Elle est conservée avec son motif :
+        l&apos;historique des propositions et des mandats reste consultable.
+      </p>
+      <label className="vit-l">
+        <span>Motif</span>
+        <select value={motif} onChange={(e) => setMotif(e.target.value)}>
+          {MOTIFS_ARCHIVAGE.map((m) => <option key={m}>{m}</option>)}
+        </select>
+      </label>
+    </Modale>
   );
 }

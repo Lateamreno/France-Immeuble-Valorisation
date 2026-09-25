@@ -22,6 +22,10 @@ import type { PropositionLigne } from "@/lib/bubble/server";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import { ModaleApresRefus } from "@/components/proposition-refus";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
+import { Modale } from "@/components/modale";
+import { Pastille, PastilleStatut } from "@/components/pastille";
+import { Avatar } from "@/components/avatar";
+import { PuceImmeuble } from "@/components/puce-immeuble";
 import { noterProposition, setPropositionStatut } from "@/lib/bo/actions";
 import {
   couperRelances, departRecherche, departRechercheDeProposition, envoyerRelances, marquerRelances,
@@ -38,7 +42,6 @@ export const JOURS_ENTRE_RELANCES = 1;
 export type ModeRelance = "email" | "email_sms" | "sms";
 
 const IC_AVION = <path d="M3 11.5 21 3l-8.5 18-2.5-7.5L3 11.5z" />;
-const IC_IMM = <path d="M4 21V7l8-4 8 4v14M9 21v-6h6v6M9 10h.01M15 10h.01M9 14h.01M15 14h.01" />;
 
 /* ------------------------------------------------------- Bouton scindé */
 
@@ -177,14 +180,13 @@ export function CarteProposition({
       <div className="cfc-g">
         <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC_AVION}</svg></span>
         {p.agent && (
-          <span className="lav" title="Agent qui a envoyé la proposition"
-            style={p.agent.couleur ? { background: p.agent.couleur } : undefined}>{p.agent.initiales}</span>
+          <Avatar initiales={p.agent.initiales} couleur={p.agent.couleur} titre="Agent qui a envoyé la proposition" />
         )}
       </div>
       <div className="cfc-c">
         <div className="cfc-l1">
           <span className="cfc-t">{p.quand}</span>
-          {p.statut && <span className={`cfc-st${p.refusee ? " rouge" : p.statut === "Envoyée" ? "" : " off"}`}>{p.statut}</span>}
+          {p.statut && <PastilleStatut statut={p.statut} />}
           <span style={{ flex: 1 }} />
           {/* #366 — les recherches matchées : un clic ouvre la recherche. */}
           {p.recherches.map((r) => (
@@ -215,9 +217,7 @@ export function CarteProposition({
         <NoteProposition propositionId={p.id} contactId={contactId} valeur={p.commentaire ?? ""} />
         <div className="cfc-l3">
           {montrerImmeuble && p.immeuble && (
-            <Link className="cfc-im" href={`/bien/${p.immeuble.id}`}>
-              <svg viewBox="0 0 24 24">{IC_IMM}</svg>{p.immeuble.libelle}
-            </Link>
+            <PuceImmeuble id={p.immeuble.id} libelle={p.immeuble.libelle} petit />
           )}
           {p.dossier && immeubleId && (
             <Link className="cfc-doc" href={`/bien/${immeubleId}?ecran=dossiers`} title="Voir les dossiers de l'immeuble">
@@ -358,46 +358,12 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
     setRetenus((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">Relancer {c.nom}<button type="button" onClick={onFermer}>✕</button></div>
-        <div className="modal-b">
-          <span className="mlab">Dossiers cités dans la relance</span>
-          <div className="rlz-lignes" style={{ padding: 0, marginBottom: 12 }}>
-            {lignes.map(({ p, libelle, jours }) => {
-              const off = !retenus.includes(p.id);
-              return (
-                <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
-                  <span>{libelle}</span>
-                  {p.dossier && <span className="rlz-prix">Dossier {p.dossier.version}</span>}
-                  <span className="rlz-j">{jours === undefined ? "date inconnue" : `${jours} j`}</span>
-                  <span className="sp" style={{ flex: 1 }} />
-                  <button type="button" className="rlz-x" onClick={() => basculer(p.id)}>{off ? "ajouter" : "retirer"}</button>
-                </div>
-              );
-            })}
-          </div>
-          <span className="mlab">Objet</span>
-          <input className="min" value={objet} readOnly />
-          <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
-          <textarea className="min" rows={11} value={corps} onChange={(e) => setTexte(e.target.value)} />
-          <div className="asst-note">
-            Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
-            Le dossier est cité avec le lien de sa dernière version.
-            {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
-          </div>
-          {/* #373 — le SMS en plus, avec son texte tel qu'il partira. */}
-          <label className={`prop-sms${!tel || apercuSms?.configure === false ? " off" : ""}`}>
-            <input type="checkbox" checked={sms} disabled={!tel || apercuSms?.configure === false}
-              onChange={() => setSms((v) => !v)} />
-            <span>
-              <b>Relancer aussi par SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
-              {apercuSms?.configure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
-              {apercuSms && <i>{apercuSms.texte}</i>}
-            </span>
-          </label>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre={`Relancer ${c.nom}`}
+      onFermer={onFermer}
+      largeur={640}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
           <span className="sp" style={{ flex: 1 }} />
           <a className="fadd" href={`mailto:${email}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`}
@@ -423,9 +389,44 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
             })}>
             <span className="ch">›</span> Envoyer{sms ? " l'e-mail + le SMS" : ""}
           </button>
-        </div>
+        </>
+      }
+    >
+      <span className="mlab">Dossiers cités dans la relance</span>
+      <div className="rlz-lignes" style={{ padding: 0, marginBottom: 12 }}>
+        {lignes.map(({ p, libelle, jours }) => {
+          const off = !retenus.includes(p.id);
+          return (
+            <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
+              <span>{libelle}</span>
+              {p.dossier && <span className="rlz-prix">Dossier {p.dossier.version}</span>}
+              <span className="rlz-j">{jours === undefined ? "date inconnue" : `${jours} j`}</span>
+              <span className="sp" style={{ flex: 1 }} />
+              <button type="button" className="rlz-x" onClick={() => basculer(p.id)}>{off ? "ajouter" : "retirer"}</button>
+            </div>
+          );
+        })}
       </div>
-    </div>
+      <span className="mlab">Objet</span>
+      <input className="min" value={objet} readOnly />
+      <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
+      <textarea className="min" rows={11} value={corps} onChange={(e) => setTexte(e.target.value)} />
+      <div className="asst-note">
+        Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
+        Le dossier est cité avec le lien de sa dernière version.
+        {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
+      </div>
+      {/* #373 — le SMS en plus, avec son texte tel qu'il partira. */}
+      <label className={`prop-sms${!tel || apercuSms?.configure === false ? " off" : ""}`}>
+        <input type="checkbox" checked={sms} disabled={!tel || apercuSms?.configure === false}
+          onChange={() => setSms((v) => !v)} />
+        <span>
+          <b>Relancer aussi par SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
+          {apercuSms?.configure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
+          {apercuSms && <i>{apercuSms.texte}</i>}
+        </span>
+      </label>
+    </Modale>
   );
 }
 
@@ -531,8 +532,8 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
     <>
       {titre(
         <>
-          <span className="acx-b rouge">{nbEnCours} à traiter</span>
-          <span className="acx-b vert">{nbTerminees} traitée{nbTerminees > 1 ? "s" : ""}</span>
+          <Pastille ton="rouge">{nbEnCours} à traiter</Pastille>
+          <Pastille ton="vert">{nbTerminees} traitée{nbTerminees > 1 ? "s" : ""}</Pastille>
         </>,
       )}
       {actions}

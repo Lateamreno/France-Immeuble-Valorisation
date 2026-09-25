@@ -526,3 +526,29 @@ déploiement passe **Ready** mais sert le dossier statique `public/` (sans
   conclure à un bug ; le 1ᵉʳ 404 vient souvent d'un test **avant** la fin du build.
 - Polices : rester sur des **polices système** (pas de `next/font/google`) pour un
   build hermétique, indépendant de l'accès réseau au build.
+
+## 13. Objets partagés et leur jumeau côté client
+
+Décidé le 25/09/26 (catalogue des objets). Certains éléments existent en
+**deux versions volontairement séparées** : l'une pour le BO, l'autre pour
+l'espace client ou l'espace propriétaire, réduite pour que rien d'interne ne
+franchisse la cloison (§8.4). Ils ne sont **jamais** fusionnés :
+
+- la carte de proposition : `components/propositions.tsx` (BO) et
+  `components/espace-accueil.tsx` (espace client) ;
+- le bloc de prix : `components/prix.tsx` (BO) et
+  `components/espace-proprietaire.tsx` (espace propriétaire) ;
+- la pièce jointe : celle du contact (`contact-fiche.tsx`) et celle de
+  l'assistant de commercialisation (`commercialisation-assistant.tsx`) sont
+  deux objets différents sous le même nom, pas deux copies.
+
+**Règle de MAV :** quand une modification touche l'une des deux versions d'un
+jumeau, **lui demander** s'il veut la même chose sur l'autre — dans le récap
+du lot, jamais en décidant à sa place.
+
+Les objets partagés (une seule source, modifiée partout) vivent dans
+`components/` : `modale.tsx` (fenêtre + `useQuestion` à la place de `confirm`
+/ `prompt`), `pastille.tsx` (statut et son ton), `puce-immeuble.tsx`,
+`champ.tsx` (libellé + case), `avatar.tsx`, `vignette-contact.tsx`,
+`copier.tsx`, `propositions.tsx` (`BoutonScinde`, `Pagination`,
+`CarteProposition`). Toute nouvelle fenêtre, pastille ou puce passe par eux.

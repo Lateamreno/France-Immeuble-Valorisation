@@ -13,6 +13,8 @@
  * La même fenêtre sert à la fiche immeuble et à la fiche contact (#365) :
  * elle vit donc seule dans son fichier.
  */
+import { Modale } from "@/components/modale";
+
 export function ModaleApresRefus({ motif, onNon, onOui, pending }: {
   motif?: string;
   onNon: () => void;
@@ -20,28 +22,26 @@ export function ModaleApresRefus({ motif, onNon, onOui, pending }: {
   pending: boolean;
 }) {
   return (
-    <div className="modal-ov" onClick={onNon}>
-      <div className="modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          Refus enregistré
-          <button type="button" onClick={onNon}>✕</button>
-        </div>
-        <div className="modal-b">
-          <div className="asst-note">
-            {motif ? <>Motif retenu : <b>{motif}</b>. </> : null}
-            Voulez-vous corriger sa recherche dans la foulée ? C&apos;est maintenant
-            qu&apos;on sait pourquoi le dossier ne lui allait pas — dans dix minutes,
-            le critère restera faux et il recevra le même type de bien.
-          </div>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Refus enregistré"
+      onFermer={onNon}
+      largeur={440}
+      pied={
+        <>
           <button className="fadd" type="button" onClick={onNon}>Non, plus tard</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending} onClick={onOui}>
             <span className="ch">›</span> Ouvrir sa recherche
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="asst-note">
+        {motif ? <>Motif retenu : <b>{motif}</b>. </> : null}
+        Voulez-vous corriger sa recherche dans la foulée ? C&apos;est maintenant
+        qu&apos;on sait pourquoi le dossier ne lui allait pas — dans dix minutes,
+        le critère restera faux et il recevra le même type de bien.
       </div>
-    </div>
+    </Modale>
   );
 }

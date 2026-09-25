@@ -29,6 +29,7 @@ import {
   type Dpe, type LotSimple, type ReleveDpe,
 } from "@/lib/bo/dpe";
 import { affecterDpe, chercherDpe, oublierReleveDpe, releveDpe } from "@/lib/bo/dpe-actions";
+import { Modale } from "@/components/modale";
 
 const dmy = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
@@ -74,110 +75,12 @@ export function ModaleDpe({
   const [maintenant] = useState(() => Date.now());
 
   return (
-    <div className="modal-ov" onClick={onFermer}>
-      <div className="modal dpem" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          DPE de l&apos;immeuble — recensement ADEME
-          <button type="button" onClick={onFermer}>✕</button>
-        </div>
-
-        <div className="modal-b">
-          <div className="dpem-src">
-            <b>{adresse}</b>
-            <span>
-              Source : base publique des DPE de l&apos;ADEME (logements existants, depuis
-              juillet&nbsp;2021). C&rsquo;est la même que celle des sites d&rsquo;annonces.
-            </span>
-          </div>
-
-          {!charge && <div className="fempty">Lecture du relevé enregistré…</div>}
-
-          {charge && !releve && (
-            <div className="dpem-vide">
-              <p>
-                <b>Aucune recherche n&apos;a encore été faite</b> sur cet immeuble.
-              </p>
-              <p>
-                L&apos;ADEME publie tous les DPE réalisés depuis juillet 2021 : étiquette
-                énergie, étiquette GES, surface, étage. On les recense ici — <b>rien n&apos;est
-                écrit sur vos lots</b>, ni maintenant ni après.
-              </p>
-              <button className="kgo" type="button" disabled={pending} onClick={chercher}>
-                <span className="ch">›</span> {pending ? "Interrogation…" : "Chercher les DPE"}
-              </button>
-            </div>
-          )}
-
-          {erreur && <div className="dpem-err">{erreur}</div>}
-
-          {charge && releve && (
-            <>
-              <div className="dpem-bilan">
-                <div className="dpem-chiffre">
-                  <b>{dpe.length}</b>
-                  <span>DPE publié{dpe.length > 1 ? "s" : ""}</span>
-                </div>
-                {/* Pastille pleine, et non le badge en flèche de la fiche : la
-                    flèche est découpée au `clip-path`, elle avalait le compte. */}
-                <div className="dpem-lettres">
-                  {parts.map((p) => (
-                    <span key={p.lettre} className={`dpem-part d${p.lettre}`}
-                      title={`${p.n} DPE en ${p.lettre}`}>
-                      {p.lettre}<i>{p.n}</i>
-                    </span>
-                  ))}
-                  {parts.length === 0 && <span className="dpem-rien">aucune étiquette</span>}
-                </div>
-                <span className="sp" style={{ flex: 1 }} />
-                <span className="dpem-quand">
-                  Relevé du {dmy(releve.chercheLe)}
-                  {releve.adressesTrouvees.length > 1 && (
-                    <> · {releve.adressesTrouvees.length} adresses</>
-                  )}
-                </span>
-              </div>
-
-              {dpe.length === 0 && (
-                <div className="dpem-vide">
-                  <p>
-                    <b>Aucun DPE publié à cette adresse.</b> La recherche a bien abouti, elle ne
-                    rend rien : soit aucun diagnostic n&apos;a été déposé depuis juillet 2021,
-                    soit l&apos;adresse de la fiche ne correspond pas à celle du diagnostiqueur.
-                  </p>
-                  <p className="dpem-note">
-                    Adresse interrogée : <code>{releve.adresseDemandee}</code>
-                  </p>
-                </div>
-              )}
-
-              {dpe.length > 0 && (
-                <>
-                  <div className="dpem-liste">
-                    {dpe.map((d) => (
-                      <LigneDpe
-                        key={d.id ?? d.numeroDpe} d={d} lots={lots} pending={pending}
-                        maintenant={maintenant}
-                        onAffecter={(lotId) => start(async () => {
-                          if (!d.id) return;
-                          await affecterDpe(d.id, lotId, immeubleId, agent);
-                          setReleve(await releveDpe(immeubleId));
-                        })}
-                      />
-                    ))}
-                  </div>
-                  <p className="dpem-note">
-                    Le rattachement à un lot est <b>manuel et facultatif</b> : l&apos;ADEME ne
-                    connaît pas vos numéros de lot, elle ne connaît qu&apos;une adresse. Quand la
-                    surface et l&apos;étage concordent, le lot le plus probable est proposé en
-                    tête de liste — c&apos;est une suggestion, pas un rapprochement.
-                  </p>
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="modal-f">
+    <Modale
+      titre="DPE de l'immeuble — recensement ADEME"
+      onFermer={onFermer}
+      className="dpem"
+      pied={
+        <>
           {releve && (
             <button className="fadd" type="button" disabled={pending} onClick={oublier}
               title="Effacer ce relevé — utile si l'adresse de la fiche était fausse au moment de la recherche">
@@ -191,9 +94,103 @@ export function ModaleDpe({
               <span className="ch">›</span> {pending ? "Interrogation…" : "Actualiser"}
             </button>
           )}
-        </div>
+        </>
+      }
+    >
+      <div className="dpem-src">
+        <b>{adresse}</b>
+        <span>
+          Source : base publique des DPE de l&apos;ADEME (logements existants, depuis
+          juillet&nbsp;2021). C&rsquo;est la même que celle des sites d&rsquo;annonces.
+        </span>
       </div>
-    </div>
+
+      {!charge && <div className="fempty">Lecture du relevé enregistré…</div>}
+
+      {charge && !releve && (
+        <div className="dpem-vide">
+          <p>
+            <b>Aucune recherche n&apos;a encore été faite</b> sur cet immeuble.
+          </p>
+          <p>
+            L&apos;ADEME publie tous les DPE réalisés depuis juillet 2021 : étiquette
+            énergie, étiquette GES, surface, étage. On les recense ici — <b>rien n&apos;est
+            écrit sur vos lots</b>, ni maintenant ni après.
+          </p>
+          <button className="kgo" type="button" disabled={pending} onClick={chercher}>
+            <span className="ch">›</span> {pending ? "Interrogation…" : "Chercher les DPE"}
+          </button>
+        </div>
+      )}
+
+      {erreur && <div className="dpem-err">{erreur}</div>}
+
+      {charge && releve && (
+        <>
+          <div className="dpem-bilan">
+            <div className="dpem-chiffre">
+              <b>{dpe.length}</b>
+              <span>DPE publié{dpe.length > 1 ? "s" : ""}</span>
+            </div>
+            {/* Pastille pleine, et non le badge en flèche de la fiche : la
+                flèche est découpée au `clip-path`, elle avalait le compte. */}
+            <div className="dpem-lettres">
+              {parts.map((p) => (
+                <span key={p.lettre} className={`dpem-part d${p.lettre}`}
+                  title={`${p.n} DPE en ${p.lettre}`}>
+                  {p.lettre}<i>{p.n}</i>
+                </span>
+              ))}
+              {parts.length === 0 && <span className="dpem-rien">aucune étiquette</span>}
+            </div>
+            <span className="sp" style={{ flex: 1 }} />
+            <span className="dpem-quand">
+              Relevé du {dmy(releve.chercheLe)}
+              {releve.adressesTrouvees.length > 1 && (
+                <> · {releve.adressesTrouvees.length} adresses</>
+              )}
+            </span>
+          </div>
+
+          {dpe.length === 0 && (
+            <div className="dpem-vide">
+              <p>
+                <b>Aucun DPE publié à cette adresse.</b> La recherche a bien abouti, elle ne
+                rend rien : soit aucun diagnostic n&apos;a été déposé depuis juillet 2021,
+                soit l&apos;adresse de la fiche ne correspond pas à celle du diagnostiqueur.
+              </p>
+              <p className="dpem-note">
+                Adresse interrogée : <code>{releve.adresseDemandee}</code>
+              </p>
+            </div>
+          )}
+
+          {dpe.length > 0 && (
+            <>
+              <div className="dpem-liste">
+                {dpe.map((d) => (
+                  <LigneDpe
+                    key={d.id ?? d.numeroDpe} d={d} lots={lots} pending={pending}
+                    maintenant={maintenant}
+                    onAffecter={(lotId) => start(async () => {
+                      if (!d.id) return;
+                      await affecterDpe(d.id, lotId, immeubleId, agent);
+                      setReleve(await releveDpe(immeubleId));
+                    })}
+                  />
+                ))}
+              </div>
+              <p className="dpem-note">
+                Le rattachement à un lot est <b>manuel et facultatif</b> : l&apos;ADEME ne
+                connaît pas vos numéros de lot, elle ne connaît qu&apos;une adresse. Quand la
+                surface et l&apos;étage concordent, le lot le plus probable est proposé en
+                tête de liste — c&apos;est une suggestion, pas un rapprochement.
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </Modale>
   );
 }
 

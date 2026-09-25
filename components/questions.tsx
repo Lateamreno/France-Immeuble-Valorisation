@@ -10,6 +10,9 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { QuestionCard } from "@/lib/bubble/server";
 import { cloturerQuestion, creerContactDepuisQuestion, rouvrirQuestion } from "@/lib/bo/actions";
+import { Modale } from "@/components/modale";
+import { Avatar } from "@/components/avatar";
+import { PuceImmeuble } from "@/components/puce-immeuble";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -70,7 +73,7 @@ export function EcranQuestions({
               <span className="qc-bulle">
                 <svg viewBox="0 0 24 24"><path d="M12 3C6.8 3 2.6 6.3 2.6 10.4c0 2.3 1.3 4.4 3.4 5.7-.2 1.3-.9 2.5-1.9 3.4 1.9 0 3.7-.7 5-1.9.9.2 1.8.3 2.9.3 5.2 0 9.4-3.3 9.4-7.5S17.2 3 12 3z" /></svg>
               </span>
-              <span className="lav" style={r.agentCouleur ? { background: r.agentCouleur } : undefined}>{r.agent}</span>
+              <Avatar initiales={r.agent} couleur={r.agentCouleur} />
             </div>
 
             <div className="qc-corps">
@@ -107,7 +110,7 @@ export function EcranQuestions({
                   <span className="qc-fait">✓ Contact rattaché</span>
                 )}
                 {r.immeuble ? (
-                  <Link className="qc-im" href={`/bien/${r.immeuble.id}`}>{r.immeuble.libelle}</Link>
+                  <PuceImmeuble id={r.immeuble.id} libelle={r.immeuble.libelle} petit />
                 ) : (
                   <span className="qc-im vide">⊘ Pas d&apos;immeuble</span>
                 )}
@@ -166,26 +169,25 @@ function Cloture({ q, agentId, onClose }: { q: QuestionCard; agentId: string; on
   const [texte, setTexte] = useState("");
   const [pending, start] = useTransition();
   return (
-    <div className="modal-ov" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h"><b>Clôturer la question</b><button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          <p className="rc-com" style={{ marginTop: 0 }}>{q.message}</p>
-          <label className="vit-l" style={{ marginTop: 12 }}>
-            <span>Ce qui a été fait</span>
-            <textarea rows={4} value={texte} onChange={(e) => setTexte(e.target.value)}
-              placeholder="Rappelé, estimation envoyée, sans suite…" />
-          </label>
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Clôturer la question" onFermer={onClose}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button type="button" className="savebar-go" disabled={pending}
             onClick={() => start(async () => { await cloturerQuestion(q.id, texte, agentId); onClose(); })}>
             <span className="ch">›</span> Clôturer
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="rc-com" style={{ marginTop: 0 }}>{q.message}</p>
+      <label className="vit-l" style={{ marginTop: 12 }}>
+        <span>Ce qui a été fait</span>
+        <textarea rows={4} value={texte} onChange={(e) => setTexte(e.target.value)}
+          placeholder="Rappelé, estimation envoyée, sans suite…" />
+      </label>
+    </Modale>
   );
 }
 
@@ -198,27 +200,10 @@ function Creation({ q, agentId, onClose }: { q: QuestionCard; agentId: string; o
   const [err, setErr] = useState<string | null>(null);
 
   return (
-    <div className="modal-ov" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h"><b>Créer le contact</b><button type="button" onClick={onClose}>✕</button></div>
-        <div className="modal-b">
-          <div className="vit-duo">
-            <label className="vit-l"><span>Prénom</span>
-              <input value={prenom} onChange={(e) => setPrenom(e.target.value)} /></label>
-            <label className="vit-l"><span>Nom</span>
-              <input value={nom} onChange={(e) => setNom(e.target.value)} autoFocus /></label>
-          </div>
-          <div className="rc-det" style={{ marginTop: 14 }}>
-            <b>E-mail</b><span>{q.email ?? "—"}</span>
-            <b>Téléphone</b><span>{q.telephone ?? "—"}</span>
-          </div>
-          <p className="vit-note" style={{ marginTop: 12 }}>
-            La question rejoint l&apos;historique de suivi du contact. Elle reste ouverte : créer la
-            fiche n&apos;est pas y répondre.
-          </p>
-          {err && <div className="dif-avis" style={{ marginTop: 10 }}>{err}</div>}
-        </div>
-        <div className="modal-f">
+    <Modale
+      titre="Créer le contact" onFermer={onClose}
+      pied={
+        <>
           <span style={{ flex: 1 }} />
           <button type="button" className="savebar-go" disabled={pending || !nom.trim()}
             onClick={() => start(async () => {
@@ -235,8 +220,24 @@ function Creation({ q, agentId, onClose }: { q: QuestionCard; agentId: string; o
             })}>
             <span className="ch">›</span> Créer et rattacher
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="vit-duo">
+        <label className="vit-l"><span>Prénom</span>
+          <input value={prenom} onChange={(e) => setPrenom(e.target.value)} /></label>
+        <label className="vit-l"><span>Nom</span>
+          <input value={nom} onChange={(e) => setNom(e.target.value)} autoFocus /></label>
       </div>
-    </div>
+      <div className="rc-det" style={{ marginTop: 14 }}>
+        <b>E-mail</b><span>{q.email ?? "—"}</span>
+        <b>Téléphone</b><span>{q.telephone ?? "—"}</span>
+      </div>
+      <p className="vit-note" style={{ marginTop: 12 }}>
+        La question rejoint l&apos;historique de suivi du contact. Elle reste ouverte : créer la
+        fiche n&apos;est pas y répondre.
+      </p>
+      {err && <div className="dif-avis" style={{ marginTop: 10 }}>{err}</div>}
+    </Modale>
   );
 }

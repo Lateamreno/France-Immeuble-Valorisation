@@ -7531,3 +7531,66 @@ body.hors-bo {
 }
 .asst-pj2-n { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--slate); }
 .asst-pj2-n i { display: block; font-style: normal; font-weight: 400; font-size: 11px; color: var(--gray-lt); margin-top: 1px; }
+
+
+/* ======================================================================
+   Objets partagés (catalogue du 25/09)
+   ====================================================================== */
+
+/* n° 1 — la fenêtre : le titre en un bloc, pour ranger un insigne après. */
+.modal-t { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+/* n° 8 — les questions (ex-confirm / prompt). */
+.qst-m { font-size: 14px; color: var(--slate); line-height: 1.5; white-space: pre-line; }
+.qst-i { display: block; width: 100%; margin-top: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; font: inherit; font-size: 14px; }
+.qst-i:focus { outline: none; border-color: var(--gold-bo); }
+
+/* n° 5 — la pastille de statut : un ton, deux dessins. */
+.pst { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11.5px; font-weight: 700; white-space: nowrap; border: 1px solid; line-height: 1.4; }
+.pst.vert { color: #1f6b33; border-color: #bfe0c8; background: #f3fbf5; }
+.pst.orange { color: #8a5a12; border-color: #ecd3a5; background: #fdf8ef; }
+.pst.rouge { color: #b3261e; border-color: #e6b3b3; background: #fdf5f5; }
+.pst.bleu { color: #1f5f96; border-color: #b9d6ee; background: #f2f8fd; }
+.pst.gris { color: var(--slate-2); border-color: var(--line); background: var(--chip); }
+.pst.plein.vert { color: #fff; background: var(--green); border-color: var(--green); }
+.pst.plein.orange { color: #fff; background: var(--orange); border-color: var(--orange); }
+.pst.plein.rouge { color: #fff; background: var(--red); border-color: var(--red); }
+.pst.plein.bleu { color: #fff; background: #2f8ed6; border-color: #2f8ed6; }
+.pst.plein.gris { color: var(--slate-2); background: var(--chip); border-color: var(--chip); }
+
+/* n° 6 — la puce immeuble. */
+.pim { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 9px; border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--slate); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.pim svg { width: 13px; height: 13px; flex: none; fill: currentColor; opacity: .75; }
+.pim .pim-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pim .pim-s { font-style: normal; font-weight: 400; color: var(--gray-txt); white-space: nowrap; }
+a.pim:hover { border-color: var(--gold-bo); color: var(--slate); }
+.pim.petit { font-size: 12px; padding: 2px 7px; }
+.pim.plat { border: 0; background: none; padding: 0; }
+.pim.sans { cursor: default; }
+
+/* n° 3 — la ligne libellé + champ. */
+.chp { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chp-l { font-size: 12.5px; font-weight: 600; color: var(--slate); display: inline-flex; gap: 3px; }
+.chp.caps .chp-l { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gray-txt); }
+.chp-ob { color: var(--red); font-weight: 700; }
+.chp-c { min-width: 0; display: flex; flex-direction: column; }
+.chp-c > input, .chp-c > select, .chp-c > textarea { width: 100%; }
+.chp-a { font-style: normal; font-size: 11.5px; color: var(--gray-lt); line-height: 1.35; }
+.chp-e { font-style: normal; font-size: 11.5px; color: var(--red); line-height: 1.35; }
+.chp.ko .chp-c > input, .chp.ko .chp-c > select, .chp.ko .chp-c > textarea { border-color: var(--red); }
+.chp.gauche { flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap; }
+.chp.gauche .chp-l { flex: 0 0 150px; }
+.chp.gauche .chp-c { flex: 1; min-width: 160px; }
+.chp.gauche .chp-a, .chp.gauche .chp-e { flex-basis: 100%; padding-left: 162px; }
+.chp.large { grid-column: 1 / -1; }
+
+/* n° 7 — l'avatar, en petit. */
+.lav.petit { width: 26px; height: 26px; font-size: 9.5px; }
+/* Les objets partagés posés dans des dessins existants. */
+.cpv .cop { border: 0; border-radius: 0; }
+.modal.gph-zoom { box-shadow: none; }
+.rmod-col > .chp, .rm-excl > .chp { margin: 12px 0 5px; }
+/* Fiche contact : les paires (Prénom / Nom…) restent côte à côte avec le Champ partagé. */
+.cfx-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.cfx-duo > .chp.gauche:nth-child(2) .chp-l { flex-basis: 128px; padding-left: 10px; }
+@media (max-width: 900px) { .cfx-duo { grid-template-columns: 1fr; } .cfx-duo > .chp.gauche:nth-child(2) .chp-l { flex-basis: 150px; padding-left: 0; } }
+.cfx-r > label { font-size: 12.5px; font-weight: 600; }
