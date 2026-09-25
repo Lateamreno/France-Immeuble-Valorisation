@@ -152,43 +152,6 @@ export function AssistantCommercialisation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commId]);
 
-  const envoyerParLots = async (adresses: string[], quand?: string) => {
-    if (!commId) return;
-    const LOT = 12;
-    const total = faits.length + adresses.length;
-    let fait = faits.length;
-    const rates: { email: string; raison: string }[] = [];
-    setEnvoiEnCours(true);
-    setEnvoiMail(null);
-    setProgres({ fait, total, echecs: 0, enCours: true });
-    for (let i = 0; i < adresses.length; i += LOT) {
-      const r = await envoyerMailsCommercialisation({
-        immeubleId: String(b.im._id), commId, objet, message,
-        destinataires: adresses.slice(i, i + LOT),
-        pieces: pj2?.path ? [{ nom: pj2.nom, path: pj2.path }] : [],
-        quand, agentId: String(b.im.AGENT ?? "") || undefined,
-        total,
-      }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
-      if (!r.ok || !("fait" in r)) {
-        setProgres({ fait, total, echecs: rates.length, enCours: false, message: ("message" in r && r.message) || "L'envoi s'est interrompu — cliquez pour reprendre." });
-        setEnvoiEnCours(false);
-        return;
-      }
-      fait = r.fait;
-      rates.push(...(r.echecs ?? []));
-      setFaits((f) => [...new Set([...f, ...adresses.slice(i, i + LOT).filter((a) => !(r.echecs ?? []).some((x) => x.email === a))])]);
-      setProgres({ fait, total: r.total || total, echecs: rates.length, enCours: true });
-    }
-    setProgres({ fait, total, echecs: rates.length, enCours: false });
-    setEnvoiEnCours(false);
-    setMailsEnvoyes(true);
-    setEnvoiMail(
-      (quand ? `${fait} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${fait} e-mails envoyés`)
-      + (pj2?.path ? " avec pièce jointe" : "")
-      + "."
-      + (rates.length ? ` ${rates.length} en échec : ${rates.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}` : ""),
-    );
-  };
   /* Le poids du dossier, mesuré par `PieceJointe`. Remonté ici pour que le
      plafond porte sur le TOTAL, comme MAV l'a demandé. */
   const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
@@ -215,6 +178,63 @@ export function AssistantCommercialisation({
 
   // Alerte du BO : le prix du dossier peut avoir divergé de celui de la fiche.
   const doc = dossiers.find((x) => S(x._id) === dossier);
+  /* Les pièces de la salve : LE DOSSIER choisi (il ne partait pas — « il n'y
+     avait pas la PJ »), puis la seconde pièce s'il y en a une. Le PDF d'un
+     dossier vit soit dans notre coffre (`storage:…`), soit chez Bubble (adresse
+     complète) : le serveur sait lire les deux. */
+  const piecesJointes = useMemo(() => {
+    const out: { nom: string; path?: string; url?: string }[] = [];
+    const u = doc ? [doc.pdf, doc.FILE].map(S).find((x) => x.length > 0) : "";
+    if (doc && u) {
+      const ville = S(b.ville).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const nom = `Dossier-${ville || "immeuble"}-V${S(doc.version) || "1"}.pdf`;
+      if (u.startsWith("storage:")) out.push({ nom, path: u.slice("storage:".length) });
+      else if (u.startsWith("/api/photo?s=")) out.push({ nom, path: decodeURIComponent(u.slice("/api/photo?s=".length)) });
+      else out.push({ nom, url: u });
+    }
+    if (pj2?.path) out.push({ nom: pj2.nom, path: pj2.path });
+    return out;
+  }, [doc, pj2, b.ville]);
+
+  const envoyerParLots = async (adresses: string[], quand?: string) => {
+    if (!commId) return;
+    const LOT = 12;
+    const total = faits.length + adresses.length;
+    const lotsMails = paquets(adresses, LOT);
+    const etat = { fait: faits.length, rates: [] as { email: string; raison: string }[] };
+    setEnvoiEnCours(true);
+    setEnvoiMail(null);
+    setProgres({ fait: etat.fait, total, echecs: 0, enCours: true });
+    for (const lot of lotsMails) {
+      const r = await envoyerMailsCommercialisation({
+        immeubleId: String(b.im._id), commId, objet, message,
+        destinataires: lot,
+        pieces: piecesJointes,
+        quand, agentId: String(b.im.AGENT ?? "") || undefined,
+        total,
+      }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
+      if (!r.ok || !("fait" in r)) {
+        setProgres({ fait: etat.fait, total, echecs: etat.rates.length, enCours: false, message: ("message" in r && r.message) || "L'envoi s'est interrompu — cliquez pour reprendre." });
+        setEnvoiEnCours(false);
+        return;
+      }
+      const echecsLot = r.echecs ?? [];
+      etat.fait = r.fait;
+      etat.rates = [...etat.rates, ...echecsLot];
+      setFaits((f) => [...new Set([...f, ...lot.filter((a) => !echecsLot.some((x) => x.email === a))])]);
+      setProgres({ fait: etat.fait, total: r.total || total, echecs: etat.rates.length, enCours: true });
+    }
+    setProgres({ fait: etat.fait, total, echecs: etat.rates.length, enCours: false });
+    setEnvoiEnCours(false);
+    setMailsEnvoyes(true);
+    setEnvoiMail(
+      (quand ? `${etat.fait} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${etat.fait} e-mails envoyés`)
+      + (piecesJointes.length ? ` avec ${piecesJointes.length} pièce${piecesJointes.length > 1 ? "s" : ""} jointe${piecesJointes.length > 1 ? "s" : ""}` : " sans pièce jointe")
+      + "."
+      + (etat.rates.length ? ` ${etat.rates.length} en échec : ${etat.rates.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}` : ""),
+    );
+  };
+
   /* Retour #427 — ce qui a bougé depuis le dernier dossier : le prix de la
      fiche, ou un lot / une charge modifié après sa création. */
   const dossierPerime = useMemo(() => {
