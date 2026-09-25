@@ -195,7 +195,12 @@ const ERREURS: Record<string, string> = {
   "66": "campagne bloquée préventivement : trop proche d'une campagne déjà envoyée",
   "71": "envois indisponibles — incident en cours chez MailingVox",
   "99": "maintenance prévue sur ce créneau",
-  "100": "adresse IP non autorisée sur le compte",
+  /* Vu le 25/09 sur le premier essai (HTTP 403, erreurs 100) : le compte
+     MailingVox n'accepte les appels que depuis des adresses IP déclarées, et
+     Vercel n'a pas d'adresse fixe. La restriction se lève dans MailingVox,
+     pas dans le code. */
+  "100": "adresse IP non autorisée — dans MailingVox, Mon compte › API, retirer la restriction "
+    + "d'adresses IP (le back-office tourne sur Vercel, qui n'a pas d'adresse fixe)",
 };
 
 const direErreurs = (brut: unknown): string =>
@@ -302,13 +307,24 @@ export async function envoyerSms(
   }
 
   const brut = await res.text();
-  if (!res.ok) throw new Error(`MailingVox HTTP ${res.status} : ${brut.slice(0, 200)}`);
 
-  let j: { resultat?: unknown; id?: unknown; erreurs?: unknown; erreur_texte?: unknown };
-  try {
-    j = JSON.parse(brut) as typeof j;
-  } catch {
-    throw new Error(`Réponse MailingVox illisible : ${brut.slice(0, 200)}`);
+  /* Retour #433 (25/09, premier essai) : MailingVox répond HTTP 403 avec un
+     corps JSON tout à fait lisible (`{"resultat":0,"erreurs":100}`), et
+     l'écran affichait le JSON brut. On lit le corps AVANT de regarder le code
+     HTTP : c'est lui qui dit pourquoi. */
+  type Reponse = { resultat?: unknown; id?: unknown; erreurs?: unknown; erreur_texte?: unknown };
+  const lire = (): Reponse | null => {
+    try {
+      return JSON.parse(brut) as Reponse;
+    } catch {
+      return null;
+    }
+  };
+  const j = lire();
+  if (!j) {
+    throw new Error(res.ok
+      ? `Réponse MailingVox illisible : ${brut.slice(0, 200)}`
+      : `MailingVox HTTP ${res.status} : ${brut.slice(0, 200)}`);
   }
 
   if (!j.resultat) {

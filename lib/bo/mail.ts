@@ -161,10 +161,11 @@ export function expediteurMasse(agent?: { nom?: string; email?: string }) {
 /**
  * Un message de salve, par le relais dédié.
  *
- * `List-Unsubscribe` n'est pas une politesse : sans lui, les grandes
- * messageries considèrent un envoi groupé comme suspect, et le bouton
- * « désabonnement » de leur interface devient « signaler comme spam » — ce qui
- * coûte infiniment plus cher.
+ * `List-Unsubscribe` : sans lui, au-delà de 5 000 messages par jour, les
+ * grandes messageries considèrent un envoi groupé comme suspect, et le bouton
+ * « désabonnement » de leur interface devient « signaler comme spam ». En
+ * dessous de ce volume il est facultatif, et il a un prix : Gmail annonce
+ * alors « e-mail lié à une liste de distribution ». Voir plus bas.
  */
 export async function envoyerEnMasse(m: {
   to: string;
@@ -203,7 +204,16 @@ export async function envoyerEnMasse(m: {
   const vers = REDIRECT();
   const desabo = m.replyTo ?? expediteur;
   const entetes: Record<string, string> = {};
-  if (desabo) {
+  /* MAV (25/09, premier envoi) : « sur les e-mails reçus il y avait écrit
+     "e-mail lié à une liste de distribution", ça ne le faisait pas avant ».
+     C'est `List-Unsubscribe` qui le fait dire à Gmail : dès qu'un message
+     porte cet en-tête, la messagerie l'annonce comme un envoi de liste et
+     propose « Se désabonner ». Le BO Bubble ne le posait pas. Google ne
+     l'exige qu'au-delà de 5 000 messages par jour ; en dessous, c'est un
+     arbitrage entre l'image d'une conversation et le bouton de désabonnement.
+     MAV tranche pour la conversation : l'en-tête ne part plus, sauf à poser
+     MASSE_DESABONNEMENT=1 sur Vercel le jour où le volume l'imposera. */
+  if (desabo && process.env.MASSE_DESABONNEMENT === "1") {
     entetes["List-Unsubscribe"] = `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`;
     /* Dit aux messageries que le désabonnement est traité sans que le
        destinataire ait à écrire quoi que ce soit d'autre. */

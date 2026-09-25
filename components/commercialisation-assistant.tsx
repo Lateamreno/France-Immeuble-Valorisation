@@ -16,7 +16,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
-import { destinataires, paquets, type Acquereur } from "@/lib/bo/matching";
+import { destinataires, paquets, telAffiche, type Acquereur } from "@/lib/bo/matching";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
@@ -735,13 +735,13 @@ export function AssistantCommercialisation({
             <div className="asst-lot" key={i}>
               <div className="asst-lot-h">
                 Paquet {i + 1} — {lot.length} numéros
-                <button className="fadd" type="button" onClick={() => copier(lot.join(","))}>Copier les numéros</button>
+                <button className="fadd" type="button" onClick={() => copier(lot.map(telAffiche).join(","))}>Copier les numéros</button>
               </div>
-              <textarea className="min mono" rows={3} readOnly value={lot.join(", ")} />
+              <textarea className="min mono" rows={3} readOnly value={lot.map(telAffiche).join(", ")} />
             </div>
           ))}
           <div className="asst-note">
-            Numéros normalisés au format international et dédoublonnés. Les saisies inexploitables
+            Numéros vérifiés et dédoublonnés (les numéros étrangers restent en international). Les saisies inexploitables
             ont été écartées plutôt qu&apos;envoyées telles quelles. Les numéros déjà désinscrits
             chez MailingVox sont retirés au moment de l&apos;envoi.
           </div>

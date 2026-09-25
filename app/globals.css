@@ -8118,3 +8118,14 @@ button { font-weight: 700; }
 .asst-prog .rouge { color: var(--red); }
 .asst-spin { width: 12px; height: 12px; border: 2px solid #d9dde2; border-top-color: var(--gold-bo); border-radius: 50%; animation: asst-spin .8s linear infinite; }
 @keyframes asst-spin { to { transform: rotate(360deg); } }
+
+/* ── Écran d'attente d'une fiche (#432) ─────────────────────────────────── */
+.chargement { display: flex; flex-direction: column; gap: 18px; }
+.chargement .chg-h { display: flex; gap: 18px; align-items: flex-start; }
+.chargement .chg-c { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.chargement .chg-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.chargement .chg-b { display: block; border-radius: 6px; background: var(--line, #e3e3e3);
+  animation: chg-pulse 1.2s ease-in-out infinite; }
+@keyframes chg-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .chargement .chg-b { animation: none; } }
+@media (max-width: 760px) { .chargement .chg-g { grid-template-columns: 1fr; } }

@@ -118,6 +118,28 @@ export async function listFeedback(url?: string): Promise<Feedback[]> {
   return res ? ((await res.json()) as Feedback[]) : [];
 }
 
+/**
+ * Les retours OUVERTS seulement, pour le bouton de recette de chaque page.
+ *
+ * Retour #432 (25/09) : « ça met trop de temps entre le clic sur la vignette
+ * et l'ouverture de la fiche ». La fiche de Sens pesait 559 Ko, dont 445 Ko
+ * pour… les 431 retours de l'outil de correction, réponses comprises, que le
+ * layout embarquait dans CHAQUE page — alors que le bouton ne dessine que les
+ * épingles ouvertes de la page courante. Il ne lit plus que celles-là, et rien
+ * que les colonnes qu'il dessine.
+ */
+export async function listFeedbackOuverts(): Promise<Feedback[]> {
+  if (!SB_KEY) return [];
+  const q = new URLSearchParams({
+    select: "id,url,statut,gravite,commentaire,x_pct,y_pct,w_pct,h_pct",
+    statut: "eq.ouvert",
+    order: "created_at.desc",
+    limit: "200",
+  });
+  const res = await sb(`bo_feedback?${q}`).catch(() => null);
+  return res ? ((await res.json()) as Feedback[]) : [];
+}
+
 /** Marque un retour corrigé / écarté (avec réponse). */
 export async function setFeedbackStatut(
   id: number,
