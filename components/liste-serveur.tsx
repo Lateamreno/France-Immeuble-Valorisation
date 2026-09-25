@@ -10,6 +10,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ListCard } from "@/lib/bubble/server";
 import { Avatar } from "@/components/avatar";
 import { Pastille } from "@/components/pastille";
+import { CarteContact, type VignetteData } from "@/components/vignette-contact";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -96,9 +97,27 @@ export function ListeServeur({
           </div>
         </aside>
       )}
-      <div className="lst-col-simple">
+      <div className={agents ? "lst-col-simple cartes" : "lst-col-simple"}>
 
-      {rows.map((r) => {
+      {/* Retour #401 bis : « les fiches contact sont trop larges, ça bloque la
+          lecture » — la liste des contacts se rend en cartes de visite (la
+          même que sous la puce), deux par ligne, plutôt qu'en lignes pleine
+          largeur. Les autres listes gardent leurs lignes. */}
+      {agents && rows.length > 0 && (
+        <div className="cc-grille">
+          {rows.map((r) => {
+            const v: VignetteData = {
+              id: r.id, nom: r.title, prenom: r.prenom, nomFamille: r.nomFamille,
+              qualite: r.qualite, tel: r.tel, email: r.email,
+              immeubles: r.compteurs?.immeubles ?? 0, recherches: r.compteurs?.recherches ?? 0,
+              note: r.grade, estAgent: r.estAgent,
+              agent: r.avatar ? { initiales: r.avatar, couleur: r.avatarCouleur } : undefined,
+            };
+            return <CarteContact key={r.id} v={v} href={r.href ?? `/contact/${r.id}`} />;
+          })}
+        </div>
+      )}
+      {!agents && rows.map((r) => {
         const inner = (
           <>
             <Avatar initiales={r.avatar} couleur={r.avatarCouleur} />

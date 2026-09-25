@@ -22,25 +22,25 @@ export function ModaleApresRefus({ motif, onNon, onOui, pending }: {
   pending: boolean;
 }) {
   return (
+    /* Retour #399 (25/09) : « ok pour laisser la fenêtre mais faut qu'elle
+       s'affiche vite et qu'elle se ferme vite ». Une ligne, deux boutons ;
+       Échap ou Entrée ferment (« Plus tard » a le focus). */
     <Modale
-      titre="Refus enregistré"
+      titre="Refus noté"
       onFermer={onNon}
-      largeur={440}
+      largeur={420}
       pied={
         <>
-          <button className="fadd" type="button" onClick={onNon}>Non, plus tard</button>
+          <button className="fadd" type="button" autoFocus onClick={onNon}>Plus tard</button>
           <span className="sp" style={{ flex: 1 }} />
           <button className="kgo" type="button" disabled={pending} onClick={onOui}>
-            <span className="ch">›</span> Ouvrir sa recherche
+            <span className="ch">›</span> Corriger la recherche
           </button>
         </>
       }
     >
       <div className="asst-note">
-        {motif ? <>Motif retenu : <b>{motif}</b>. </> : null}
-        Voulez-vous corriger sa recherche dans la foulée ? C&apos;est maintenant
-        qu&apos;on sait pourquoi le dossier ne lui allait pas — dans dix minutes,
-        le critère restera faux et il recevra le même type de bien.
+        {motif ? <><b>{motif}</b>. </> : null}Corriger sa recherche ?
       </div>
     </Modale>
   );

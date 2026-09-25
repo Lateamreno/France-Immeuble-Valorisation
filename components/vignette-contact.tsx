@@ -27,8 +27,10 @@
  *     rouvrant la même ; sans contact rattaché, on rend le nom tel quel.
  */
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Avatar } from "@/components/avatar";
 import { Copier } from "@/components/copier";
 import { FenetreRedaction } from "@/components/mails/redaction";
 import { contexteRedaction } from "@/lib/bo/mails-actions";
@@ -84,6 +86,92 @@ export function initialeEtNom(v: { nom: string; prenom?: string; nomFamille?: st
 }
 
 type Contexte = Awaited<ReturnType<typeof contexteRedaction>> & { qui: ContactTrouve | null };
+
+/**
+ * Le corps de la carte de visite, partagé entre la fenêtre qui s'ouvre sous
+ * la puce et la carte posée en place dans la liste des contacts (#401 bis).
+ * Un seul JSX : si la carte change d'un côté, elle change de l'autre.
+ *
+ * `copier` : les boutons copier sont un geste de la puce (on vient chercher
+ * une coordonnée), pas d'une liste qu'on parcourt — la carte en place s'en
+ * passe. `insigne` : la classe A–D ; sous la puce elle est déjà dans la puce,
+ * en place elle n'a que la carte pour se montrer, à côté du nom.
+ */
+function CorpsCarte({ v, fiche, copier, insigne }: { v: VignetteData; fiche: string; copier: boolean; insigne?: React.ReactNode }) {
+  const picto = v.estAgent ? IC_AGENT : IC_PERS;
+  return (
+    <span className="vgn-card">
+      {/* Le picto et le nom mènent à la fiche (#370). */}
+      <span className="avc">
+        <Link className={`av${v.estAgent ? " agent" : ""}`} href={fiche} title={v.estAgent ? "Agent immobilier — ouvrir la fiche" : "Ouvrir la fiche contact"}>
+          <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
+        </Link>
+        {/* L'agent qui suit la fiche, sous le picto (retour du 24/09). */}
+        {v.agent && <Avatar initiales={v.agent.initiales} couleur={v.agent.couleur} titre="Agent qui suit la fiche" />}
+      </span>
+      <span className="txt">
+        <span className="ligne">
+          <Link className="nom" href={fiche} title="Ouvrir la fiche contact">{v.nom}</Link>
+          {insigne}
+          {copier && <Copier valeur={v.nom} petit cls="vgn-cop" titre="Copier le nom" />}
+        </span>
+        {v.qualite && <i>{v.qualite}</i>}
+        {v.tel && (
+          <span className="ligne">
+            <span className="l">{v.tel}</span>
+            {copier && <Copier valeur={v.tel} petit cls="vgn-cop" titre="Copier le numéro" />}
+          </span>
+        )}
+        {v.email && (
+          <span className="ligne">
+            <span className="l mail">{v.email}</span>
+            {copier && <Copier valeur={v.email} petit cls="vgn-cop" titre="Copier l'adresse" />}
+          </span>
+        )}
+        {/* Les compteurs ouvrent l'onglet qui va avec (#370). */}
+        <span className="cpt">
+          <Link href={`${fiche}?onglet=immeubles`} title="Ses immeubles">
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>
+            {v.immeubles} immeuble{v.immeubles > 1 ? "s" : ""}
+          </Link>
+          <Link href={`${fiche}?onglet=recherches`} title="Ses recherches">
+            <svg viewBox="0 0 24 24" aria-hidden><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+            {v.recherches} recherche{v.recherches > 1 ? "s" : ""}
+          </Link>
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * La même carte, rendue en place — dans la liste des contacts (#401 bis :
+ * « les fiches contact sont trop larges, ça bloque la lecture… mettre le
+ * nouvel objet vignette de contact puisqu'il y a toutes les infos dessus »).
+ * Sans puce ni fenêtre, sans Appeler / E-mail ni boutons copier. Toute la
+ * carte ouvre la fiche ; le nom, le picto et les compteurs restent des liens
+ * (un lien dans un lien n'est pas du HTML : la carte est un bloc qui navigue
+ * au clic, et laisse passer les clics sur ses propres liens).
+ */
+export function CarteContact({ v, href }: { v: VignetteData; href: string }) {
+  const router = useRouter();
+  const ouvrir = (e: React.MouseEvent | React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest("a, button")) return;
+    router.push(href);
+  };
+  return (
+    <div
+      className="cc-carte" role="link" tabIndex={0} title="Ouvrir la fiche contact"
+      onClick={ouvrir}
+      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) ouvrir(e); }}
+    >
+      <CorpsCarte
+        v={v} fiche={href} copier={false}
+        insigne={v.note && /^[A-D]$/.test(v.note) ? <b className={`note n${v.note}`} title={`Classement acquéreur ${v.note}`}>{v.note}</b> : null}
+      />
+    </div>
+  );
+}
 
 export function VignetteContact({
   v, nom, prefixe, badge, immeuble,
@@ -183,49 +271,7 @@ export function VignetteContact({
 
       {ouvert && (
         <span className={`vgn-pop${droite ? " droite" : ""}`} ref={pop} onClick={(e) => e.stopPropagation()}>
-          <span className="vgn-card">
-            {/* Le picto et le nom mènent à la fiche (#370). */}
-            <span className="avc">
-              <Link className={`av${v.estAgent ? " agent" : ""}`} href={fiche} title={v.estAgent ? "Agent immobilier — ouvrir la fiche" : "Ouvrir la fiche contact"}>
-                <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
-              </Link>
-              {/* L'agent qui suit la fiche, sous le picto (retour du 24/09). */}
-              {v.agent && (
-                <span className="lav" title="Agent qui suit la fiche"
-                  style={v.agent.couleur ? { background: v.agent.couleur } : undefined}>{v.agent.initiales}</span>
-              )}
-            </span>
-            <span className="txt">
-              <span className="ligne">
-                <Link className="nom" href={fiche} title="Ouvrir la fiche contact">{v.nom}</Link>
-                <Copier valeur={v.nom} petit cls="vgn-cop" titre="Copier le nom" />
-              </span>
-              {v.qualite && <i>{v.qualite}</i>}
-              {v.tel && (
-                <span className="ligne">
-                  <span className="l">{v.tel}</span>
-                  <Copier valeur={v.tel} petit cls="vgn-cop" titre="Copier le numéro" />
-                </span>
-              )}
-              {v.email && (
-                <span className="ligne">
-                  <span className="l mail">{v.email}</span>
-                  <Copier valeur={v.email} petit cls="vgn-cop" titre="Copier l'adresse" />
-                </span>
-              )}
-              {/* Les compteurs ouvrent l'onglet qui va avec (#370). */}
-              <span className="cpt">
-                <Link href={`${fiche}?onglet=immeubles`} title="Ses immeubles">
-                  <svg viewBox="0 0 24 24" aria-hidden><path d="M5 2h11v19h3v2H4v-2h1z" /></svg>
-                  {v.immeubles} immeuble{v.immeubles > 1 ? "s" : ""}
-                </Link>
-                <Link href={`${fiche}?onglet=recherches`} title="Ses recherches">
-                  <svg viewBox="0 0 24 24" aria-hidden><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
-                  {v.recherches} recherche{v.recherches > 1 ? "s" : ""}
-                </Link>
-              </span>
-            </span>
-          </span>
+          <CorpsCarte v={v} fiche={fiche} copier />
           <span className="vgn-act">
             <a href={tel ? `tel:${tel}` : undefined} className={tel ? "" : "off"}>
               <svg viewBox="0 0 24 24" aria-hidden><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>

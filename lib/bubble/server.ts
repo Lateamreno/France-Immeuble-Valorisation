@@ -1242,6 +1242,13 @@ export type ListCard = {
   estAgent?: boolean;
   /** Nombres de recherches et d'immeubles rattachés, affichés en pictos. */
   compteurs?: { recherches?: number; immeubles?: number };
+  /** Coordonnées et nom séparés (#401 bis) : la liste des contacts se rend en
+   *  cartes de visite, qui les affichent ligne par ligne — `sub` reste la
+   *  version « tel · e-mail » d'une seule ligne pour les autres listes. */
+  tel?: string;
+  email?: string;
+  prenom?: string;
+  nomFamille?: string;
   /* --- Vignette d'immeuble (retour #122) --- */
   /** Photo principale : « sinon on comprend rien » dans la liste. */
   photoUrl?: string;
@@ -1827,6 +1834,8 @@ export type PropositionLigne = {
   /* Retours #365 et #366 : la carte de la fiche contact porte ce que porte
      celle du BO — les recherches matchées, le dossier envoyé, la relance. */
   refusee: boolean;
+  /** La date du refus (`date_fin`), pour l'écrire dans le cadre rouge (25/09). */
+  refusLe?: string;
   /** Relances coupées à la demande de la personne. */
   stop: boolean;
   /** L'adresse à laquelle le dossier est parti. */
@@ -1913,6 +1922,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         immeuble: undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
         refusee: (st ?? "").startsWith("Refus"),
+        refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
@@ -2131,6 +2141,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         immeuble: im ? { id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined } : undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
         refusee: (st ?? "").startsWith("Refus"),
+        refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
@@ -2403,12 +2414,17 @@ export async function listContactsPage(
     rows: rows.map((c) => {
       const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
       const estAgent = estAgentContact(c);
+      const tel = c.portable_formatted ?? c.portable;
       return {
         id: String(c._id),
         href: `/contact/${c._id}`,
         avatar: initialsOf(c.SUIVI), avatarCouleur: couleurOf(c.SUIVI),
         title: nom || String(c.entreprise_nom ?? "Contact"),
-        sub: [c.portable_formatted ?? c.portable, c.email].filter(Boolean).join(" · ") || undefined,
+        sub: [tel, c.email].filter(Boolean).join(" · ") || undefined,
+        tel: tel ? String(tel) : undefined,
+        email: c.email ? String(c.email) : undefined,
+        prenom: c["prénom"] ? String(c["prénom"]) : undefined,
+        nomFamille: c.nom ? String(c.nom) : undefined,
         qualite: qualiteContact(c),
         estAgent,
         compteurs: { recherches: combien(c.RECHERCHEs), immeubles: combien(c.IMMEUBLES) },

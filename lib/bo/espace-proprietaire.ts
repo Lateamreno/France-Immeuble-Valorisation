@@ -30,6 +30,7 @@ import "server-only";
 import { randomBytes } from "crypto";
 import { getBien } from "@/lib/bubble/server";
 import type { Espace, Piece, VueProprietaire } from "@/lib/bo/espace-modele";
+import type { BienVendeur, PieceClient } from "@/lib/bo/espace-anon";
 
 /* Le vocabulaire partagé vit dans `espace-modele`, qui n'importe rien : un
    composant client peut le lire sans entraîner la clé de service avec lui. */
@@ -209,5 +210,86 @@ export async function vueProprietaire(immeubleId: string): Promise<VueProprietai
       ["En cours", "Contre offre", "Acceptée"].includes(txt(o.Statut))),
     agentNom: b.agentNom,
     agentTel: b.agentTel,
+  };
+}
+
+/* ---------- L'aperçu, côté BO (#382 bis) ---------- */
+
+/**
+ * Ce que le propriétaire verrait sur son espace — construit pour l'agent.
+ *
+ * MAV : « je voulais juste voir un aperçu de ce que le client verra avant de
+ * lui envoyer un lien. » L'espace client, lui, ne se laisse pas visiter : il
+ * n'existe que derrière une session, résolue en base par `ec_mes_immeubles`
+ * et `ec_mes_pieces` (§10 bis). On ne fabrique donc ni lien ni session — on
+ * refait ici, avec la clé de service du BO, EXACTEMENT le calcul de ces deux
+ * fonctions, champ par champ, à partir de l'identifiant du bien. Si l'une
+ * d'elles change de règle, celle-ci doit changer avec — c'est le prix d'un
+ * aperçu qui ne triche pas.
+ *
+ * Même liste blanche que l'espace réel : des compteurs, jamais un nom de
+ * locataire ni d'acquéreur (garde-fou §8.3).
+ */
+export async function apercuVendeur(immeubleId: string): Promise<{
+  bien: BienVendeur | null; pieces: PieceClient[];
+}> {
+  const b = await getBien(immeubleId).catch(() => null);
+  if (!b) return { bien: null, pieces: [] };
+  const im = b.im;
+  const statut = txt(im.Statut);
+
+  /* `ec_mes_immeubles` écarte les biens retirés : le propriétaire ne verrait
+     rien. L'aperçu le dit plutôt que de montrer une page qui n'existe pas. */
+  if (statut === "0 - RETIRé") return { bien: null, pieces: [] };
+
+  /* Le prix que le propriétaire a lui-même arrêté : le dernier espace NON
+     révoqué, comme dans la fonction SQL — pas simplement le plus récent. */
+  const espace = await (async () => {
+    if (!SB_KEY) return null;
+    const p = new URLSearchParams({
+      immeuble_id: `eq.${immeubleId}`, revoque: "is.false",
+      select: "prix_nv,prix_mot", order: "cree_le.desc", limit: "1",
+    });
+    const res = await fetch(`${SB_URL}/rest/v1/fi_espace_proprietaire?${p}`, {
+      headers: entetes(), cache: "no-store",
+    }).catch(() => null);
+    return res?.ok ? ((await res.json()) as Pick<Espace, "prix_nv" | "prix_mot">[])[0] ?? null : null;
+  })();
+
+  const pieces = await (async () => {
+    if (!SB_KEY) return [];
+    const p = new URLSearchParams({
+      immeuble_id: `eq.${immeubleId}`, supprime: "is.false",
+      select: "id,categorie,nom,taille_ko,depose_le", order: "depose_le.desc",
+    });
+    const res = await fetch(`${SB_URL}/rest/v1/fi_piece_proprietaire?${p}`, {
+      headers: entetes(), cache: "no-store",
+    }).catch(() => null);
+    return res?.ok ? ((await res.json()) as PieceClient[]) : [];
+  })();
+
+  const dates = (b.mandats ?? []).map((m) => txt(m.date_signature)).filter(Boolean).sort();
+  const surface = nb(im.fin_surface_carrez);
+
+  return {
+    bien: {
+      id: immeubleId,
+      adresse: [txt(im["adresse_numéro_rue"]), txt(im.adresse_rue)].filter(Boolean).join(" "),
+      ville: [txt(im.adresse_zipcode), txt(im.adresse_ville)].filter(Boolean).join(" "),
+      nbLots: nb(im.nb_lots_tot) ?? 0,
+      surface: surface ?? null,
+      statut,
+      prixAffiche: nb(im.prix_hai) ?? null,
+      prixNv: nb(im.prix_nv) ?? null,
+      honos: nb(im.prix_honos_ttc) ?? null,
+      prixDemande: espace?.prix_nv ?? null,
+      motDemande: espace?.prix_mot ?? null,
+      visites: (b.visites ?? []).filter((v) => txt(v.Statut) === "Effectuée").length,
+      acquereurs: b.propositions?.total ?? 0,
+      offreEnCours: (b.offres ?? []).some((o) =>
+        ["En cours", "Contre offre", "Acceptée"].includes(txt(o.Statut))),
+      mandatSigneLe: dates.length ? dates[dates.length - 1] : null,
+    },
+    pieces,
   };
 }

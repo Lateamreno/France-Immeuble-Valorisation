@@ -252,12 +252,24 @@ function ModaleLots({ mode, nbSel, presentes, typologies, onFermer, onValider }:
       <span className="mlab">
         {mode === "dupliquer" ? `Combien de copies${nbSel > 1 ? " de chaque lot" : ""} ?` : "Nombre de lots"}
       </span>
-      <input
-        className="min" autoFocus inputMode="numeric" value={nombre}
-        onChange={(e) => setNombre(e.target.value.replace(/\D/g, "").slice(0, 3))}
-        onFocus={(e) => e.target.select()}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); valider(); } }}
-      />
+      {/* MAV, 25/09 : « je veux pouvoir rentrer le nombre à la main mais aussi
+          avec un + − ». Les deux : la case reste tapable, les boutons l'encadrent. */}
+      <div className="stepper">
+        <button type="button" aria-label="Un de moins" disabled={(parseInt(nombre, 10) || 1) <= 1}
+          onClick={() => setNombre(String(Math.max(1, (parseInt(nombre, 10) || 1) - 1)))}>−</button>
+        <input
+          className="min" autoFocus inputMode="numeric" value={nombre}
+          onChange={(e) => setNombre(e.target.value.replace(/\D/g, "").slice(0, 3))}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); valider(); }
+            if (e.key === "ArrowUp") { e.preventDefault(); setNombre(String(Math.min(200, (parseInt(nombre, 10) || 0) + 1))); }
+            if (e.key === "ArrowDown") { e.preventDefault(); setNombre(String(Math.max(1, (parseInt(nombre, 10) || 1) - 1))); }
+          }}
+        />
+        <button type="button" aria-label="Un de plus" disabled={(parseInt(nombre, 10) || 0) >= 200}
+          onClick={() => setNombre(String(Math.min(200, (parseInt(nombre, 10) || 0) + 1)))}>+</button>
+      </div>
       <p className="mhint">
         {mode === "dupliquer"
           ? "Les copies reprennent le lot coché — sans son bail ni son locataire — et prennent les numéros suivants."
