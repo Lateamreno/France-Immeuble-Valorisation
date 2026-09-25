@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { ModaleApresRefus } from "@/components/proposition-refus";
@@ -144,6 +144,8 @@ const I = {
      distinguer d'un coup d'œil. Le mégaphone dit l'off-market — on va
      chercher des gens — quand l'antenne dit la vitrine publique. */
   megaphone: <><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1Z" /><path d="M17 9.2a4 4 0 0 1 0 5.6M19.6 6.6a7.7 7.7 0 0 1 0 10.8" /></>,
+  /* Retour #398 — le « € » du cadre or de la page Prix, comme au BO. */
+  euro: <><path d="M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5" /><path d="M4 10.5h8M4 13.5h8" /></>,
 };
 
 /** Sous-onglets repris dans le rail (retour MAV #12) : cliquer sur une
@@ -173,6 +175,11 @@ const SOUS_TOUS: readonly string[] = [
 function Row({ children }: { children: React.ReactNode }) {
   return <div className="frow">{children}</div>;
 }
+
+/* La mémoire d'ouverture de l'estimation (#392) : ce qui est noté dans
+   l'onglet, et qui ne change que par nos propres écritures — rien à écouter. */
+type MemoEst = { mode: EcranEstimation["mode"]; eid?: string };
+const sansAbonnement = () => () => {};
 
 export function BienFiche({
   b, contenu, contenuLabel, contenuIcone, operation, secteur, espace, compteActif, envoiActif, ouvrir, cleEcran,
@@ -234,8 +241,10 @@ export function BienFiche({
       if (ouvrir) setEst(ouvrir);
     } else if (cleVue) {
       /* On vient de quitter l'écran greffé (mandat envoyé, estimation marquée
-         envoyée…) : sans ça, la fiche restait sur un panneau vide. */
+         envoyée…) : sans ça, la fiche restait sur un panneau vide. L'écran
+         est fini : sa mémoire d'ouverture (#392) s'efface avec lui. */
       setEst(null);
+      try { window.sessionStorage.removeItem(`est-ouverte:${String(b.im._id)}`); } catch { /* rien */ }
       setSect(cleVue.startsWith("mandat") ? "mandats" : "estimations");
     }
   }
@@ -244,7 +253,7 @@ export function BienFiche({
    * Ouvre une estimation dans la page. Rien n'est démonté : ce qui est en
    * cours de saisie ailleurs reste en place, et l'URL ne bouge pas.
    */
-  const ouvrirEst = (mode: "reprise" | "lecture", eid: string) => {
+  const ouvrirEst = (mode: "reprise" | "lecture", eid: string, basculer = true) => {
     setChargement(eid);
     setErreurEst(null);
     /* On ne bascule qu'une fois les données là : basculer d'abord laisserait
@@ -253,10 +262,83 @@ export function BienFiche({
       .then((r) => {
         if (!r) { setErreurEst("Estimation introuvable."); return; }
         setEst({ mode, reprise: r.reprise, lecture: r.lecture, ecarts: r.ecarts });
-        setSect("encours");
+        if (basculer) setSect("encours");
       })
       .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
       .finally(() => setChargement(null));
+  };
+
+  /**
+   * L'estimation ouverte survit à une sortie de la fiche (retour #392).
+   *
+   * MAV : « là elle se ferme encore à chaque fois que j'essaye d'aller sur un
+   * autre endroit du BO. J'aimerais que cela reste ouvert en permanence tant
+   * que j'ai pas cliqué sur fermer, de telle façon que je puisse me balader
+   * dans le BO à ma guise et revenir sur le même écran que j'avais laissé. »
+   *
+   * Dans la fiche, l'écran restait monté (#96, #125). Mais aller voir le
+   * dashboard ou un contact démonte la fiche entière : la SAISIE survivait
+   * déjà (lib/memoire.ts), pas le fait que l'estimation était ouverte — on
+   * revenait sur le suivi, et il fallait la rouvrir à la main. On note donc
+   * dans la mémoire de l'onglet QUELLE estimation est ouverte sur ce bien
+   * (neuve, ou laquelle en reprise / lecture), et on la remonte au retour.
+   * Seul « Fermer » l'efface. La saisie, elle, est déjà là.
+   */
+  const cleMemoireEst = `est-ouverte:${String(b.im._id)}`;
+  /* La mémoire se lit côté client seulement : le serveur rend « rien
+     d'ouvert », et le navigateur corrige juste après l'hydratation — c'est
+     exactement ce que `useSyncExternalStore` sait faire sans casser
+     l'hydratation ni poser d'état dans un effet. */
+  const memoEst = useSyncExternalStore(
+    sansAbonnement,
+    () => { try { return window.sessionStorage.getItem(cleMemoireEst); } catch { return null; } },
+    () => null,
+  );
+  /* « Précédent » écrit la rubrique dans l'adresse : elle garde le dernier
+     mot. Sans rubrique demandée, c'est l'estimation qu'on retrouve. */
+  const ecranDansUrl = useDepartUrl<SectionKey | "">("ecran", "", ["", ...SECTIONS]);
+  /* Une reprise ou une lecture se rouvre par le serveur (`ouvrirEst`) : on
+     note laquelle pendant le rendu, l'effet ci-dessous va la chercher. */
+  const [aRouvrir, setARouvrir] = useState<{ mode: "reprise" | "lecture"; eid: string } | null>(null);
+  const [memoVue, setMemoVue] = useState<string | null>(null);
+  if (memoEst !== memoVue) {
+    setMemoVue(memoEst);
+    if (memoEst && !est) {
+      let m: MemoEst | null = null;
+      try { m = JSON.parse(memoEst) as MemoEst; } catch { /* mémoire illisible : on l'ignore */ }
+      if (m) {
+        if (!ecranDansUrl) setSect("encours");
+        if (m.mode === "neuve") setEst({ mode: "neuve" });
+        else if (m.eid) { setChargement(m.eid); setARouvrir({ mode: m.mode, eid: m.eid }); }
+      }
+    }
+  }
+  useEffect(() => {
+    if (!aRouvrir) return;
+    const { mode, eid } = aRouvrir;
+    /* Même chemin que `ouvrirEst`, sans basculer de rubrique : celle-ci a été
+       choisie au rendu, d'après l'adresse. */
+    ouvrirEstimation(eid)
+      .then((r) => {
+        if (!r) { setErreurEst("Estimation introuvable."); return; }
+        setEst({ mode, reprise: r.reprise, lecture: r.lecture, ecarts: r.ecarts });
+      })
+      .catch((e) => setErreurEst(e instanceof Error ? e.message : String(e)))
+      .finally(() => setChargement(null));
+  }, [aRouvrir]);
+  /* On n'écrit que ce qui est ouvert : l'effacement est un geste — « Fermer »
+     — et il se fait là où l'on ferme (`fermerEst`), jamais par défaut. */
+  useEffect(() => {
+    if (!est) return;
+    try {
+      window.sessionStorage.setItem(cleMemoireEst, JSON.stringify(
+        est.mode === "neuve" ? { mode: "neuve" } : { mode: est.mode, eid: est.reprise.id },
+      ));
+    } catch { /* mémoire pleine : l'écran fonctionne, il ne se souviendra pas */ }
+  }, [est, cleMemoireEst]);
+  const fermerEst = () => {
+    setEst(null);
+    try { window.sessionStorage.removeItem(cleMemoireEst); } catch { /* rien à effacer */ }
   };
   /* Le sous-onglet aussi : revenir sur « État locatif » sans revenir sur
      « Baux », c'est encore avoir perdu sa place. Seul celui de la rubrique
@@ -376,7 +458,10 @@ export function BienFiche({
                   secteur={secteur ?? null}
                   envoiActif={envoiActif}
                   reprise={est.mode === "neuve" ? undefined : est.reprise}
-                  onFermer={() => { setEst(null); if (sect === "encours") setSect("estimations"); }}
+                  onFermer={() => { fermerEst(); if (sect === "encours") setSect("estimations"); }}
+                  /* #395 — un manque du dossier renvoie à la section qui le
+                     comble ; l'estimation reste montée, on y revient par le rail. */
+                  onAller={(s) => setSect(s)}
                 />
               )}
             </div>
@@ -500,7 +585,7 @@ export function BienFiche({
               </button>
               <button
                 type="button" className="srow2-x" title="Fermer l'estimation"
-                onClick={() => { setEst(null); setSect("estimations"); }}
+                onClick={() => { fermerEst(); setSect("estimations"); }}
               >✕</button>
             </div>
           )}
@@ -1178,7 +1263,11 @@ function PrixSection({ b, espace, tab, onTab }: {
   const courant = tab ?? ONGLETS_PRIX[0].key;
   return (
     <>
-      <SectTitle icon={I.info} title="Description et prix" />
+      {/* Retour #398 — le cadre or ne dit que sur quelle page on est :
+          « € Prix » comme au BO, « Descriptif » sur l'autre onglet. Les
+          chiffres de l'immeuble, eux, descendent dans le résumé de la page. */}
+      <SectTitle icon={courant === "descriptif" ? I.info : I.euro}
+        title={courant === "descriptif" ? "Descriptif" : "Prix"} />
       <div className="fsub-nav">
         {ONGLETS_PRIX.map((o) => (
           <button key={o.key} type="button" className={courant === o.key ? "on" : undefined}

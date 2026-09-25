@@ -448,11 +448,21 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           {/* La présentation du back-office, en tenue de dossier : fond blanc,
               pas de barre de sélection, pas de lignes colorées — seul l'écart
               au secteur porte une couleur (retour #152). */}
+          {/* Retour #393 — « pour le prix retenu ce serait bien qu'on ait les
+              deux prix : actuel avant travaux et potentiel après travaux ; s'il
+              n'y en a qu'un parce que pas de travaux et pas d'écart avec
+              l'actuel, alors le cadre prend toute la place ». Chaque colonne
+              porte donc le prix sur lequel ses ratios sont calculés — le
+              potentiel n'est pas le même prix : il compte les travaux. Un seul
+              cadre s'étire sur toute la largeur (voir dossier.css). */}
           <div className={`dos-bil${d.bilan.identiques ? " seul" : ""}`}>
             <ColonneBilan titre={d.bilan.identiques ? "Au prix retenu" : "Actuel"}
+              prix={d.prix.hai} sous={d.bilan.identiques ? "HAI, sans travaux à prévoir" : "HAI, avant travaux"}
               c={d.bilan.actuel} secteur={d.ref} />
             {!d.bilan.identiques && (
-              <ColonneBilan titre="Potentiel*" c={d.bilan.potentiel} secteur={d.ref} />
+              <ColonneBilan titre="Potentiel*" prix={d.prix.hai + d.travaux}
+                sous={d.travaux > 0 ? `HAI + ${group(d.travaux)} € de travaux` : "HAI, loué en entier"}
+                c={d.bilan.potentiel} secteur={d.ref} />
             )}
           </div>
         </div>
@@ -510,8 +520,13 @@ function LigneBilan({ l, v, e, bon }: { l: string; v: string; e?: number; bon?: 
  * faiblesse (rouge), un prix au m² sous le marché est un argument (vert), un
  * rendement au-dessus du marché aussi.
  */
-function ColonneBilan({ titre, c, secteur }: {
+function ColonneBilan({ titre, prix, sous, c, secteur }: {
   titre: string;
+  /** Le prix de la colonne (#393) : HAI pour l'actuel, travaux compris pour
+   *  le potentiel — c'est lui que les ratios en dessous divisent. */
+  prix: number;
+  /** Ce que ce prix comprend, en petit sous le montant. */
+  sous: string;
   c: { prixM2: number; brut: number; net: number; aem: number };
   /* Surtout pas `ref` : React le confisque comme référence de composant. */
   secteur: { loyer: number; prix: number; renta: number };
@@ -522,6 +537,7 @@ function ColonneBilan({ titre, c, secteur }: {
   return (
     <div className="dos-bil-c">
       <div className="dos-bil-t">{titre}</div>
+      <div className="dos-bil-px"><b>{group(prix)} €</b><i>{sous}</i></div>
       <LigneBilan l="Prix au m²" v={`${group(c.prixM2)} €/m²`} e={ePrix} bon={(ePrix ?? 0) <= 0} />
       <LigneBilan l="Rendement brut" v={`${fr1(c.brut)} %`} e={eRenta} bon={(eRenta ?? 0) >= 0} />
       {/* #167 — le cadre débordait de la page. Le rendement net et le net acte

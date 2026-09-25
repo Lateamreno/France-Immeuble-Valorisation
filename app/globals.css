@@ -7594,3 +7594,273 @@ a.pim:hover { border-color: var(--gold-bo); color: var(--slate); }
 .cfx-duo > .chp.gauche:nth-child(2) .chp-l { flex-basis: 128px; padding-left: 10px; }
 @media (max-width: 900px) { .cfx-duo { grid-template-columns: 1fr; } .cfx-duo > .chp.gauche:nth-child(2) .chp-l { flex-basis: 150px; padding-left: 0; } }
 .cfx-r > label { font-size: 12.5px; font-weight: 600; }
+
+/* ---- #378 : des écritures moins « cheap », des pictos plus francs ----
+   MAV, 25/09 : « les écritures sur tout le BO ne sont pas assez belles, pas
+   assez grasses, notamment dans les boutons ; les pictos doivent être plus
+   gras ». Réglé ici, une fois, pour tout le BO :
+   · Lato existe en 700 mais n'était pas déclaré : le gras du corps de texte
+     était un faux gras dessiné par le navigateur — c'est lui qui fait
+     « cheap » ;
+   · les boutons parlent tous Poppins 600, un demi-point plus grands, avec un
+     soupçon d'espacement ;
+   · les pictos au trait passent à 2 (ils étaient à 1,5–1,8), sauf ceux
+     qui en demandaient déjà davantage. */
+@font-face { font-family: "Lato"; src: url("/fonts/lato-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+body { color: #2f3a45; }
+b, strong { font-weight: 700; }
+button { font-family: var(--font-title); letter-spacing: .01em; }
+.fadd { font-size: 13px; padding: 6px 12px; }
+.ftab { font-size: 13.5px; }
+.savebar-go { font-size: 14px; letter-spacing: .01em; }
+.main svg, .fiche svg, .modal svg, .side svg, .bottbar svg { stroke-width: 2; }
+.main svg[stroke-width], .modal svg[stroke-width] { stroke-width: 2; }
+.lsum .chip, .lsum span, .lband2 .dst { font-weight: 700; }
+.lsum svg, .ltb svg, .ltog svg, .ftab svg, .fadd svg, .pim svg, .cfx-ic svg { stroke-width: 2.2; }
+
+/* ---- #383 : le bouton de validation, vert quand il y a quelque chose à
+   enregistrer, gris quand il n'y a rien ---- */
+.savebar.calme .savebar-go { background: var(--chip); color: var(--gray-txt); opacity: 1; }
+.savebar:not(.calme) .savebar-go:not(:disabled) { background: var(--green); box-shadow: 0 2px 8px rgba(61, 179, 39, .35); }
+.savebar.calme .savebar-x { opacity: .5; }
+
+/* ---- #382 / #384 / #396 / #397 : espace vendeur, charges, état technique ---- */
+
+/* #382 — la ligne « Espace client » de l'espace vendeur : le libellé, puis
+   ses trois gestes sur une rangée (voir, renvoyer un lien, fermer). */
+.espv-cli { margin-top: 10px; padding-top: 10px; border-top: 1px solid #ece5d3; }
+.espv-cli-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.espv-b.ko { color: #a5341f; border-color: #e0bdb4; }
+.espv-b.ko:hover { background: #fdf2ef; }
+
+/* #384 — le bouton « Ajouter une charge » vient après la liste, pas avant. */
+.blor-add.bas { margin: 4px 0 16px; }
+
+/* #396 — les deux boutons de la saisie libre d'un matériau : 28 px, pictos
+   SVG au lieu de caractères, pour qu'on voie ce qu'ils font. */
+.cmp-m .tlibre .min { flex: 1; min-width: 0; }
+.cmp-m .tacts { gap: 4px; }
+.cmp-m .tacts button {
+  width: 28px; height: 28px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.cmp-m .tacts button svg {
+  width: 16px; height: 16px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* #397 — un picto par composant du bâti, trait 2 px, bouts arrondis. */
+.cmp-ic svg { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- #400 : le refus sous la proposition, motif dans le cadre rouge ---- */
+.cfc-refuse { margin-top: 8px; border: 1px solid var(--red); background: #fdf5f5; color: #b3261e; border-radius: 4px; padding: 6px 10px; font-size: 12.5px; }
+.cfc-refuse b { font-family: var(--font-title); font-weight: 700; }
+
+/* ---- #401 : contacts — filtres à gauche, fiches au milieu, barre du bas plus basse ---- */
+.lstx-corps { display: grid; grid-template-columns: 220px minmax(0, 1fr); flex: 1; min-height: 0; }
+.lstx-rail { padding: 16px 14px; border-right: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; gap: 4px; align-self: start; position: sticky; top: 56px; }
+.lstx-rail-t { font-family: var(--font-title); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--gray-txt); margin: 8px 0 4px; }
+.lstx-rail-t:first-child { margin-top: 0; }
+.lstx-f { text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 6px 9px; font-size: 13px; color: var(--slate); cursor: pointer; }
+.lstx-f:hover { background: #f6f6f6; }
+.lstx-f.on { background: var(--slate); color: #fff; }
+.lstx-rail-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.lstx-rail-row .lstx-f { padding: 4px 8px; }
+.lstx-f.cl .note { margin: 0; }
+.lstx-corps .lst-col-simple { max-width: 980px; width: 100%; margin: 0 auto; padding: 14px 24px 0; }
+.lstx-corps .lst-pager { padding: 5px 20px; margin: 10px -24px 0; }
+@media (max-width: 900px) { .lstx-corps { grid-template-columns: 1fr; } .lstx-rail { position: static; border-right: 0; border-bottom: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; } }
+
+/* ---- #392 : l'assistant d'estimation prend toute la largeur de la page ----
+   MAV : « déjà l'estimation doit prendre toute la page ». Le plafond de
+   1 000 px posé au #99 laissait une colonne étroite dans une fiche en mode
+   large ; il saute. La persistance entre pages, elle, est dans bien-fiche.tsx. */
+.est { max-width: none; }
+
+/* ---- #395 : ce qui manque au dossier, vérifié à l'étape PDF ---- */
+.est-manq-ok {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 14px;
+  border: 1px solid rgba(61, 179, 39, .45); border-radius: 5px; background: #f4fbf2;
+  padding: 9px 12px; font-size: 13px; font-weight: 600; color: var(--green);
+}
+.est-manqs { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.est-manq {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 8px 12px;
+}
+.est-manq.bloq { border-color: rgba(220, 38, 38, .45); background: #fff8f7; }
+.est-manq-ic {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--font-title); font-weight: 700; font-size: 12px;
+  background: var(--chip); color: var(--slate-2);
+}
+.est-manq.bloq .est-manq-ic { background: var(--red); color: #fff; }
+.est-manq-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.est-manq-t b { font-size: 13px; color: var(--slate); }
+.est-manq-t i { font-style: normal; font-size: 11.5px; color: var(--gray-txt); }
+.est-manq-act { display: flex; align-items: center; gap: 8px; flex: none; }
+.est-manq-lien {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font-size: 12px; color: var(--gray-txt); text-decoration: underline;
+}
+.est-manq-lien:hover { color: var(--slate); }
+
+/* ---- #398 : la page Prix resserrée au centre, avec son résumé ----
+   MAV : « sur le BO actuel elle ne prend pas toute la largeur, ce qui facilite
+   la lecture, elle est cantonnée au milieu ». 760 px, comme la capture. Le
+   résumé de l'immeuble remplace les pastilles du cadre or : six chiffres en
+   tuiles, puis le détail par destination dans le même cadre. */
+.px-page { max-width: 760px; margin: 0 auto; }
+.px-res { border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 12px 16px 14px; }
+.px-res-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 12px; }
+.px-res-t { display: flex; flex-direction: column; gap: 2px; padding: 7px 11px; background: var(--chip); border-radius: 4px; }
+.px-res-t span { font-size: 11.5px; color: var(--gray-txt); }
+.px-res-t b { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+.px-res-s {
+  margin: 14px 0 6px; font-family: var(--font-title); font-size: 11px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--gray-txt);
+}
+@media (max-width: 700px) { .px-res-g { grid-template-columns: 1fr 1fr; } }
+
+/* ---- #375 → #381 : l'état locatif de la fiche immeuble (25/09) ---- */
+
+/* #376 — l'interrupteur du BO : un petit rond blanc qui glisse, fond gris
+   foncé quand la destination est sélectionnée, gris clair sinon. L'ancien
+   dessin (anneau creux, point plein) se lisait mal en petit. */
+.sw2 { width: 26px; height: 14px; border: 0; background: #c9ced3; transition: background .12s; }
+.sw2::after {
+  top: 2px; left: 2px; width: 10px; height: 10px;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+.ltog.on .sw2 { background: var(--slate); }
+.ltog.on .sw2::after { background: #fff; left: 14px; }
+
+/* #377 / #381 — les listes du tableau montrent leur flèche, comme dans le
+   BO. Elles restent des <select> : seule la flèche est dessinée par nous,
+   parce que `appearance: none` (nécessaire pour tenir dans la cellule) ôte
+   celle du navigateur. Les trois états sont écrits ensemble : `.lcell:hover`
+   pose un `background` raccourci, qui effacerait l'image. La liste de
+   destination (`.inv`) reste invisible derrière son picto. */
+.ltable.v2 select.lcell:not(.inv),
+.ltable.v2 select.lcell:not(.inv):hover,
+.ltable.v2 select.lcell:not(.inv):focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237a848d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 4px center; background-size: 9px 6px;
+  padding-right: 16px;
+}
+
+/* #379 — la barre du haut : trois vues, le menu Colonnes, puis Charges. */
+.ftabs.lvues { align-items: center; }
+.ftab-sep { width: 1px; height: 18px; background: var(--line); margin: 0 10px; flex: none; }
+.ftab .chev { margin-left: 3px; font-size: 10px; color: var(--gray-txt); }
+.lcol { position: relative; }
+.lcol-menu {
+  position: absolute; top: calc(100% + 2px); left: 0; z-index: 40;
+  display: grid; grid-template-columns: repeat(4, max-content); gap: 10px 24px;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .16); padding: 12px 14px; text-align: left;
+}
+.lcol-g b {
+  display: block; margin-bottom: 4px;
+  font-family: var(--font-title); font-size: 11px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--gray-txt);
+}
+.lcol-g label {
+  display: flex; align-items: center; gap: 7px; padding: 2px 0;
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 400; color: var(--slate);
+  white-space: nowrap; cursor: pointer;
+}
+.lcol-g label.fixe { color: var(--gray-lt); cursor: default; }
+.lcol-g label input { width: 14px; height: 14px; margin: 0; accent-color: var(--gold-bo); }
+@media (max-width: 1100px) { .lcol-menu { grid-template-columns: repeat(2, max-content); } }
+/* Sans les bascules de colonnes à gauche, la synthèse prend la place et les
+   interrupteurs de destination restent à leur taille. */
+.lhead.v3 > .lsum { flex: 1 1 320px; }
+.lhead.v3 > .ldest { flex: none; }
+/* La date d'entrée dans une cellule : la case se plie à la colonne, le
+   calendrier garde sa place à côté. */
+.ltable.v2 .cdate { width: 100%; gap: 4px; }
+.ltable.v2 .cdate .lcell { width: auto !important; min-width: 0; flex: 1 1 0; }
+
+/* #380 — les contrastes de lignes du BO : une ligne sur deux porte un fond,
+   l'autre reste blanche, et plus de filet entre elles — c'est l'alternance
+   qui sépare. L'en-tête garde sa couleur. Le fond est sur la ligne, pas sur
+   les cellules : une ligne modifiée (jaune, en style inline) doit rester
+   jaune. */
+.ltable.v2 tbody tr:nth-child(odd) { background: #f3f3f1; }
+.ltable.v2 tbody tr:nth-child(even) { background: #fff; }
+.ltable.v2 tbody td { border-bottom: 0; }
+/* La deuxième ligne de l'en-tête se collait à 30 px alors que la première en
+   fait 26 : un jour de quelques pixels s'ouvrait entre les deux dès qu'on
+   défilait. La première ligne prend une hauteur fixe, la seconde s'y colle. */
+.ltable.v2 thead tr:first-child th { height: 28px; box-sizing: border-box; }
+.ltable.v2 thead tr:last-child th { top: 28px; }
+
+/* ---- #386 / #387 / #388 : points d'intérêt en deux colonnes, saisie en place ----
+   Deux colonnes explicites dans l'ordre du BO (gare, bus, route | école,
+   commerce, autre). Plus de panneau : le nom, la durée, le moyen et le type
+   se remplissent sur la vignette ; au survol, chaque case montre qu'elle en
+   est une — la durée jaunit, comme dans le BO. */
+.poi-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.poi.place .poi-l { cursor: default; }
+.poi.place .poi-l:hover { background: #fff; }
+.poi.place .poi-l:hover .poi-nom { box-shadow: inset 0 0 0 1px var(--line); background: #fff; }
+.poi.place .poi-nom:focus { box-shadow: inset 0 0 0 1px var(--gold-bo); }
+.poi-sub { display: flex; align-items: center; gap: 4px; margin-top: 1px; }
+.poi-sel {
+  appearance: none; border: 1px solid transparent; border-radius: 3px; background: none;
+  margin-left: -4px; padding: 1px 16px 1px 4px; font: inherit; font-size: 12.5px;
+  color: var(--gray-lt); cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--gray-lt) 50%),
+                    linear-gradient(135deg, var(--gray-lt) 50%, transparent 50%);
+  background-position: right 7px center, right 4px center;
+  background-size: 3.5px 3.5px, 3.5px 3.5px;
+  background-repeat: no-repeat;
+}
+.poi.place .poi-l:hover .poi-sel, .poi-sel:focus { border-color: var(--line); color: var(--slate-2); outline: 0; background-color: #fff; }
+.poi.place .poi-min { display: inline-flex; align-items: baseline; gap: 3px; flex: none; }
+.poi.place .poi-min i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
+.poi-min-in {
+  width: 46px; border: 1px solid transparent; border-radius: 4px; background: none;
+  padding: 2px 5px; text-align: right;
+  font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate);
+}
+.poi-min-in::placeholder { color: var(--gray-lt); font-weight: 400; }
+.poi.place .poi-l:hover .poi-min-in, .poi-min-in:focus { background: #fff8c9; border-color: #e6cd58; outline: 0; }
+.poi-go {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none;
+  border-radius: 4px; color: var(--gray-lt); opacity: 0; transition: opacity .12s;
+}
+.poi.place .poi-l:hover .poi-go, .poi-go:focus { opacity: 1; }
+.poi-go svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.poi-go:hover { color: var(--gold-bo); background: #fbf7f0; }
+.poi-x { flex: none; margin-right: -6px; }
+.poi-sugg { padding: 0 16px 12px; }
+.poi-add { margin-top: 10px; }
+/* #389 — tension locative proposée par LOCservice : cadre ambre, comme un
+   repère de secteur, jusqu'à l'enregistrement. */
+.ville-c .v.sel.propose { border-color: #d9a441; background-color: #fffdf6; color: var(--slate); }
+.ville-note { font-size: 11px; color: #a9741a; }
+
+/* ---- #390 / #391 : la vignette de destination se clique, et dit si elle est vérifiée ----
+   Plus de bouton Modifier : toute la vignette ouvre la fenêtre. Rouge tant
+   qu'un agent n'a pas confirmé ou modifié les chiffres, vert ensuite ; les
+   chiffres venus d'un repère automatique sont ambrés, à l'image du champ
+   « repère » de la fenêtre. */
+.sect-vg.cliquable { cursor: pointer; transition: box-shadow .12s; }
+.sect-vg.cliquable:hover { box-shadow: 0 1px 8px rgba(0, 0, 0, .09); }
+.sect-vg.cliquable:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 1px; }
+.sect-vg.manque { border-color: var(--red); background: #fff8f8; }
+.sect-vg.manque .sv-h b { color: var(--red); }
+.sect-vg.ok { border-color: var(--green); }
+.sect-vg .sv-l b.repere { color: #a9741a; }
+.sect-vg .sv-f { justify-content: space-between; align-items: center; gap: 8px; }
+.sv-etat { font-size: 11.5px; color: var(--gray-txt); }
+.sect-vg.manque .sv-etat { color: var(--red); }
+.sect-vg.ok .sv-etat { color: var(--green); font-weight: 700; }
+.sv-ok {
+  flex: none; border: 1px solid var(--green); background: var(--green); color: #fff; border-radius: 4px;
+  padding: 5px 11px; font-family: var(--font-title); font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.sv-ok:hover { background: #35a121; }
+.sv-ok:disabled { opacity: .5; cursor: default; }

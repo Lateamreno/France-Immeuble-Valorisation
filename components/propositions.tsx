@@ -186,7 +186,9 @@ export function CarteProposition({
       <div className="cfc-c">
         <div className="cfc-l1">
           <span className="cfc-t">{p.quand}</span>
-          {p.statut && <PastilleStatut statut={p.statut} />}
+          {/* Retour #400 : une proposition refusée le dit EN DESSOUS, dans un
+              cadre rouge qui porte le motif — comme le BO. */}
+          {p.statut && !p.refusee && <PastilleStatut statut={p.statut} />}
           <span style={{ flex: 1 }} />
           {/* #366 — les recherches matchées : un clic ouvre la recherche. */}
           {p.recherches.map((r) => (
@@ -205,7 +207,7 @@ export function CarteProposition({
           )}
         </div>
         <div className="cfc-l2">
-          {p.motif && <span className="cfc-motif">✕ {p.motif}</span>}
+          {p.motif && !p.refusee && <span className="cfc-motif">✕ {p.motif}</span>}
           {p.relanceLe
             ? <span className="cfc-num">Relancé le {p.relanceLe}</span>
             : ouverte && <span className="cfc-num off">Jamais relancé</span>}
@@ -270,6 +272,12 @@ export function CarteProposition({
             </button>
           )}
         </div>
+        {p.refusee && (
+          <div className="cfc-refuse">
+            <b>{p.statut || "Refusée"}</b>
+            {p.motif && <span> — {p.motif}</span>}
+          </div>
+        )}
         {refus && ouverte && (
           <div className="cfc-refus">
             <input className="min" value={motif} autoFocus placeholder="Pourquoi il refuse — ex. : pas de résidentiel, trop cher, secteur"

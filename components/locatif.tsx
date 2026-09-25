@@ -1,379 +1,27 @@
 "use client";
 
-// État locatif — sous-onglets Lots · Baux · Locataires · Charges (réplique BO)
-// avec bandeau de synthèse par destination.
+// État locatif — le tableau des lots (avec ses vues Baux et Locataires,
+// retour #379) et l'onglet Charges, avec bandeau de synthèse par destination.
+//
+// Les anciens onglets Baux et Locataires vivaient ici, avec leur propre
+// tableau et leur propre barre d'enregistrement. Ils sont devenus des VUES du
+// tableau des lots (components/lots-editor.tsx) : mêmes colonnes, même
+// enregistrement, une seule barre. MAV : « de cette façon j'ai accès aux infos
+// totales du bien en cliquant sur ce dont j'ai besoin ».
 import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros, S } from "@/lib/format";
-import { LotsEditor } from "@/components/lots-editor";
+import { LotsEditor, MenuColonnes, useVueLocatif, VUES_LISTE } from "@/components/lots-editor";
 import { Modale, useQuestion } from "@/components/modale";
-import {
-  addCharge, addLocataire, bailDuLot,
-  deleteCharge, updateCharge, updateLocataire,
-} from "@/lib/bo/actions";
+import { addCharge, deleteCharge, updateCharge } from "@/lib/bo/actions";
 import { useBaseSaisie } from "@/lib/base-saisie";
-import { ChampDate } from "@/components/champ-date";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 
-import { INDICES_BAIL, TAXES, TYPES_BAIL as TYPES_BAIL_ALL, TYPES_CHARGE } from "@/lib/referentiels";
-
-// Un bail ne peut pas être « Vide » / « n.c. » (ce sont des états de lot).
-const TYPES_BAIL = TYPES_BAIL_ALL.filter((t) => t !== "Vide" && t !== "n.c.");
-const STATUTS_BAIL = [
-  { key: "en_cours", label: "Bail en cours" },
-  { key: "impayes", label: "Impayés" },
-  { key: "preavis", label: "Préavis déposé" },
-  { key: "expulsion", label: "Expulsion en cours" },
-] as const;
+import { TAXES, TYPES_CHARGE } from "@/lib/referentiels";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
-
-
-/* ---------- Baux ---------- */
-
-/** Une ligne de l'onglet Baux, pendant la saisie. */
-type LigneBail = {
-  type: string; loyer: string; dg: string; debut: string;
-  indice: string; i0: string; i1: string;
-  statut: "en_cours" | "impayes" | "preavis" | "expulsion";
-  commentaire: string;
-};
-const VIDE_BAIL: LigneBail = {
-  type: "", loyer: "", dg: "", debut: "", indice: "", i0: "", i1: "",
-  statut: "en_cours", commentaire: "",
-};
-
-/**
- * Le rappel d'un lot, sous son numéro (retours #259, #260).
- *
- * MAV : « il faut qu'on puisse mettre le numéro de lot, mais du coup ça nous
- * montre les informations principales sur le lot — étage, type, surface et
- * loyer — pour que ce soit plus facile » ; et « pour les lots, soit au survol
- * on voit l'étage, le type, la surface et le loyer ». Un numéro seul ne dit
- * pas de quel appartement on parle : il faut rouvrir l'état locatif pour le
- * savoir, et on ne le fait pas.
- */
-function RappelLot({ l }: { l: Record<string, unknown> }) {
-  const surface = num(l.surface_carrez);
-  const loyer = num(l.loyer);
-  const bouts = [
-    S(l.etage) ? `${S(l.etage)}ᵉ étage` : "",
-    S(l.Type_lot) || S(l.Destination),
-    surface ? `${Math.round(surface)} m²` : "",
-    loyer ? `${euros(loyer)}/mois` : "",
-  ].filter(Boolean);
-  return (
-    <span className="lot-rap" title={bouts.join(" · ")}>
-      <b>Lot {S(l.numero) || "?"}</b>
-      {bouts.length > 0 && <i>{bouts.join(" · ")}</i>}
-    </span>
-  );
-}
-
-/**
- * L'onglet Baux — une ligne par lot, qu'il ait ou non un bail en base.
- *
- * MAV : « je pense que chaque bail devrait être créé automatiquement ici, au
- * moins la ligne, et du coup pas besoin de sélectionner le lot ». Un lot loué a
- * un bail : demander de le créer, puis de le rattacher à son lot dans une
- * seconde fenêtre, c'est demander deux fois la même chose. L'écran montre donc
- * les lots ; la première saisie fait exister le bail en base.
- *
- * Comme partout ailleurs, la saisie se fait sur la ligne et UNE seule barre
- * enregistre le tout (retours #264/#265).
- */
-function BauxTab({ b }: { b: BienData }) {
-  const immeubleId = String(b.im._id);
-  const [pending, start] = useTransition();
-
-  /* Les lots réellement occupés d'abord : c'est là qu'il y a un bail. Un lot
-     vide garde sa ligne — un bail peut se préparer avant l'entrée. */
-  const lots = [...b.lots].sort((x, y) => (num(x.ordre) ?? 0) - (num(y.ordre) ?? 0));
-  const bailDe = (lotId: string) =>
-    b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
-
-  const depart = () =>
-    Object.fromEntries(lots.map((l) => {
-      const bl = bailDe(String(l._id));
-      return [String(l._id), {
-        type: S(bl?.Type_bail) || S(l.Type_bail),
-        loyer: S(num(bl?.loyer_init) ?? num(l.loyer)),
-        dg: S(num(bl?.depot_garantie)),
-        debut: typeof bl?.date_start === "string" ? (bl.date_start as string).slice(0, 10) : "",
-        indice: S(bl?.indice_type),
-        i0: S(num(bl?.indice_init)),
-        i1: S(num(bl?.indice_actuel)),
-        statut: bl?.expulsion === true ? "expulsion"
-          : bl?.impayes === true ? "impayes"
-          : bl?.preavis === true ? "preavis" : "en_cours",
-        commentaire: S(bl?.commentaire),
-      } as LigneBail];
-    }));
-
-  const [saisie, setSaisie] = useState<Record<string, LigneBail>>(depart);
-  const maj = (id: string, v: Partial<LigneBail>) =>
-    setSaisie((s) => ({ ...s, [id]: { ...s[id], ...v } }));
-
-  const { avant: enBase, modifie, poser } = useBaseSaisie(saisie);
-
-  const enregistrer = () =>
-    start(async () => {
-      const avant = enBase();
-      for (const l of lots) {
-        const id = String(l._id);
-        const v = saisie[id];
-        const a = avant[id];
-        if (!v || (a && JSON.stringify(a) === JSON.stringify(v))) continue;
-        await bailDuLot(immeubleId, id, {
-          Type_bail: v.type || null,
-          loyer_init: v.loyer.trim() === "" ? null : parse(v.loyer),
-          depot_garantie: v.dg.trim() === "" ? null : parse(v.dg),
-          date_start: v.debut || null,
-          indice_type: v.indice || null,
-          indice_init: v.i0.trim() === "" ? null : parse(v.i0),
-          indice_actuel: v.i1.trim() === "" ? null : parse(v.i1),
-          statut: v.statut,
-          commentaire: v.commentaire || null,
-        });
-      }
-      poser(saisie);
-    });
-
-  const annuler = () => setSaisie(enBase());
-
-  const n = (f: string) => b.baux.filter((x) => x[f] === true).length;
-
-  return (
-    <>
-      <div className="lband2">
-        <span className="dst">{n("activ")} actifs · {n("impayes")} impayés · {n("expulsion")} expulsions · {n("preavis")} préavis</span>
-        <span className="sp" style={{ flex: 1 }} />
-      </div>
-      {lots.length === 0 ? (
-        <div className="fempty">Aucun lot saisi — les baux se rattachent aux lots.</div>
-      ) : (
-        <div className="ltable-wrap" style={pending ? { opacity: 0.6 } : undefined}>
-          <table className="ltable bx">
-            <thead>
-              <tr>
-                <th>Lot</th><th>Type</th><th>Loyer initial</th><th>Dépôt de garantie</th>
-                <th>Entrée</th><th>Indice</th><th>Valeur signature</th><th>Valeur actuelle</th>
-                <th>Loyer révisé</th><th>Statut</th><th>Commentaire</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((l) => {
-                const id = String(l._id);
-                const v = saisie[id] ?? VIDE_BAIL;
-                const li = parse(v.loyer), i0 = parse(v.i0), i1 = parse(v.i1);
-                const revise = li && i0 && i1 && i0 > 0 ? Math.round((li * i1) / i0) : undefined;
-                return (
-                  <tr key={id}>
-                    <td><RappelLot l={l} /></td>
-                    <td>
-                      <select className="lcell" value={v.type} onChange={(e) => maj(id, { type: e.target.value })}>
-                        <option value="" />
-                        {[...new Set([v.type, ...TYPES_BAIL])].filter(Boolean).map((t) => <option key={t}>{t}</option>)}
-                      </select>
-                    </td>
-                    <td className="na"><input className="lcell num" value={v.loyer} onChange={(e) => maj(id, { loyer: e.target.value })} /><i>€</i></td>
-                    <td className="na"><input className="lcell num" value={v.dg} onChange={(e) => maj(id, { dg: e.target.value })} /><i>€</i></td>
-                    <td><ChampDate classe="lcell" valeur={v.debut} onChange={(d) => maj(id, { debut: d })} /></td>
-                    <td>
-                      <select className="lcell" value={v.indice} onChange={(e) => maj(id, { indice: e.target.value })}>
-                        <option value="" />
-                        {INDICES_BAIL.map((i) => <option key={i}>{i}</option>)}
-                      </select>
-                    </td>
-                    <td className="na"><input className="lcell num" value={v.i0} onChange={(e) => maj(id, { i0: e.target.value })} /></td>
-                    <td className="na"><input className="lcell num" value={v.i1} onChange={(e) => maj(id, { i1: e.target.value })} /></td>
-                    {/* Déduit des trois précédents : le laisser saisir, c'est
-                        laisser entrer une incohérence. */}
-                    <td className="na">{revise !== undefined ? euros(revise) : <span className="nc">—</span>}</td>
-                    <td>
-                      <select className="lcell" value={v.statut}
-                        onChange={(e) => maj(id, { statut: e.target.value as LigneBail["statut"] })}>
-                        {STATUTS_BAIL.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                      </select>
-                    </td>
-                    <td><input className="lcell" value={v.commentaire} onChange={(e) => maj(id, { commentaire: e.target.value })} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} onAnnuler={annuler} />
-    </>
-  );
-}
-
-/* ---------- Locataires ---------- */
-
-/** Une ligne de l'onglet Locataires, pendant la saisie. */
-type LigneLoc = {
-  pm: boolean; civ: string; prenom: string; nom: string;
-  phone: string; email: string; commentaire: string;
-};
-const VIDE_LOC: LigneLoc = {
-  pm: false, civ: "", prenom: "", nom: "", phone: "", email: "", commentaire: "",
-};
-
-/**
- * L'onglet Locataires — une ligne par lot, modifiable sur place (retour #259).
- *
- * MAV : « quand on crée un locataire, il faut qu'on puisse modifier ici
- * directement dans le tableau, avec le bouton enregistrer ou annuler — la
- * barre collée en bas qu'il y a partout. » Et : « je pense que chaque
- * locataire devrait être créé automatiquement ici, au moins la ligne. »
- *
- * Le locataire créé depuis l'état locatif n'a qu'un nom, saisi d'un bloc
- * (retour #258) : c'est ici qu'on le répartit entre prénom et nom, et qu'on
- * ajoute le téléphone et l'e-mail. Tant que ces deux-là sont vides, le
- * locataire reste une ligne de l'immeuble et ne devient pas un contact —
- * « quand on remplit les infos e-mail, téléphone, etc., ça les crée en contact
- * après, mais tant que ces infos sont pas remplies alors c'est pas besoin ».
- */
-function LocatairesTab({ b }: { b: BienData }) {
-  const immeubleId = String(b.im._id);
-  const [pending, start] = useTransition();
-
-  const lots = [...b.lots].sort((x, y) => (num(x.ordre) ?? 0) - (num(y.ordre) ?? 0));
-  const locDe = (lotId: string) =>
-    b.locataires.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
-
-  const depart = () =>
-    Object.fromEntries(lots.map((l) => {
-      const lc = locDe(String(l._id));
-      return [String(l._id), {
-        pm: lc?.pm === true,
-        civ: S(lc?.["pp_civilité"]),
-        prenom: S(lc?.["pp_prénom"]),
-        nom: lc?.pm === true ? S(lc?.pm_nom) : S(lc?.pp_nom),
-        phone: S(lc?.phone),
-        email: S(lc?.email),
-        commentaire: S(lc?.commentaire),
-      } as LigneLoc];
-    }));
-
-  const [saisie, setSaisie] = useState<Record<string, LigneLoc>>(depart);
-  const maj = (id: string, v: Partial<LigneLoc>) =>
-    setSaisie((s) => ({ ...s, [id]: { ...s[id], ...v } }));
-
-  const { avant: enBase, modifie, poser } = useBaseSaisie(saisie);
-
-  const enregistrer = () =>
-    start(async () => {
-      const avant = enBase();
-      for (const l of lots) {
-        const id = String(l._id);
-        const v = saisie[id];
-        const a = avant[id];
-        if (!v || (a && JSON.stringify(a) === JSON.stringify(v))) continue;
-        const lc = locDe(id);
-        const patch = {
-          pm: v.pm,
-          pm_nom: v.pm ? (v.nom || null) : null,
-          pp_civilite: v.pm ? null : (v.civ || null),
-          pp_prenom: v.pm ? null : (v.prenom || null),
-          pp_nom: v.pm ? null : (v.nom || null),
-          phone: v.phone || null,
-          email: v.email || null,
-          commentaire: v.commentaire || null,
-        };
-        if (lc) await updateLocataire(immeubleId, String(lc._id), patch);
-        else if (v.nom.trim()) {
-          await addLocataire(immeubleId, {
-            pm: v.pm,
-            pm_nom: v.pm ? v.nom : undefined,
-            pp_civilite: v.pm ? undefined : v.civ || undefined,
-            pp_prenom: v.pm ? undefined : v.prenom || undefined,
-            pp_nom: v.pm ? undefined : v.nom,
-            phone: v.phone || undefined,
-            email: v.email || undefined,
-            lotIds: [id],
-            commentaire: v.commentaire || undefined,
-          });
-        }
-      }
-      poser(saisie);
-    });
-
-  const annuler = () => setSaisie(enBase());
-
-  const pp = b.locataires.filter((l) => l.pm !== true).length;
-  const pm = b.locataires.length - pp;
-
-  return (
-    <>
-      <div className="lband2">
-        <span className="dst">{pp} personne{pp > 1 ? "s" : ""} physique{pp > 1 ? "s" : ""} · {pm} personne{pm > 1 ? "s" : ""} morale{pm > 1 ? "s" : ""}</span>
-        <span className="sp" style={{ flex: 1 }} />
-      </div>
-      {lots.length === 0 ? (
-        <div className="fempty">Aucun lot saisi — les locataires se rattachent aux lots.</div>
-      ) : (
-        <div className="ltable-wrap" style={pending ? { opacity: 0.6 } : undefined}>
-          <table className="ltable bx">
-            <thead>
-              <tr>
-                <th>Lot</th><th>Type</th><th>Civilité</th><th>Prénom</th><th>Nom</th>
-                <th>Téléphone</th><th>E-mail</th><th>Commentaire</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((l) => {
-                const id = String(l._id);
-                const v = saisie[id] ?? VIDE_LOC;
-                return (
-                  <tr key={id}>
-                    <td><RappelLot l={l} /></td>
-                    <td>
-                      <select className="lcell" value={v.pm ? "morale" : "physique"}
-                        onChange={(e) => maj(id, { pm: e.target.value === "morale" })}>
-                        <option value="physique">Personne physique</option>
-                        <option value="morale">Personne morale</option>
-                      </select>
-                    </td>
-                    <td>
-                      {/* Une société n'a pas de civilité : la case se tait
-                          plutôt que d'attendre une réponse qui n'existe pas. */}
-                      {v.pm ? <span className="nc">—</span> : (
-                        <select className="lcell" value={v.civ} onChange={(e) => maj(id, { civ: e.target.value })}>
-                          <option value="" /><option>M.</option><option>Mme</option>
-                        </select>
-                      )}
-                    </td>
-                    <td>
-                      {v.pm ? <span className="nc">—</span> : (
-                        <input className="lcell" value={v.prenom} onChange={(e) => maj(id, { prenom: e.target.value })} />
-                      )}
-                    </td>
-                    <td><input className="lcell" value={v.nom} placeholder={v.pm ? "Raison sociale" : "NOM"}
-                      onChange={(e) => maj(id, { nom: e.target.value })} /></td>
-                    <td><input className="lcell" value={v.phone} onChange={(e) => maj(id, { phone: e.target.value })} /></td>
-                    <td><input className="lcell" value={v.email} onChange={(e) => maj(id, { email: e.target.value })} /></td>
-                    <td><input className="lcell" value={v.commentaire} onChange={(e) => maj(id, { commentaire: e.target.value })} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <div style={{ fontSize: 11.5, color: "var(--gray-lt)", marginTop: 8 }}>
-        Un e-mail renseigné crée la fiche contact du locataire, avec le profil « Locataire » —
-        et se rattache à sa fiche si elle existe déjà.
-        <br />
-        RGPD : les noms des locataires restent internes au BO, jamais exposés côté public.
-      </div>
-      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} onAnnuler={annuler} />
-    </>
-  );
-}
 
 /* ---------- Charges ---------- */
 
@@ -390,7 +38,10 @@ const LIGNE_TF = "Taxe Foncière";
  * ligne, et le picto ne sert plus à rien.
  */
 const IC_CHARGE: Record<string, React.ReactNode> = {
-  "Taxe Foncière": <><path d="M4 10.5 12 4l8 6.5" /><path d="M6 10v10h12V10" /><path d="M12 12.5v5M10.3 13.6h3M10.3 16.2h3" /></>,
+  /* Retour #385 — « reproduis le picto de la TF à l'identique, je le trouve
+     beau » : la balance à deux plateaux du BO, trait fin. Le fléau, le pied
+     et sa base, deux plateaux suspendus par leurs fils. */
+  "Taxe Foncière": <><path d="M12 4.2v15.3M8.5 19.5h7" /><circle cx="12" cy="3.6" r="1" /><path d="M4.5 6.6h15" /><path d="m5.5 6.6-2.7 6.6M5.5 6.6l2.7 6.6M2.8 13.2a2.7 2.7 0 0 0 5.4 0" /><path d="m18.5 6.6-2.7 6.6M18.5 6.6l2.7 6.6M15.8 13.2a2.7 2.7 0 0 0 5.4 0" /></>,
   "Taxe Bureau": <><rect x="4" y="3.5" width="16" height="17" rx="1.5" /><path d="M8 7.5h2.5M13.5 7.5H16M8 11h2.5M13.5 11H16M10 20v-4.5h4V20" /></>,
   "Cotisation Foncière des Entreprises": <><rect x="3" y="7.5" width="18" height="12" rx="2" /><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3 12.5h18" /></>,
   CRL: <><path d="M6 3.5h8L18 8v12.5H6z" /><path d="M13.5 3.6V8H18M9 12h6M9 15.5h6M9 19h3.5" /></>,
@@ -702,10 +353,6 @@ function ChargesTab({ b }: { b: BienData }) {
           </span>
         </div>
       </div>
-      <div className="blor-add">
-        <button className="fadd" type="button" onClick={() => setCreation(true)}>+ Ajouter une charge</button>
-      </div>
-
       <div className="fsub">Taxes et impôts</div>
       {lignes.filter((l) => TAXES.has(l.type)).map(rendreLigne)}
 
@@ -713,6 +360,13 @@ function ChargesTab({ b }: { b: BienData }) {
       {autres.length === 0
         ? <div className="fempty">Aucune charge saisie.</div>
         : lignes.filter((l) => !TAXES.has(l.type)).map(rendreLigne)}
+      {/* Retour #384 — « mets le bouton ajouter une charge en dessous de la
+          taxe foncière, sous la partie charges, ça me semble plus logique ».
+          Il coiffait tout l'onglet, au-dessus des taxes qu'on n'ajoute pas :
+          il vient après la liste qu'il allonge. */}
+      <div className="blor-add bas">
+        <button className="fadd" type="button" onClick={() => setCreation(true)}>+ Ajouter une charge</button>
+      </div>
 
       <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={enregistrer} onAnnuler={annuler} />
 
@@ -723,15 +377,25 @@ function ChargesTab({ b }: { b: BienData }) {
   );
 }
 
-/* ---------- Conteneur à sous-onglets ---------- */
+/* ---------- Conteneur : vues du tableau + onglet Charges ---------- */
 
+/* Les sous-onglets repris dans le rail. Baux et Locataires n'y sont plus :
+   ce sont des vues du tableau des lots (#379), pas des écrans. */
 export const ONGLETS_LOCATIF = [
   { key: "lots", label: "Lots" },
-  { key: "baux", label: "Baux" },
-  { key: "locataires", label: "Locataires" },
   { key: "charges", label: "Charges" },
 ] as const;
 
+/**
+ * La barre du haut de l'état locatif (retour #379).
+ *
+ * MAV : « pour les 4 menus en haut on va les fusionner (sauf les charges) et
+ * on va faire en sorte que ce soit juste des boutons à actionner et que ça
+ * change les entrées de l'état locatif ». Trois boutons de VUE sur le même
+ * tableau — État locatif (la base), Baux, Locataires — plus « Colonnes ▾ »
+ * pour composer la sienne ; et Charges, qui reste un onglet à part parce
+ * que ce n'est pas un tableau de lots.
+ */
 export function LocatifTabs({ b, tab: pilote, onTab }: {
   b: BienData;
   /** Onglet piloté depuis le rail (retour #12) ; sinon état interne. */
@@ -741,25 +405,37 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
   const [interne, setInterne] = useState("lots");
   const tab = pilote ?? interne;
   const setTab = (t: string) => { setInterne(t); onTab?.(t); };
-  const tabs = [
-    { key: "lots", label: "Lots", n: b.lots.length },
-    { key: "baux", label: "Baux", n: b.baux.length },
-    { key: "locataires", label: "Locataires", n: b.locataires.length },
-    { key: "charges", label: "Charges", n: b.charges.length },
-  ] as const;
+  /* Tout ce qui n'est pas Charges est le tableau : une ancienne adresse qui
+     demande encore « baux » ou « locataires » y tombe sans casser. */
+  const onglet = tab === "charges" ? "charges" : "lots";
+  const { vue, colonnes, setVue, basculer } = useVueLocatif();
+  const compte: Record<(typeof VUES_LISTE)[number]["key"], number> = {
+    base: b.lots.length, baux: b.baux.length, locataires: b.locataires.length,
+  };
   return (
     <>
-      <div className="ftabs">
-        {tabs.map((t) => (
-          <button key={t.key} type="button" className={`ftab${tab === t.key ? " on" : ""}`} onClick={() => setTab(t.key)}>
-            <Picto nom={t.key} className="ftab-ic" />{t.label}{t.n > 0 ? <span className="n">{t.n}</span> : null}
+      <div className="ftabs lvues">
+        {VUES_LISTE.map((v) => (
+          <button key={v.key} type="button"
+            className={`ftab${onglet === "lots" && vue === v.key ? " on" : ""}`}
+            title={v.key === "base" ? "L'état locatif de base : toutes les informations habituelles" : `Les colonnes du ${v.label.toLowerCase()}`}
+            onClick={() => { setTab("lots"); setVue(v.key); }}>
+            <Picto nom={v.picto} className="ftab-ic" />{v.label}
+            {compte[v.key] > 0 ? <span className="n">{compte[v.key]}</span> : null}
           </button>
         ))}
+        <MenuColonnes colonnes={colonnes} actif={onglet === "lots" && vue === "perso"}
+          onBasculer={(c) => { setTab("lots"); basculer(c); }} />
+        <span className="ftab-sep" aria-hidden />
+        <button type="button" className={`ftab${onglet === "charges" ? " on" : ""}`} onClick={() => setTab("charges")}>
+          <Picto nom="charges" className="ftab-ic" />Charges
+          {b.charges.length > 0 ? <span className="n">{b.charges.length}</span> : null}
+        </button>
       </div>
-      {tab === "lots" && <LotsEditor key={`${String(b.im.app_modified ?? "")}-${b.lots.length}`} b={b} />}
-      {tab === "baux" && <BauxTab b={b} />}
-      {tab === "locataires" && <LocatairesTab b={b} />}
-      {tab === "charges" && <ChargesTab b={b} />}
+      {onglet === "lots" && (
+        <LotsEditor key={`${String(b.im.app_modified ?? "")}-${b.lots.length}`} b={b} colonnes={colonnes} />
+      )}
+      {onglet === "charges" && <ChargesTab b={b} />}
     </>
   );
 }

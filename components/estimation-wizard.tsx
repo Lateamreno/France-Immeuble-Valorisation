@@ -5,7 +5,7 @@
 // arbitrer le prix et rédiger la justification devant les mêmes chiffres.
 // Tout est servi par l'état locatif et la fiche secteur ; ce qui manque porte
 // un point d'exclamation rouge. Le prix est figé à la génération.
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,7 +19,7 @@ import { EditSecteurBtn } from "@/components/emplacement";
 import { comparerEstimation, type Ecart } from "@/lib/bo/estimation-ecarts";
 import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
-  supprimerEstimation, updateEmplacement, type EstimationPayload,
+  supprimerEstimation, updateEmplacement, uploadPhoto, type EstimationPayload,
 } from "@/lib/bo/actions";
 import { ouvrirEspace } from "@/lib/bo/espace-actions";
 import { MOYENS } from "@/lib/bo/itineraire";
@@ -173,6 +173,38 @@ const Ko = () => <span className="est-ko" title="Information manquante — allez
 const Etat = ({ ok }: { ok: boolean }) => (ok ? <Ok /> : <Ko />);
 
 /**
+ * Les photos qui ne peuvent PAS faire la couverture du dossier (retour #395).
+ *
+ * La capture Street View (« Vue de rue ») est prise pour repérer l'immeuble,
+ * pas pour le vendre — Google interdit de la réutiliser dans un document
+ * commercial, et la liste des manques du dossier de vente la signale déjà.
+ * Le cadastre et la carte sont des pièces de travail. Le dossier prenait
+ * pourtant `photos[0]` sans regarder : sur une fiche sans vraie photo, c'est
+ * la façade Google (rangée en dernier, mais seule) qui partait en couverture.
+ */
+const HORS_COUVERTURE = new Set(["Vue de rue", "Cadastre", "Carte"]);
+
+/** Ce qui manque au dossier, et comment le combler (retour #395). */
+type ManqueDossier = {
+  cle: string;
+  /** Ce qui manque, en clair. */
+  libelle: string;
+  /** Où le blanc se verrait dans le dossier. */
+  ou: string;
+  /** Vrai : le dossier ne se génère pas tant que ça manque. */
+  bloquant: boolean;
+  /** Comment le combler : une étape de l'assistant, une section de la fiche,
+   *  ou le dépôt d'une photo sur place. Rien quand la case est sous les yeux. */
+  action?:
+    | { etape: number; label: string }
+    | { section: SectionFiche; label: string }
+    | { photo: true };
+};
+
+/** Les sections de la fiche vers lesquelles un manque peut renvoyer. */
+export type SectionFiche = "photos" | "locatif" | "emplacement";
+
+/**
  * Une estimation déjà faite, qu'on rouvre pour l'envoyer (retour #98).
  *
  * MAV : « Si j'ai des estimations à envoyer il faut que je puisse les envoyer
@@ -201,7 +233,7 @@ export type RepriseEstimation = {
 };
 
 export function EstimationWizard({
-  b, secteur, envoiActif, reprise, onFermer,
+  b, secteur, envoiActif, reprise, onFermer, onAller,
 }: {
   b: BienData;
   secteur: Record<string, unknown> | null;
@@ -212,6 +244,9 @@ export function EstimationWizard({
   /** #159 — l'écran ne se referme plus tout seul : il faut le dire. La
    *  saisie reste en mémoire, rouvrir la retrouve intacte. */
   onFermer?: () => void;
+  /** #395 — ouvre une section de la fiche pour combler un manque (l'écran
+   *  reste monté : on y revient par le rail). */
+  onAller?: (section: SectionFiche) => void;
 }) {
   const router = useRouter();
   const im = b.im;
@@ -555,6 +590,144 @@ export function EstimationWizard({
         estId ? "ok" : "lock",
       ];
 
+  /**
+   * Ce qui manque au dossier, ligne par ligne (retour #395).
+   *
+   * MAV : « on devrait pas me laisser faire d'estimation s'il manque des
+   * éléments pour le faire. S'il me manque la photo on devrait me le dire à
+   * l'étape juste avant générer l'estimation et me proposer de déposer une
+   * photo. Pareil s'il manque la moindre information nécessaire qui ferait un
+   * blanc dans le dossier d'estimation. »
+   *
+   * La liste suit les six pages du dossier (components/dossier-estimation.tsx) :
+   * chaque ligne dit ce qui manque, où le blanc se verrait, et porte l'action
+   * qui le comble. Bloquant = le dossier aurait un trou ; non bloquant = il
+   * sort, mais avec un « n.c. » ou un zéro qu'il vaut mieux avoir vu venir.
+   */
+  const photoCouverture = b.photos.find((p) => p.type === "Principale" && p.url)
+    ?? b.photos.find((p) => !!p.url && !HORS_COUVERTURE.has(p.type ?? ""));
+  /* Une douzaine de tests : ça se recalcule à chaque rendu sans mémo. */
+  const manquesDossier = ((): ManqueDossier[] => {
+    const out: ManqueDossier[] = [];
+    if (!photoCouverture) {
+      out.push({
+        cle: "photo", libelle: "La photo principale de l'immeuble", ou: "couverture",
+        bloquant: true, action: { photo: true },
+      });
+    }
+    if (!okAdresse) {
+      out.push({
+        cle: "adresse", libelle: "L'adresse de l'immeuble (rue et ville)", ou: "couverture",
+        bloquant: true, action: { section: "emplacement", label: "Ouvrir Emplacement" },
+      });
+    }
+    if (agg.tot === 0) {
+      out.push({
+        cle: "lots", libelle: "L'état locatif est vide", ou: "page 2, loyers actuels",
+        bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
+      });
+    } else {
+      /* Une surface absente n'est pas un trou : le dossier écrit « n.c. » et
+         estime au revenu (les murs d'un hôtel). On prévient, sans bloquer. */
+      if (agg.carrez <= 0) {
+        out.push({
+          cle: "surface", libelle: "Aucune surface Carrez sur les lots", ou: "couverture et page 4 — « n.c. », pas de méthode au m²",
+          bloquant: false, action: { section: "locatif", label: "Ouvrir l'état locatif" },
+        });
+      }
+      if (agg.loyersAn <= 0) {
+        out.push({
+          cle: "loyers", libelle: "Aucun loyer saisi", ou: "couverture et page 2 — 0 € de revenus, normal si l'immeuble est vide",
+          bloquant: false, action: { section: "locatif", label: "Ouvrir l'état locatif" },
+        });
+      }
+    }
+    if (!(gareName && gareTime)) {
+      out.push({
+        cle: "gare", libelle: "Les transports les plus proches (nom et temps)", ou: "page 2, qualité de l'emplacement",
+        bloquant: true, action: { etape: 0, label: "Aller à Immeuble" },
+      });
+    }
+    if (!(comName && comTime)) {
+      out.push({
+        cle: "com", libelle: "Les commerces les plus proches (nom et temps)", ou: "page 2, qualité de l'emplacement",
+        bloquant: true, action: { etape: 0, label: "Aller à Immeuble" },
+      });
+    }
+    if (!okCharges) {
+      out.push({
+        cle: "charges", libelle: "La taxe foncière", ou: "page 5, rendement net",
+        bloquant: true, action: { etape: 0, label: "Aller à Immeuble" },
+      });
+    }
+    if (!okSecteur) {
+      out.push({
+        cle: "secteur", libelle: "Les loyers et prix du secteur", ou: "page 4, analyse du secteur",
+        bloquant: true, action: { etape: 1, label: "Aller à Secteur" },
+      });
+    }
+    if (!fondamentauxOk) {
+      out.push({
+        cle: "fondamentaux", libelle: "Les trois notes des fondamentaux", ou: "pages 2 et 5, les étoiles",
+        bloquant: true, action: { etape: 2, label: "Aller à Prix et analyse" },
+      });
+    }
+    if (cibles.length === 0) {
+      out.push({
+        cle: "cibles", libelle: "La cible d'acheteurs", ou: "page 3",
+        bloquant: true, action: { etape: 2, label: "Aller à Prix et analyse" },
+      });
+    }
+    if (hai <= 0) {
+      out.push({
+        cle: "prix", libelle: "Le prix estimé", ou: "page 5",
+        bloquant: true, action: { etape: 2, label: "Aller à Prix et analyse" },
+      });
+    }
+    if (!analyse.trim()) {
+      out.push({
+        cle: "analyse", libelle: "Le texte de l'analyse", ou: "page 5, notre analyse",
+        bloquant: true, action: { etape: 2, label: "Aller à Prix et analyse" },
+      });
+    }
+    if (!titre.trim()) {
+      out.push({ cle: "titre", libelle: "Le titre de l'estimation", ou: "juste au-dessus", bloquant: true });
+    }
+    if (!b.agentNom) {
+      out.push({
+        cle: "agent", libelle: "Aucun agent rattaché au bien", ou: "couverture — « votre contact dédié » dira France Immeuble",
+        bloquant: false,
+      });
+    }
+    return out;
+  })();
+  const manquesBloquants = manquesDossier.filter((m) => m.bloquant);
+
+  /* Le dépôt de la photo principale, sans quitter l'assistant (#395) : même
+     action que l'écran Photos, qui promeut la photo et rafraîchit la fiche —
+     la ligne disparaît d'elle-même une fois la photo arrivée. */
+  const inputPhoto = useRef<HTMLInputElement>(null);
+  const [photoKo, setPhotoKo] = useState<string | null>(null);
+  const [photoEnvoi, setPhotoEnvoi] = useState(false);
+  const deposerPhoto = (f: File | undefined) => {
+    if (!f) return;
+    setPhotoKo(null);
+    setPhotoEnvoi(true);
+    start(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("file", f);
+        const r = await uploadPhoto(immeubleId, "Principale", null, fd);
+        if (!r.ok) setPhotoKo(r.message);
+      } catch (e) {
+        setPhotoKo(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPhotoEnvoi(false);
+        if (inputPhoto.current) inputPhoto.current.value = "";
+      }
+    });
+  };
+
   /* Le dossier d'estimation est déjà en pièce jointe : le proposer une
      seconde fois dans la liste des documents n'aurait pas de sens. */
   const autresDocs = b.documents.filter(
@@ -624,7 +797,8 @@ export function EstimationWizard({
           scores: { emp: String(scores.emp), lot: String(scores.lot), bati: String(scores.bati) },
           cibles,
           analyse: analyse || undefined,
-          photo: b.photos[0]?.url,
+          /* La couverture : la principale, jamais la façade Google (#395). */
+          photo: photoCouverture?.url,
         };
         /* Regénérer, c'est refaire CETTE estimation, pas en ajouter une
            deuxième à l'historique. L'ancienne n'a jamais été envoyée — elle
@@ -1033,11 +1207,17 @@ export function EstimationWizard({
             <div className="est-h" style={{ marginTop: 20 }}>Prix</div>
             <div className="est-sect">Selon le secteur</div>
             <div className="est-meths">
+              {/* Retour #394 — « de gauche à droite : prix au m² actuel et
+                  rendement actuel, prix au m² potentiel et rendement
+                  potentiel ». L'ordre suit la lecture : d'abord ce que
+                  l'immeuble vaut tel qu'il est, puis ce qu'il vaudra travaux
+                  faits et lots reloués. « Max » ne disait pas de quoi il
+                  s'agissait ; « potentiel » est le mot des tableaux d'à côté. */}
               {([
-                ["Rendement", rRenta ? `${fr1(rRenta)} %` : "—", pRendement],
-                ["Rendement max", rRenta ? `${fr1(rRenta)} %` : "—", pRendementMax],
-                ["Prix au m² max", rPrix ? `${group(rPrix)} €/m²` : "—", pM2Max],
-                ["Prix au m²", rPrix ? `${group(rPrix)} €/m²` : "—", pM2],
+                ["Prix au m² actuel", rPrix ? `${group(rPrix)} €/m²` : "—", pM2],
+                ["Rendement actuel", rRenta ? `${fr1(rRenta)} %` : "—", pRendement],
+                ["Prix au m² potentiel", rPrix ? `${group(rPrix)} €/m²` : "—", pM2Max],
+                ["Rendement potentiel", rRenta ? `${fr1(rRenta)} %` : "—", pRendementMax],
               ] as const).map(([label, src, val]) => {
                 const estMini = nbCandidates > 0 && val === mini;
                 const estMaxi = nbCandidates > 0 && val === maxi;
@@ -1145,6 +1325,52 @@ export function EstimationWizard({
             <div className="est-l">
               <Champ label="Agent à afficher" valeur={b.agentInitials} largeur={200} />
             </div>
+
+            {/* Retour #395 — la vérification AVANT de générer : chaque manque
+                est nommé, situé dans le dossier, et porte de quoi le combler.
+                Le bouton reste fermé tant qu'un manque bloquant subsiste. */}
+            <div className="est-sect">Ce qui manque au dossier</div>
+            {manquesDossier.length === 0 ? (
+              <div className="est-manq-ok">✓ Rien ne manque : le dossier sortira sans blanc.</div>
+            ) : (
+              <ul className="est-manqs">
+                {manquesDossier.map((m) => {
+                  const a = m.action;
+                  return (
+                    <li key={m.cle} className={`est-manq${m.bloquant ? " bloq" : ""}`}>
+                      <span className="est-manq-ic">{m.bloquant ? "!" : "i"}</span>
+                      <span className="est-manq-t">
+                        <b>{m.libelle}</b>
+                        <i>{m.bloquant ? "Manque bloquant" : "À vérifier"} · {m.ou}</i>
+                      </span>
+                      {a && "photo" in a && (
+                        <span className="est-manq-act">
+                          <button type="button" className="fadd" disabled={photoEnvoi}
+                            onClick={() => inputPhoto.current?.click()}>
+                            {photoEnvoi ? "Dépôt…" : "Déposer une photo"}
+                          </button>
+                          {onAller && (
+                            <button type="button" className="est-manq-lien" onClick={() => onAller("photos")}>
+                              ou ouvrir Photos
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      {a && "etape" in a && (
+                        <button type="button" className="fadd" onClick={() => allerA(a.etape)}>{a.label}</button>
+                      )}
+                      {a && "section" in a && onAller && (
+                        <button type="button" className="fadd" onClick={() => onAller(a.section)}>{a.label}</button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <input ref={inputPhoto} type="file" accept="image/*,.heic,.heif" hidden
+              onChange={(e) => deposerPhoto(e.target.files?.[0])} />
+            {photoKo && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{photoKo}</div>}
+
             <div className="warnbox">
               {estId
                 ? "Le dossier PDF a déjà été fabriqué. Si vous avez corrigé quelque chose depuis, regénérez-le : c'est le PDF qui part au propriétaire, pas l'écran."
@@ -1154,7 +1380,11 @@ export function EstimationWizard({
             <div className="est-nav">
               <button className="est-prec" type="button" onClick={() => setStep(2)}>↺ Précédent</button>
               <span className="sp" style={{ flex: 1 }} />
-              <button className="est-suiv" type="button" disabled={pending} onClick={generer}>
+              <button className="est-suiv" type="button" disabled={pending || manquesBloquants.length > 0}
+                title={manquesBloquants.length > 0
+                  ? `${manquesBloquants.length} manque${manquesBloquants.length > 1 ? "s bloquants" : " bloquant"} : le dossier aurait des blancs`
+                  : undefined}
+                onClick={generer}>
                 {estId ? "↻ Regénérer le dossier PDF" : "+ Générer l'estimation PDF"}
               </button>
             </div>

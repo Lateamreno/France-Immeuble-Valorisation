@@ -15,7 +15,7 @@ const TAILLES = [10, 25, 50, 100];
 
 export function ListeServeur({
   rows, total, page, taille, q, searchPlaceholder,
-  titre, agents, agent = "",
+  titre, agents, agent = "", note = "",
 }: {
   rows: ListCard[];
   total: number;
@@ -28,6 +28,8 @@ export function ListeServeur({
   /** Sélecteur « suivis par » : présent seulement quand on le passe. */
   agents?: { id: string; name: string }[];
   agent?: string;
+  /** Classe A–D filtrée (#401), quand la colonne de filtres est là. */
+  note?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -70,18 +72,30 @@ export function ListeServeur({
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder={searchPlaceholder} value={saisie} onChange={(e) => setSaisie(e.target.value)} />
         </div>
-        {agents ? (
-          <select className="lstx-agent" value={agent}
-            onChange={(e) => aller({ agent: e.target.value, page: 1 })}>
-            <option value="">Tous les contacts</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>Suivis par {a.name}</option>
-            ))}
-          </select>
-        ) : (
-          <span className="lst-count">{total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}</span>
-        )}
+        <span className="lst-count">{total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}</span>
       </div>
+      {/* Retour #401 : « les contacts sont à gauche, ils ne sont pas dans le
+          champ de vision » — les filtres passent dans une colonne à gauche,
+          les fiches au milieu, la barre du haut reste. */}
+      <div className={agents ? "lstx-corps" : undefined}>
+      {agents && (
+        <aside className="lstx-rail">
+          <div className="lstx-rail-t">Suivis par</div>
+          <button type="button" className={`lstx-f${agent ? "" : " on"}`} onClick={() => aller({ agent: "", page: 1 })}>Tous les contacts</button>
+          {agents.map((a) => (
+            <button key={a.id} type="button" className={`lstx-f${agent === a.id ? " on" : ""}`}
+              onClick={() => aller({ agent: a.id, page: 1 })}>{a.name}</button>
+          ))}
+          <div className="lstx-rail-t">Classe</div>
+          <div className="lstx-rail-row">
+            <button type="button" className={`lstx-f${note ? "" : " on"}`} onClick={() => aller({ note: "", page: 1 })}>Toutes</button>
+            {(["A", "B", "C", "D"] as const).map((n) => (
+              <button key={n} type="button" className={`lstx-f cl${note === n ? " on" : ""}`}
+                onClick={() => aller({ note: n, page: 1 })}><b className={`note n${n}`}>{n}</b></button>
+            ))}
+          </div>
+        </aside>
+      )}
       <div className="lst-col-simple">
 
       {rows.map((r) => {
@@ -168,6 +182,7 @@ export function ListeServeur({
           {TAILLES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <span className="pgl">éléments par page</span>
+      </div>
       </div>
       </div>
     </div>
