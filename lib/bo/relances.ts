@@ -61,7 +61,35 @@ export type PropositionRelance = {
   depuis?: string;
   stop: boolean;
   commentaire?: string;
+  /** L'immeuble n'est plus à la vente (archivé, vendu, retiré) : « Archivé le
+   *  03/03/26 car Mandat périmé ». MAV, 25/09 : « quand on fait l'e-mail pour
+   *  relancer tous les dossiers, ça relance pas les dossiers qui sont plus à
+   *  la vente ». */
+  horsVente?: string;
 };
+
+/**
+ * Pourquoi un immeuble n'est plus à la vente — ou rien s'il l'est encore.
+ *
+ * Dans le BO Bubble un dossier archivé restait « à relancer », en grisé. Ici
+ * l'archivage (mandat périmé, propriétaire parti, immeuble vendu ailleurs…),
+ * la vente et le retrait ferment la proposition : elle se lit, elle ne se
+ * relance plus. La phrase est celle de la fiche contact.
+ */
+export function motifHorsVente(im?: Record<string, unknown>): string | undefined {
+  if (!im) return undefined;
+  const t = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  if (im.archived === true) {
+    const d = t(im.date_archivage);
+    const quand = d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}` : undefined;
+    const motif = t(im.motif_archivage_txt) ?? t(im.Motif_archivage);
+    return `Archivé${quand ? ` le ${quand}` : ""}${motif ? ` car ${motif}` : ""}`;
+  }
+  const st = String(im.Statut ?? "");
+  if (/^11 /.test(st)) return "Vendu";
+  if (/^0 /.test(st)) return "Retiré de la vente";
+  return undefined;
+}
 
 /** L'ancienneté d'une proposition en jours, ou `undefined` si on ne sait pas. */
 export function joursDepuis(iso: string | undefined, maintenant: number): number | undefined {
@@ -91,6 +119,7 @@ export function aRelancer(
   jours = JOURS_RELANCE,
 ): boolean {
   if (p.stop) return false;
+  if (p.horsVente) return false;
   if (STATUTS_CLOS.has(p.statut)) return false;
   if (!p.email) return false;
   const j = joursDepuis(p.depuis, maintenant);

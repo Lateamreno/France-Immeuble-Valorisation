@@ -21,12 +21,17 @@
 import { useState, useTransition } from "react";
 import { deposerPiece } from "@/lib/bo/espace-depot";
 import { poserPrix, retirerPiece } from "@/lib/bo/espace-client-actions";
-import { JALONS, PIECES_DEMANDEES, type Reponse } from "@/lib/bo/espace-modele";
+import { JALONS, PIECES_DEMANDEES, type Reponse, type SecteurImmeuble } from "@/lib/bo/espace-modele";
 import type { BienVendeur, PieceClient } from "@/lib/bo/espace-anon";
+/* Les formules du BO, et elles seules : le propriétaire lit le même loyer au
+   m² et le même rendement que l'agent sur son écran Prix. */
+import { ecart, rendements, type Colonne } from "@/lib/bo/rendements";
 
 const euros = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 const dateFr = (v: string) =>
   new Date(v).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+const fr1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString("fr-FR");
+const entier = (x: number) => Math.round(x).toLocaleString("fr-FR");
 
 const lireMontant = (s: string) => {
   const n = parseFloat(s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
@@ -48,10 +53,15 @@ function jalonDuStatut(statut: string): number {
   return 0;
 }
 
-export function EspaceProprietaire({ immeubleId, bien, pieces, apercu = false }: {
+export function EspaceProprietaire({ immeubleId, bien, pieces, secteur = null, apercu = false }: {
   immeubleId: string;
   bien: BienVendeur | null;
   pieces: PieceClient[];
+  /** MAV, 25/09 : les repères du secteur, le tableau Actuel / Potentiel et
+   *  les comparables — ce que rend `ec_secteur_immeuble`, ou l'aperçu du BO.
+   *  `null` quand la fonction n'a rien rendu (session sans cet immeuble, ou
+   *  fonction pas encore en base) : les blocs le disent, sans casser la page. */
+  secteur?: SecteurImmeuble | null;
   /** #382 bis — l'aperçu du BO : même écran, mais rien ne s'écrit. Les gestes
    *  d'écriture (arrêter son prix, déposer ou retirer une pièce) sont remplacés
    *  par leur libellé « (désactivé dans l'aperçu) ». */
@@ -69,6 +79,14 @@ export function EspaceProprietaire({ immeubleId, bien, pieces, apercu = false }:
         </p>
       </header>
 
+      {/* MAV, 25/09 : « il faut qu'ils aient les données secteur EN PREMIER
+          avec les liens pour vérifier », puis le tableau face au secteur, puis
+          des biens comparables — avant le prix, pour qu'ils le posent en
+          connaissance de cause. */}
+      <BlocSecteur secteur={secteur} bien={bien} />
+      <BlocFaceAuSecteur secteur={secteur} bien={bien} />
+      <BlocComparables secteur={secteur} />
+
       <BlocPrix immeubleId={immeubleId} bien={bien} apercu={apercu} />
       <BlocPieces immeubleId={immeubleId} pieces={pieces} apercu={apercu} />
       <BlocAvancement bien={bien} />
@@ -81,6 +99,189 @@ export function EspaceProprietaire({ immeubleId, bien, pieces, apercu = false }:
         </p>
       </footer>
     </main>
+  );
+}
+
+/* ---------- Le secteur (MAV, 25/09) ---------- */
+
+/**
+ * Les trois repères de la commune, leur date de vérification, et les liens
+ * publics pour les contrôler soi-même. Rien n'est affiché qui n'ait été
+ * confirmé par un agent : le message d'attente le dit en clair.
+ */
+function BlocSecteur({ secteur, bien }: { secteur: SecteurImmeuble | null; bien: BienVendeur | null }) {
+  const s = secteur?.secteur ?? null;
+  const ville = s?.ville || bien?.ville || "votre commune";
+  return (
+    <section className="ep-bloc">
+      <h2>Le secteur</h2>
+      {s ? (
+        <>
+          <p className="ep-intro">
+            Les repères de {ville}, d&apos;après les ventes enregistrées par les notaires et
+            les loyers observés
+            {s.verifieLe ? <>, vérifiés par votre conseiller le {dateFr(s.verifieLe)}</> : null}
+            {s.annee && !s.verifieLe ? <> ({s.annee})</> : null}.
+            Ils servent de point de comparaison, pas de prix : chaque immeuble a le sien.
+          </p>
+          <div className="ep-sect">
+            <div className="ep-sect-c">
+              <i>Loyer moyen</i>
+              <b>{fr1(s.loyerM2)} €</b>
+              <em>par m² et par mois</em>
+            </div>
+            <div className="ep-sect-c">
+              <i>Prix de vente</i>
+              <b>{entier(s.prixM2)} €</b>
+              <em>par m²</em>
+            </div>
+            <div className="ep-sect-c">
+              <i>Rendement brut</i>
+              <b>{s.renta !== null ? `${fr1(s.renta)} %` : "—"}</b>
+              <em>loyer annuel rapporté au prix</em>
+            </div>
+          </div>
+          <div className="ep-liens">
+            <a href={s.liens.dvf} target="_blank" rel="noreferrer">Vérifier sur DVF ↗</a>
+            <a href={s.liens.loyers} target="_blank" rel="noreferrer">Vérifier les loyers ↗</a>
+            <a href={s.liens.notaires} target="_blank" rel="noreferrer">Prix des notaires ↗</a>
+          </div>
+          <p className="ep-fine">
+            DVF est la base publique des ventes signées chez les notaires ; la carte des loyers
+            est publiée par le ministère du Logement. Sur DVF, cherchez {ville} sur la carte.
+          </p>
+        </>
+      ) : (
+        <p className="ep-intro">
+          Les repères du secteur seront affichés dès qu&apos;ils auront été vérifiés par
+          votre conseiller.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * L'immeuble face au secteur : Actuel (les loyers d'aujourd'hui) et Potentiel
+ * (tout reloué, travaux faits) — loyer au m², prix au m², rendement brut, et
+ * l'écart en % contre le secteur quand il est confirmé. Le calcul est celui
+ * de `rendements()`, partagé avec l'écran Prix du BO ; les couleurs disent la
+ * même chose qu'au BO : au-dessus du secteur, c'est bon pour un loyer et
+ * cher pour un prix.
+ */
+function BlocFaceAuSecteur({ secteur, bien }: { secteur: SecteurImmeuble | null; bien: BienVendeur | null }) {
+  const im = secteur?.immeuble;
+  const s = secteur?.secteur ?? null;
+  if (!im) return null;
+  const hai = im.prixHai ?? bien?.prixAffiche ?? 0;
+  const r = rendements(hai, {
+    loyers: im.loyersAn, loyersMax: im.loyersMaxAn, charges: im.charges, travaux: im.travaux,
+    surface: im.surface, surfaceOccupee: im.surfaceOccupee,
+  });
+  const refs: RefsFace = s ? { loyerM2: s.loyerM2, prixM2: s.prixM2, brut: s.renta ?? undefined } : null;
+
+  return (
+    <section className="ep-bloc">
+      <h2>Votre immeuble face au secteur</h2>
+      <p className="ep-intro">
+        <b>Actuel</b>, c&apos;est votre immeuble tel qu&apos;il est loué aujourd&apos;hui.{" "}
+        <b>Potentiel</b>, c&apos;est une fois tout reloué au loyer de marché
+        {im.travaux > 0 ? <> et les travaux faits ({euros(im.travaux)} ajoutés au prix)</> : null}.
+        {refs ? " Le pourcentage dit l'écart avec le secteur." : ""}
+      </p>
+      <div className="ep-tab-wrap">
+        <table className="ep-tab">
+          <thead><tr><th /><th>Actuel</th><th>Potentiel</th></tr></thead>
+          <tbody>
+            <LigneFace label="Loyer au m²" cle="loyerM2" unite="€/m²/mois" sens={1} dec={1} r={r} refs={refs} />
+            <LigneFace label="Prix au m²" cle="prixM2" unite="€/m²" sens={-1} dec={0} r={r} refs={refs} />
+            <LigneFace label="Rendement brut" cle="brut" unite="%" sens={1} dec={1} r={r} refs={refs} />
+          </tbody>
+        </table>
+      </div>
+      {hai <= 0 && (
+        <p className="ep-fine">Le prix au m² et le rendement apparaîtront dès qu&apos;un prix de vente sera posé.</p>
+      )}
+      {!refs && (
+        <p className="ep-fine">L&apos;écart avec le secteur s&apos;affichera une fois les repères vérifiés.</p>
+      )}
+    </section>
+  );
+}
+
+/** Les repères du secteur, rangés sous les clés de la colonne qu'ils jugent. */
+type ColFace = Pick<Colonne, "loyerM2" | "prixM2" | "brut">;
+type RefsFace = ColFace | null;
+
+/** Une case du tableau : la valeur, et l'écart au secteur quand il existe. */
+function CelluleFace({ v, unite, reference, sens, dec }: {
+  v?: number; unite: string; reference?: number;
+  /** 1 : plus haut vaut mieux. −1 : plus haut est plus cher. */
+  sens: 1 | -1; dec: 0 | 1;
+}) {
+  if (v === undefined) return <td><span className="ep-nc">n.c.</span></td>;
+  const pct = ecart(v, reference);
+  const ton = pct === undefined ? "" : pct * sens >= 0 ? " ok" : " ko";
+  return (
+    <td>
+      <b>{dec ? fr1(v) : entier(v)} {unite}</b>
+      {pct !== undefined && <em className={`ep-pct${ton}`}>{pct > 0 ? "+" : ""}{pct} %</em>}
+    </td>
+  );
+}
+
+function LigneFace({ label, cle, unite, sens, dec, r, refs }: {
+  label: string; cle: keyof ColFace; unite: string; sens: 1 | -1; dec: 0 | 1;
+  r: ReturnType<typeof rendements>; refs: RefsFace;
+}) {
+  const reference = refs?.[cle];
+  return (
+    <tr>
+      <th>{label}</th>
+      <CelluleFace v={r.actuel[cle]} unite={unite} reference={reference} sens={sens} dec={dec} />
+      <CelluleFace v={r.potentiel[cle]} unite={unite} reference={reference} sens={sens} dec={dec} />
+    </tr>
+  );
+}
+
+/**
+ * Des immeubles comparables — vendus par France Immeuble cette année ou l'an
+ * dernier, ou à vendre — dans le même département et de même nature. Sans
+ * adresse : la ville, la taille, le prix au m² et le rendement suffisent à se
+ * situer, et un immeuble à vendre a un propriétaire qui n'a pas à être
+ * reconnu (§8.3).
+ */
+function BlocComparables({ secteur }: { secteur: SecteurImmeuble | null }) {
+  const liste = secteur?.comparables ?? [];
+  if (liste.length === 0) return null;
+  return (
+    <section className="ep-bloc">
+      <h2>Des biens comparables</h2>
+      <p className="ep-intro">
+        Des immeubles de même nature, dans votre département, que nous avons vendus ou que
+        nous vendons en ce moment. Les adresses ne sont pas indiquées.
+      </p>
+      <ul className="ep-comp">
+        {liste.map((c, i) => (
+          <li key={i} className={c.statut}>
+            <span className={`ep-comp-tag ${c.statut}`}>
+              {c.statut === "vendu"
+                ? `Vendu par France Immeuble${c.annee ? ` en ${c.annee}` : ""}`
+                : "À vendre"}
+            </span>
+            <b>{c.ville || "Commune non précisée"}</b>
+            <i>
+              {c.nbLots ? `${c.nbLots} lot${c.nbLots > 1 ? "s" : ""} · ` : ""}
+              {entier(c.surface)} m²
+            </i>
+            <span className="ep-comp-ch">
+              <span><b>{entier(c.prixM2)} €</b><em>par m²</em></span>
+              {c.renta !== null && <span><b>{fr1(c.renta)} %</b><em>rendement brut</em></span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

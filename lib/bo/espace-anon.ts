@@ -35,6 +35,9 @@
 
 import "server-only";
 import { cookies } from "next/headers";
+import type { SecteurImmeuble } from "@/lib/bo/espace-modele";
+
+export type { SecteurImmeuble } from "@/lib/bo/espace-modele";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 /* La clé publique. Elle n'ouvre rien par elle-même : c'est tout l'intérêt.
@@ -132,6 +135,15 @@ export type PieceClient = {
   id: string; categorie: string; nom: string;
   taille_ko: number | null; depose_le: string;
 };
+
+/**
+ * Le secteur d'un immeuble, tel que le propriétaire a le droit de le voir
+ * (MAV, 25/09) : les repères confirmés par l'agent, les entrées de son tableau
+ * Actuel / Potentiel, et des comparables sans adresse. `null` si la session
+ * ne porte pas cet immeuble, ou si la fonction n'est pas encore en base.
+ */
+export const secteurImmeuble = (j: string, immeubleId: string) =>
+  ec<SecteurImmeuble | null>("ec_secteur_immeuble", { p_session: j, p_immeuble: immeubleId });
 
 export const mesPieces = async (j: string, immeubleId: string) =>
   (await ec<PieceClient[]>("ec_mes_pieces", { p_session: j, p_immeuble: immeubleId })) ?? [];

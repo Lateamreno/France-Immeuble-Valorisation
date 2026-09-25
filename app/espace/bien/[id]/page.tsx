@@ -8,7 +8,9 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { estMonImmeuble, jetonSession, mesImmeubles, mesPieces, moi } from "@/lib/bo/espace-anon";
+import {
+  estMonImmeuble, jetonSession, mesImmeubles, mesPieces, moi, secteurImmeuble,
+} from "@/lib/bo/espace-anon";
 import { Connexion } from "@/components/espace-connexion";
 import { EspaceProprietaire } from "@/components/espace-proprietaire";
 
@@ -37,7 +39,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  const [biens, pieces] = await Promise.all([mesImmeubles(jeton), mesPieces(jeton, id)]);
+  /* Le secteur (MAV, 25/09) part avec le reste : c'est la base qui décide de
+     ce que cette session a le droit de voir de cet immeuble, pas la page. */
+  const [biens, pieces, secteur] = await Promise.all([
+    mesImmeubles(jeton), mesPieces(jeton, id), secteurImmeuble(jeton, id),
+  ]);
   const b = biens.find((x) => x.id === id);
 
   return (
@@ -47,6 +53,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         immeubleId={id}
         bien={b ?? null}
         pieces={pieces}
+        secteur={secteur}
       />
     </>
   );

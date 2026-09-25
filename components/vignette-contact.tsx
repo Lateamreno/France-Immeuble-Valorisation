@@ -97,6 +97,59 @@ type Contexte = Awaited<ReturnType<typeof contexteRedaction>> & { qui: ContactTr
  * passe. `insigne` : la classe A–D ; sous la puce elle est déjà dans la puce,
  * en place elle n'a que la carte pour se montrer, à côté du nom.
  */
+/**
+ * Écrire à ce contact depuis le BO : on va chercher l'agent et ses messages
+ * types, puis la fenêtre flottante se pose en bas à droite. Partagé entre la
+ * puce et la carte en place (25/09 : « si on reprend la vignette d'habitude,
+ * il y a les boutons e-mail et tel »).
+ */
+function useRedaction(v: VignetteData | undefined, immeuble?: string, avant?: () => void) {
+  const [mail, setMail] = useState<Contexte | "chargement" | null>(null);
+  const ecrire = () => {
+    if (!v?.email || mail) return;
+    avant?.();
+    setMail("chargement");
+    /* Retour #371 : les champs de fusion partent de la fiche du destinataire,
+       qu'on va chercher en même temps que l'agent. */
+    Promise.all([
+      contexteRedaction(),
+      chercherContacts(v.email).then((l) => l.find((c) => c.id === v.id) ?? l[0] ?? null).catch(() => null),
+    ])
+      .then(([c, qui]) => setMail({ ...c, qui }))
+      .catch(() => setMail(null));
+  };
+  const fenetre = v && mail && mail !== "chargement" ? createPortal(
+    <FenetreRedaction
+      agent={mail.agent}
+      modeles={mail.modeles}
+      amorce={{ to: v.email ?? "", objet: "", corps: "" }}
+      flottante={{ titre: initialeEtNom(v) }}
+      destinataire={mail.qui}
+      immeuble={immeuble}
+      onClose={() => setMail(null)}
+    />,
+    document.body,
+  ) : null;
+  return { ecrire, fenetre };
+}
+
+/** Les deux gestes du bas de la carte : Appeler, E-mail. */
+function ActionsContact({ v, ecrire }: { v: VignetteData; ecrire: () => void }) {
+  const tel = v.tel?.replace(/[^\d+]/g, "");
+  return (
+    <span className="vgn-act">
+      <a href={tel ? `tel:${tel}` : undefined} className={tel ? "" : "off"}>
+        <svg viewBox="0 0 24 24" aria-hidden><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
+        Appeler
+      </a>
+      <button type="button" className={v.email ? "" : "off"} disabled={!v.email} onClick={ecrire}>
+        <svg viewBox="0 0 24 24" aria-hidden><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
+        E-mail
+      </button>
+    </span>
+  );
+}
+
 function CorpsCarte({ v, fiche, copier, insigne }: { v: VignetteData; fiche: string; copier: boolean; insigne?: React.ReactNode }) {
   const picto = v.estAgent ? IC_AGENT : IC_PERS;
   return (
@@ -148,13 +201,15 @@ function CorpsCarte({ v, fiche, copier, insigne }: { v: VignetteData; fiche: str
  * La même carte, rendue en place — dans la liste des contacts (#401 bis :
  * « les fiches contact sont trop larges, ça bloque la lecture… mettre le
  * nouvel objet vignette de contact puisqu'il y a toutes les infos dessus »).
- * Sans puce ni fenêtre, sans Appeler / E-mail ni boutons copier. Toute la
- * carte ouvre la fiche ; le nom, le picto et les compteurs restent des liens
- * (un lien dans un lien n'est pas du HTML : la carte est un bloc qui navigue
- * au clic, et laisse passer les clics sur ses propres liens).
+ * C'est la vignette d'habitude, entière : les boutons copier sur chaque
+ * ligne, Appeler et E-mail en bas (MAV, 25/09). Toute la carte ouvre la
+ * fiche ; le nom, le picto et les compteurs restent des liens (un lien dans
+ * un lien n'est pas du HTML : la carte est un bloc qui navigue au clic, et
+ * laisse passer les clics sur ses propres liens et boutons).
  */
 export function CarteContact({ v, href }: { v: VignetteData; href: string }) {
   const router = useRouter();
+  const { ecrire, fenetre } = useRedaction(v);
   const ouvrir = (e: React.MouseEvent | React.KeyboardEvent) => {
     if ((e.target as HTMLElement).closest("a, button")) return;
     router.push(href);
@@ -166,9 +221,11 @@ export function CarteContact({ v, href }: { v: VignetteData; href: string }) {
       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) ouvrir(e); }}
     >
       <CorpsCarte
-        v={v} fiche={href} copier={false}
+        v={v} fiche={href} copier
         insigne={v.note && /^[A-D]$/.test(v.note) ? <b className={`note n${v.note}`} title={`Classement acquéreur ${v.note}`}>{v.note}</b> : null}
       />
+      <ActionsContact v={v} ecrire={ecrire} />
+      {fenetre}
     </div>
   );
 }
@@ -188,7 +245,6 @@ export function VignetteContact({
   immeuble?: string;
 }) {
   const [ouvert, setOuvert] = useState(false);
-  const [mail, setMail] = useState<Contexte | "chargement" | null>(null);
   const boite = useRef<HTMLSpanElement>(null);
   /* Une puce posée au bord droit d'une carte (écran Recherches) ouvrirait sa
      carte hors de l'écran : dans ce cas elle s'aligne à droite. */
@@ -216,6 +272,9 @@ export function VignetteContact({
     };
   }, [ouvert]);
 
+  /* Le hook vit avant les retours anticipés (règle des hooks). */
+  const { ecrire, fenetre } = useRedaction(v, immeuble, () => setOuvert(false));
+
   const libelle = v?.nom || nom || "";
   if (!libelle) return null;
 
@@ -231,27 +290,10 @@ export function VignetteContact({
     );
   }
 
-  const tel = v.tel?.replace(/[^\d+]/g, "");
   const fiche = `/contact/${v.id}`;
   const picto = v.estAgent ? IC_AGENT : IC_PERS;
   /* L'insigne : celui qu'on nous donne, sinon la classe de l'acquéreur. */
   const insigne = badge ?? (v.note && /^[A-D]$/.test(v.note) ? <b className={`note n${v.note}`}>{v.note}</b> : null);
-
-  /* La rédaction s'ouvre dans le BO : on va chercher l'agent et ses messages
-     types, puis la fenêtre flottante se pose en bas à droite. */
-  const ecrire = () => {
-    if (!v.email || mail) return;
-    setOuvert(false);
-    setMail("chargement");
-    /* Retour #371 : les champs de fusion partent de la fiche du destinataire,
-       qu'on va chercher en même temps que l'agent. */
-    Promise.all([
-      contexteRedaction(),
-      chercherContacts(v.email).then((l) => l.find((c) => c.id === v.id) ?? l[0] ?? null).catch(() => null),
-    ])
-      .then(([c, qui]) => setMail({ ...c, qui }))
-      .catch(() => setMail(null));
-  };
   /* Les vignettes vivent parfois dans un lien (carte du tableau de bord) :
      un clic dedans ne doit pas suivre ce lien. */
   const isoler = (e: React.SyntheticEvent) => { e.stopPropagation(); if ("preventDefault" in e && (e.target as HTMLElement).tagName !== "A") e.preventDefault(); };
@@ -272,31 +314,11 @@ export function VignetteContact({
       {ouvert && (
         <span className={`vgn-pop${droite ? " droite" : ""}`} ref={pop} onClick={(e) => e.stopPropagation()}>
           <CorpsCarte v={v} fiche={fiche} copier />
-          <span className="vgn-act">
-            <a href={tel ? `tel:${tel}` : undefined} className={tel ? "" : "off"}>
-              <svg viewBox="0 0 24 24" aria-hidden><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
-              Appeler
-            </a>
-            <button type="button" className={v.email ? "" : "off"} disabled={!v.email} onClick={ecrire}>
-              <svg viewBox="0 0 24 24" aria-hidden><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
-              E-mail
-            </button>
-          </span>
+          <ActionsContact v={v} ecrire={ecrire} />
         </span>
       )}
 
-      {mail && mail !== "chargement" && createPortal(
-        <FenetreRedaction
-          agent={mail.agent}
-          modeles={mail.modeles}
-          amorce={{ to: v.email ?? "", objet: "", corps: "" }}
-          flottante={{ titre: initialeEtNom(v) }}
-          destinataire={mail.qui}
-          immeuble={immeuble}
-          onClose={() => setMail(null)}
-        />,
-        document.body,
-      )}
+      {fenetre}
     </span>
   );
 }
