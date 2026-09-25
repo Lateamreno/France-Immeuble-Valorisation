@@ -21,12 +21,17 @@ const I = {
   photo: <><rect x="3" y="7" width="18" height="13" rx="2.5" /><path d="M8 7l1.5-3h5L16 7" /><circle cx="12" cy="13.5" r="3.4" /></>,
   pin: <><path d="M12 22s7-6.6 7-12a7 7 0 1 0-14 0c0 5.4 7 12 7 12z" /><circle cx="12" cy="10" r="2.6" /></>,
   pouls: <><path d="M3 12h4l2.5-6 4 12L16 12h5" /></>,
-  cle: <><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l2 2M19 4l2 2" /></>,
+  /* MAV (25/09, soir) : « pour la clé le mieux c'est qu'elle soit pleine ».
+     Un anneau plein, une tige et deux dents. */
+  cle: <><circle cx="7.5" cy="15.5" r="4.6" fill="currentColor" stroke="none" /><path d="m10.8 12.2 8.7-8.7" strokeWidth="2.8" /><path d="M16.2 6.8 18.6 9.2M19.2 3.8l2.4 2.4" strokeWidth="2.8" /></>,
   /* Retour #222 : « le picto travaux à prévoir, si tu peux mettre une clé à
      molette c'est mieux. » `cle` est déjà prise par l'état locatif — ce sont
      les clés d'un bail, pas un outil. */
   molette: <><path d="M20.4 5.1a4.7 4.7 0 0 1-6.1 6.1l-7.4 7.4a2.35 2.35 0 1 1-3.3-3.3l7.4-7.4a4.7 4.7 0 0 1 6.1-6.1l-3 3 .6 3.3 3.3.6z" /></>,
-  euro: <><path d="M17 6.5A6.5 6.5 0 0 0 7.5 12 6.5 6.5 0 0 0 17 17.5" /><path d="M4 10.5h8M4 13.5h8" /></>,
+  /* MAV (25/09, soir) : « pour le € c'est pas beau, fais-en un plus joli et
+     harmonieux ». Un arc régulier aux bouts arrondis, deux barres de même
+     longueur posées au milieu. */
+  euro: <><path d="M18 7.2a7 7 0 1 0 0 9.6" /><path d="M5 10.6h9M5 13.4h9" /></>,
   ampoule: <><path d="M9.5 18h5M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" /></>,
   maison: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
   boutique: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
@@ -63,7 +68,7 @@ const I = {
   graphique: <><path d="M3.5 4v16h17" /><path d="M6.5 16.5 10.5 11l3.5 3 5.5-7" /><path d="M15.5 7h4v4" /></>,
   /* MAV (25/09) : la main ne se lisait pas. Des pièces, donc : deux pièces en
      euro, l'une devant l'autre. */
-  pieces: <><circle cx="9" cy="14" r="7" /><path d="M11.2 11.3a3 3 0 0 0-4.9 2.7 3 3 0 0 0 4.9 2.7M5.5 13.2h4M5.5 14.8h4" /><path d="M14.5 7.2a7 7 0 0 1 5.6 8.9" /><path d="M13.3 4.2a7 7 0 0 1 3.9 1.4" /></>,
+  main: <><path d="M3 15.8c2.2-1.4 4.3-1.4 6.2 0l3.4 1.7h4.6a1.9 1.9 0 0 1 0 3.8H11L3 19.6" /><circle cx="9.5" cy="6" r="2.6" /><circle cx="15.5" cy="8.6" r="2.6" /></>,
 };
 
 const Ic = ({ d, cls = "dv-ic" }: { d: React.ReactNode; cls?: string }) => (
@@ -288,10 +293,9 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
 
       {/* -------------------------------------------- 4. État technique */}
       <Page titre="Etat technique" picto={I.pouls} pied={pied} enfants={<>
-        <h2 className="dv-h">
-          <Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b>
-          {d.etages !== undefined && <> &nbsp;·&nbsp; <b>{d.etages}</b> étage{d.etages > 1 ? "s" : ""} sur rez-de-chaussée</>}
-        </h2>
+        {/* MAV (25/09, soir) : pas d'étages ici, « on le voit sur les photos
+            et l'état locatif déjà ». */}
+        <h2 className="dv-h"><Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b></h2>
 
         <h2 className="dv-h"><Ic d={I.pouls} /> Etat des matériaux</h2>
         {/* Retour #410 : le type reste à gauche ; matériau, derniers travaux
@@ -481,7 +485,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tfoot>
         </table>
 
-        <h2 className="dv-h"><Ic d={I.pieces} /> Revenus hors charges</h2>
+        <h2 className="dv-h"><Ic d={I.main} /> Revenus hors charges</h2>
         <table className="dv-tab fin">
           <thead>
             <tr><th>Type de lot</th><th className="c">Revenus actuels</th><th className="c">Occupation</th><th className="r">Revenus potentiels</th></tr>
@@ -623,7 +627,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               clé à molette, ici aussi. */}
           <Stat picto={I.molette} label="Travaux" source="à prévoir"
             valeur={fr1(d.prix.travaux / 1000)} unite="k€" />
-          <Stat picto={I.pieces} label="Loyers hc" source="potentiels"
+          <Stat picto={I.main} label="Loyers hc" source="potentiels"
             valeur={fr1(d.revenusTot.potentiel / 1000)} unite="k€/an" />
           <Stat picto={I.carte} label="Charges" source="non récupérables"
             valeur={fr1(d.chargesTot.nonRecup / 1000)} unite="k€/an" />

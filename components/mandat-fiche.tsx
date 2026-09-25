@@ -2288,7 +2288,13 @@ function OngletEnvoi({
               target="_blank" rel="noreferrer">
               Ouvrir Docusign — créer une enveloppe ↗
             </a>
-            <button className="mdt-go" type="button" disabled={!pdf || pending}
+            {/* Retour #428 : « je ne peux pas marquer comme envoyé par Docusign ».
+                Le bouton exigeait un PDF généré ICI ; un mandat repris de
+                Bubble ou envoyé depuis un PDF fait ailleurs n'en a pas, et
+                restait bloqué. Le marquage date un envoi qui a eu lieu : il
+                ne dépend pas de qui a fabriqué le fichier. */}
+            <button className="mdt-go" type="button" disabled={pending || signe}
+              title={signe ? "Le mandat est déjà signé" : undefined}
               onClick={() => start(async () => { await envoyerMandatSignature(mandatId, immeubleId, destinataires); setMsg("Envoi journalisé."); })}>
               <span className="ch">›</span> Marquer comme envoyé par Docusign
             </button>

@@ -8,9 +8,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
+import type { HistoriqueAcheteurs } from "@/components/acheteurs";
 import { dmy, euros, keur } from "@/lib/format";
 import {
-  addSuivi, changerProprietaire, chargerAcheteurs, ouvrirEstimation, reactiver,
+  addSuivi, changerProprietaire, chargerAcheteurs, chargerHistoriqueAcheteurs, ouvrirEstimation, reactiver,
   setApporteur, setPropositionStatut, setStatut, supprimerEstimation, updateBien,
   updateContact,
 } from "@/lib/bo/actions";
@@ -1964,13 +1965,24 @@ function useVivier(immeubleId: string) {
 
 /** Écran 1 — le matching et son historique. */
 function AcheteursSection({ b }: { b: BienData }) {
-  const { ach, erreur, chargement } = useVivier(String(b.im._id));
+  /* Retour #420 : l'historique arrive tout de suite (deux requêtes courtes) ;
+     le vivier — 1 900 recherches et leurs contacts — se charge derrière, sans
+     message, et ne sert qu'à lancer ou rouvrir un matching. */
+  const immeubleId = String(b.im._id);
+  const { ach, erreur } = useVivier(immeubleId);
+  const [hist, setHist] = useState<HistoriqueAcheteurs | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    chargerHistoriqueAcheteurs(immeubleId)
+      .then((h) => { if (vivant) setHist(h); })
+      .catch(() => { if (vivant) setHist({ matchs: [], commercialisations: [] }); });
+    return () => { vivant = false; };
+  }, [immeubleId]);
   return (
     <>
       <TitreAcheteurs cle="acheteurs" />
-      {chargement && <div className="fempty">Chargement du vivier acquéreurs…</div>}
       {erreur && <div className="fempty">Le vivier acquéreurs n&apos;a pas pu être chargé.</div>}
-      {ach && <Acheteurs b={b} d={ach} />}
+      {hist && <Acheteurs b={b} d={ach} hist={hist} />}
     </>
   );
 }
