@@ -8,9 +8,12 @@ export default async function RecherchesPage() {
     listRecherchesBO().catch(() => []),
     getAgents().catch(() => []),
   ]);
+  /* Perf n° 3 (24/09) : la page part avec les cent vingt premières cartes ;
+     l'écran va chercher le reste dès qu'il est affiché. */
   return (
     <EcranRecherches
-      rows={rows}
+      premieres={rows.slice(0, 120)}
+      total={rows.length}
       agents={agents.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name, initials: a.initials }))}
     />
   );

@@ -28,7 +28,7 @@ const ROOT = (process.env.BUBBLE_APP_URL || "https://vente.france-immeuble.fr")
   .replace(/\/api\/1\.1\/obj$/, "")
   .replace(/\/version-test$/, "");
 
-const REVALIDATE = 120; // secondes de cache par requête
+const REVALIDATE = 300; // secondes de cache par requête
 
 export type Agent = {
   id: string; slug: string; name: string; initials: string; color?: string;
@@ -137,7 +137,7 @@ function sbParams(constraints?: Constraint[]) {
  * lib/bo/actions.ts). Le délai de secours couvre le seul cas que nos
  * étiquettes ignorent : une modification faite côté Bubble.
  */
-const lirePage = (type: string, qs: string, avecTotal?: boolean) =>
+const lirePage = (type: string, qs: string, avecTotal?: boolean, champs?: string[]) =>
   unstable_cache(
     async () => {
       const t0 = performance.now();
@@ -160,35 +160,54 @@ const lirePage = (type: string, qs: string, avecTotal?: boolean) =>
       if (process.env.MESURE_REQUETES) {
         console.log(`[req] ${String(Math.round(performance.now() - t0)).padStart(5)} ms  ${String(Math.round(brut.length / 1024)).padStart(6)} Ko  bo_${type}  ${qs}`.slice(0, 190));
       }
-      const rows = JSON.parse(brut) as { data: Record<string, unknown> }[];
       const range = res.headers.get("content-range"); // ex. "0-99/1824"
+      /* Lecture partielle (perf n° 1) : la base a rendu une colonne par clé
+         demandée (`c0`, `c1`…) ; on remonte un document qui n'a que ces clés,
+         sans les nulles — `typeof x === "string"` doit rester faux sur une
+         clé absente, comme avec le document entier. */
+      const lignes = champs
+        ? (JSON.parse(brut) as Record<string, unknown>[]).map((r) => {
+            const d: Record<string, unknown> = {};
+            champs.forEach((k, i) => { const v = r[`c${i}`]; if (v !== null && v !== undefined) d[k] = v; });
+            return d;
+          })
+        : (JSON.parse(brut) as { data: Record<string, unknown> }[]).map((r) => r.data);
+      const rows = lignes;
       return {
-        lignes: rows.map((r) => r.data),
+        lignes,
         total: range ? parseInt(range.split("/")[1], 10) || rows.length : rows.length,
       };
     },
-    ["bo", type, qs, String(avecTotal ?? "")],
-    { tags: [`bo_${type}`], revalidate: 60 },
+    ["bo", type, qs, String(avecTotal ?? ""), champs?.join(",") ?? ""],
+    /* Cinq minutes (24/09, perf n° 5) : toute écriture faite dans le BO
+       invalide l'étiquette de sa table, seule une modification faite côté
+       Bubble attend le délai — et la synchro tourne à l'heure de toute façon. */
+    { tags: [`bo_${type}`], revalidate: 300 },
   )();
 
 async function sbq(
   type: string,
-  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
+  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean; champs?: string[] } = {},
 ): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
   const p = sbParams(opts.constraints);
+  /* Ne lire que les clés utiles (24/09, perf n° 1) : `select=c0:data->"clé"`.
+     Le document entier d'un immeuble pèse 5 Ko pour trois champs affichés ;
+     sur deux mille immeubles, c'est la différence entre 1 Mo et 100 Ko. */
+  const champs = opts.champs?.length ? [...new Set(["_id", ...opts.champs])] : undefined;
+  if (champs) p.set("select", champs.map((k, i) => `c${i}:data->"${k.replace(/"/g, "")}"`).join(","));
   // Supabase n'a pas la limite de 100 de la Data API Bubble : on pagine large
   // pour éviter des dizaines d'allers-retours sur les grosses tables.
   p.set("limit", String(opts.limit ?? 1000));
   p.set("offset", String(opts.cursor ?? 0));
   if (opts.sort) p.set("order", `${SORT_COL[opts.sort] ?? "bubble_modified"}.${opts.desc ? "desc" : "asc"}`);
-  const { lignes, total } = await lirePage(type, p.toString());
+  const { lignes, total } = await lirePage(type, p.toString(), undefined, champs);
   const cursor = opts.cursor ?? 0;
   return { results: lignes, remaining: Math.max(0, total - cursor - lignes.length) };
 }
 
 async function bq(
   type: string,
-  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean } = {},
+  opts: { constraints?: Constraint[]; limit?: number; cursor?: number; sort?: string; desc?: boolean; champs?: string[] } = {},
 ): Promise<{ results: Record<string, unknown>[]; remaining: number }> {
   if (USE_SB) return sbq(type, opts);
   const p = new URLSearchParams({
@@ -228,6 +247,8 @@ export async function fetchAll(
   constraints?: Constraint[],
   max = 2000,
   sort?: { field: string; desc?: boolean },
+  /** Les seules clés à lire (perf n° 1) ; absent, le document entier. */
+  champs?: string[],
 ) {
   /* La taille de page suit le plafond demandé : réclamer mille lignes pour en
      garder trois cents, c'est payer sept fois le transfert de la table des
@@ -240,7 +261,7 @@ export async function fetchAll(
      comme elles partent ensemble le surcoût est nul. */
   const taille = Math.min(250, Math.max(1, max));
   const un = (cursor: number) =>
-    bq(type, { constraints, cursor, limit: taille, sort: sort?.field, desc: sort?.desc });
+    bq(type, { constraints, cursor, limit: taille, sort: sort?.field, desc: sort?.desc, champs });
   const p1 = await un(0);
   const rows = [...p1.results];
   if (p1.remaining <= 0 || rows.length >= max || rows.length === 0) return rows.slice(0, max);
@@ -275,9 +296,9 @@ async function parLots<T>(
 }
 
 /** Les lignes d'une table dont l'identifiant est dans la liste. */
-const parIds = (type: string, ids: unknown[], taille = 100) =>
+const parIds = (type: string, ids: unknown[], taille = 100, champs?: string[]) =>
   parLots(ids, taille, (lot) =>
-    fetchAll(type, [{ key: "_id", constraint_type: "in", value: lot }], taille).catch(() => []),
+    fetchAll(type, [{ key: "_id", constraint_type: "in", value: lot }], taille, undefined, champs).catch(() => []),
   );
 
 /** Les lignes d'une table dont un champ pointe vers l'un des identifiants. */
@@ -313,6 +334,10 @@ export type Vignette = {
   email?: string;
   immeubles: number;
   recherches: number;
+  /** Classe A–D, silhouette d'agent immobilier, agent qui suit (24/09). */
+  note?: string;
+  estAgent?: boolean;
+  agent?: { initiales: string; couleur?: string };
 };
 
 const longueur = (v: unknown) => (Array.isArray(v) ? v.length : 0);
@@ -321,6 +346,7 @@ export async function getVignettes(ids: string[]): Promise<Record<string, Vignet
   const uniques = [...new Set(ids.filter(Boolean))];
   if (uniques.length === 0) return {};
   const rows = await parIds("contact", uniques, 50).catch(() => [] as Record<string, unknown>[]);
+  await loadInitials();
   const out: Record<string, Vignette> = {};
   for (const c of rows) {
     const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ").trim();
@@ -333,6 +359,9 @@ export async function getVignettes(ids: string[]): Promise<Record<string, Vignet
       email: c.email ? String(c.email) : undefined,
       immeubles: longueur(c.IMMEUBLES),
       recherches: longueur(c.RECHERCHEs),
+      note: gradeOf(c),
+      estAgent: estAgentContact(c),
+      agent: agentDe(c.SUIVI),
     };
   }
   return out;
@@ -399,13 +428,22 @@ export async function getDashboardLive(
   await loadInitials();
 
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
+  /* Perf n° 1 (24/09) : chaque lecture ne demande que les clés que ce
+     tableau de bord lit vraiment. Ajouter une clé ici avant de la lire. */
   const [imsAll, suivis, offres, mandats] = await Promise.all([
-    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]),
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, [
+      "AGENT", "PROPRIETAIRE", "Modified Date", "Created Date", "Statut", "prix_hai_estim", "date_last_est",
+      "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
+      "adresse_zipcode", "fin_renta_ba", "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
+      "date_contact_form",
+    ]),
     // Tous les suivis : en n'en chargeant que 600, les immeubles au suivi
     // ancien perdaient leur historique sur le dashboard (retour MAV #23).
-    fetchAll("suivi", undefined, 20000, { field: "Created Date", desc: true }).catch(() => []),
-    fetchAll("offre"),
-    fetchAll("mandat"),
+    fetchAll("suivi", undefined, 20000, { field: "Created Date", desc: true }, [
+      "IMMEUBLEs", "CONTACT", "notes", "Created Date", "date_start", "date_relance", "Type", "Motif_standby",
+    ]).catch(() => []),
+    fetchAll("offre", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "honos_ht"]),
+    fetchAll("mandat", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date"]),
   ]);
 
   const imsAgent = imsAll
@@ -625,6 +663,10 @@ export async function getDashboardLive(
           email: typeof p.email === "string" ? p.email : undefined,
           nbImmeubles: liste("IMMEUBLES"),
           nbRecherches: liste("RECHERCHEs"),
+          note: gradeOf(p),
+          estAgent: estAgentContact(p),
+          initiales: initialsOf(p.SUIVI),
+          initialesCouleur: couleurOf(p.SUIVI),
         };
       })(),
       objet: `${im.adresse_ville ?? ""} - ${[im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ")}`,
@@ -952,18 +994,21 @@ export async function getBien(id: string): Promise<BienData | null> {
       fetchAll("prix", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: id }], 60).catch(() => []),
     ]);
 
-  const proprietaire = im.PROPRIETAIRE
-    ? (await bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: im.PROPRIETAIRE }], limit: 1 })).results[0]
-    : undefined;
-
-  const autres = proprietaire
-    ? await fetchAll("immeuble", [
-        { key: "PROPRIETAIRE", constraint_type: "equals", value: im.PROPRIETAIRE },
-      ], 20).catch(() => [])
-    : [];
-
-  await loadInitials();
-  const agentEntry = (await agents()).find((a) => a.id === im.AGENT);
+  /* Perf n° 4 (24/09) : le propriétaire, ses autres biens et la liste des
+     agents ne dépendent que de la fiche, déjà lue — ils partent ensemble. */
+  const [proprietaire, autresBruts, tousAgents] = await Promise.all([
+    im.PROPRIETAIRE
+      ? bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: im.PROPRIETAIRE }], limit: 1 })
+          .then((r) => r.results[0]).catch(() => undefined)
+      : Promise.resolve(undefined),
+    im.PROPRIETAIRE
+      ? fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: im.PROPRIETAIRE }], 20,
+          undefined, ["adresse_ville", "adresse_numero_rue", "adresse_rue", "Statut"]).catch(() => [])
+      : Promise.resolve([] as Record<string, unknown>[]),
+    loadInitials().then(() => agents()),
+  ]);
+  const autres = proprietaire ? autresBruts : [];
+  const agentEntry = tousAgents.find((a) => a.id === im.AGENT);
 
   return {
     im,
@@ -1213,10 +1258,10 @@ export type ListCard = {
 const premier = (v: unknown) => (Array.isArray(v) ? String((v as unknown[])[0] ?? "") : typeof v === "string" ? v : "");
 
 /** Charge des contacts par identifiant, par paquets de 100. */
-async function contactMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+async function contactMap(ids: string[], champs?: string[]): Promise<Map<string, Record<string, unknown>>> {
   const uniques = [...new Set(ids.filter(Boolean))];
   const m = new Map<string, Record<string, unknown>>();
-  (await parIds("contact", uniques)).forEach((c) => m.set(String(c._id), c));
+  (await parIds("contact", uniques, 100, champs)).forEach((c) => m.set(String(c._id), c));
   return m;
 }
 
@@ -1231,18 +1276,25 @@ const initialsOf = (agentId: unknown) => initialsMap[String(agentId ?? "")] ?? "
    permet de repérer d'un coup d'œil à qui appartient une fiche, exactement
    comme dans le BO. Elle était lue mais n'allait nulle part. */
 const couleurOf = (agentId: unknown) => couleursMap[String(agentId ?? "")];
+/** L'agent qui suit une fiche, pour la vignette : initiales et couleur. */
+const agentDe = (agentId: unknown) =>
+  agentId ? { initiales: initialsOf(agentId), couleur: couleurOf(agentId) } : undefined;
 async function loadInitials() {
   const rows = await agents();
   initialsMap = Object.fromEntries(rows.map((a) => [a.id, a.initials]));
   couleursMap = Object.fromEntries(rows.filter((a) => a.color).map((a) => [a.id, a.color!]));
 }
 
-async function imLabelMap(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+async function imLabelMap(ids: string[], champs?: string[]): Promise<Map<string, Record<string, unknown>>> {
   const map = new Map<string, Record<string, unknown>>();
   const uniq = [...new Set(ids)].filter(Boolean);
-  for (const r of await parIds("immeuble", uniq)) map.set(String(r._id), r);
+  for (const r of await parIds("immeuble", uniq, 100, champs)) map.set(String(r._id), r);
   return map;
 }
+/** Ce qu'il faut pour écrire « Ville (CP) - adresse ». */
+const CHAMPS_LIBELLE_IM = ["adresse_ville", "adresse_zipcode", "adresse_numero_rue", "adresse_rue"];
+/** Ce qu'il faut pour nommer et classer un contact dans une liste. */
+const CHAMPS_LIBELLE_CONTACT = ["Civilité", "prénom", "nom", "entreprise_nom", "email", "Note", "agent", "Types"];
 
 const imLabel = (im?: Record<string, unknown>) =>
   im
@@ -1360,9 +1412,16 @@ export async function listEstimations(): Promise<ListCard[]> {
 
 export async function listMandats(): Promise<ListCard[]> {
   await loadInitials();
-  const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }).catch(() => []);
-  const ims = await imLabelMap(rows.map((m) => (Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "")));
-  const props = await contactMap(rows.map((m) => premier(m.MANDANTs)));
+  const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }, [
+    "IMMEUBLEs", "MANDANTs", "Statut", "AGENT", "Type", "Type_exclu", "date_effet", "date_fin", "numero",
+    "prix_hai", "prénom_m1", "nom_m1", "Modified Date",
+  ]).catch(() => []);
+  /* Perf n° 1 et 4 (24/09) : libellés d'immeubles et mandants en deux
+     lectures maigres, lancées ensemble. */
+  const [ims, props] = await Promise.all([
+    imLabelMap(rows.map((m) => (Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "")), CHAMPS_LIBELLE_IM),
+    contactMap(rows.map((m) => premier(m.MANDANTs)), CHAMPS_LIBELLE_CONTACT),
+  ]);
   return rows.map((m) => {
     const st = String(m.Statut ?? "");
     const im = ims.get(Array.isArray(m.IMMEUBLEs) ? String((m.IMMEUBLEs as string[])[0] ?? "") : "");
@@ -1777,9 +1836,104 @@ export type PropositionLigne = {
   relanceLe?: string;
   /** Les recherches avec lesquelles le bien a été matché. */
   recherches: { id: string; libelle: string }[];
-  /** Le dossier envoyé, avec sa version et son PDF quand il en a un. */
-  dossier?: { version: string; pdf?: string };
+  /** Le dossier envoyé, avec sa version et son PDF quand il en a un ; `perime`
+   *  quand l'immeuble a depuis un dossier plus récent (#373). */
+  dossier?: { version: string; n?: number; pdf?: string; perime?: boolean };
+  /* Retour #373 — la même carte sur la fiche immeuble : là, c'est le contact
+     qui change d'une ligne à l'autre, et l'agent qui a envoyé compte. */
+  contact?: {
+    id: string; nom: string; prenom?: string; nomFamille?: string; qualite?: string;
+    tel?: string; email?: string; immeubles: number; recherches: number; note?: string;
+    estAgent?: boolean; agent?: { initiales: string; couleur?: string };
+  };
+  agent?: { initiales: string; couleur?: string };
 };
+
+/**
+ * Toutes les propositions d'un immeuble, prêtes pour la carte partagée (#373).
+ *
+ * La fiche n'en chargeait que dix : « ici il n'y a que 8 propositions alors
+ * qu'il y en a plus de 200 ». On lit tout, avec les contacts, les recherches
+ * matchées et les dossiers cités, en quatre lectures groupées — pas une par
+ * ligne. La pagination se fait à l'écran.
+ */
+export async function propositionsDuBien(immeubleId: string): Promise<PropositionLigne[]> {
+  await loadInitials();
+  const [rows, dossiersBien] = await Promise.all([
+    fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 3000,
+      { field: "date_envoi", desc: true }).catch(() => []),
+    fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 50).catch(() => []),
+  ]);
+  const ids = (k: string) => [...new Set(rows.flatMap((p) => (Array.isArray(p[k]) ? (p[k] as unknown[]).map(String) : [String(p[k] ?? "")])).filter(Boolean))];
+  const [contacts, recherches, dossiers] = await Promise.all([
+    parIds("contact", ids("ACHETEUR")),
+    parIds("recherche", ids("RECHERCHEs")),
+    parIds("dossier", ids("DOSSIER")),
+  ]);
+  const cMap = new Map(contacts.map((c) => [String(c._id), c]));
+  const rMap = new Map(recherches.map((r) => [String(r._id), r]));
+  const dMap = new Map(dossiers.map((d) => [String(d._id), d]));
+  const derniereVersion = Math.max(0, ...dossiersBien.map((d) => Number(d.version ?? 0)));
+
+  const contactDe = (id: string): PropositionLigne["contact"] => {
+    const c = cMap.get(id);
+    if (!c) return undefined;
+    const civ = S2(c["Civilité"]);
+    const prenom = S2(c["prénom"]);
+    const nomFamille = S2(c.nom)?.toUpperCase();
+    return {
+      id,
+      nom: [civ === "Monsieur" ? "M." : civ === "Madame" ? "Mme" : civ, prenom, nomFamille].filter(Boolean).join(" ") || S2(c.email) || "Contact",
+      prenom, nomFamille,
+      qualite: qualiteContact(c),
+      tel: S2(c.portable_formatted) ?? S2(c.portable) ?? S2(c.fixe_formatted) ?? S2(c.fixe),
+      email: S2(c.email),
+      immeubles: combien(c.IMMEUBLES),
+      recherches: combien(c.RECHERCHEs),
+      note: S2(c.Note),
+      estAgent: estAgentContact(c),
+      agent: agentDe(c.SUIVI),
+    };
+  };
+
+  return rows
+    .sort((a, b) => String(b.date_envoi ?? b["Created Date"] ?? "").localeCompare(String(a.date_envoi ?? a["Created Date"] ?? "")))
+    .map((p) => {
+      const st = S2(p.Statut);
+      const dos = dMap.get(String(p.DOSSIER ?? ""));
+      const pdf = S2(dos?.pdf);
+      const n = typeof dos?.version === "number" ? (dos.version as number) : Number(dos?.version) || undefined;
+      const agentId = premier(p.AGENTs) || String(p["Created By"] ?? "");
+      return {
+        id: String(p._id),
+        quand: `Proposition du ${dmy(p.date_envoi) ?? dmy(p["Created Date"]) ?? "?"}`,
+        statut: st,
+        motif: S2(p.motif_refus),
+        commentaire: S2(p.commentaire),
+        immeuble: undefined,
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true,
+        refusee: (st ?? "").startsWith("Refus"),
+        stop: p.stop_relances_yn === true,
+        email: S2(p.mail_adresse),
+        depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
+        relanceLe: dmy(p.date_last_relance),
+        recherches: (Array.isArray(p.RECHERCHEs) ? (p.RECHERCHEs as unknown[]).map(String) : [])
+          .map((rid) => {
+            const r = rMap.get(rid);
+            return { id: rid, libelle: r ? (TITRES_CIBLE[String(r.Cible ?? "")] ?? S2(r.Cible) ?? "Recherche") : "Recherche" };
+          }),
+        dossier: dos
+          ? {
+              version: `V${n ?? "?"}`, n,
+              pdf: pdf ? (pdf.startsWith("//") ? `https:${pdf}` : pdf) : undefined,
+              perime: n !== undefined && derniereVersion > n,
+            }
+          : undefined,
+        contact: contactDe(String(p.ACHETEUR ?? "")),
+        agent: agentId ? { initiales: initialsOf(agentId), couleur: couleurOf(agentId) } : undefined,
+      } satisfies PropositionLigne;
+    });
+}
 
 /** Visite ou offre — même carte, deux jeux de valeurs. */
 export type ActeLigne = {
@@ -1870,10 +2024,10 @@ export async function getContact(id: string): Promise<ContactData | null> {
        la fiche est exactement celle de l'écran, compteur « à proposer »
        compris. Les deux lectures sont mises en cache, l'appel est donc gratuit
        en pratique. */
-    listRecherchesBO().catch(() => [] as RechercheCard[]),
+    listRecherchesBO(id).catch(() => [] as RechercheCard[]),
     fetchAll("proposition", [{ key: "ACHETEUR", constraint_type: "equals", value: id }], 500,
       { field: "date_envoi", desc: true }).catch(() => []),
-    listQuestionsBO().catch(() => [] as QuestionCard[]),
+    listQuestionsBO(id).catch(() => [] as QuestionCard[]),
     fetchAll("visite", [{ key: "VISITEURs", constraint_type: "contains", value: id }], 200).catch(() => []),
     fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 200).catch(() => []),
     fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 300).catch(() => []),
@@ -2207,10 +2361,23 @@ async function sbPage(
  */
 function qualiteContact(c: Record<string, unknown>): string {
   const societe = S2(c.entreprise_nom);
-  const agent = c.agent === true
-    || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
-  if (agent) return societe ? `Agent immobilier (${societe})` : "Agent immobilier";
+  if (estAgentContact(c)) return societe ? `Agent immobilier (${societe})` : "Agent immobilier";
   return societe ?? "Particulier";
+}
+
+/**
+ * Ce contact est-il un agent immobilier ?
+ *
+ * Deux écritures dans la base pour le même fait : le booléen `agent` et le
+ * profil « Agent immobilier » dans `Types`. Bubble les tient ensemble ; le BO
+ * lit l'un OU l'autre pour ne jamais prendre un confrère pour un client
+ * (retour du 24/09 : « il faut bien qu'il soit considéré comme agent
+ * immobilier et son picto change »).
+ */
+export function estAgentContact(c: Record<string, unknown> | undefined): boolean {
+  if (!c) return false;
+  return c.agent === true
+    || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
 }
 
 const combien = (v: unknown) => (Array.isArray(v) ? v.length : 0);
@@ -2230,8 +2397,7 @@ export async function listContactsPage(
     total,
     rows: rows.map((c) => {
       const nom = [c["Civilité"], c["prénom"], c.nom].filter(Boolean).join(" ");
-      const estAgent = c.agent === true
-        || (Array.isArray(c.Types) && (c.Types as string[]).includes("Agent immobilier"));
+      const estAgent = estAgentContact(c);
       return {
         id: String(c._id),
         href: `/contact/${c._id}`,
@@ -2719,6 +2885,8 @@ export type RechercheCard = {
     email?: string;
     immeubles: number;
     recherches: number;
+    estAgent?: boolean;
+    agent?: { initiales: string; couleur?: string };
   };
   /** Coordonnées brutes quand la fiche contact n'existe pas encore. */
   orphelin?: { email?: string; tel?: string };
@@ -2786,15 +2954,33 @@ export function critereBien(im: Record<string, unknown>): CriteresBien {
   };
 }
 
-export async function listRecherchesBO(): Promise<RechercheCard[]> {
+/** Les clés d'une recherche que l'écran et le moteur de matching lisent. */
+const CHAMPS_RECHERCHE = [
+  "ACHETEUR", "SUIVI", "Cible", "Destinations", "IMMEUBLES_hidden", "IMMEUBLEs_proposed", "MANDATs", "Note",
+  "agent", "archived", "standby", "commentaire", "dpts", "villes", "email", "phone", "occup_max", "occup_min",
+  "prix_max", "prix_min", "renta", "surface_max", "surface_min", "Modified Date", "Created Date",
+];
+/** Les clés d'un immeuble qu'il faut pour le proposer : critères, statut, libellé. */
+const CHAMPS_IMMEUBLE_CRITERES = [
+  "Statut", "prix_hai_estim", "date_last_est", "ESTIMATIONs", "Cibles", "Destination_principale", "Destinations",
+  "adresse_dpt", "adresse_ville", "adresse_zipcode", "adresse_numero_rue", "adresse_rue", "fin_renta_ba",
+  "occupation_lots", "prix_hai", "surface_carrez",
+];
+
+export async function listRecherchesBO(
+  /** Perf n° 2 (24/09) : la fiche contact ne lit que SES recherches. */
+  contactId?: string,
+): Promise<RechercheCard[]> {
   await loadInitials();
   const [rechs, ims] = await Promise.all([
-    fetchAll("recherche", undefined, 3000, { field: "Modified Date", desc: true }).catch(() => []),
+    fetchAll("recherche",
+      contactId ? [{ key: "ACHETEUR", constraint_type: "equals", value: contactId }] : undefined,
+      3000, { field: "Modified Date", desc: true }, CHAMPS_RECHERCHE).catch(() => []),
     /* Les biens qu'on peut réellement proposer : commercialisés, pas encore
        vendus ni retirés. Proposer un immeuble sous compromis ferait perdre du
        temps à tout le monde. */
-    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000)
-      .catch(() => []),
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000, undefined,
+      CHAMPS_IMMEUBLE_CRITERES).catch(() => []),
   ]);
 
   const dispo = ims.filter((im) => {
@@ -2803,7 +2989,11 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
   });
 
   const contacts = new Map<string, Record<string, unknown>>();
-  for (const c of await parIds("contact", rechs.map((r) => r.ACHETEUR))) {
+  /* Perf n° 1 : mille neuf cents fiches contact, mais quinze clés chacune. */
+  for (const c of await parIds("contact", rechs.map((r) => r.ACHETEUR), 100, [
+    "Civilité", "prénom", "nom", "entreprise_nom", "email", "portable", "portable_formatted", "fixe",
+    "Note", "agent", "Types", "IMMEUBLES", "RECHERCHEs", "SUIVI",
+  ])) {
     contacts.set(String(c._id), c);
   }
   /* Ce que chaque recherche refuse explicitement (retour #332), en un seul
@@ -2867,6 +3057,8 @@ export async function listRecherchesBO(): Promise<RechercheCard[]> {
             email: S2(c.email),
             immeubles: combien(c.IMMEUBLES),
             recherches: combien(c.RECHERCHEs),
+            estAgent: estAgentContact(c),
+            agent: agentDe(c.SUIVI),
           }
         : undefined,
       orphelin: c ? undefined : { email: S2(r.email), tel: S2(r.phone) },
@@ -3070,9 +3262,14 @@ export type QuestionCard = {
   date?: string;
 };
 
-export async function listQuestionsBO(): Promise<QuestionCard[]> {
+export async function listQuestionsBO(
+  /** Perf n° 2 (24/09) : la fiche contact ne lit que SES questions. */
+  contactId?: string,
+): Promise<QuestionCard[]> {
   await loadInitials();
-  const rows = await fetchAll("question", undefined, 1000, { field: "Created Date", desc: true })
+  const rows = await fetchAll("question",
+    contactId ? [{ key: "CONTACT", constraint_type: "equals", value: contactId }] : undefined,
+    1000, { field: "Created Date", desc: true })
     .catch(() => []);
   const [ims, contacts] = await Promise.all([
     imLabelMap(rows.map((q) => String(q.IMMEUBLE ?? ""))),

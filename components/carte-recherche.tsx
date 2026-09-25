@@ -104,10 +104,7 @@ export function CarteRecherche({
           {sansContact ? null : r.contact ? (
             /* La vignette partagée (retour du 24/09), avec la classe de
                l'acquéreur dans la puce. */
-            <VignetteContact
-              v={r.contact}
-              badge={r.contact.note ? <b className={`note n${r.contact.note}`}>{r.contact.note}</b> : undefined}
-            />
+            <VignetteContact v={r.contact} />
           ) : (
             <span className="rc-orphelin">
               <em>{[r.orphelin?.email, r.orphelin?.tel].filter(Boolean).join(" · ") || "Sans coordonnées"}</em>

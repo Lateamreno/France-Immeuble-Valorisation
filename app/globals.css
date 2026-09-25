@@ -4597,6 +4597,11 @@ body.ecran-tel .col-head { padding: 12px 12px; }
   background: var(--cols); display: grid; place-items: center;
 }
 .vgn-card .av svg { width: 20px; height: 20px; fill: none; stroke: var(--gray-txt); stroke-width: 1.6; }
+.vgn-card .av.agent svg { stroke: var(--slate-2); }
+/* Le picto et, dessous, les initiales de l'agent qui suit la fiche. */
+.vgn-card .avc { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.vgn-card .avc .lav { width: auto; height: auto; min-width: 30px; padding: 2px 6px; border-radius: 5px; font-size: 9.5px; line-height: 1.2; background: var(--slate); }
+.vgn-chip.agent svg { opacity: 1; color: var(--slate-2); }
 .vgn-card .txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .vgn-card b { font-family: var(--font-title); font-size: 13.5px; color: var(--slate); }
 .vgn-card i { font-style: italic; font-size: 11.5px; color: var(--gray-lt); }
@@ -5984,6 +5989,47 @@ a.cfc-doc:hover { border-color: var(--slate); }
   border-radius: 4px; padding: 8px 12px; font-size: 12.5px;
 }
 .cfx-rapport.ko { border-color: #e6b3b3; background: #fffafa; color: var(--red); }
+/* Le menu sous la flèche du bouton scindé. */
+.bsc { position: relative; overflow: visible; }
+.bsc .bsc-m { border-radius: 4px 0 0 4px; }
+.bsc .bsc-c { border-radius: 0 4px 4px 0; }
+.bsc-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; min-width: 240px;
+  background: #fff; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 10px 24px rgba(0, 0, 0, .14);
+  display: flex; flex-direction: column; text-align: left;
+}
+.bsc .bsc-menu button {
+  border: 0; border-bottom: 1px solid var(--line-lt); background: #fff; padding: 8px 12px; cursor: pointer;
+  height: auto; min-height: 0; line-height: 1.35; white-space: normal; border-radius: 0; font-weight: 600;
+  font-family: inherit; font-size: 12.5px; color: var(--slate); text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+}
+.bsc .bsc-menu button:last-child { border-bottom: 0; }
+.bsc .bsc-menu button:hover { background: #f6f6f6; color: var(--slate); }
+.bsc .bsc-menu button i { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--gray-lt); }
+/* Propositions (#373) : la cloche, le dossier périmé, la barre d'outils, la page collée. */
+.cfc-cloche {
+  width: 30px; height: 30px; border: 1px solid #cfe0cf; border-radius: 4px; background: #f4faf3; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--green);
+}
+.cfc-cloche svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cfc-cloche.off { border-color: #e6b3b3; background: #fffafa; color: var(--red); }
+.cfc-cloche:disabled { opacity: .5; cursor: default; }
+.cfc-num.off { color: var(--gray-lt); }
+.cfc-num.rouge { color: var(--red); border-color: #e6b3b3; }
+.cfc-perime {
+  border: 1px solid var(--red); background: var(--red); color: #fff; border-radius: 3px;
+  padding: 3px 8px; font-size: 11.5px; font-weight: 700;
+}
+.prop-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 14px; }
+.prop-barre .lst-search { max-width: 420px; height: 34px; }
+.prop-pt { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.prop-pt.vert { background: var(--green); }
+.prop-pt.gris { background: #bbb; }
+.lst-pager.collee { position: sticky; bottom: 0; z-index: 5; background: #f2f2f2; margin-top: 12px; border-top: 1px solid var(--line); }
+.prop-sms { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-size: 12.5px; cursor: pointer; }
+.prop-sms input { margin-top: 3px; }
+.prop-sms i { display: block; font-style: normal; color: var(--gray-txt); margin-top: 3px; }
+.prop-sms.off { opacity: .6; cursor: default; }
 
 .cfc-saisie {
   width: 100%; border: 0; border-bottom: 1px dashed var(--line); background: none;

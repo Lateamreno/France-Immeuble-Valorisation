@@ -45,10 +45,30 @@ export type VignetteData = {
   email?: string;
   immeubles: number;
   recherches: number;
+  /** Classe A–D de l'acquéreur : dès qu'il en a une, elle s'affiche dans la
+   *  puce (retour du 24/09 : « si c'est aussi un acquéreur tu mets sa vignette
+   *  A B C ou D »). */
+  note?: string;
+  /** Agent immobilier : la silhouette change, « pour qu'on sache à qui on a
+   *  affaire ». */
+  estAgent?: boolean;
+  /** L'agent France Immeuble qui suit la fiche : ses initiales, dans sa
+   *  couleur, sous le picto de la carte. */
+  agent?: { initiales: string; couleur?: string };
 };
 
 const IC_PERS = (
   <><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></>
+);
+/* La silhouette de l'agent immobilier — la même que dans les listes : un
+   confrère ne se présente pas comme un client. */
+const IC_AGENT = (
+  <>
+    <circle cx="12" cy="8.5" r="3.4" />
+    <path d="M5.5 20.5c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" />
+    <path d="M6.6 7.4h4.2M13.2 7.4h4.2" />
+    <circle cx="8.7" cy="8.2" r="2.1" /><circle cx="15.3" cy="8.2" r="2.1" />
+  </>
 );
 
 /** « S. TOURNUT » : l'initiale du prénom et le nom, pour titrer la fenêtre. */
@@ -125,6 +145,9 @@ export function VignetteContact({
 
   const tel = v.tel?.replace(/[^\d+]/g, "");
   const fiche = `/contact/${v.id}`;
+  const picto = v.estAgent ? IC_AGENT : IC_PERS;
+  /* L'insigne : celui qu'on nous donne, sinon la classe de l'acquéreur. */
+  const insigne = badge ?? (v.note && /^[A-D]$/.test(v.note) ? <b className={`note n${v.note}`}>{v.note}</b> : null);
 
   /* La rédaction s'ouvre dans le BO : on va chercher l'agent et ses messages
      types, puis la fenêtre flottante se pose en bas à droite. */
@@ -149,21 +172,29 @@ export function VignetteContact({
     <span className="vgn" ref={boite}>
       {prefixe && <i className="vgn-pre">{prefixe}</i>}
       <button
-        type="button" className={`vgn-chip${ouvert ? " on" : ""}`}
+        type="button" className={`vgn-chip${ouvert ? " on" : ""}${v.estAgent ? " agent" : ""}`}
         aria-expanded={ouvert} onClick={(e) => { isoler(e); setOuvert((o) => !o); }}
+        title={v.estAgent ? "Agent immobilier" : undefined}
       >
-        <svg viewBox="0 0 24 24" aria-hidden>{IC_PERS}</svg>
+        <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
         {libelle}
-        {badge}
+        {insigne}
       </button>
 
       {ouvert && (
         <span className={`vgn-pop${droite ? " droite" : ""}`} ref={pop} onClick={(e) => e.stopPropagation()}>
           <span className="vgn-card">
             {/* Le picto et le nom mènent à la fiche (#370). */}
-            <Link className="av" href={fiche} title="Ouvrir la fiche contact">
-              <svg viewBox="0 0 24 24" aria-hidden>{IC_PERS}</svg>
-            </Link>
+            <span className="avc">
+              <Link className={`av${v.estAgent ? " agent" : ""}`} href={fiche} title={v.estAgent ? "Agent immobilier — ouvrir la fiche" : "Ouvrir la fiche contact"}>
+                <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
+              </Link>
+              {/* L'agent qui suit la fiche, sous le picto (retour du 24/09). */}
+              {v.agent && (
+                <span className="lav" title="Agent qui suit la fiche"
+                  style={v.agent.couleur ? { background: v.agent.couleur } : undefined}>{v.agent.initiales}</span>
+              )}
+            </span>
             <span className="txt">
               <span className="ligne">
                 <Link className="nom" href={fiche} title="Ouvrir la fiche contact">{v.nom}</Link>

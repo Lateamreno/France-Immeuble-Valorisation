@@ -78,6 +78,9 @@ export type ContactBref = {
   initialesCouleur?: string;
   nbImmeubles?: number;
   nbRecherches?: number;
+  /** Classe A–D et silhouette d'agent immobilier, pour la vignette (24/09). */
+  note?: string;
+  estAgent?: boolean;
 };
 
 /* ---------- Transférer à un collègue ---------- */
