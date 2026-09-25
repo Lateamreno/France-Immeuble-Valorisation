@@ -5209,6 +5209,31 @@ export async function chargerHistoriqueAcheteurs(immeubleId: string) {
   return getHistoriqueAcheteurs(immeubleId);
 }
 
+/**
+ * Une commercialisation à rouvrir (retour #431, suite) : ses cibles sont
+ * reconstituées depuis SES propositions — pas depuis le vivier, qui met
+ * plusieurs secondes à arriver et dont la carte dépendait. « Je ne peux
+ * toujours pas ouvrir la commercialisation qui n'a pas été envoyée » : la
+ * carte n'était cliquable qu'une fois le vivier chargé, sans le dire.
+ */
+export async function chargerCommercialisation(commId: string) {
+  const comm = await bqOne("bo_commercialisation", commId);
+  if (!comm) return null;
+  if (!SB_KEY) return { comm, cibles: [] };
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_proposition?select=data&data->>COMMERCIALISATION=eq.${encodeURIComponent(commId)}&limit=2000`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  );
+  const props = res.ok ? ((await res.json()) as { data: Record<string, unknown> }[]).map((r) => r.data) : [];
+  const rechercheIds = [...new Set(props.flatMap((p) => (Array.isArray(p.RECHERCHEs) ? (p.RECHERCHEs as unknown[]).map(String) : [])))];
+  const contactIds = [...new Set(props.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
+  const [recherches, contacts] = await Promise.all([bqIn("bo_recherche", rechercheIds), bqIn("bo_contact", contactIds)]);
+  const cMap = new Map(contacts.map((c) => [String(c._id), c]));
+  const { carte } = await import("@/lib/bo/matching");
+  const cibles = recherches.map((r) => carte(r, cMap, true));
+  return { comm, cibles };
+}
+
 export async function chargerAcheteurs(immeubleId: string) {
   const { getAcheteurs } = await import("@/lib/bubble/server");
   return getAcheteurs(immeubleId);
