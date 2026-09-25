@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
-import { ModaleApresRefus } from "@/components/proposition-refus";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES } from "@/components/propositions";
 import Image from "next/image";
 import Link from "next/link";
@@ -2333,7 +2332,8 @@ function ModaleRetour({ initial, onFermer, onNoter, pending }: {
 /** La fenêtre de refus d'une proposition : un motif choisi, et ses mots. */
 function ModaleRefus({ onFermer, onRefuser, pending }: {
   onFermer: () => void;
-  onRefuser: (motif: string, precisions: string) => void;
+  /** `corriger` : retour #402 — enregistrer ET ouvrir la recherche à corriger. */
+  onRefuser: (motif: string, precisions: string, corriger: boolean) => void;
   pending: boolean;
 }) {
   const [motif, setMotif] = useState(MOTIFS_REFUS[0]);
@@ -2347,8 +2347,13 @@ function ModaleRefus({ onFermer, onRefuser, pending }: {
         <>
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <span className="sp" style={{ flex: 1 }} />
+          <button className="fadd" type="button" disabled={pending || (autre && !valeur)}
+            title="Enregistre le refus, puis ouvre la recherche de la personne pour la corriger"
+            onClick={() => onRefuser(valeur, autre ? "" : libre.trim(), true)}>
+            Refuser et corriger la recherche
+          </button>
           <button className="kgo" type="button" disabled={pending || (autre && !valeur)}
-            onClick={() => onRefuser(valeur, autre ? "" : libre.trim())}>
+            onClick={() => onRefuser(valeur, autre ? "" : libre.trim(), false)}>
             <span className="ch">›</span> Marquer refusée
           </button>
         </>
@@ -2379,7 +2384,6 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
   const [refus, setRefus] = useState(false);
   const [retour, setRetour] = useState(false);
   /* L'enchaînement du refus : la question, puis la recherche si l'on dit oui. */
-  const [apres, setApres] = useState<string | null>(null);
   const [recherche, setRecherche] = useState<DepartRecherche | null>(null);
   const [creerPour, setCreerPour] = useState<{ id: string; nom: string } | null>(null);
   const immeubleId = String(b.im._id);
@@ -2453,26 +2457,16 @@ function PropositionActions({ b, p }: { b: BienData; p: Record<string, unknown> 
         <ModaleRefus
           pending={pending}
           onFermer={() => setRefus(false)}
-          onRefuser={(motif, precisions) => {
+          onRefuser={(motif, precisions, corriger) => {
             setRefus(false);
             start(async () => {
               await setPropositionStatut(immeubleId, id, "refuser", motif || undefined, precisions);
-              setApres(motif || null);
+              if (!corriger) return;
+              const d = await departRechercheDeProposition(id);
+              if (d?.recherche) setRecherche(d.recherche);
+              else if (d?.contact) setCreerPour({ id: d.contact.id, nom: d.contact.nom });
             });
           }}
-        />
-      )}
-      {apres !== null && (
-        <ModaleApresRefus
-          motif={apres || undefined}
-          pending={pending}
-          onNon={() => setApres(null)}
-          onOui={() => start(async () => {
-            const d = await departRechercheDeProposition(id);
-            setApres(null);
-            if (d?.recherche) setRecherche(d.recherche);
-            else if (d?.contact) setCreerPour({ id: d.contact.id, nom: d.contact.nom });
-          })}
         />
       )}
       {(recherche || creerPour) && (

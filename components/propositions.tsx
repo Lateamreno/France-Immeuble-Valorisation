@@ -20,7 +20,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { PropositionLigne } from "@/lib/bubble/server";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
-import { ModaleApresRefus } from "@/components/proposition-refus";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
@@ -158,7 +157,6 @@ export function CarteProposition({
   const [pending, start] = useTransition();
   const [refus, setRefus] = useState(false);
   const [motif, setMotif] = useState("");
-  const [apres, setApres] = useState<string | null>(null);
   const [recherche, setRecherche] = useState<DepartRecherche | null>(null);
   const [creerPour, setCreerPour] = useState<{ id: string; nom: string } | null>(null);
   const immeubleId = contexte.immeubleId ?? p.immeuble?.id ?? "";
@@ -294,29 +292,30 @@ export function CarteProposition({
               onChange={(e) => setMotif(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setRefus(false); }} />
             <button type="button" className="cfc-refus-x" onClick={() => setRefus(false)}>Annuler</button>
+            {/* Retour #402 : plus de fenêtre à aller chercher après coup —
+                deux boutons, là où l'on a cliqué : enregistrer, ou enregistrer
+                ET corriger la recherche dans la foulée. */}
             <button type="button" className="cfc-refus-go" disabled={pending || !motif.trim()}
               onClick={() => start(async () => {
                 await setPropositionStatut(immeubleId, p.id, "refuser", motif.trim(), undefined, contactId || undefined);
                 setRefus(false);
-                setApres(motif.trim());
                 onRafraichir();
               })}>
-              <span className="ch">›</span> Enregistrer le refus
+              <span className="ch">›</span> Enregistrer
+            </button>
+            <button type="button" className="cfc-refus-go second" disabled={pending || !motif.trim()}
+              title="Enregistre le refus, puis ouvre la recherche de la personne pour la corriger"
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "refuser", motif.trim(), undefined, contactId || undefined);
+                setRefus(false);
+                onRafraichir();
+                const r = await departRechercheDeProposition(p.id);
+                if (r?.recherche) setRecherche(r.recherche);
+                else if (r?.contact) setCreerPour({ id: r.contact.id, nom: r.contact.nom });
+              })}>
+              <span className="ch">›</span> Enregistrer et corriger la recherche
             </button>
           </div>
-        )}
-        {apres !== null && (
-          <ModaleApresRefus
-            motif={apres || undefined}
-            pending={pending}
-            onNon={() => setApres(null)}
-            onOui={() => start(async () => {
-              const r = await departRechercheDeProposition(p.id);
-              setApres(null);
-              if (r?.recherche) setRecherche(r.recherche);
-              else if (r?.contact) setCreerPour({ id: r.contact.id, nom: r.contact.nom });
-            })}
-          />
         )}
         {(recherche || creerPour) && (
           <ModaleRechercheEdition

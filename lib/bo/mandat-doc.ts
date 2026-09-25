@@ -15,6 +15,7 @@
 // encore produire.
 
 import { dureeEnLettres, entierEnLettres, euroEnLettres, nombreAvecChiffre } from "@/lib/nombre-lettres";
+import { etagesDepuisLots } from "@/lib/bo/etages";
 import { adresseImmeuble, lotOccupe, synthese, type Mandant } from "@/lib/mandat";
 import { dateCivile } from "@/lib/format";
 
@@ -306,7 +307,8 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
   const cp = S(im.adresse_zipcode);
   const rue = [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ");
   const annee = N(im.year_constru);
-  const etages = N(im.nb_etage);
+  /* Retour #403 : à défaut d'un nombre saisi, l'étage le plus haut des lots. */
+  const etages = N(im.nb_etage) ?? etagesDepuisLots(lots);
   const cadastre = S(m.ref_cadastre);
   const terrain = N(m.surface_terrain) ?? N(im.surface_terrain);
 

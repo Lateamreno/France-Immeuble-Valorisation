@@ -177,8 +177,8 @@ export function construireDossierVente(
        différentes. */
     photos: selectionDossier(b.photos)
       .retenues
-      .map((p) => taille(p.urlPleine ?? p.url, 760))
-      .filter((u): u is string => !!u),
+      .map((p) => ({ src: taille(p.urlPleine ?? p.url, 760), zoom: p.cadrage === "zoom" }))
+      .filter((x): x is { src: string; zoom: boolean } => !!x.src),
 
     /* Page 1 — les chiffres de couverture */
     cibles: Array.isArray(im.Cibles) ? (im.Cibles as unknown[]).map(String) : [],

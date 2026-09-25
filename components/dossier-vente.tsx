@@ -45,7 +45,7 @@ const I = {
   courbe: <><path d="M3 19h18" /><path d="M3 16.5 8.5 9l4 3.5L20 5v11.5z" /></>,
   outil: <><path d="m14.5 5.5 4 4-8.5 8.5H6v-4z" /><path d="M13 7 17 11" /><path d="M3 21h18" /></>,
   fleche: <><path d="M3 12h11M10 8l4 4-4 4" /><path d="M15 4h6v16h-6" /></>,
-  carte: <><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 7z" /><path d="M9 4v13M15 7v12.5" /></>,
+  plan: <><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 7z" /><path d="M9 4v13M15 7v12.5" /></>,
   camembert: <><path d="M12 3a9 9 0 1 0 9 9h-9z" /><path d="M14.5 2.5A9 9 0 0 1 21.5 9.5h-7z" /></>,
   brique: <><path d="M3 8h18M3 12h18M3 16h18" /><path d="M3 8v8M21 8v8" /><path d="M9 8v4M15 12v4" /></>,
   coche: <><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" /><path d="m8 12 3 3 5-6" /></>,
@@ -54,6 +54,13 @@ const I = {
   mail: <><path d="M3 7.5 12 13l9-5.5" /><rect x="3" y="5" width="18" height="14" rx="2" /></>,
   tel: <><path d="M6 3h4l2 5-2.5 1.5a12 12 0 0 0 5 5L16 12l5 2v4a2 2 0 0 1-2.2 2C10.6 19.3 4.7 13.4 4 5.2A2 2 0 0 1 6 3z" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18" /></>,
+  /* Retour #419 : « des pictos plus gras et plus beaux (plus réalistes).
+     Charges c'est censé être une carte bleue, rendement c'est une flèche dans
+     un graphique pas une montagne, loyer ce peut être des pièces qui rentrent
+     dans une main. » */
+  carte: <><rect x="2.5" y="5.5" width="19" height="13" rx="2" /><path d="M2.5 9.5h19" /><path d="M6 15h4.5" /><path d="M14.5 15h3" /></>,
+  graphique: <><path d="M3.5 4v16h17" /><path d="M6.5 16.5 10.5 11l3.5 3 5.5-7" /><path d="M15.5 7h4v4" /></>,
+  main: <><path d="M3 15.8c2.2-1.4 4.3-1.4 6.2 0l3.4 1.7h4.6a1.9 1.9 0 0 1 0 3.8H11L3 19.6" /><circle cx="9.5" cy="6" r="2.6" /><circle cx="15.5" cy="8.6" r="2.6" /></>,
 };
 
 const Ic = ({ d, cls = "dv-ic" }: { d: React.ReactNode; cls?: string }) => (
@@ -92,6 +99,10 @@ function Page({ titre, picto, pied, enfants, nu, compact }: {
   return (
     <section className={`dv-page${nu ? " nue" : ""}${compact ? " serre" : ""}`}>
       <div className="dv-in">
+        {/* Retours #408 à #416 : « il manque le bandeau horizontal de rappel
+            de la page » — comme le dossier actuel, en plus de la tranche (qui
+            reste). Il descend le contenu et le pose sur la page. */}
+        {titre && !nu && <div className="dv-bande">{titre.replace(/^Etat/, "État")}</div>}
         {enfants}
         {pied && (
           <div className="dv-pied">
@@ -177,13 +188,11 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               {d.prix.travaux > 0 ? `${group(d.prix.travaux)} € de travaux à prévoir` : "Pas de travaux à prévoir"}
             </span>
           </div>
+          {/* Retour #406 : un seul rendement brut en couverture, le potentiel,
+              sans couleur. L'actuel reste sur la page de l'état financier. */}
           <div className="dv-case">
             <span className="dv-lab">Rendement brut</span>
-            <b className="dv-deux">
-              {fr1(d.rendement.actuel.brut)} <i>%</i>
-              <em>–</em>
-              <span className="or">{fr1(d.rendement.potentiel.brut)} <i>%</i></span>
-            </b>
+            <b>{fr1(d.rendement.potentiel.brut)} <i>%</i></b>
           </div>
         </div>
 
@@ -199,20 +208,23 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           dit au lecteur que le dossier est incomplet, sur le document même
           qu'on lui envoie pour le convaincre. Mieux vaut ne pas l'imprimer —
           la liste des manques, côté BO, dit déjà ce qu'il faut déposer. */}
+      {/* Retour #408 : un bandeau « Photos » en tête de planche, comme le
+          dossier actuel — il descend la grille, qui remplit la page jusqu'au
+          pied sans vide en dessous. */}
       {d.photos.length > 0 && (
-        <Page titre="Photos" picto={I.photo} pied={pied} enfants={
+        <Page titre="Photos" picto={I.photo} pied={pied} enfants={<>
           <div className="dv-ph-grid">
             {/* Huit photos par planche : au-delà, une seconde page. */}
-            {d.photos.slice(0, 8).map((u, i) => <PhotoDossier key={i} src={u} />)}
+            {d.photos.slice(0, 8).map((ph, i) => <PhotoDossier key={i} src={ph.src} zoom={ph.zoom} />)}
           </div>
-        } />
+        </>} />
       )}
       {d.photos.length > 8 && (
-        <Page titre="Photos" picto={I.photo} pied={pied} enfants={
+        <Page titre="Photos" picto={I.photo} pied={pied} enfants={<>
           <div className="dv-ph-grid">
-            {d.photos.slice(8, 16).map((u, i) => <PhotoDossier key={i} src={u} />)}
+            {d.photos.slice(8, 16).map((ph, i) => <PhotoDossier key={i} src={ph.src} zoom={ph.zoom} />)}
           </div>
-        } />
+        </>} />
       )}
 
       {/* ----------------------------------------------- 3. Emplacement */}
@@ -247,7 +259,8 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         </table>
 
         <div className="dv-ville">
-          <div className="dv-ville-t">{d.ville}</div>
+          {/* Retour #409 : le titre dit ce que c'est, pas seulement le nom. */}
+          <div className="dv-ville-t">Les principales données sur {d.ville}</div>
           <div className="dv-ville-g">
             <Stat picto={I.gens} label="Habitants" source="INSEE"
               valeur={d.ville_stats.habitants !== undefined ? group(d.ville_stats.habitants) : "n.c."} />
@@ -256,7 +269,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               unite="k€/habitant/an" />
             <Stat picto={I.thermo} label="Tension locative" source="LOCservice"
               valeur={nc(d.ville_stats.tension)} />
-            <Stat picto={I.courbe} label="Prix des logements" source="Notaires"
+            <Stat picto={I.graphique} label="Prix des logements" source="Notaires"
               valeur={d.ville_stats.prix !== undefined ? group(d.ville_stats.prix) : "n.c."} unite="€/m²" />
           </div>
         </div>
@@ -267,27 +280,36 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         <h2 className="dv-h"><Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b></h2>
 
         <h2 className="dv-h"><Ic d={I.pouls} /> Etat des matériaux</h2>
+        {/* Retour #410 : le type reste à gauche ; matériau, derniers travaux
+            et état sont centrés, titre ET contenu. La colonne des travaux ne
+            s'imprime que si au moins un composant porte une date. */}
+        {(() => {
+          const colTravaux = d.composants.some((c) => c.annee !== undefined && c.annee !== null);
+          const nbCols = colTravaux ? 4 : 3;
+          return (
         <table className="dv-tab">
           <thead>
-            <tr><th>Type</th><th>Matériau</th><th>Derniers travaux</th><th className="r">Etat</th></tr>
+            <tr><th>Type</th><th className="c">Matériau</th>{colTravaux && <th className="c">Derniers travaux</th>}<th className="c">Etat</th></tr>
           </thead>
           <tbody>
             {d.composants.map((c, i) => (
               <tr key={i}>
                 <td>{nc(c.type)}</td>
                 <td className="c">{nc(c.materiau)}</td>
-                <td className="c gris">{c.annee ?? "n.c."}</td>
-                <td className={`r${/rénov|renov|neuf/i.test(c.etat) ? " vert" : ""}`}>{nc(c.etat)}</td>
+                {colTravaux && <td className="c gris">{c.annee ?? "n.c."}</td>}
+                <td className={`c${/rénov|renov|neuf/i.test(c.etat) ? " vert" : ""}`}>{nc(c.etat)}</td>
               </tr>
             ))}
             {d.composants.length === 0 && (
-              <tr><td colSpan={4} className="gris">Aucun composant renseigné.</td></tr>
+              <tr><td colSpan={nbCols} className="gris">Aucun composant renseigné.</td></tr>
             )}
           </tbody>
           {d.etatGeneral && (
-            <tfoot><tr><td colSpan={3} /><td className="r">{d.etatGeneral}</td></tr></tfoot>
+            <tfoot><tr><td colSpan={nbCols - 2} /><td className="c tot">État général</td><td className="c">{d.etatGeneral}</td></tr></tfoot>
           )}
         </table>
+          );
+        })()}
 
         {/* Retour #222 : la clé à molette plutôt que l'outil générique. */}
         <h2 className="dv-h"><Ic d={I.molette} /> Travaux à prévoir</h2>
@@ -312,14 +334,14 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               ))}
             </tbody>
             <tfoot>
-              <tr><td colSpan={3}>Total</td><td className="r">{eur(d.prix.travaux)}</td></tr>
+              <tr><td colSpan={2} /><td className="c tot">Total</td><td className="r">{eur(d.prix.travaux)}</td></tr>
             </tfoot>
           </table>
         )}
 
         <div className="dv-terrain">
           <div className="dv-t-col">
-            <div className="dv-t-h"><Ic d={I.carte} /> Terrain</div>
+            <div className="dv-t-h"><Ic d={I.plan} /> Terrain</div>
             <span>Parcelle</span><b>{nc(d.terrain.parcelle)}</b>
             <span>Superficie</span><b>{d.terrain.superficie !== undefined ? `${group(d.terrain.superficie)} m²` : "n.c."}</b>
             <span>Façade</span><b>{d.terrain.facade !== undefined ? `${group(d.terrain.facade)} m` : "n.c."}</b>
@@ -392,11 +414,14 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             )}
           </tbody>
           <tfoot>
+            {/* Retour #412 : le total se nomme, en or, dans la case qui
+                précède les chiffres — avant Carrez, et avant HC/mois. */}
             <tr>
-              <td colSpan={2} />
+              <td /><td className="tot">Total</td>
               <td className="c">{group(d.total.carrez)} <i>m²</i></td>
               <td className="c">{group(d.total.sol)} <i>m²</i></td>
-              <td colSpan={2 + (colBail ? 1 : 0) + (colEntree ? 1 : 0)} />
+              <td colSpan={1 + (colBail ? 1 : 0) + (colEntree ? 1 : 0)} />
+              <td className="c tot">Total</td>
               <td className="r">{group(d.total.loyerMois)} €</td>
               <td className="r or">{group(d.total.potentiel)} <i>€/an</i></td>
             </tr>
@@ -437,11 +462,11 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             </tr>
           </tbody>
           <tfoot>
-            <tr><td colSpan={3} /><td className="r">{eur(d.prix.hai + d.prix.notaire + d.prix.travaux)}</td></tr>
+            <tr><td colSpan={2} /><td className="c tot">Total</td><td className="r">{eur(d.prix.hai + d.prix.notaire + d.prix.travaux)}</td></tr>
           </tfoot>
         </table>
 
-        <h2 className="dv-h"><Ic d={I.fleche} /> Revenus hors charges</h2>
+        <h2 className="dv-h"><Ic d={I.main} /> Revenus hors charges</h2>
         <table className="dv-tab fin">
           <thead>
             <tr><th>Type de lot</th><th className="c">Revenus actuels</th><th className="c">Occupation</th><th className="r">Revenus potentiels</th></tr>
@@ -464,7 +489,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tbody>
           <tfoot>
             <tr>
-              <td />
+              <td className="tot">Total</td>
               <td className="c">{group(d.revenusTot.actuel)} €/an</td>
               <td className="c">{d.revenusTot.occupation} %</td>
               <td className="r or">{group(d.revenusTot.potentiel)} €/an</td>
@@ -472,7 +497,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tfoot>
         </table>
 
-        <h2 className="dv-h"><Ic d={I.billet} /> Charges</h2>
+        <h2 className="dv-h"><Ic d={I.carte} /> Charges</h2>
         <table className="dv-tab fin">
           <thead>
             <tr><th>Type de charge</th><th className="c">Montant</th><th className="c">Récupérable</th><th className="r">Non récupérable</th></tr>
@@ -490,7 +515,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tbody>
           <tfoot>
             <tr>
-              <td />
+              <td className="tot">Total</td>
               <td className="c">{group(d.chargesTot.total)} €/an</td>
               <td className="c">{group(d.chargesTot.recup)} €/an</td>
               <td className="r or">{group(d.chargesTot.nonRecup)} €/an</td>
@@ -498,7 +523,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           </tfoot>
         </table>
 
-        <h2 className="dv-h"><Ic d={I.courbe} /> Rendement</h2>
+        <h2 className="dv-h"><Ic d={I.graphique} /> Rendement</h2>
         <table className="dv-tab fin">
           <thead>
             <tr><th>Type de rendement</th><th className="c">Actuel</th><th className="c" /><th className="r">Potentiel</th></tr>
@@ -530,7 +555,8 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             la seule différence entre actuel et potentiel est la base, et elle
             se dit une fois pour les trois. Ses formules, dans ses mots. */}
         <div className="dv-formules">
-          <p>Brut = Loyers HC / Prix HAI &nbsp;·&nbsp; Net = (Loyers HC − charges non récupérables) / Prix HAI &nbsp;·&nbsp; Net acte en main = (Loyers HC − charges non récupérables) / (Prix HAI + frais de notaire)</p>
+          {/* Retour #415 : le début de chaque calcul ressort en gras. */}
+          <p><b>Brut</b> = Loyers HC / Prix HAI &nbsp;·&nbsp; <b>Net</b> = (Loyers HC − charges non récupérables) / Prix HAI &nbsp;·&nbsp; <b>Net acte en main</b> = (Loyers HC − charges non récupérables) / (Prix HAI + frais de notaire)</p>
           <p>Le potentiel reprend les mêmes formules, sur les loyers de l&apos;immeuble loué à 100 % et un prix majoré des travaux à prévoir.</p>
         </div>
       </>} />
@@ -548,13 +574,14 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         <h2 className="dv-h"><Ic d={I.coche} /> Conditions acceptées</h2>
         <table className="dv-tab cond">
           <tbody>
+            {/* Retour #418 : « c'est pas true ou false, c'est acceptées ou refusées ». */}
             <tr>
               <td>Conditions de financement</td>
-              <td className="r">{d.conditions.financement ? d.conditions.financement : "n.c."}</td>
+              <td className="r">{accepte(d.conditions.financement)}</td>
             </tr>
             <tr>
               <td>Conditions de permis de construire</td>
-              <td className="r">{d.conditions.permis ? d.conditions.permis : "n.c."}</td>
+              <td className="r">{accepte(d.conditions.permis)}</td>
             </tr>
           </tbody>
         </table>
@@ -581,11 +608,11 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               clé à molette, ici aussi. */}
           <Stat picto={I.molette} label="Travaux" source="à prévoir"
             valeur={fr1(d.prix.travaux / 1000)} unite="k€" />
-          <Stat picto={I.fleche} label="Loyers hc" source="potentiels"
+          <Stat picto={I.main} label="Loyers hc" source="potentiels"
             valeur={fr1(d.revenusTot.potentiel / 1000)} unite="k€/an" />
-          <Stat picto={I.billet} label="Charges" source="non récupérables"
+          <Stat picto={I.carte} label="Charges" source="non récupérables"
             valeur={fr1(d.chargesTot.nonRecup / 1000)} unite="k€/an" />
-          <Stat picto={I.courbe} label="Rendement" source="brut après travaux"
+          <Stat picto={I.graphique} label="Rendement" source="brut après travaux"
             valeur={fr1(d.rendement.potentiel.brut)} unite="%" />
         </div>
 
@@ -614,6 +641,13 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
     </div>
   );
 }
+
+/** « Acceptées » / « Refusées » (retour #418), quelle que soit la façon dont Bubble l'a écrit. */
+const accepte = (v: unknown) => {
+  if (v === true || v === "true" || v === "oui" || v === "Oui") return "Acceptées";
+  if (v === false || v === "false" || v === "non" || v === "Non") return "Refusées";
+  return typeof v === "string" && v.trim() ? v : "n.c.";
+};
 
 /** Une case chiffrée de la couverture. */
 const Case = ({ label, valeur, unite }: { label: string; valeur: string; unite?: string }) => (

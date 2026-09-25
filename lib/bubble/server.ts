@@ -944,6 +944,9 @@ export type BienData = {
     ordre: number;
     /** Part dans le dossier de vente. */
     dossier: boolean;
+    /** Retour #407 — pour une photo en portrait : bandes noires (défaut) ou
+     *  zoom par le milieu, au choix de l'agent, photo par photo. */
+    cadrage?: "bandes" | "zoom";
     annonce: boolean;
     estimation: boolean;
   }[];
@@ -1072,6 +1075,7 @@ export async function getBien(id: string): Promise<BienData | null> {
         lotId: typeof p.LOT === "string" ? (p.LOT as string) : undefined,
         ordre: Number(p.order ?? 0) || 0,
         dossier: p.show_in_doss === true,
+        cadrage: p.doss_cadrage === "zoom" ? "zoom" : undefined,
         annonce: p.show_in_ann === true,
         estimation: p.show_in_est === true,
       })),

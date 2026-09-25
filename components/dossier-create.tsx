@@ -213,8 +213,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
                     : "Fabrication de l'aperçu…"}
                 </b>
                 <span>
-                  Une vingtaine de pages, les cartes et le PDF : comptez quelques
-                  secondes. Ne relancez pas, cela créerait un dossier en double.
+                  Les cartes, les photos et le PDF : comptez quelques secondes.
+                  Ne relancez pas, cela créerait un dossier en double.
                 </span>
               </div>
             </div>
