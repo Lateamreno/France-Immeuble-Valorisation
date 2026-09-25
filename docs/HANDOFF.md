@@ -87,6 +87,183 @@ charte : artefact Claude « Cockpit France Immeuble — Dashboard (3 versions) �
 
 ## 7. État du code
 
-App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée. Un thème
-« vitrine » sombre/bronze avait été posé pour tests ; **à remplacer** par la charte claire
-ci-dessus dans la vraie refonte (Path B). `integrations/bubble/` = lecture Bubble.
+App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
+`integrations/bubble/` = lecture Bubble (le client nettoie lui-même une
+`BUBBLE_APP_URL` contenant le chemin API ou `/version-test`).
+
+**Fait (10/08/26) :**
+- Cartographie complète du BO Bubble : `docs/CARTOGRAPHIE-BO.md` + `docs/cartographie/`
+  (base réelle via Data API + les ~144 captures dépouillées écran par écran).
+- **DÉCISION (10/08/26, remplace la charte pour cette phase) : réplique 100 % fidèle
+  du BO Bubble actuel d'abord** — mêmes couleurs, mêmes écrans, même workflow.
+  La charte bronze/claire et les évolutions (découpe, Plein Bail, IA) viendront
+  APRÈS avoir atteint l'iso-fonctionnel. Un dashboard « 9 cases » chartré avait été
+  posé puis remplacé par la réplique (dispo dans l'historique git si besoin).
+- **Captures en pixels** : le connecteur Drive ne renvoie que de l'OCR via
+  `read_file_content`; les pixels s'obtiennent via `download_file_content` —
+  les gros résultats sont sauvés par le harness dans
+  `~/.claude/projects/<session>/tool-results/*.txt` (JSON `{content: base64, title}`),
+  les petits passent par des sous-agents puis extraction de leur transcript JSONL.
+  Scripts : `scratchpad/decode-tr.mjs` + `scratchpad/extract.mjs` ; images dans
+  `scratchpad/captures/`.
+- **Design system du BO relevé au pixel** (voir en-tête de `app/globals.css`) :
+  sidebar #424247, slate #44525f, rouge #d60000, orange #e3790d, vert #3db327,
+  bande bloc #e3e3e3, fond colonnes #f0f0f0. Polices réelles de l'app Bubble :
+  **Poppins + Lato** (auto-hébergées dans `public/fonts`).
+- **Dashboard répliqué** (`app/page.tsx` + `lib/data/dashboard.ts`) : 3 blocs
+  repliables PROSPECTS / COMMERCIALISATIONS / VENTES (badges rouge + carré,
+  barre rouge/verte et k€ HT sur VENTES), colonnes avec compteurs, cartes
+  fidèles (vignette + badge RV, chip contact, chip date + note, frise rouge
+  « en attente » date→motif→date, prix, honos k€, statut mandat rouge,
+  compteurs propositions/visites/offres, icônes d'alerte rouges, boutons
+  › Contacté / › Estimer / › OK pour vendre / Réactiver vert /
+  › Programmer le compromis), topbar (recherche + pills En cours/En attente +
+  bouton orange agent), bottom bar 7 entités. Données mock = cartes exactes
+  des captures ; à brancher sur la Data API Bubble.
+- **API Workflow Bubble** : `BUBBLE_APP_URL_WORKFLOWS` pointe sur
+  `/version-test/api/1.1/wf` — permet d'APPELER des workflows (POST), pas de
+  les lister ; il faudra les noms d'endpoints (ou captures de l'éditeur).
+
+- **Dashboard branché sur la vraie base Bubble** (`lib/bubble/server.ts`) :
+  - Sémantique VALIDÉE : colonnes = immeubles non archivés groupés par préfixe
+    de `Statut` (énum 0 RETIRé → 11 VENDU), filtrés par `AGENT`. Vérifié :
+    Romain (`1774279722391x…`) ⇒ 5/15/16, 7/0/13, 3/0/0 = les captures.
+    MAV = `1565404488771x…`. Mapping Guillaume/François/Sophie à confirmer.
+  - Cartes : contact = `PROPRIETAIRE`→contact ; note/date = dernier `suivi`
+    (trié Created Date desc — champ `Motif_standby` porte le motif d'attente,
+    `Canals` le canal) ; carte rouge = `standby_Statut` ≠ Traité, frise
+    `date_start` → `date_relance` ; statut mandat = dernier `mandat` de
+    l'immeuble ; k€ HT = `honos_ht` de l'offre liée (18+17+10=45 ✓) ;
+    compteurs prop/vis/off = counts par immeuble (statuts 5-7).
+  - **Photos** : `photo_main_compressed` est PRIVÉ (401) → proxy
+    `/api/photo?u=…` avec le token serveur + `next/image` (redimensionnement,
+    certaines photos font 6 Mo). `next.config.ts` : `images.localPatterns`.
+  - Dates formatées en **Europe/Paris** (sinon décalées d'un jour).
+  - Fallback : sans `BUBBLE_API_TOKEN`, mock + bandeau discret.
+  - ⚠️ **Vercel** : définir `BUBBLE_API_TOKEN` (+ `BUBBLE_APP_URL` propre) dans
+    les env vars du projet pour que la preview affiche la vraie donnée.
+  - Types annexes découverts : `user` (Agent FI/Role), `suivi` (3 496),
+    `question`, `download`, `commercialisation`, `dossier`, `objectif`,
+    `photo`, `parcelle`, `composant`, `charge`, `prix`, `adresse`.
+  - Badges de la sidebar (36/53/5/9/31) : sémantique exacte non identifiée
+    (statuts tabulés ne collent pas) → encore statiques, à confirmer avec MAV.
+
+- **Fiche Bien répliquée** (`/bien/[id]`, `components/bien-fiche.tsx`) : rail
+  droit avec indicateurs de complétude (champs `ok_*`), sections Suivi /
+  Propriétaire / Emplacement / État locatif (tableau lots) / État technique /
+  Description et prix / Photos / Estimations / Mandats / Dossiers / Acheteurs.
+  Sélecteur d'agents = menu déroulant orange (défaut Marc-Antoine), cartes du
+  dashboard cliquables. Or de la fiche : #b6a359.
+- **MIGRATION SUPABASE (décisions : ne PAS écrire dans Bubble + projet DÉDIÉ)** :
+  - Le BO a son **propre projet Supabase** : **`france-immeuble-bo`**
+    (`sojtmhdrzmdbtqborxsi`, eu-west-1, 10 $/mois, org La Team Reno) —
+    séparé de Plein Bail pour cloisonner le CRM interne de la marketplace.
+    Les tables miroir un temps posées dans Plein Bail ont été **supprimées**
+    et l'ancienne fonction de synchro y est neutralisée (410).
+  - Les 25 data types Bubble sont mirrorés dans ce projet : tables
+    `public.bo_<type>` (id Bubble en PK + `data` jsonb + bubble_created/
+    modified), **RLS activée sans policy** → service_role uniquement.
+    ~72 000 lignes synchronisées le 10/08/26.
+  - **Edge Function `bubble-sync`** (déployée sur france-immeuble-bo) : upsert
+    idempotent par type/curseur ; incrémental via `since` (Modified Date >).
+    Pilotée par `scripts/sync-bubble.mjs` (BUBBLE_API_TOKEN requis).
+  - **Synchro AUTOMATIQUE (autonome, sans Claude ni machine locale)** :
+    pg_cron `bo-sync-horaire` (toutes les heures à :12) → `bo_run_sync()` →
+    pg_net POST vers l'Edge Function pour les 25 types, avec
+    `since = max(bubble_modified) - 1 h` par type (recouvrement).
+    Token Bubble stocké dans **Vault** (`bubble_api_token`, posé via une
+    fonction jetable, jamais en clair dans le code/repo). Testée : 25 × HTTP
+    200, incrémental OK. Santé : `select * from bo_sync_state order by
+    updated_at desc;` et `net._http_response`. Limite connue : les
+    suppressions côté Bubble ne sont pas propagées (upsert only) — purge
+    dédiée à prévoir si besoin. Le jour de la bascule définitive :
+    `select cron.unschedule('bo-sync-horaire');`.
+  - **La couche de données de l'app bascule automatiquement** : si
+    `SUPABASE_SERVICE_ROLE_KEY` est présente → lectures PostgREST sur bo_*
+    (sémantique validée : 188 actifs, 59 Romain, mêmes lots/suivis) ; sinon
+    repli Data API Bubble. Traductions : equals → `data->>k=eq.`,
+    contains → `data=cs.{...}`, _id in → `id=in.(...)`, tri via
+    bubble_created/modified.
+  - ⚠️ **Action requise** : coller la clé service_role **du projet
+    france-immeuble-bo** (Dashboard Supabase → france-immeuble-bo → Project
+    Settings → API keys) en `SUPABASE_SERVICE_ROLE_KEY` dans Vercel ET dans
+    l'environnement Claude (+ `SUPABASE_URL=https://sojtmhdrzmdbtqborxsi.supabase.co`).
+    Le token Bubble reste utile pour la synchro et le proxy photos privées.
+    L'accès à Plein Bail (NEXT_PUBLIC_*) ne sert qu'à la future passerelle
+    marketplace — pont explicite entre les deux projets.
+  - Écritures futures (suivis, lots, estimations, mandats…) : **dans bo_***
+    uniquement ; Bubble reste en lecture. Attention au recouvrement : tant
+    que le BO Bubble est utilisé en parallèle, une resynchro écrase les
+    lignes modifiées des deux côtés (dernier Modified Date gagne côté sync).
+
+**Fait (11/08/26) — État locatif complet sur la fiche Bien :**
+- **Éditeur de lots** (`components/lots-editor.tsx`) : tableau éditable fidèle
+  (ajout / duplication / suppression avec corbeille `bo_trash` / enregistrement),
+  agrégats recalculés par `bo_recompute_immeuble()`.
+- **Sous-onglets Lots · Baux · Locataires · Charges** (`components/locatif.tsx`),
+  bandeau synthèse par destination + loyers moyens €/m²/mois :
+  - Baux : compteurs actifs/impayés/expulsions/préavis, tableau, modale
+    « Nouveau bail » (locataires + lots multi, conditions, **indice IRL avec
+    loyer révisé théorique calculé**, statut) → `bo_bail`.
+  - Locataires : compteurs pp/pm, modale « Nouveau locataire » (civilité,
+    personne morale, lots) → `bo_locataire` (noms jamais exposés côté public).
+  - Charges : « Taxes et impôts » vs « Charges », modale avec référentiel de
+    types du BO, total/récupérable/non-récupérable → `bo_charge` ;
+    `bo_recompute_immeuble()` v2 recalcule aussi `fin_charges_*` (liaison par
+    tableau `CHARGEs` de l'immeuble **ou** champ `IMMEUBLE` de la charge pour
+    les créations app).
+- Lecture : `getBien` charge aussi baux, locataires, charges (charges via
+  `CHARGEs` + `IMMEUBLE`, dédupliquées).
+- Testé de bout en bout (Playwright + SQL) sur un immeuble jetable, données
+  de test purgées.
+- **Type Bubble découvert : `prix_secteur`** (benchmarks loyer/prix/renta par
+  destination, saisis à la main dans le BO — base du futur wizard estimation).
+  Mirroré : table `bo_prix_secteur`, Edge Function v2, `bo_run_sync()` étendu,
+  backfill 1 824 lignes, `scripts/sync-bubble.mjs` à jour (26 types).
+
+**Fait (11/08/26, session autonome ~3 h) — le parcours complet de la fiche
+et les vues listes :**
+- **Wizard estimation 6 étapes** (`components/estimation-wizard.tsx`,
+  `/bien/[id]/estimation`) : Immeuble → Secteur (prérempli `prix_secteur`) →
+  Prix (4 méthodes + prix auto, NV + honos 5 % = HAI, comparateur avec
+  rendements brut/net/**acte en main ×1,075** vérifiés sur bo_prix réels) →
+  Analyse (scores, cibles, 900 car.) → génération figée (bo_estimation
+  snapshot + bo_prix in_/out_ + patch immeuble + suivi « Estimation (x €) »)
+  → Envoi (mailto préparé, statuts 3-Envoyée/4-Interne) + page imprimable.
+- **Mandats** (`/mandat/[id]`) : modale création, onglets Mandants/Objet/
+  Prix/Conditions, **RPC `bo_reserve_mandat_numero`** (advisory lock,
+  séquence sans trou, immuable — testé : #2105 attribué puis purgé,
+  registre revenu à 2104), infos reçues, annulation motivée, verrou signé.
+- **Emplacement** : Adresse (liens Google/INSEE/LOCservice + POI + data
+  externe), Parcelles & PLU (bo_parcelle + RPC bo_append_ref/bo_remove_ref),
+  Prix du secteur (tableau Secteur/Actuel/Potentiel + modales par
+  destination → bo_prix_secteur, globaux pondérés par surface via RPC
+  `bo_secteur_recompute_globals`).
+- **État technique** : composants (référentiels complets du BO) + travaux
+  par urgence (lots OU composants), RPC `bo_recompute_travaux` → fin_travaux.
+- **Notes** (champ notes immeuble) ; **Dossiers versionnés** (stepper
+  Immeuble → Prix → PDF, bo_dossier V1/V2 + `bo_dossier_demote_others`,
+  page imprimable type « DOSSIER COMPLET ») ; **commercialisation** :
+  visites (REX/annulation) et offres (cycle En cours → … → Vendu).
+- **Uploads** : bucket Storage privé `bo-files` (projet dédié), proxy
+  `/api/photo?s=`, modale « Nouvelle photo » (3 types), coffre documentaire
+  `bo_app_document`, Server Actions 26 Mo.
+- **Vues listes** (`components/liste.tsx` + pages) : Immeubles (En cours/
+  En attente/Archivés), Estimations, Mandats, Visites, Offres (compte à
+  rebours d'expiration), Suivi, Contacts (300 récents/~42 800), Recherches,
+  Questions, Propositions — recherche + onglets + pagination 10/page.
+  Nav `/mandats` corrigée, plus aucun lien mort.
+- **Datas** : entonnoir 12 mois (volumes + taux) — cohérent avec les
+  captures (42 mandats créés / 21 signés).
+- Chaque jalon : build vert, **E2E Playwright + vérification SQL** sur
+  immeuble jetable `app_test_claude_0XX`, données purgées, commit poussé.
+
+**Reste à faire (notés aussi dans le bilan Word du 11/08) :**
+- Fiche Contact complète (typologie, projets, sous-onglets) ; création
+  rapide barre du bas (+ Contact, + Immeuble… seuls Mandat/Visite/Offre
+  passent par la fiche) ; création d'immeuble ex nihilo.
+- Propositions : envoi en masse (mailing) + matching recherches ↔ immeubles ;
+  commercialisations (diffusion) ; module Objectifs ; funnels Datas par
+  population ; recherche globale (searchfield) ; badges sidebar dynamiques
+  (sémantique à confirmer par MAV) ; import/export CSV des lots ; baux :
+  IRL auto (indices INSEE) ; PDF serveur (aujourd'hui impression navigateur).
