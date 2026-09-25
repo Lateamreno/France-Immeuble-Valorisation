@@ -17,7 +17,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Modale } from "@/components/modale";
 import {
-  associerPhoto, basculerDiffusionPhoto, definirPhotoPrincipale, deletePhoto,
+  associerPhoto, basculerCadragePhoto, basculerDiffusionPhoto, definirPhotoPrincipale, deletePhoto,
   fixerPhotosDossier, ordonnerPhotos, rafraichirFiche, uploadPhoto,
 } from "@/lib/bo/actions";
 import {
@@ -94,6 +94,12 @@ export function PhotosEcran({ b }: { b: BienData }) {
   const [associe, setAssocie] = useState<Photo | null>(null);
   const [supprime, setSupprime] = useState<Photo | null>(null);
   const [zoom, setZoom] = useState<Photo | null>(null);
+  /* Retour #407 — les photos en portrait, mesurées une fois chargées : rien,
+     côté serveur, ne connaît l'orientation des photos venues de Bubble. */
+  const [portraits, setPortraits] = useState<Set<string>>(() => new Set());
+  const noterOrientation = (id: string, img: HTMLImageElement) => {
+    if (img.naturalHeight > img.naturalWidth) setPortraits((s) => (s.has(id) ? s : new Set(s).add(id)));
+  };
   const [, start] = useTransition();
   const inputMulti = useRef<HTMLInputElement>(null);
   const inputPrinc = useRef<HTMLInputElement>(null);
@@ -336,7 +342,11 @@ export function PhotosEcran({ b }: { b: BienData }) {
             onDrop={(e) => { if (glisse) { e.preventDefault(); e.stopPropagation(); deposerSur(p.id); } }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {p.url && <img src={p.url} alt="" onClick={() => setZoom(p)} />}
+            {p.url && (
+              <img src={p.url} alt="" onClick={() => setZoom(p)}
+                ref={(img) => { if (img && img.complete && img.naturalWidth > 0) noterOrientation(p.id, img); }}
+                onLoad={(e) => noterOrientation(p.id, e.currentTarget)} />
+            )}
             <span className="gph-type">{p.type === "Lot" ? lotLabel(p.lotId) : LIBELLE[p.type ?? ""] ?? "À classer"}</span>
             <button type="button" className="gph-x" title="Supprimer la photo" onClick={() => setSupprime(p)}>✕</button>
             <figcaption>
@@ -348,6 +358,20 @@ export function PhotosEcran({ b }: { b: BienData }) {
               >
                 {auDossier.has(p.id) ? "✓ Dossier" : "Dossier"}
               </button>
+              {/* Retour #407 : pour un portrait au dossier, bandes noires ou
+                  zoom par le milieu — c'est l'agent qui choisit, photo par
+                  photo. Les paysages remplissent toujours leur cadre. */}
+              {portraits.has(p.id) && auDossier.has(p.id) && (
+                <button
+                  type="button" className={`gph-a gph-cadre${p.cadrage === "zoom" ? " on" : ""}`}
+                  title={p.cadrage === "zoom"
+                    ? "Sur le dossier : zoomée par le milieu, sans bande — cliquer pour revenir aux bandes noires"
+                    : "Sur le dossier : entière, avec des bandes noires — cliquer pour la zoomer par le milieu"}
+                  onClick={() => start(() => basculerCadragePhoto(immeubleId, p.id, p.cadrage === "zoom" ? "bandes" : "zoom"))}
+                >
+                  {p.cadrage === "zoom" ? "Zoom" : "Bandes"}
+                </button>
+              )}
               <button type="button" className="gph-a" onClick={() => setAssocie(p)}>Associer</button>
               <button
                 type="button" className="gph-a" title="Faire de cette photo la principale"

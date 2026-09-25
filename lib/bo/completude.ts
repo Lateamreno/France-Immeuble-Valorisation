@@ -446,14 +446,14 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
       detail: `${quoi}, sur ${composants.length}. Le dossier imprime le matériau ET l'état de chacun.`,
     });
   }
-  /* L'état général du bâti et le nombre d'étages : deux cases de la page
-     technique, deux trous qui passaient inaperçus. */
+  /* L'état général du bâti : une case de la page technique, un trou qui
+     passait inaperçu. Le nombre d'étages n'est plus demandé (retour #403 :
+     « il n'y a aucun endroit où on indique le nombre d'étages… il peut se
+     calculer automatiquement avec l'état locatif ») : il se déduit des
+     étages des lots, voir lib/bo/etages.ts. */
   const techImm: ChampManquant[] = [];
   if (!S(im.Etat).trim()) {
     techImm.push({ cle: "Etat", label: "État général du bâti", options: [...ETATS_BATI] });
-  }
-  if (N(im.nb_etage) === undefined) {
-    techImm.push({ cle: "nb_etage", label: "Nombre d'étages" });
   }
   if (techImm.length) {
     out.push({

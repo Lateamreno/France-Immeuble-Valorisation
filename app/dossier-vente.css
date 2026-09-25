@@ -48,7 +48,8 @@
    de haut. Elle porte maintenant le titre et son picto ; la page y gagne
    13 mm de large et 28 mm de haut — la place qu'il fallait pour grossir les
    polices (#223, #224, #225). */
-.dv-in { position: absolute; inset: 0 17mm 0 0; padding-top: 11mm; }
+/* 11 → 8 mm : le bandeau horizontal (#408 à #416) prend la place. */
+.dv-in { position: absolute; inset: 0 17mm 0 0; padding-top: 8mm; }
 .dv-page.nue .dv-in { inset: 0; padding-top: 0; }
 .dv-page.dv-cv .dv-in { padding-top: 0; }
 
@@ -82,11 +83,12 @@
 
 .dv-ic { width: 5mm; height: 5mm; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .dv-ic.mini { width: 3.6mm; height: 3.6mm; }
-.dv-ic.pt { stroke: var(--dv-or-clair); }
+.dv-ic.pt { stroke: var(--dv-gris); }
 
 /* ------------------------------------------------------- Couverture */
 
-.dv-cv-h { display: flex; align-items: flex-start; gap: 8mm; padding: 9mm 10mm 0 8mm; }
+/* Retour #406 : le bloc agence / agent descend un peu (9 → 12 mm). */
+.dv-cv-h { display: flex; align-items: flex-start; gap: 8mm; padding: 12mm 10mm 0 8mm; }
 .dv-cv-card {
   flex: 1; border: .3mm solid var(--dv-or); border-radius: 2mm; padding: 5mm 6mm;
 }
@@ -102,17 +104,19 @@
 .dv-ag-ph.petite { width: 16mm; height: 16mm; margin: 0; }
 .dv-cv-ag b { display: block; font-size: 12pt; margin-bottom: 2mm; }
 
+/* Retour #406 : la photo prend plus de hauteur (96 → 104 mm), toujours dans
+   un cadre de proportions fixes ; l'image le remplit (`cover`), quitte à être
+   rognée, jamais de bande. Plus de liseré doré. */
 .dv-cv-photo {
-  margin: 7mm 8mm 0; height: 96mm; border-radius: 2mm; overflow: hidden;
+  margin: 7mm 8mm 0; height: 104mm; border-radius: 2mm; overflow: hidden;
   background: #4a4b55; display: grid; place-items: center;
-  border: .3mm solid var(--dv-or);
 }
 .dv-cv-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dv-vide { color: var(--dv-gris); font-size: 10pt; }
 
 .dv-cv-g {
   display: grid; grid-template-columns: 1fr 1.35fr 1fr; gap: 3mm;
-  margin: 5mm 8mm 0;
+  margin: 6mm 8mm 0;
 }
 .dv-case {
   background: var(--dv-carte); border-radius: 2mm; padding: 4mm 4mm 5mm;
@@ -127,28 +131,35 @@
    toujours la même taille, donc il vaut mieux réduire la taille des types de
    lots si ça passe plus. » Une grille de deux colonnes plutôt qu'un flux : les
    pastilles s'alignent au lieu de finir en escalier. */
+/* Retour #406 : « les gélules des typologies font la même taille et sont les
+   unes en dessous des autres, bien propre et bien aligné ». Une colonne,
+   toutes de la même largeur, texte centré — la grille à deux colonnes du #244
+   ne sert plus. */
 .dv-chips {
-  display: grid; grid-template-columns: 1fr; gap: 1.8mm;
+  display: grid; grid-template-columns: 1fr; gap: 1.5mm;
   justify-items: center; margin-top: 2mm;
 }
-.dv-chips.deux { grid-template-columns: 1fr 1fr; }
+.dv-chips.deux { grid-template-columns: 1fr; }
 .dv-chip {
-  display: inline-flex; align-items: center; gap: 1.6mm; white-space: nowrap;
-  background: #4c4d57; border-radius: 6mm; padding: 1.6mm 4mm;
+  display: inline-flex; align-items: center; justify-content: center; gap: 1.6mm; white-space: nowrap;
+  width: 42mm; box-sizing: border-box;
+  background: #4c4d57; border-radius: 6mm; padding: 1.4mm 3mm;
   font-size: 9.5pt; font-weight: 700;
 }
 /* Quatre pastilles ou plus : on rentre les cotes plutôt que de déborder. */
-.dv-chips.serree .dv-chip { font-size: 8.5pt; padding: 1.3mm 3mm; gap: 1.2mm; }
+.dv-chips.serree .dv-chip { font-size: 8.5pt; padding: 1.1mm 3mm; gap: 1.2mm; }
 .dv-chip-ic { width: 4mm; height: 4mm; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .dv-prix { font-size: 26pt !important; color: #fff; }
-.dv-prix i { font-size: 14pt !important; color: var(--dv-or-clair) !important; }
+/* Retour #406 : ni le € ni le picto des travaux ne sont colorés. */
+.dv-prix i { font-size: 14pt !important; color: var(--dv-gris) !important; }
 .dv-tvx { display: inline-flex; align-items: center; gap: 2mm; justify-content: center; font-size: 10pt; color: var(--dv-gris); }
 .dv-deux { display: flex; align-items: baseline; justify-content: center; gap: 2mm; }
 .dv-deux em { font-style: normal; color: var(--dv-gris); }
 .dv-deux .or { color: var(--dv-or-clair); }
 
+/* Retour #406 : le cadre de l'adresse se détache un peu plus des six cases. */
 .dv-cv-adr {
-  margin: 3mm 8mm 0; background: var(--dv-carte); border-radius: 2mm;
+  margin: 7mm 8mm 0; background: var(--dv-carte); border-radius: 2mm;
   padding: 3.5mm; text-align: center; font-size: 12pt; font-weight: 600;
 }
 
@@ -171,12 +182,24 @@
    bandes noires. » Là, `cover` ne laissait qu'une tranche de mur au milieu de
    la façade. La classe est posée par components/photo-dossier.tsx, qui mesure
    l'image une fois chargée : rien, côté serveur, ne connaît son orientation. */
+/* Retours #407 et #408 : plus de liseré doré ; un bandeau « Photos » en tête
+   de planche et des vignettes plus hautes (52 → 58 mm), pour que la planche
+   descende jusqu'au pied de page sans vide en dessous. */
+.dv-bande {
+  margin: 0 8mm 3mm; background: var(--dv-carte); border-radius: 1.5mm;
+  padding: 2.2mm; text-align: center; font-size: 12pt; font-weight: 700;
+}
+.dv-page.serre .dv-bande { padding: 1.6mm; font-size: 11pt; margin-bottom: 2mm; }
 .dv-ph-grid img {
-  width: 100%; height: 52mm; object-fit: cover; object-position: center;
+  width: 100%; height: 58mm; object-fit: cover; object-position: center;
   display: block; background: #000;
-  border-radius: 1.5mm; border: .3mm solid var(--dv-or);
+  border-radius: 1.5mm;
 }
 .dv-ph-grid img.portrait { object-fit: contain; }
+/* Retour #407 : une photo en portrait que l'agent a choisi de ZOOMER remplit
+   son cadre, centrée, sans bande — le choix se fait photo par photo, sur
+   l'écran Photos du bien. */
+.dv-ph-grid img.portrait.zoom { object-fit: cover; }
 .dv-vide-bloc {
   margin: 20mm 8mm; padding: 12mm; text-align: center;
   background: var(--dv-carte); border-radius: 2mm; color: var(--dv-gris); font-size: 11pt;
@@ -269,17 +292,26 @@
    remplissait la cellule — « ⌂ » au-dessus, « Duplex T2 + ext » en dessous. */
 .dv-lot { display: flex; align-items: center; gap: 1.8mm; }
 .dv-lot .dv-ic { flex: none; }
+/* Retours #412 et #414 : plus de filet doré pour fermer le tableau — un filet
+   gris clair ; les totaux en plus gras, et le mot « Total » en or dans la case
+   qui précède le premier chiffre. */
 .dv-tab tfoot td {
-  border-top: .4mm solid var(--dv-or); border-bottom: 0;
-  padding-top: 3mm; font-weight: 700; background: #45464f;
+  border-top: .5mm solid #9a9ba4; border-bottom: 0;
+  padding-top: 3mm; font-weight: 800; background: #45464f;
+}
+.dv-tab tfoot td.tot {
+  color: var(--dv-or-clair); text-transform: uppercase; letter-spacing: .05em;
+  font-size: 9pt; font-weight: 800;
 }
 /* L'état locatif : dix colonnes, mais lisibles. La place vient de la tranche
    amincie et du bandeau de titre supprimé (#222). */
 .dv-tab.lots { font-size: 10.5pt; }
 .dv-tab.lots th { font-size: 9.5pt; padding: 2.4mm 2mm; }
 .dv-tab.lots td { padding: 2.3mm 2mm; }
-.dv-tab.cond td { color: var(--dv-gris); }
-.dv-tab.cond td.r { color: var(--dv-texte); font-weight: 700; }
+/* Retours #417 et #418 : une seule couleur, pas de séparateur entre les lignes. */
+.dv-tab.cond td { color: var(--dv-texte); border-bottom: 0; }
+.dv-tab.cond tbody tr:nth-child(even) td { background: var(--dv-carte); }
+.dv-tab.cond td.r { font-weight: 700; }
 
 .dv-plat {
   margin: 0 8mm; background: var(--dv-carte); border-radius: 1.5mm;
@@ -292,7 +324,7 @@
 .dv-formules { margin: 4mm 8mm 0; }
 /* Page très chargée (l'état financier tient quatre tableaux) : on resserre
    les titres et les lignes plutôt que de couper une information. */
-.dv-page.serre .dv-in { padding-top: 7mm; }
+.dv-page.serre .dv-in { padding-top: 5mm; }
 .dv-page.serre .dv-h { margin: 3.5mm 8mm 2mm; font-size: 12.5pt; }
 .dv-page.serre .dv-tab { font-size: 10pt; }
 .dv-page.serre .dv-tab th { padding: 2mm 3mm; font-size: 9pt; }
@@ -300,6 +332,7 @@
 .dv-page.serre .dv-tab tfoot td { padding-top: 2.2mm; }
 .dv-page.serre .dv-formules p { font-size: 7pt; margin-bottom: .6mm; }
 .dv-formules p { margin: 0 0 1mm; font-size: 8pt; color: var(--dv-gris); }
+.dv-formules b { color: var(--dv-texte); font-weight: 800; }
 
 /* --------------------------------------------------------- Terrain */
 
@@ -346,7 +379,8 @@
   display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--dv-carte); border-radius: 1.5mm 1.5mm 0 0; padding: 5mm 0 6mm;
 }
-.dv-fin-g .dv-stat-ic { width: 8.5mm; height: 8.5mm; stroke-width: 2; stroke: var(--dv-or-clair); }
+/* Retour #419 : les pictos restent en or, plus gras (2 → 2.5). */
+.dv-fin-g .dv-stat-ic { width: 9mm; height: 9mm; stroke-width: 2.5; stroke: var(--dv-or-clair); stroke-linecap: round; stroke-linejoin: round; }
 .dv-fin-g .dv-stat-l { font-size: 11pt; font-weight: 700; }
 .dv-fin-g .dv-stat-s { font-size: 8.5pt; }
 .dv-fin-g .dv-stat b { font-size: 16pt; }
@@ -357,9 +391,10 @@
      éléments de grille et « € HAI » tombe à la ligne. */
   display: flex; align-items: baseline; justify-content: center; gap: 2mm;
   text-align: center; font-size: 24pt; font-weight: 700;
-  border-top: .5mm solid var(--dv-or);
+  /* Retour #419 : ni filet doré avant le prix, ni or sur « € HAI ». */
+  border-top: .5mm solid #9a9ba4;
 }
-.dv-prix-bar i { font-style: normal; font-size: 12pt; color: var(--dv-or-clair); }
+.dv-prix-bar i { font-style: normal; font-size: 12pt; color: var(--dv-gris); }
 .dv-page .dv-note:last-of-type { position: absolute; left: 8mm; right: 8mm; bottom: 26mm; }
 
 /* ------------------------------------------------------------- Dos */
@@ -429,8 +464,14 @@ body:has(.dv.nu) .fadd, body:has(.dv.nu) .fchip { display: none; }
   html, body { margin: 0 !important; padding: 0 !important; }
   .shell, .main { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
   .dv { background: none; padding: 0; }
+  /* Retour #405 : la ligne blanche d'un pixel en tête de page persistait sur
+     le PDF de production, alors qu'elle n'apparaît pas ici avec les mêmes
+     réglages. Le Chromium de Vercel n'arrondit pas la boîte de page comme
+     celui de la machine. Une ombre pleine de 2 px, du fond de la page, déborde
+     du cadre sans être rognée par `overflow: hidden` : la fraction de feuille
+     que l'arrondi laisse nue est peinte de la même couleur. */
   .dv-page {
-    margin: 0; box-shadow: none; break-after: page; page-break-after: always;
+    margin: 0; box-shadow: 0 0 0 2px var(--dv-fond); break-after: page; page-break-after: always;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .dv-page:last-child { break-after: auto; page-break-after: auto; }

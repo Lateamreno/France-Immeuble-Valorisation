@@ -23,7 +23,9 @@
 
 import { useState } from "react";
 
-export function PhotoDossier({ src }: { src: string }) {
+/** `zoom` : retour #407 — l'agent a choisi, pour cette photo en portrait, de
+ *  la zoomer par le milieu plutôt que de garder les bandes noires. */
+export function PhotoDossier({ src, zoom }: { src: string; zoom?: boolean }) {
   const [portrait, setPortrait] = useState(false);
 
   const mesurer = (img: HTMLImageElement | null) => {
@@ -34,5 +36,5 @@ export function PhotoDossier({ src }: { src: string }) {
   };
 
   // eslint-disable-next-line @next/next/no-img-element
-  return <img ref={mesurer} src={src} alt="" className={portrait ? "portrait" : undefined} />;
+  return <img ref={mesurer} src={src} alt="" className={portrait ? `portrait${zoom ? " zoom" : ""}` : undefined} />;
 }

@@ -8044,3 +8044,10 @@ button { font-weight: 700; }
 /* La grille des contacts est un enfant flex : sans largeur, elle se serre sur
    sa carte. Elle prend sa colonne (720 px au plus). */
 .cc-grille { width: 100%; }
+
+/* Retour #402 : le second bouton de la boîte de refus, « Enregistrer et
+   corriger la recherche », en creux à côté du plein. */
+.cfc-refus-go.second { background: #fff; color: var(--slate); border: 1px solid #cfd3d8; }
+.cfc-refus-go.second:hover:not(:disabled) { border-color: var(--slate); }
+/* Retour #407 : le cadrage d'une photo en portrait, sur l'écran Photos. */
+.gph-cadre.on { background: var(--slate); color: #fff; border-color: var(--slate); }

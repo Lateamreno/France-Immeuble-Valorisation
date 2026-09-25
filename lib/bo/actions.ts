@@ -1993,6 +1993,17 @@ export async function basculerDiffusionPhoto(
 }
 
 /**
+ * Le cadrage d'une photo en portrait sur la planche du dossier (retour #407) :
+ * « bandes » — la photo entière, bandes noires de chaque côté — ou « zoom » —
+ * la photo remplit le cadre, rognée en haut et en bas. Photo par photo, à la
+ * main : rien ne le décide à la place de l'agent.
+ */
+export async function basculerCadragePhoto(immeubleId: string, photoId: string, cadrage: "bandes" | "zoom") {
+  await patchPhoto(photoId, { doss_cadrage: cadrage });
+  refresh(immeubleId);
+}
+
+/**
  * Fixe d'un coup les photos retenues pour le dossier de vente (retour #322).
  *
  * Tant que personne n'a coché, la sélection est implicite — « les seize
