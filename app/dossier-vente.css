@@ -135,14 +135,17 @@
    unes en dessous des autres, bien propre et bien aligné ». Une colonne,
    toutes de la même largeur, texte centré — la grille à deux colonnes du #244
    ne sert plus. */
+/* MAV (25/09) : « même taille côte à côte quand il n'y a que deux
+   typologies, deux colonnes et deux lignes quand il y en a plus » (quatre au
+   plus). Chaque gélule prend toute sa cellule : toutes ont la même largeur. */
 .dv-chips {
   display: grid; grid-template-columns: 1fr; gap: 1.5mm;
-  justify-items: center; margin-top: 2mm;
+  justify-items: stretch; margin-top: 2mm;
 }
-.dv-chips.deux { grid-template-columns: 1fr; }
+.dv-chips.deux { grid-template-columns: 1fr 1fr; }
 .dv-chip {
   display: inline-flex; align-items: center; justify-content: center; gap: 1.6mm; white-space: nowrap;
-  width: 42mm; box-sizing: border-box;
+  width: 100%; box-sizing: border-box;
   background: #4c4d57; border-radius: 6mm; padding: 1.4mm 3mm;
   font-size: 9.5pt; font-weight: 700;
 }
@@ -188,7 +191,10 @@
 .dv-bande {
   margin: 0 8mm 3mm; background: var(--dv-carte); border-radius: 1.5mm;
   padding: 2.2mm; text-align: center; font-size: 12pt; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 2.5mm;
 }
+/* MAV (25/09) : le même picto que la tranche, dans le bandeau. */
+.dv-bande-ic { width: 5.5mm; height: 5.5mm; fill: none; stroke: var(--dv-or-clair); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .dv-page.serre .dv-bande { padding: 1.6mm; font-size: 11pt; margin-bottom: 2mm; }
 .dv-ph-grid img {
   width: 100%; height: 58mm; object-fit: cover; object-position: center;
@@ -271,10 +277,14 @@
   border-collapse: separate; border-spacing: 0;
   border-radius: 1.5mm; overflow: hidden;
 }
+/* MAV (25/09) : « une ligne et un gras plus important sur les titres du
+   tableau, on ne voit pas la différence entre titre et contenu — le titre est
+   même écrit plus petit ». Les titres passent à la taille du contenu, en 800,
+   et un filet clair les sépare des lignes. */
 .dv-tab th {
   background: #45464f; padding: 2.8mm 3mm; text-align: left;
-  font-size: 10pt; font-weight: 700; color: var(--dv-texte);
-  letter-spacing: .02em;
+  font-size: 11.5pt; font-weight: 800; color: #fff;
+  letter-spacing: .02em; border-bottom: .5mm solid #9a9ba4;
 }
 .dv-tab th.c { text-align: center; }
 .dv-tab th.r { text-align: right; }
@@ -306,7 +316,7 @@
 /* L'état locatif : dix colonnes, mais lisibles. La place vient de la tranche
    amincie et du bandeau de titre supprimé (#222). */
 .dv-tab.lots { font-size: 10.5pt; }
-.dv-tab.lots th { font-size: 9.5pt; padding: 2.4mm 2mm; }
+.dv-tab.lots th { font-size: 10.5pt; padding: 2.4mm 2mm; }
 .dv-tab.lots td { padding: 2.3mm 2mm; }
 /* Retours #417 et #418 : une seule couleur, pas de séparateur entre les lignes. */
 .dv-tab.cond td { color: var(--dv-texte); border-bottom: 0; }
@@ -327,7 +337,7 @@
 .dv-page.serre .dv-in { padding-top: 5mm; }
 .dv-page.serre .dv-h { margin: 3.5mm 8mm 2mm; font-size: 12.5pt; }
 .dv-page.serre .dv-tab { font-size: 10pt; }
-.dv-page.serre .dv-tab th { padding: 2mm 3mm; font-size: 9pt; }
+.dv-page.serre .dv-tab th { padding: 2mm 3mm; font-size: 10pt; }
 .dv-page.serre .dv-tab td { padding: 2mm 3mm; }
 .dv-page.serre .dv-tab tfoot td { padding-top: 2.2mm; }
 .dv-page.serre .dv-formules p { font-size: 7pt; margin-bottom: .6mm; }

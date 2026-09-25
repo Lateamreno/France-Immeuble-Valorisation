@@ -8051,3 +8051,9 @@ button { font-weight: 700; }
 .cfc-refus-go.second:hover:not(:disabled) { border-color: var(--slate); }
 /* Retour #407 : le cadrage d'une photo en portrait, sur l'écran Photos. */
 .gph-cadre.on { background: var(--slate); color: #fff; border-color: var(--slate); }
+
+/* Le descriptif à revoir, depuis la page du dossier (MAV, 25/09). */
+.dos-desc { display: grid; gap: 8px; text-align: left; }
+.dos-desc textarea { width: 100%; font-size: 13px; }
+.dos-desc-auto { white-space: pre-wrap; font: 12.5px/1.5 inherit; background: #f7f8fa; border: 1px solid #e3e5e8; border-radius: 4px; padding: 8px 10px; margin: 0; color: var(--slate); }
+.dos-desc-act { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }

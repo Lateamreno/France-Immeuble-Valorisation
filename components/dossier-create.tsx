@@ -6,9 +6,10 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
-import { apercuPdfDossier, createDossier, genererPdfDossier } from "@/lib/bo/actions";
+import { apercuPdfDossier, createDossier, genererPdfDossier, updateBien } from "@/lib/bo/actions";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
-import { descriptifAVerifier } from "@/lib/bo/descriptif";
+import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
+import { useRouter } from "next/navigation";
 import { Modale } from "@/components/modale";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -152,16 +153,11 @@ export function AddDossierButton({ b }: { b: BienData }) {
           voyez les lignes en rouge ci-dessus : <b>{manquants.map((x) => x.titre).join(" · ")}</b>
         </p>
       )}
-      {descPerime && manquants.length === 0 && (
-        <p className="dos-bloque">
-          La fiche a changé depuis que le descriptif a été écrit : le dossier raconterait
-          l&apos;immeuble d&apos;avant. <b>Reprenez le texte</b> — Description et prix ›
-          Descriptif — puis revenez générer.{" "}
-          <Link className="dos-lien" href={`/bien/${immeubleId}?ecran=prix&sous=descriptif`}>
-            → Aller au descriptif
-          </Link>
-        </p>
-      )}
+      {/* MAV (25/09) : « il ne doit pas nous laisser faire le dossier et il
+          nous dit de modifier le descriptif automatique, soit directement
+          depuis la page d'édition de dossier, soit sur la page concernée,
+          comme pour le reste ». Le texte se reprend donc ICI aussi. */}
+      {descPerime && <DescriptifARevoir b={b} immeubleId={immeubleId} />}
       {open && (
         <Modale
           titre={<>Nouveau dossier — V{version}</>} onFermer={close} fermeDehors={false}
@@ -338,5 +334,56 @@ export function AddDossierButton({ b }: { b: BienData }) {
         </Modale>
       )}
     </>
+  );
+}
+
+
+/**
+ * Le descriptif à revoir, réglable sans quitter la page (MAV, 25/09).
+ *
+ * La fiche a bougé depuis que l'agent a écrit son texte : on lui montre les
+ * deux — le sien, et l'automatique d'aujourd'hui — et il tranche d'un clic :
+ * garder le sien (vérifié), reprendre l'automatique, ou l'éditer ici. Dans les
+ * trois cas le témoin est remis à jour, et le dossier se débloque.
+ */
+function DescriptifARevoir({ b, immeubleId }: { b: BienData; immeubleId: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const auto = useMemo(() => descriptifAuto({ im: b.im, lots: b.lots, parcelles: b.parcelles }), [b.im, b.lots, b.parcelles]);
+  const enregistre = typeof b.im.descriptif === "string" ? (b.im.descriptif as string) : "";
+  const [txt, setTxt] = useState(enregistre);
+  const [voirAuto, setVoirAuto] = useState(false);
+
+  const sauver = (valeur: string) =>
+    start(async () => {
+      await updateBien(immeubleId, { descriptif: valeur, descriptif_auto: auto });
+      router.refresh();
+    });
+
+  return (
+    <div className="dos-bloque dos-desc">
+      <p>
+        La fiche a changé depuis que le descriptif a été écrit : le dossier raconterait
+        l&apos;immeuble d&apos;avant. <b>Relisez le texte</b> et confirmez-le, reprenez
+        l&apos;automatique, ou corrigez-le ici — ou sur la fiche :{" "}
+        <Link className="dos-lien" href={`/bien/${immeubleId}?ecran=prix&sous=descriptif`}>
+          → Aller au descriptif
+        </Link>
+      </p>
+      <textarea className="min" rows={7} value={txt} onChange={(e) => setTxt(e.target.value)}
+        placeholder="Descriptif de l'immeuble…" />
+      <button type="button" className="dos-lien" onClick={() => setVoirAuto((v) => !v)}>
+        {voirAuto ? "Masquer le texte automatique d'aujourd'hui" : "Voir le texte automatique d'aujourd'hui"}
+      </button>
+      {voirAuto && <pre className="dos-desc-auto">{auto}</pre>}
+      <div className="dos-desc-act">
+        <button type="button" className="fadd" disabled={pending} onClick={() => sauver(auto)}>
+          Reprendre l&apos;automatique
+        </button>
+        <button type="button" className="kgo" disabled={pending || !txt.trim()} onClick={() => sauver(txt.trim())}>
+          <span className="ch">›</span> {txt.trim() === enregistre.trim() ? "Garder ce texte — vérifié" : "Enregistrer ce texte"}
+        </button>
+      </div>
+    </div>
   );
 }
