@@ -680,7 +680,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
           if (!email) { messages.push("Pas d'adresse e-mail pour cette personne."); }
           else {
             const r = await envoyerRelances(
-              [{ contactId: c.contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: [p.id] }],
+              [{ contactId: c.contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: [p.id], immeubleIds: [immeubleId] }],
               agent?.id, undefined, chemins,
             );
             messages.push(r.envoyes ? `E-mail envoyé à ${email}.` : `E-mail non envoyé : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);

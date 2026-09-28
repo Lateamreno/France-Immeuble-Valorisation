@@ -1037,7 +1037,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
           if (!email) messages.push("Aucune adresse e-mail sur la fiche : la relance ne peut pas partir.");
           else {
             const r = await envoyerRelances(
-              [{ contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: ids }],
+              [{ contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: ids, immeubleIds: c.immeubles.map((i) => i.immeubleId) }],
               agent?.id, undefined, chemins,
             );
             messages.push(r.envoyes ? `Relance envoyée à ${email}.` : `Échec : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);

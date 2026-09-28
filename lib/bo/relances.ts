@@ -286,7 +286,9 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
       ? `Avez-vous eu le temps de l'étudier ? Souhaitez-vous avancer sur ce dernier ou puis-je l'archiver ?`
       : `Avez-vous eu le temps de les étudier ? Souhaitez-vous avancer sur l'un d'eux, ou puis-je les archiver ?`,
     ``,
-    `Bien à vous,`,
+    /* MAV, 28/09 : « Cordialement », sans virgule, comme l'e-mail d'envoi. */
+    `Cordialement`,
+    ``,
     agent?.nom ?? "",
     /* Retour #441 : « sur la signature il faut qu'il y ait écrit France
        Immeuble, là il y a juste nom, prénom et tél ». */

@@ -306,6 +306,17 @@ export async function envoyerRelances(
      puis joint à chaque relance qui parle de cet immeuble. Un dossier sans PDF
      est signalé dans le journal, il n'arrête pas l'envoi. */
   const { derniersDossiers, lirePiece, nomPieceDossier, sourcePdfDossier } = await import("./piece-dossier");
+  /* Un envoi qui n'annonce pas ses immeubles (relance directe depuis une
+     carte) les retrouve par ses propositions : sans ça, il partait sans PDF
+     et sans contrôle du lien (vu le 28/09 sur Sens). */
+  const sansImmeubles = lot.filter((e) => !e.immeubleIds?.length);
+  if (sansImmeubles.length) {
+    const ids = [...new Set(sansImmeubles.flatMap((e) => e.propositionIds))];
+    const props = await parPaquets("bo_proposition", ids).catch(() => new Map<string, Record<string, unknown>>());
+    for (const e of sansImmeubles) {
+      e.immeubleIds = [...new Set(e.propositionIds.map((id) => S(props.get(id)?.IMMEUBLE) ?? "").filter(Boolean))];
+    }
+  }
   const tousImmeubles = [...new Set(lot.flatMap((e) => e.immeubleIds ?? []))];
   const dossiers = await derniersDossiers(tousImmeubles);
   const pieces = new Map<string, { nom: string; contenu: Buffer; type: string }>();

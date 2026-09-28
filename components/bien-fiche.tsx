@@ -2154,7 +2154,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
     return {
       contactId: c.contactId, email: c.email,
       objet: objetRelance(c), corps: messageRelance(c, agent),
-      propositionIds: [p.id],
+      propositionIds: [p.id], immeubleIds: [immeubleId],
     };
   });
 
