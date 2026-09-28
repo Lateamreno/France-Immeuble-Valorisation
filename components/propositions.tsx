@@ -33,6 +33,7 @@ import {
 import { apercuRelanceSms, chargerPropositionsDuBien, relancerParSms } from "@/lib/bo/propositions-actions";
 import { joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance } from "@/lib/bo/relances";
 import { dateLien, etatLien } from "@/lib/bo/lien-dossier";
+import { segments } from "@/lib/bo/sms-compte";
 import { LienDossier } from "@/components/lien-dossier";
 
 export const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
@@ -483,6 +484,21 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
           ))}
         </div>
       )}
+      {/* Retour #439 — « une vraie PJ, et que je puisse l'ouvrir avant envoi ». */}
+      {c.immeubles.some((i) => i.pdf) && (
+        <div className="rlz-pj">
+          <span className="mlab">Pièce{c.immeubles.filter((i) => i.pdf).length > 1 ? "s" : ""} jointe{c.immeubles.filter((i) => i.pdf).length > 1 ? "s" : ""} à l&apos;e-mail</span>
+          {c.immeubles.filter((i) => i.pdf).map((i) => (
+            <a key={i.immeubleId} className="rlz-pj-a" href={i.pdf} target="_blank" rel="noreferrer" title="Ouvrir le PDF tel qu'il partira">
+              <svg viewBox="0 0 24 24"><path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.2 3.2 0 0 1 4.5 4.5L10 18.5a1.4 1.4 0 0 1-2-2L16 8.5" /></svg>
+              {i.pdfNom ?? "Dossier.pdf"} <span>ouvrir ↗</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {c.immeubles.some((i) => !i.pdf) && (
+        <div className="dif-simu">Aucun PDF sur {c.immeubles.filter((i) => !i.pdf).map((i) => i.libelle).join(", ")} : la relance partirait sans pièce jointe.</div>
+      )}
       <label className={`prop-sms${!email ? " off" : ""}`}>
         <input type="checkbox" checked={mail} disabled={!email} onChange={() => setMail((v) => !v)} />
         <span><b>Envoyer l&apos;e-mail</b>{email ? ` à ${email}` : " — pas d'adresse sur la fiche"}</span>
@@ -509,8 +525,12 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
         <>
           <span className="mlab" style={{ marginTop: 8 }}>SMS — modifiable avant l&apos;envoi</span>
           <textarea className="min" rows={4} value={smsCorps} onChange={(e) => setSmsTexte(e.target.value)} />
-          <div className="asst-note">
-            {smsCorps.length}&nbsp;caractères — au-delà de 160, l&apos;opérateur facture plusieurs SMS.
+          <div className={`asst-note${segments(smsCorps) > 2 ? " rouge" : ""}`}>
+            {/* Retour #440 : « afficher le nombre de caractères et prévenir quand
+                on dépasse ». Vos modèles font deux segments : c'est la norme ;
+                au-delà, on le dit en rouge. */}
+            {smsCorps.length}&nbsp;caractères · {segments(smsCorps)}&nbsp;segment{segments(smsCorps) > 1 ? "s" : ""} facturé{segments(smsCorps) > 1 ? "s" : ""}
+            {segments(smsCorps) > 2 && <b> — plus de deux segments : raccourcissez.</b>}
             {!/\bstop\b/i.test(smsCorps) && <b> La mention « STOP » est obligatoire : sans elle, MailingVox refuse.</b>}
           </div>
         </>
@@ -571,7 +591,7 @@ const VIDE_PROP: Record<VuePropositions, string> = {
 };
 export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
 
-export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court, lien, lienExpireLe, dossierId, dossierVersion, agent, titre, actions }: {
+export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court, lien, lienExpireLe, dossierId, dossierVersion, pdf, pdfNom, agent, titre, actions }: {
   immeubleId: string;
   /** « Ville (CP) — adresse », cité dans les relances. */
   libelle: string;
@@ -584,6 +604,8 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   lienExpireLe?: string;
   dossierId?: string;
   dossierVersion?: number;
+  pdf?: string;
+  pdfNom?: string;
   agent?: { id?: string; nom?: string; tel?: string };
   /** Le titre de la section, avec ses compteurs. */
   titre: (badges: React.ReactNode) => React.ReactNode;
@@ -592,7 +614,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
 }) {
   const [lignes, setLignes] = useState<PropositionLigne[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [vue, setVue] = useState<VuePropositions>("toutes");
+  const [vue, setVue] = useState<VuePropositions>("en_cours");
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<"date" | "classe">("date");
   const [page, setPage] = useState(1);
@@ -626,7 +648,10 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       const rang = (n?: string) => ({ A: 0, B: 1, C: 2, D: 3 } as Record<string, number>)[n ?? ""] ?? 9;
       liste.sort((a, b) => rang(a.contact?.note) - rang(b.contact?.note));
     }
-    return liste;
+    /* Retour #437 — « si je mets un retour écrit, je veux que la proposition
+       soit affichée en premier, et ainsi de suite à chaque retour écrit » :
+       le dernier retour noté passe en tête, les autres gardent leur ordre. */
+    return [...liste].sort((a, b) => (b.noteLe ?? "").localeCompare(a.noteLe ?? ""));
   }, [lignes, vue, q, tri]);
   const tranche = filtrees.slice((page - 1) * taille, page * taille);
 
@@ -636,7 +661,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
     const immeubles: ImmeubleRelance[] = ids.includes(p.id)
       ? [(() => {
           const l = etatLien(lien, lienExpireLe);
-          return { propositionId: p.id, immeubleId, libelle, prix, resume, court, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe, dossierId, dossierVersion };
+          return { propositionId: p.id, immeubleId, libelle, prix, resume, court, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe, dossierId, dossierVersion, pdf, pdfNom };
         })()]
       : [];
     return { contactId: p.contact?.id ?? "", nom: p.contact?.nom ?? "", email: p.contact?.email ?? p.email ?? "", immeubles, joursMax: j ?? 999 };

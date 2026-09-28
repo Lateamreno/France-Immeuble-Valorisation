@@ -133,7 +133,7 @@ export async function relancesDues(
   const contactIds = [...new Set(brutes.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
   const immeubleIds = [...new Set(brutes.map((p) => String(p.IMMEUBLE ?? "")).filter(Boolean))];
   const { derniersDossiers } = await import("./piece-dossier");
-  const { lienDuDossier } = await import("./lien-dossier");
+  const { lienDuDossier, urlPdfDossier, nomPdfDossier } = await import("./lien-dossier");
   const { resumeDepuisDoc, objetDepuisDoc } = await import("./resume-immeuble");
   const { sourcePdfDossier } = await import("./piece-dossier");
   const [contacts, immeubles, dossiers] = await Promise.all([
@@ -166,10 +166,12 @@ export async function relancesDues(
           const d = dossiers.get(id);
           const l = lienDuDossier(d);
           return {
-            lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+            lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe,
             sansPdf: !d || !sourcePdfDossier(d),
             dossierId: d ? String(d._id ?? "") || undefined : undefined,
             dossierVersion: d && Number(d.version) > 0 ? Number(d.version) : undefined,
+            pdf: urlPdfDossier(d),
+            pdfNom: d ? nomPdfDossier(S(im.adresse_ville), d.version) : undefined,
           };
         })(),
       },
@@ -321,7 +323,7 @@ export async function envoyerRelances(
      relance, et le journal dit où le poser. Contrôle côté serveur, pas
      seulement à l'écran. */
   const { lienDuDossier } = await import("./lien-dossier");
-  const sansLien = new Set(tousImmeubles.filter((id) => { const l = lienDuDossier(dossiers.get(id)); return !l || l.perime; }));
+  const sansLien = new Set(tousImmeubles.filter((id) => { const l = lienDuDossier(dossiers.get(id)); return !l || l.aRemplacer; }));
 
   for (const e of lot) {
     const bloques = (e.immeubleIds ?? []).filter((id) => sansLien.has(id));

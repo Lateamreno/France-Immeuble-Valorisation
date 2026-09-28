@@ -225,6 +225,11 @@ function ChoixMultiple({
             if (e.key === "Escape") setOuvert(false);
           }}
         />
+        {/* Retour #435 — « mets-moi quand même des flèches vers le bas quand je
+            peux sélectionner des items, même si je peux les taper ». */}
+        <button type="button" className={`rmx-chev${ouvert ? " on" : ""}`} tabIndex={-1}
+          aria-label={ouvert ? "Fermer la liste" : "Ouvrir la liste"}
+          onMouseDown={(e) => { e.preventDefault(); setOuvert((v) => !v); }}>▾</button>
         {ouvert && propositions.length > 0 && (
           <div className="rmx-liste">
             {propositions.map((o) => (

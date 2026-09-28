@@ -300,6 +300,8 @@ function CarteClient({
   onMarquer: (ids: string[]) => void;
   onCouper: (propositionIds: string[]) => void;
 }) {
+  /* L'heure est lue une fois : un lien « expire le » se compare à elle. */
+  const [maintenant] = useState(() => Date.now());
   /* Le message est PROPOSÉ, pas imposé : l'agent le retouche avant d'envoyer.
      Il se recompose si l'on retire un dossier du lot. */
   const retenus = useMemo(
@@ -343,11 +345,16 @@ function CarteClient({
               <span className="rlz-j">{jrs(i.jours)}</span>
               {/* Le lien transfer.it du dossier (MAV, 28/09) : périmé, on le dit
                   et on mène là où il se change ; absent, on le dit aussi. */}
+              {i.pdf && (
+                <a className="rlz-lien pdf" href={i.pdf} target="_blank" rel="noreferrer" title={`${i.pdfNom ?? "PDF"} — la pièce jointe, telle qu'elle partira`}>PDF ↗</a>
+              )}
               {i.lienPerime ? (
-                <Link className="rlz-lien perime" href={`/bien/${i.immeubleId}?ecran=dossiers`} target="_blank"
-                  title="Le lien transfer.it de ce dossier a expiré : la relance partira sans lien. Cliquez pour le remplacer sur la fiche.">
-                  lien périmé{i.lienExpireLe ? ` depuis le ${dateLien(i.lienExpireLe)}` : ""} — à remplacer
-                </Link>
+                <span className="rlz-lien perime"
+                  title="Le lien transfer.it de ce dossier est périmé ou sous la réserve de cinq jours : la relance ne partira pas sans un nouveau lien.">
+                  {i.lienExpireLe && new Date(`${i.lienExpireLe}T23:59:59`).getTime() < maintenant
+                    ? `lien périmé depuis le ${dateLien(i.lienExpireLe)}`
+                    : `lien à remplacer${i.lienExpireLe ? ` (expire le ${dateLien(i.lienExpireLe)})` : ""}`}
+                </span>
               ) : i.lien ? (
                 <span className="rlz-lien ok" title={`Lien transfer.it valable${i.lienExpireLe ? ` jusqu'au ${dateLien(i.lienExpireLe)}` : ""}`}>lien transfer.it ✓</span>
               ) : (

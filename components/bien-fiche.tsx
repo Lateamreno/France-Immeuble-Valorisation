@@ -39,7 +39,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
-import { lienDuDossier } from "@/lib/bo/lien-dossier";
+import { lienDuDossier, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
@@ -2082,6 +2082,8 @@ function EcranPropositions({ b }: { b: BienData }) {
         lienExpireLe={typeof b.dossiers[0]?.lien_expire_le === "string" ? (b.dossiers[0].lien_expire_le as string) : undefined}
         dossierId={b.dossiers[0] ? String(b.dossiers[0]._id) : undefined}
         dossierVersion={Number(b.dossiers[0]?.version) || undefined}
+        pdf={urlPdfDossier(b.dossiers[0])}
+        pdfNom={b.dossiers[0] ? nomPdfDossier(String(b.im.adresse_ville ?? ""), b.dossiers[0].version) : undefined}
         agent={{ id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel }}
         titre={(badges) => <TitreAcheteurs cle="propositions" badges={badges} />}
         actions={(
@@ -2141,9 +2143,11 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
         const l = lienDuDossier(b.dossiers[0]);
         return {
           propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), jours: p.jours, autresIds: [],
-          lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+          lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe,
           dossierId: b.dossiers[0] ? String(b.dossiers[0]._id) : undefined,
           dossierVersion: Number(b.dossiers[0]?.version) || undefined,
+          pdf: urlPdfDossier(b.dossiers[0]),
+          pdfNom: b.dossiers[0] ? nomPdfDossier(String(b.im.adresse_ville ?? ""), b.dossiers[0].version) : undefined,
         };
       })()],
     };

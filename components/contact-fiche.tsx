@@ -991,7 +991,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
   const [maintenant] = useState(() => Date.now());
   const [relance, setRelance] = useState<{ ids: string[] } | null>(null);
   const [rapport, setRapport] = useState<string | null>(null);
-  const [vue, setVue] = useState<VuePropositions>("toutes");
+  const [vue, setVue] = useState<VuePropositions>("en_cours");
   const [pending, start] = useTransition();
   const agent = d.agent ? { id: d.agent.id, nom: d.agent.nom, tel: d.agent.tel } : undefined;
   const chemins = [`/contact/${contactId}`];
@@ -1017,8 +1017,9 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
         return {
           propositionId: x.p.id, immeubleId: x.p.immeuble!.id, libelle: x.p.immeuble!.libelle,
           prix: x.p.immeuble!.prix, resume: x.p.immeuble!.resume, court: x.p.immeuble!.court, jours: x.jours, autresIds: [],
-          lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+          lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe,
           dossierId: x.p.immeuble!.dossierId, dossierVersion: x.p.immeuble!.dossierVersion,
+          pdf: x.p.immeuble!.pdf, pdfNom: x.p.immeuble!.pdfNom,
         };
       });
     return { contactId, nom, email, immeubles, joursMax: Math.max(0, ...immeubles.map((i) => i.jours ?? 999)) };

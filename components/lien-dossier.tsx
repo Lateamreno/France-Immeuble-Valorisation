@@ -13,7 +13,7 @@
  */
 import { useState, useTransition } from "react";
 import { majLienDossier } from "@/lib/bo/actions";
-import { dateLien, expirationParDefaut, lienDuDossier, lienValide, VALIDITE_LIEN_JOURS } from "@/lib/bo/lien-dossier";
+import { dateLien, expirationParDefaut, lienDuDossier, lienValide, PREAVIS_LIEN_JOURS, VALIDITE_LIEN_JOURS } from "@/lib/bo/lien-dossier";
 
 export function LienDossier({ immeubleId, dossier, ouvert = false, compact = false, onEnregistre }: {
   immeubleId: string;
@@ -29,7 +29,10 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
   const etat = lienDuDossier(dossier);
   const [edite, setEdite] = useState(ouvert);
   const [url, setUrl] = useState(etat?.url ?? "");
-  const [fin, setFin] = useState(etat?.expireLe ?? expirationParDefaut());
+  /* Retour #442 : « il me le faut en jours ». On saisit la validité, la date
+     de fin en découle, depuis aujourd'hui. */
+  const [jours, setJours] = useState(VALIDITE_LIEN_JOURS);
+  const fin = expirationParDefaut(new Date(), jours);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dossierId = String(dossier._id ?? "");
@@ -52,13 +55,13 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
             <>
               <a className={`ldos-a${etat.perime ? " perime" : etat.bientot ? " bientot" : ""}`} href={etat.url} target="_blank" rel="noreferrer"
                 title={etat.url}>
-                Lien transfer.it {etat.perime ? "périmé" : "✓"}
+                Lien transfer.it {etat.perime ? "périmé" : etat.bientot ? "à remplacer" : "✓"}
               </a>
               <span className={`ldos-d${etat.perime ? " perime" : etat.bientot ? " bientot" : ""}`}>
                 {etat.expireLe
                   ? etat.perime
                     ? `expiré le ${dateLien(etat.expireLe)}`
-                    : `valable jusqu'au ${dateLien(etat.expireLe)}${etat.bientot ? ` (${etat.joursRestants} j)` : ""}`
+                    : `valable jusqu'au ${dateLien(etat.expireLe)}${etat.bientot ? ` — plus que ${etat.joursRestants} j, sous la réserve de ${PREAVIS_LIEN_JOURS}` : ""}`
                   : "sans date de fin"}
               </span>
             </>
@@ -79,8 +82,12 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
               onChange={(e) => setUrl(e.target.value)} autoFocus />
           </label>
           <label className="ldos-c">
-            <span className="mlab">Valable jusqu&apos;au</span>
-            <input className="min" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
+            <span className="mlab">Validité (jours)</span>
+            <span className="ldos-j">
+              <input className="min" type="number" min={1} max={365} value={jours}
+                onChange={(e) => setJours(Math.max(1, Math.min(365, Number(e.target.value) || 0)))} />
+              <i>→ jusqu&apos;au {dateLien(fin)}</i>
+            </span>
           </label>
           <div className="ldos-b">
             <a className="asst-tr-mini" href="https://transfer.it/start" target="_blank" rel="noreferrer"
@@ -94,8 +101,9 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
             </button>
           </div>
           <div className="asst-note">
-            transfer.it garde un envoi {VALIDITE_LIEN_JOURS}&nbsp;jours : c&apos;est la date proposée. Passé cette date,
-            le BO vous redemande un lien avant tout envoi : rien ne part sans lien valable (le PDF, lui, est toujours joint).
+            transfer.it garde un envoi {VALIDITE_LIEN_JOURS}&nbsp;jours : c&apos;est la validité proposée. Avec une réserve
+            de {PREAVIS_LIEN_JOURS}&nbsp;jours : dès qu&apos;il reste moins de {PREAVIS_LIEN_JOURS}&nbsp;jours, le BO vous demande
+            un nouveau lien avant tout envoi (le PDF, lui, est toujours joint).
           </div>
           {msg && <div className="dif-simu">{msg}</div>}
         </div>

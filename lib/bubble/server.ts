@@ -17,6 +17,7 @@ import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
 import { motifHorsVente } from "@/lib/bo/relances";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
+import { nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
@@ -1860,6 +1861,8 @@ export type PropositionLigne = {
     lien?: string; lienExpireLe?: string;
     /** Ce dernier dossier, pour y poser le lien sur place quand il manque. */
     dossierId?: string; dossierVersion?: number;
+    /** Son PDF, à ouvrir avant d'envoyer (retour #439). */
+    pdf?: string; pdfNom?: string;
   };
   /** Vraie quand la proposition entre dans le compteur « à relancer ». */
   aRelancer: boolean;
@@ -1873,6 +1876,9 @@ export type PropositionLigne = {
   refusLe?: string;
   /** Relances coupées à la demande de la personne. */
   stop: boolean;
+  /** La date du dernier retour écrit (note de suivi), ISO : il fait
+   *  remonter la proposition en tête (retour #437). */
+  noteLe?: string;
   /** La dernière réponse SMS de la personne, remontée par MailingVox et
    *  inscrite sur la proposition (MAV, 28/09). */
   retourSms?: { texte: string; le?: string; lu: boolean };
@@ -1965,6 +1971,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
+        noteLe: S2(p.commentaire_le),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
@@ -2200,12 +2207,15 @@ export async function getContact(id: string): Promise<ContactData | null> {
           lienExpireLe: S2(derniers.get(String(p.IMMEUBLE))?.lien_expire_le),
           dossierId: S2(derniers.get(String(p.IMMEUBLE))?._id),
           dossierVersion: Number(derniers.get(String(p.IMMEUBLE))?.version) || undefined,
+          pdf: urlPdfDossier(derniers.get(String(p.IMMEUBLE))),
+          pdfNom: derniers.get(String(p.IMMEUBLE)) ? nomPdfDossier(S2(im.adresse_ville), derniers.get(String(p.IMMEUBLE))?.version) : undefined,
         } : undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im),
         archivee: phraseHorsVente(im),
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
+        noteLe: S2(p.commentaire_le),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
