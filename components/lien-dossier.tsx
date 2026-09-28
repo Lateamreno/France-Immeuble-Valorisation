@@ -95,7 +95,7 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
           </div>
           <div className="asst-note">
             transfer.it garde un envoi {VALIDITE_LIEN_JOURS}&nbsp;jours : c&apos;est la date proposée. Passé cette date,
-            le BO vous prévient avant tout envoi et les relances partent sans le lien (le PDF reste joint).
+            le BO vous redemande un lien avant tout envoi : rien ne part sans lien valable (le PDF, lui, est toujours joint).
           </div>
           {msg && <div className="dif-simu">{msg}</div>}
         </div>
