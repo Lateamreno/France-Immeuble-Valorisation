@@ -894,6 +894,11 @@ export async function getDashboardLive(
 
 /** Une chaîne non vide, ou rien. Utilitaire des facettes de liste. */
 const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+/** « 28/09/26 » depuis une date ISO, ou rien. */
+const jjmmaaOuDmy = (v: unknown) => {
+  const d = typeof v === "string" ? new Date(v) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : undefined;
+};
 
 const rangLot = (l: Record<string, unknown>) =>
   typeof l.ordre === "number" ? (l.ordre as number) : Number(l.numero ?? 0);
@@ -1866,6 +1871,9 @@ export type PropositionLigne = {
   refusLe?: string;
   /** Relances coupées à la demande de la personne. */
   stop: boolean;
+  /** La dernière réponse SMS de la personne, remontée par MailingVox et
+   *  inscrite sur la proposition (MAV, 28/09). */
+  retourSms?: { texte: string; le?: string; lu: boolean };
   /** L'adresse à laquelle le dossier est parti. */
   email?: string;
   /** Dernier geste connu (relance, envoi), ISO : la carte en tire les jours. */
@@ -1955,6 +1963,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
+        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: dmy(p.date_last_relance),
@@ -2194,6 +2203,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
+        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: jjmmaa(p.date_last_relance),

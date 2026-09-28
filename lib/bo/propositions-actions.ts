@@ -83,7 +83,10 @@ export async function relancerParSms(
          sur le dernier dossier, le SMS ne part pas, on dit où le poser. */
       if (!rl.lien) { echecs++; journal.push(`${e.libelle} : pas de lien transfer.it valable sur le dossier — à poser sur la fiche (Dossiers).`); continue; }
       const texte = e.texte?.trim() || texteRelanceSms(rl.resume || e.libelle, rl.lien, NUMERO_STOP);
-      const r = await envoyerSms([num], texte, { nom: "Relance" });
+      /* Le nom de campagne porte la proposition : c'est lui que MailingVox
+         renvoie avec chaque réponse, et c'est ainsi qu'un « Oui » retrouve sa
+         ligne (MAV, 28/09 : les retours SMS remontés dans l'application). */
+      const r = await envoyerSms([num], texte, { nom: `Relance ${e.propositionIds[0] ?? ""}`.trim().slice(0, 50) });
       if (r.simulation || r.envoyes === 0) { echecs++; journal.push(`${num} : non envoyé`); continue; }
       envoyes++;
       await marquerRelances(e.propositionIds, chemins);

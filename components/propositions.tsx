@@ -227,6 +227,15 @@ export function CarteProposition({
             <span className="cfc-past">À relancer · {jours} j</span>
           )}
           {p.stop && ouverte && <span className="cfc-num rouge">Relances coupées</span>}
+          {/* La réponse SMS de la personne, remontée par MailingVox (MAV, 28/09) :
+              « Oui » en vert, « Non » en rouge, le reste tel quel. */}
+          {p.retourSms && (
+            <span className={`cfc-sms${/^\s*oui\b/i.test(p.retourSms.texte) ? " oui" : /^\s*non\b/i.test(p.retourSms.texte) ? " non" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
+              title={`Réponse SMS${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H8l-4 4V5z" /></svg>
+              Réponse SMS{p.retourSms.le ? ` le ${p.retourSms.le}` : ""} : « {p.retourSms.texte.slice(0, 80)}{p.retourSms.texte.length > 80 ? "…" : ""} »
+            </span>
+          )}
         </div>
         <NoteProposition propositionId={p.id} contactId={contactId} valeur={p.commentaire ?? ""} />
         <div className="cfc-l3">
