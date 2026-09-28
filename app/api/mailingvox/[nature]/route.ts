@@ -91,7 +91,7 @@ async function traiter(req: NextRequest, nature: Chemin) {
        SA proposition — par le nom de campagne (qui porte la proposition ou la
        commercialisation), et par le numéro (qui porte le contact) — puis s'y
        inscrit. Un numéro inconnu reste dans le journal, sans deviner. */
-    const cible = numero ? await propositionDe(numero, commun.campagne, texte) : null;
+    const cible = numero ? await propositionDe(numero, commun.campagne, commun.source_id, texte) : null;
     await enregistrer({
       ...commun,
       evenement_id: evenementId,
@@ -172,7 +172,7 @@ async function contactDe(numero: string): Promise<string | null> {
  *     donne le contact, le couple donne la proposition ;
  *   • sinon, la dernière proposition « Envoyée » du contact.
  */
-async function propositionDe(numero: string, campagne: string | null, texte: string): Promise<{
+async function propositionDe(numero: string, campagne: string | null, source: string | null, texte: string): Promise<{
   contactId: string | null; immeubleId: string | null; commercialisationId: string | null; propositionId: string | null;
 } | null> {
   if (!SB_KEY) return null;
@@ -181,10 +181,37 @@ async function propositionDe(numero: string, campagne: string | null, texte: str
   let immeubleId: string | null = null;
   let commercialisationId: string | null = null;
 
+  /* Le chemin le plus sûr : `source`, l'identifiant de campagne que MailingVox
+     rend à l'envoi et renvoie avec la réponse (leur documentation, « Recevoir
+     les réponses (PUSH) » : id, numero, date, message, source). Le BO le
+     garde sur la proposition relancée (`sms_campagne`) et sur la
+     commercialisation (`sms_campagne`). */
+  const src = (source ?? "").trim();
+  if (src) {
+    const p = (await lire<{ data: Record<string, unknown> }>(`bo_proposition?select=data&data->>sms_campagne=eq.${encodeURIComponent(src)}&limit=5`))
+      .map((r) => r.data)
+      .find((d) => !contactId || d.ACHETEUR === contactId);
+    if (p) { propositionId = String(p._id ?? ""); immeubleId = typeof p.IMMEUBLE === "string" ? p.IMMEUBLE : null; commercialisationId = typeof p.COMMERCIALISATION === "string" ? p.COMMERCIALISATION : null; }
+    if (!propositionId) {
+      const c = (await lire<{ id: string; data: Record<string, unknown> }>(`bo_commercialisation?select=id,data&data->>sms_campagne=eq.${encodeURIComponent(src)}&limit=1`))[0];
+      if (c) {
+        commercialisationId = c.id;
+        immeubleId = typeof c.data.IMMEUBLE === "string" ? (c.data.IMMEUBLE as string) : null;
+        if (immeubleId && contactId) {
+          const pp = (await lire<{ data: Record<string, unknown> }>(
+            `bo_proposition?select=data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&order=bubble_created.desc.nullslast&limit=1`,
+          ))[0]?.data;
+          if (pp) propositionId = String(pp._id ?? "") || null;
+        }
+      }
+    }
+  }
   const nom = (campagne ?? "").trim();
   const mRel = /^Relance\s+(\S+)$/.exec(nom);
   const mCom = /^Commercialisation\s+(\S+)$/.exec(nom);
-  if (mRel) {
+  if (propositionId) {
+    /* déjà trouvé par `source` */
+  } else if (mRel) {
     const p = (await lire<{ data: Record<string, unknown> }>(`bo_proposition?select=data&id=eq.${encodeURIComponent(mRel[1])}&limit=1`))[0]?.data;
     if (p) { propositionId = String(p._id ?? mRel[1]); immeubleId = typeof p.IMMEUBLE === "string" ? p.IMMEUBLE : null; commercialisationId = typeof p.COMMERCIALISATION === "string" ? p.COMMERCIALISATION : null; }
   } else if (mCom) {
