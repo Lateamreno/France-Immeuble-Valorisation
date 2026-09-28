@@ -139,6 +139,8 @@ export type ImmeubleRelance = {
   /** « Sens (89), 479 m², 9 %, 840 k€ HAI » — la ligne validée par MAV (28/09) ;
    *  à défaut, le libellé fait l'affaire. */
   resume?: string;
+  /** « Immeuble de Sens (89) - 9 % - 840 k€ » : l'objet de l'e-mail de relance. */
+  court?: string;
   /** Le lien transfer.it du dernier dossier, quand il en a un et qu'il est
    *  encore valable (MAV, 28/09 : « on garde les liens transfer.it même pour
    *  les relances »). Le PDF, lui, est TOUJOURS joint. */
@@ -189,7 +191,7 @@ export type ClientRelance = {
  */
 export function grouperParClient(
   props: PropositionRelance[],
-  libelles: Map<string, { libelle: string; prix?: string; resume?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean; dossierId?: string; dossierVersion?: number }>,
+  libelles: Map<string, { libelle: string; prix?: string; resume?: string; court?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean; dossierId?: string; dossierVersion?: number }>,
   maintenant: number,
   jours = JOURS_RELANCE,
 ): ClientRelance[] {
@@ -225,7 +227,7 @@ export function grouperParClient(
     const ligne: ImmeubleRelance = {
       propositionId: p.id, immeubleId: p.immeubleId,
       libelle: im.libelle, prix: im.prix, jours: j, autresIds: [],
-      resume: im.resume, lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
+      resume: im.resume, court: im.court, lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
       dossierId: im.dossierId, dossierVersion: im.dossierVersion,
     };
     vues.set(cle, ligne);
@@ -275,9 +277,11 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
     /* MAV, 28/09 (après-midi) : « S'il vous intéresse je suis disponible pour
        échanger, dans le cas contraire pouvez-vous simplement me l'indiquer
        pour que je classe le dossier ? » */
+    /* MAV, 28/09 (fin de journée) : « Souhaitez-vous avancer sur ce dernier
+       ou puis-je l'archiver ? » */
     un
-      ? `Avez-vous eu le temps de l'étudier ? S'il vous intéresse, je suis disponible pour échanger. Dans le cas contraire, pouvez-vous simplement me l'indiquer pour que je classe le dossier ?`
-      : `Avez-vous eu le temps de les étudier ? Si l'un d'eux vous intéresse, je suis disponible pour échanger. Dans le cas contraire, pouvez-vous simplement me l'indiquer pour que je classe les dossiers ?`,
+      ? `Avez-vous eu le temps de l'étudier ? Souhaitez-vous avancer sur ce dernier ou puis-je l'archiver ?`
+      : `Avez-vous eu le temps de les étudier ? Souhaitez-vous avancer sur l'un d'eux, ou puis-je les archiver ?`,
     ``,
     `Bien à vous,`,
     agent?.nom ?? "",
@@ -295,10 +299,17 @@ export function texteRelanceSms(resume: string, lien: string | undefined, stop: 
 }
 
 /** L'objet de l'e-mail : il dit combien de dossiers, sans faire de mystère. */
+/**
+ * L'objet de MAV (28/09) : « Re : Relance Immeuble de Sens (89) - 9 % - 840 k€ ».
+ * Plusieurs dossiers : « Re : Relance Immeubles de Sens (89), Antibes (06) ».
+ */
 export function objetRelance(c: ClientRelance): string {
-  return c.immeubles.length === 1
-    ? `Votre avis sur ${c.immeubles[0].libelle}`
-    : `Votre avis sur ${c.immeubles.length} dossiers`;
+  if (c.immeubles.length === 1) {
+    const i = c.immeubles[0];
+    return `Re : Relance ${i.court || `Immeuble de ${i.libelle}`}`;
+  }
+  const lieux = c.immeubles.map((i) => (i.court ?? "").replace(/^Immeuble de /, "").split(" - ")[0] || i.libelle);
+  return `Re : Relance Immeubles de ${lieux.join(", ")}`;
 }
 
 /** Le bilan rendu par l'écran Relances. */

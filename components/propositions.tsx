@@ -571,7 +571,7 @@ const VIDE_PROP: Record<VuePropositions, string> = {
 };
 export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
 
-export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien, lienExpireLe, dossierId, dossierVersion, agent, titre, actions }: {
+export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court, lien, lienExpireLe, dossierId, dossierVersion, agent, titre, actions }: {
   immeubleId: string;
   /** « Ville (CP) — adresse », cité dans les relances. */
   libelle: string;
@@ -579,6 +579,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien,
   /** « Sens (89), 479 m², 9 %, 840 k€ HAI » et le lien transfer.it du dernier
    *  dossier : ce que citent les relances (MAV, 28/09). */
   resume?: string;
+  court?: string;
   lien?: string;
   lienExpireLe?: string;
   dossierId?: string;
@@ -635,7 +636,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien,
     const immeubles: ImmeubleRelance[] = ids.includes(p.id)
       ? [(() => {
           const l = etatLien(lien, lienExpireLe);
-          return { propositionId: p.id, immeubleId, libelle, prix, resume, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe, dossierId, dossierVersion };
+          return { propositionId: p.id, immeubleId, libelle, prix, resume, court, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe, dossierId, dossierVersion };
         })()]
       : [];
     return { contactId: p.contact?.id ?? "", nom: p.contact?.nom ?? "", email: p.contact?.email ?? p.email ?? "", immeubles, joursMax: j ?? 999 };

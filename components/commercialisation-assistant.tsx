@@ -1087,5 +1087,5 @@ function smsParDefaut(b: BienData, lien: string) {
      affiche —, le résumé du bien, le lien transfer.it, Oui / Non, STOP. Le
      numéro STOP est celui que MailingVox route (`MAILINGVOX_STOP`) ; l'écran
      signale la divergence si ce littéral s'en écarte. */
-  return smsEnvoiDossier(resumeDepuisDoc(b.im), lien, "36200");
+  return smsEnvoiDossier(resumeDepuisDoc(b.im, { sms: true }), lien, "36200");
 }
