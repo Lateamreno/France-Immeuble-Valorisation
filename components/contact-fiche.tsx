@@ -31,6 +31,7 @@ import {
 import { archiverContact, retirerPieceContact, updateContact } from "@/lib/bo/actions";
 import { envoyerRelances } from "@/lib/bo/relances-actions";
 import { relancerParSms } from "@/lib/bo/propositions-actions";
+import { etatLien } from "@/lib/bo/lien-dossier";
 import {
   JOURS_RELANCE, joursDepuis, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
 } from "@/lib/bo/relances";
@@ -1009,10 +1010,16 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
   const client = (ids: string[]): ClientRelance => {
     const immeubles: ImmeubleRelance[] = ouvertes
       .filter((x) => ids.includes(x.p.id))
-      .map((x) => ({
-        propositionId: x.p.id, immeubleId: x.p.immeuble!.id, libelle: x.p.immeuble!.libelle,
-        prix: x.p.immeuble!.prix, jours: x.jours, autresIds: [], lien: x.p.dossier?.pdf,
-      }));
+      .map((x) => {
+        /* MAV (28/09) : le seul lien admis est celui de transfer.it, s'il est
+           valable — plus jamais l'adresse du PDF. Le PDF, lui, est joint. */
+        const l = etatLien(x.p.immeuble!.lien, x.p.immeuble!.lienExpireLe);
+        return {
+          propositionId: x.p.id, immeubleId: x.p.immeuble!.id, libelle: x.p.immeuble!.libelle,
+          prix: x.p.immeuble!.prix, resume: x.p.immeuble!.resume, jours: x.jours, autresIds: [],
+          lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+        };
+      });
     return { contactId, nom, email, immeubles, joursMax: Math.max(0, ...immeubles.map((i) => i.jours ?? 999)) };
   };
 
@@ -1035,7 +1042,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
           }
         }
         if (mode !== "email") {
-          const s = await relancerParSms([{ contactId, tel, libelle: c.immeubles[0].libelle, propositionIds: ids }], agent?.nom, chemins);
+          const s = await relancerParSms([{ contactId, tel, immeubleId: c.immeubles[0].immeubleId, libelle: c.immeubles[0].libelle, propositionIds: ids }], agent?.nom, chemins);
           messages.push(s.envoyes ? `SMS envoyé au ${tel}.` : `SMS non envoyé : ${s.journal[0] ?? ""}`);
         }
       } catch (e) {

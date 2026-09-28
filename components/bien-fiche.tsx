@@ -39,6 +39,8 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
+import { lienDuDossier } from "@/lib/bo/lien-dossier";
+import { resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
@@ -2074,6 +2076,9 @@ function EcranPropositions({ b }: { b: BienData }) {
         immeubleId={bien.id}
         libelle={[b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble"}
         prix={b.prix}
+        resume={resumeDepuisDoc(b.im)}
+        lien={typeof b.dossiers[0]?.lien_partage === "string" ? (b.dossiers[0].lien_partage as string) : undefined}
+        lienExpireLe={typeof b.dossiers[0]?.lien_expire_le === "string" ? (b.dossiers[0].lien_expire_le as string) : undefined}
         agent={{ id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel }}
         titre={(badges) => <TitreAcheteurs cle="propositions" badges={badges} />}
         actions={(
@@ -2129,9 +2134,13 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
     const c = {
       contactId: p.contactId ?? p.id, nom: p.nom, email: p.email ?? "",
       joursMax: p.jours ?? 0,
-      immeubles: [{
-        propositionId: p.id, immeubleId, libelle, prix: b.prix, jours: p.jours, autresIds: [],
-      }],
+      immeubles: [(() => {
+        const l = lienDuDossier(b.dossiers[0]);
+        return {
+          propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), jours: p.jours, autresIds: [],
+          lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+        };
+      })()],
     };
     return {
       contactId: c.contactId, email: c.email,

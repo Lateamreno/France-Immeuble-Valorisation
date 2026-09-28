@@ -49,6 +49,7 @@ const STATUTS_CLOS = new Set([
   "Offre acceptée",
   "Vendu",
 ]);
+import { smsRelance } from "./resume-immeuble";
 
 export type PropositionRelance = {
   id: string;
@@ -135,6 +136,9 @@ export type ImmeubleRelance = {
   prix?: string;
   /** Jours écoulés depuis le dernier geste, quand on le sait. */
   jours?: number;
+  /** « Sens (89), 479 m², 9 %, 840 k€ HAI » — la ligne validée par MAV (28/09) ;
+   *  à défaut, le libellé fait l'affaire. */
+  resume?: string;
   /** Le lien transfer.it du dernier dossier, quand il en a un et qu'il est
    *  encore valable (MAV, 28/09 : « on garde les liens transfer.it même pour
    *  les relances »). Le PDF, lui, est TOUJOURS joint. */
@@ -179,7 +183,7 @@ export type ClientRelance = {
  */
 export function grouperParClient(
   props: PropositionRelance[],
-  libelles: Map<string, { libelle: string; prix?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean }>,
+  libelles: Map<string, { libelle: string; prix?: string; resume?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean }>,
   maintenant: number,
   jours = JOURS_RELANCE,
 ): ClientRelance[] {
@@ -215,7 +219,7 @@ export function grouperParClient(
     const ligne: ImmeubleRelance = {
       propositionId: p.id, immeubleId: p.immeubleId,
       libelle: im.libelle, prix: im.prix, jours: j, autresIds: [],
-      lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
+      resume: im.resume, lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
     };
     vues.set(cle, ligne);
     e.immeubles.push(ligne);
@@ -246,19 +250,20 @@ export function grouperParClient(
  */
 export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: string }): string {
   const un = c.immeubles.length === 1;
-  const liste = c.immeubles
-    /* Le seul lien qui figure est le lien transfer.it, et seulement s'il est
-       encore valable ; le dossier PDF est joint au message quoi qu'il arrive. */
-    .map((i) => `  • ${i.libelle}${i.prix ? ` — ${i.prix}` : ""}${i.lien && !i.lienPerime ? `\n    Dossier, photos et plans : ${i.lien}` : ""}`)
-    .join("\n");
+  /* La ligne d'un immeuble : le résumé validé par MAV (28/09), puis le seul
+     lien admis — celui de transfer.it, s'il est encore valable. Le PDF, lui,
+     est joint au message quoi qu'il arrive. */
+  const ligne = (i: ImmeubleRelance) =>
+    `${i.resume || `${i.libelle}${i.prix ? ` — ${i.prix}` : ""}`}${i.lien && !i.lienPerime ? `. Dossier, photos et plans : ${i.lien}` : "."}`;
+  const liste = c.immeubles.map((i) => `  • ${ligne(i)}`).join("\n");
   return [
     `Bonjour,`,
     ``,
     un
-      ? `Je reviens vers vous au sujet du dossier que je vous ai adressé (vous le retrouverez en pièce jointe) :`
-      : `Je reviens vers vous au sujet des ${c.immeubles.length} dossiers que je vous ai adressés :`,
-    ``,
-    liste,
+      ? `Je reviens vers vous concernant l'immeuble de ${ligne(c.immeubles[0])}`
+      : `Je reviens vers vous concernant les ${c.immeubles.length} dossiers que je vous ai adressés :`,
+    un ? undefined : ``,
+    un ? undefined : liste,
     ``,
     un
       ? `Avez-vous eu le temps de l'étudier ? Même un « ce n'est pas pour moi » m'est utile :`
@@ -272,11 +277,12 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
 }
 
 /**
- * La relance par SMS (#373) : courte, un seul dossier, la mention STOP que
- * MailingVox exige. Le numéro STOP est celui du réglage, passé par l'appelant.
+ * La relance par SMS (#373) : un seul immeuble, son lien transfer.it s'il est
+ * valable, la mention STOP que MailingVox exige. Texte validé par MAV le 28/09
+ * (`smsRelance`). Le numéro STOP est celui du réglage, passé par l'appelant.
  */
-export function texteRelanceSms(libelle: string, agent: string | undefined, stop: string): string {
-  return `Bonjour, avez-vous pu regarder le dossier ${libelle} que je vous ai adressé ? Un mot en retour m'aide à affiner mes envois. ${agent ?? "France Immeuble"}, France Immeuble. STOP au ${stop}`;
+export function texteRelanceSms(resume: string, lien: string | undefined, stop: string): string {
+  return smsRelance(resume, lien, stop);
 }
 
 /** L'objet de l'e-mail : il dit combien de dossiers, sans faire de mystère. */

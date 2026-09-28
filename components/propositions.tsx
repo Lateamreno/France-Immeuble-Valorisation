@@ -32,6 +32,7 @@ import {
 } from "@/lib/bo/relances-actions";
 import { apercuRelanceSms, chargerPropositionsDuBien, relancerParSms } from "@/lib/bo/propositions-actions";
 import { joursDepuis, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance } from "@/lib/bo/relances";
+import { etatLien } from "@/lib/bo/lien-dossier";
 
 export const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
 
@@ -354,22 +355,27 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
   const [possible, setPossible] = useState<boolean | null>(null);
   const [sms, setSms] = useState(false);
   const [apercuSms, setApercuSms] = useState<{ texte: string; configure: boolean } | null>(null);
+  /* Le SMS se relit et se retouche comme l'e-mail (MAV, 28/09). Null tant que
+     l'agent n'y a pas touché : le modèle suit alors le dossier. */
+  const [smsTexte, setSmsTexte] = useState<string | null>(null);
+  const smsCorps = smsTexte ?? apercuSms?.texte ?? "";
   const c = client(retenus);
   const corps = texte ?? messageRelance(c, agent);
   const objet = objetRelance(c);
   const agentId = agent?.id;
   const agentNom = agent?.nom;
   const premierLibelle = c.immeubles[0]?.libelle ?? "";
+  const premierImmeuble = c.immeubles[0]?.immeubleId ?? "";
   useEffect(() => {
     let vivant = true;
     relanceEnvoiPossible(agentId)
       .then((p) => { if (vivant) setPossible(p); })
       .catch(() => { if (vivant) setPossible(false); });
-    apercuRelanceSms(premierLibelle, agentNom)
+    apercuRelanceSms(premierImmeuble)
       .then((a) => { if (vivant) setApercuSms(a); })
       .catch(() => undefined);
     return () => { vivant = false; };
-  }, [agentId, agentNom, premierLibelle]);
+  }, [agentId, premierImmeuble]);
 
   const basculer = (id: string) =>
     setRetenus((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -396,7 +402,7 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
                 );
                 let msg = r.envoyes ? `Relance envoyée à ${email}.` : `Échec : ${r.journal[0] ?? "l'envoi n'est pas parti."}`;
                 if (sms && r.envoyes) {
-                  const s = await relancerParSms([{ contactId: c.contactId, tel, libelle: premierLibelle, propositionIds: retenus }], agentNom, chemins);
+                  const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId: premierImmeuble, libelle: premierLibelle, propositionIds: retenus, texte: smsCorps }], agentNom, chemins);
                   msg += s.envoyes ? " SMS envoyé." : ` SMS non envoyé : ${s.journal[0] ?? ""}`;
                 }
                 onFait(msg);
@@ -430,7 +436,7 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
       <textarea className="min" rows={11} value={corps} onChange={(e) => setTexte(e.target.value)} />
       <div className="asst-note">
         Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
-        Le dossier est cité avec le lien de sa dernière version.
+        Le PDF du dernier dossier est joint ; son lien transfer.it est cité s&apos;il est encore valable.
         {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
       </div>
       {/* #373 — le SMS en plus, avec son texte tel qu'il partira. */}
@@ -440,9 +446,18 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
         <span>
           <b>Relancer aussi par SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
           {apercuSms?.configure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
-          {apercuSms && <i>{apercuSms.texte}</i>}
         </span>
       </label>
+      {sms && apercuSms && (
+        <>
+          <span className="mlab" style={{ marginTop: 8 }}>SMS — modifiable avant l&apos;envoi</span>
+          <textarea className="min" rows={4} value={smsCorps} onChange={(e) => setSmsTexte(e.target.value)} />
+          <div className="asst-note">
+            {smsCorps.length}&nbsp;caractères — au-delà de 160, l&apos;opérateur facture plusieurs SMS.
+            {!/\bstop\b/i.test(smsCorps) && <b> La mention « STOP » est obligatoire : sans elle, MailingVox refuse.</b>}
+          </div>
+        </>
+      )}
     </Modale>
   );
 }
@@ -499,11 +514,16 @@ const VIDE_PROP: Record<VuePropositions, string> = {
 };
 export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
 
-export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre, actions }: {
+export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien, lienExpireLe, agent, titre, actions }: {
   immeubleId: string;
   /** « Ville (CP) — adresse », cité dans les relances. */
   libelle: string;
   prix?: string;
+  /** « Sens (89), 479 m², 9 %, 840 k€ HAI » et le lien transfer.it du dernier
+   *  dossier : ce que citent les relances (MAV, 28/09). */
+  resume?: string;
+  lien?: string;
+  lienExpireLe?: string;
   agent?: { id?: string; nom?: string; tel?: string };
   /** Le titre de la section, avec ses compteurs. */
   titre: (badges: React.ReactNode) => React.ReactNode;
@@ -554,7 +574,10 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
   const client = (p: PropositionLigne) => (ids: string[]): ClientRelance => {
     const j = joursDepuis(p.depuis, maintenant);
     const immeubles: ImmeubleRelance[] = ids.includes(p.id)
-      ? [{ propositionId: p.id, immeubleId, libelle, prix, jours: j, autresIds: [], lien: p.dossier?.pdf }]
+      ? [(() => {
+          const l = etatLien(lien, lienExpireLe);
+          return { propositionId: p.id, immeubleId, libelle, prix, resume, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe };
+        })()]
       : [];
     return { contactId: p.contact?.id ?? "", nom: p.contact?.nom ?? "", email: p.contact?.email ?? p.email ?? "", immeubles, joursMax: j ?? 999 };
   };
@@ -579,7 +602,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, agent, titre,
           }
         }
         if (mode !== "email") {
-          const s = await relancerParSms([{ contactId: c.contactId, tel, libelle, propositionIds: [p.id] }], agent?.nom, chemins);
+          const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId, libelle, propositionIds: [p.id] }], agent?.nom, chemins);
           messages.push(s.envoyes ? `SMS envoyé au ${tel}.` : `SMS non envoyé : ${s.journal[0] ?? ""}`);
         }
       } catch (e) {
