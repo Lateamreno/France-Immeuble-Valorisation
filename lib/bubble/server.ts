@@ -494,22 +494,32 @@ export async function getDashboardLive(
   const countsByIm = new Map<string, { prop: number; vis: number; off: number }>();
   commIds.forEach((id) => countsByIm.set(id, { prop: 0, vis: 0, off: 0 }));
   if (USE_SB && commIds.length > 0) {
-    // Groupé : 3 requêtes (liste des rattachements) puis comptage local.
-    const idList = commIds.map((v) => `"${v}"`).join(",");
-    const grab = async (table: string, col: string) => {
+    /* Un COMPTE par immeuble, pas la liste des rattachements (28/09, vu sur
+       Sens) : l'ancienne requête ramenait les lignes de toutes les cartes en
+       un seul appel, et PostgREST en rend mille au plus. Douze biens
+       commercialisés font près de trois mille propositions : les compteurs
+       étaient faux — Sens à 0 pour 165, Nanterre à 330 pour 441. Le compte
+       exact se demande en tête de réponse, sans rapatrier une ligne. */
+    const compter = async (table: string, col: string, id: string) => {
       const res = await fetch(
-        `${SB_URL}/rest/v1/${table}?select=data->>${col}&data->>${col}=in.(${idList})&limit=100000`,
-        { headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` }, cache: "no-store" },
-      );
-      if (!res.ok) return [] as string[];
-      return ((await res.json()) as Record<string, string>[]).map((r) => Object.values(r)[0]);
+        `${SB_URL}/rest/v1/${table}?select=id&data->>${col}=eq.${encodeURIComponent(id)}`,
+        {
+          method: "HEAD",
+          headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`, Prefer: "count=exact", Range: "0-0" },
+          cache: "no-store",
+        },
+      ).catch(() => null);
+      const total = res?.headers.get("content-range")?.split("/")[1];
+      return total && total !== "*" ? parseInt(total, 10) || 0 : 0;
     };
-    const [props, viss] = await Promise.all([
-      grab("bo_proposition", "IMMEUBLE"),
-      grab("bo_visite", "IMMEUBLE"),
-    ]);
-    props.forEach((id) => { const c = countsByIm.get(id); if (c) c.prop++; });
-    viss.forEach((id) => { const c = countsByIm.get(id); if (c) c.vis++; });
+    await Promise.all(commIds.map(async (id) => {
+      const [prop, vis] = await Promise.all([
+        compter("bo_proposition", "IMMEUBLE", id),
+        compter("bo_visite", "IMMEUBLE", id),
+      ]);
+      const c = countsByIm.get(id);
+      if (c) { c.prop = prop; c.vis = vis; }
+    }));
     // offres : IMMEUBLEs est une liste → réutilise offreByIm complet
     for (const o of offres) {
       for (const id of (o.IMMEUBLEs as string[] | undefined) ?? []) {
