@@ -167,6 +167,8 @@ export async function relancesDues(
           return {
             lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
             sansPdf: !d || !sourcePdfDossier(d),
+            dossierId: d ? String(d._id ?? "") || undefined : undefined,
+            dossierVersion: d && Number(d.version) > 0 ? Number(d.version) : undefined,
           };
         })(),
       },
@@ -313,7 +315,20 @@ export async function envoyerRelances(
     else journal.push(`Immeuble ${imId} : ${r.message}`);
   }
 
+  /* Le lien transfer.it est OBLIGATOIRE (MAV, 28/09 : « de telle façon qu'on
+     envoie toujours un lien ») : un immeuble sans lien valable retient la
+     relance, et le journal dit où le poser. Contrôle côté serveur, pas
+     seulement à l'écran. */
+  const { lienDuDossier } = await import("./lien-dossier");
+  const sansLien = new Set(tousImmeubles.filter((id) => { const l = lienDuDossier(dossiers.get(id)); return !l || l.perime; }));
+
   for (const e of lot) {
+    const bloques = (e.immeubleIds ?? []).filter((id) => sansLien.has(id));
+    if (bloques.length) {
+      echecs++;
+      journal.push(`${e.email} : pas de lien transfer.it valable sur ${bloques.length > 1 ? "des dossiers" : "le dossier"} — à poser sur la fiche (Dossiers).`);
+      continue;
+    }
     try {
       const attachments = (e.immeubleIds ?? [])
         .map((id) => pieces.get(id))

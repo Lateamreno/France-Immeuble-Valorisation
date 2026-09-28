@@ -31,8 +31,9 @@ import {
   relanceEnvoiPossible,
 } from "@/lib/bo/relances-actions";
 import { apercuRelanceSms, chargerPropositionsDuBien, relancerParSms } from "@/lib/bo/propositions-actions";
-import { joursDepuis, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance } from "@/lib/bo/relances";
-import { etatLien } from "@/lib/bo/lien-dossier";
+import { joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance } from "@/lib/bo/relances";
+import { dateLien, etatLien } from "@/lib/bo/lien-dossier";
+import { LienDossier } from "@/components/lien-dossier";
 
 export const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
 
@@ -359,7 +360,24 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
      l'agent n'y a pas touché : le modèle suit alors le dossier. */
   const [smsTexte, setSmsTexte] = useState<string | null>(null);
   const smsCorps = smsTexte ?? apercuSms?.texte ?? "";
-  const c = client(retenus);
+  /* MAV (28/09) : « quand on modifie le message il faut pouvoir dire si on
+     veut envoyer le SMS OU l'e-mail ». Deux cases, l'e-mail cochée d'office. */
+  const [mail, setMail] = useState(!!email);
+  /* Les liens posés depuis cette fenêtre, par immeuble : le message se
+     recompose avec, sans recharger la page. */
+  const [liens, setLiens] = useState<Record<string, { url: string; expireLe?: string }>>({});
+  const [refresh, setRefresh] = useState(0);
+  const c0 = client(retenus);
+  const c: ClientRelance = {
+    ...c0,
+    immeubles: c0.immeubles.map((i) => liens[i.immeubleId]
+      ? { ...i, lien: liens[i.immeubleId].url, lienExpireLe: liens[i.immeubleId].expireLe, lienPerime: false }
+      : i),
+  };
+  /* Le lien transfer.it est obligatoire : sans lien valable, on le demande
+     ici même, et rien ne part avant (MAV, 28/09). */
+  const manquants = c.immeubles.filter(lienManquant);
+  const lienOk = manquants.length === 0;
   const corps = texte ?? messageRelance(c, agent);
   const objet = objetRelance(c);
   const agentId = agent?.id;
@@ -375,7 +393,7 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
       .then((a) => { if (vivant) setApercuSms(a); })
       .catch(() => undefined);
     return () => { vivant = false; };
-  }, [agentId, premierImmeuble]);
+  }, [agentId, premierImmeuble, refresh]);
 
   const basculer = (id: string) =>
     setRetenus((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -393,24 +411,30 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
             onClick={() => start(async () => { await marquerRelances(retenus, chemins); })}>
             Ouvrir dans le client mail
           </a>
-          <button className="kgo" type="button" disabled={pending || !email || retenus.length === 0 || possible === false}
+          <button className="kgo" type="button"
+            disabled={pending || retenus.length === 0 || !lienOk || (!mail && !sms)
+              || (mail && (!email || possible === false)) || (sms && !tel)}
+            title={!lienOk ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
             onClick={() => start(async () => {
+              const parts: string[] = [];
               try {
-                const r = await envoyerRelances(
-                  [{ contactId: c.contactId, email, objet, corps, propositionIds: retenus }],
-                  agent?.id, undefined, chemins,
-                );
-                let msg = r.envoyes ? `Relance envoyée à ${email}.` : `Échec : ${r.journal[0] ?? "l'envoi n'est pas parti."}`;
-                if (sms && r.envoyes) {
-                  const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId: premierImmeuble, libelle: premierLibelle, propositionIds: retenus, texte: smsCorps }], agentNom, chemins);
-                  msg += s.envoyes ? " SMS envoyé." : ` SMS non envoyé : ${s.journal[0] ?? ""}`;
+                if (mail) {
+                  const r = await envoyerRelances(
+                    [{ contactId: c.contactId, email, objet, corps, propositionIds: retenus, immeubleIds: c.immeubles.map((i) => i.immeubleId) }],
+                    agent?.id, undefined, chemins,
+                  );
+                  parts.push(r.envoyes ? `E-mail envoyé à ${email}.` : `E-mail non envoyé : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);
                 }
-                onFait(msg);
+                if (sms) {
+                  const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId: premierImmeuble, libelle: premierLibelle, propositionIds: retenus, texte: smsCorps }], agentNom, chemins);
+                  parts.push(s.envoyes ? `SMS envoyé au ${tel}.` : `SMS non envoyé : ${s.journal[0] ?? ""}`);
+                }
+                onFait(parts.join(" "));
               } catch (e) {
-                onFait(`Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`);
+                onFait(`${parts.join(" ")} Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`.trim());
               }
             })}>
-            <span className="ch">›</span> Envoyer{sms ? " l'e-mail + le SMS" : ""}
+            <span className="ch">›</span> Envoyer {mail && sms ? "l'e-mail + le SMS" : sms ? "le SMS" : "l'e-mail"}
           </button>
         </>
       }
@@ -430,6 +454,30 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
           );
         })}
       </div>
+      {!lienOk && (
+        <div className="rlz-lien-bloc">
+          <b>Le lien transfer.it est obligatoire</b> — {manquants.length > 1
+            ? "plusieurs dossiers n'en ont pas de valable"
+            : manquants[0].lienPerime
+              ? `celui de ce dossier a expiré${manquants[0].lienExpireLe ? ` le ${dateLien(manquants[0].lienExpireLe)}` : ""}`
+              : "ce dossier n'en a pas"}. Indiquez-le : il sera enregistré sur le dossier, et le message le citera.
+          {manquants.map((i) => i.dossierId ? (
+            <LienDossier key={i.immeubleId} immeubleId={i.immeubleId}
+              dossier={{ _id: i.dossierId, version: i.dossierVersion, lien_partage: i.lien, lien_expire_le: i.lienExpireLe }}
+              ouvert compact
+              onEnregistre={(l) => {
+                setLiens((m) => ({ ...m, [i.immeubleId]: l }));
+                setTexte(null); setSmsTexte(null); setRefresh((n) => n + 1);
+              }} />
+          ) : (
+            <div className="dif-simu" key={i.immeubleId}>Aucun dossier sur {i.libelle} : créez-le d&apos;abord (fiche du bien, Dossiers).</div>
+          ))}
+        </div>
+      )}
+      <label className={`prop-sms${!email ? " off" : ""}`}>
+        <input type="checkbox" checked={mail} disabled={!email} onChange={() => setMail((v) => !v)} />
+        <span><b>Envoyer l&apos;e-mail</b>{email ? ` à ${email}` : " — pas d'adresse sur la fiche"}</span>
+      </label>
       <span className="mlab">Objet</span>
       <input className="min" value={objet} readOnly />
       <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
@@ -444,7 +492,7 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
         <input type="checkbox" checked={sms} disabled={!tel || apercuSms?.configure === false}
           onChange={() => setSms((v) => !v)} />
         <span>
-          <b>Relancer aussi par SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
+          <b>Envoyer le SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
           {apercuSms?.configure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
         </span>
       </label>
@@ -514,7 +562,7 @@ const VIDE_PROP: Record<VuePropositions, string> = {
 };
 export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
 
-export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien, lienExpireLe, agent, titre, actions }: {
+export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien, lienExpireLe, dossierId, dossierVersion, agent, titre, actions }: {
   immeubleId: string;
   /** « Ville (CP) — adresse », cité dans les relances. */
   libelle: string;
@@ -524,6 +572,8 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien,
   resume?: string;
   lien?: string;
   lienExpireLe?: string;
+  dossierId?: string;
+  dossierVersion?: number;
   agent?: { id?: string; nom?: string; tel?: string };
   /** Le titre de la section, avec ses compteurs. */
   titre: (badges: React.ReactNode) => React.ReactNode;
@@ -576,7 +626,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, lien,
     const immeubles: ImmeubleRelance[] = ids.includes(p.id)
       ? [(() => {
           const l = etatLien(lien, lienExpireLe);
-          return { propositionId: p.id, immeubleId, libelle, prix, resume, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe };
+          return { propositionId: p.id, immeubleId, libelle, prix, resume, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe, dossierId, dossierVersion };
         })()]
       : [];
     return { contactId: p.contact?.id ?? "", nom: p.contact?.nom ?? "", email: p.contact?.email ?? p.email ?? "", immeubles, joursMax: j ?? 999 };

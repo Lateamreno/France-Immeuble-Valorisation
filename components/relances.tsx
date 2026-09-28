@@ -26,12 +26,13 @@ import { dateLien } from "@/lib/bo/lien-dossier";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  PLAFOND_RELANCES, messageRelance, objetRelance,
+  PLAFOND_RELANCES, lienManquant, messageRelance, objetRelance,
   type BilanRelances, type ClientRelance,
 } from "@/lib/bo/relances";
 import { couperRelancesLot, envoyerRelances, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
 import { Modale } from "@/components/modale";
 import { PuceImmeuble } from "@/components/puce-immeuble";
+import { LienDossier } from "@/components/lien-dossier";
 
 const jrs = (j?: number) => (j === undefined ? "date inconnue" : j >= 999 ? "jamais relancé" : `${j} j`);
 
@@ -82,6 +83,16 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
   }, [bilan, retires, textes, agent]);
 
   const total = useMemo(() => envois.reduce((s, e) => s + e.dossiers, 0), [envois]);
+  /* Les immeubles retenus dont le dossier n'a pas de lien transfer.it valable :
+     tant qu'il y en a, la salve attend (MAV, 28/09). */
+  const sansLien = useMemo(() => {
+    if (!bilan) return [] as string[];
+    const vus = new Map<string, string>();
+    for (const c of bilan.clients) for (const i of c.immeubles) {
+      if (!retires.has(i.propositionId) && lienManquant(i)) vus.set(i.immeubleId, i.libelle);
+    }
+    return [...vus.values()];
+  }, [bilan, retires]);
 
   return (
     <div className="wrap">
@@ -130,7 +141,9 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
                 )}
               </div>
               <span className="sp" style={{ flex: 1 }} />
-              <button className="kgo" type="button" disabled={pending} onClick={() => setSalve(true)}>
+              <button className="kgo" type="button" disabled={pending || sansLien.length > 0}
+                title={sansLien.length ? "Des dossiers n'ont pas de lien transfer.it valable : posez-les d'abord" : undefined}
+                onClick={() => setSalve(true)}>
                 <span className="ch">›</span> Tout relancer ({Math.min(envois.length, PLAFOND_RELANCES)})
               </button>
             </div>
@@ -163,6 +176,18 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
                 if (n.has(id)) n.delete(id); else n.add(id);
                 return n;
               })}
+              onLien={(immeubleId, l) => setCharge((prev) => prev && ({
+                ...prev,
+                b: {
+                  ...prev.b,
+                  clients: prev.b.clients.map((cl) => ({
+                    ...cl,
+                    immeubles: cl.immeubles.map((i) => i.immeubleId === immeubleId
+                      ? { ...i, lien: l.url, lienExpireLe: l.expireLe, lienPerime: false }
+                      : i),
+                  })),
+                },
+              }))}
               texte={textes[c.contactId]}
               onTexte={(t) => setTextes((m) => {
                 if (t === null) { const n = { ...m }; delete n[c.contactId]; return n; }
@@ -261,13 +286,15 @@ function Tuile({ k, v, vert }: { k: string; v: string; vert?: boolean }) {
 }
 
 function CarteClient({
-  c, agent, pending, retires, onRetirer, texte, onTexte, onMarquer, onCouper,
+  c, agent, pending, retires, onRetirer, onLien, texte, onTexte, onMarquer, onCouper,
 }: {
   c: ClientRelance;
   agent?: { nom?: string; tel?: string };
   pending: boolean;
   retires: Set<string>;
   onRetirer: (propositionId: string) => void;
+  /** Un lien transfer.it vient d'être posé sur le dossier d'un immeuble. */
+  onLien: (immeubleId: string, lien: { url: string; expireLe?: string }) => void;
   texte?: string;
   onTexte: (t: string | null) => void;
   onMarquer: (ids: string[]) => void;
@@ -309,7 +336,8 @@ function CarteClient({
         {c.immeubles.map((i) => {
           const off = retires.has(i.propositionId);
           return (
-            <div key={i.propositionId} className={`rlz-l${off ? " off" : ""}`}>
+            <div key={i.propositionId} className="rlz-lw">
+              <div className={`rlz-l${off ? " off" : ""}`}>
               <PuceImmeuble nouvelOnglet id={i.immeubleId} libelle={i.libelle} petit plat />
               {i.prix && <span className="rlz-prix">{i.prix}</span>}
               <span className="rlz-j">{jrs(i.jours)}</span>
@@ -336,6 +364,16 @@ function CarteClient({
               <button type="button" className="rlz-x rouge" disabled={pending}
                 title="Ne plus jamais relancer cette personne sur ce dossier"
                 onClick={() => onCouper([i.propositionId, ...i.autresIds])}>couper</button>
+              </div>
+              {/* Le lien est obligatoire : quand il manque ou qu'il est périmé,
+                  on le demande ici même, et la salve attend (MAV, 28/09). */}
+              {!off && lienManquant(i) && (i.dossierId ? (
+                <LienDossier immeubleId={i.immeubleId}
+                  dossier={{ _id: i.dossierId, version: i.dossierVersion, lien_partage: i.lien, lien_expire_le: i.lienExpireLe }}
+                  compact onEnregistre={(l) => onLien(i.immeubleId, l)} />
+              ) : (
+                <div className="dif-simu">Aucun dossier sur cet immeuble : créez-le d&apos;abord (fiche du bien, Dossiers) — sans lui, pas de relance.</div>
+              ))}
             </div>
           );
         })}

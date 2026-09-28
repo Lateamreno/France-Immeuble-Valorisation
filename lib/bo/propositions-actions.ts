@@ -79,6 +79,9 @@ export async function relancerParSms(
     try {
       let rl = cache.get(e.immeubleId);
       if (!rl) { rl = await resumeEtLien(e.immeubleId); cache.set(e.immeubleId, rl); }
+      /* Le lien transfer.it est obligatoire (MAV, 28/09) : sans lien valable
+         sur le dernier dossier, le SMS ne part pas, on dit où le poser. */
+      if (!rl.lien) { echecs++; journal.push(`${e.libelle} : pas de lien transfer.it valable sur le dossier — à poser sur la fiche (Dossiers).`); continue; }
       const texte = e.texte?.trim() || texteRelanceSms(rl.resume || e.libelle, rl.lien, NUMERO_STOP);
       const r = await envoyerSms([num], texte, { nom: "Relance" });
       if (r.simulation || r.envoyes === 0) { echecs++; journal.push(`${num} : non envoyé`); continue; }
