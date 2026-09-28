@@ -8135,3 +8135,26 @@ button { font-weight: 700; }
 .asst-essai .mlab { margin-top: 0; }
 .asst-essai-l { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .asst-essai-l input { max-width: 220px; }
+
+/* ── Lien transfer.it d'un dossier (fiche, modale, relances) ─────────────── */
+.ldos { margin: -4px 0 12px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12.5px; }
+.ldos.compact { padding: 6px 12px; }
+.ldos-l { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ldos-a { font-weight: 700; color: var(--green, #3db327); text-decoration: none; }
+.ldos-a.bientot, .ldos-d.bientot { color: var(--warn, #d78b2a); }
+.ldos-a.perime, .ldos-d.perime { color: var(--red, #d1372a); }
+.ldos-d { color: var(--gray-lt); }
+.ldos-d.absent { color: var(--gray-lt); font-style: italic; }
+.ldos-m { color: var(--gray-lt); }
+.ldos-f { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; align-items: end; }
+.ldos-c { display: flex; flex-direction: column; gap: 4px; }
+.ldos-c .mlab { margin: 0; }
+.ldos-b { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.ldos-f .asst-note, .ldos-f .dif-simu { grid-column: 1 / -1; }
+@media (max-width: 640px) { .ldos-f { grid-template-columns: 1fr; } }
+.dos-lien { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.dos-lien .ldos { margin-top: 10px; }
+.rlz-lien { font-size: 11.5px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; white-space: nowrap; }
+.rlz-lien.ok { color: var(--green, #3db327); border-color: currentColor; }
+.rlz-lien.perime { color: var(--red, #d1372a); border-color: currentColor; font-weight: 700; }
+.rlz-lien.absent { color: var(--gray-lt); }

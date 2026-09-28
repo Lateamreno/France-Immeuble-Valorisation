@@ -135,10 +135,15 @@ export type ImmeubleRelance = {
   prix?: string;
   /** Jours écoulés depuis le dernier geste, quand on le sait. */
   jours?: number;
-  /** Le dossier dans sa dernière version, quand il a un lien : la relance le
-   *  redonne (#365 : « ce bouton envoie les emails avec la dernière version du
-   *  dossier »). */
+  /** Le lien transfer.it du dernier dossier, quand il en a un et qu'il est
+   *  encore valable (MAV, 28/09 : « on garde les liens transfer.it même pour
+   *  les relances »). Le PDF, lui, est TOUJOURS joint. */
   lien?: string;
+  /** Le lien existe mais sa date est passée : on ne l'envoie pas, on le dit. */
+  lienPerime?: boolean;
+  lienExpireLe?: string;
+  /** Le dernier dossier n'a pas de PDF : la relance partira sans pièce jointe. */
+  sansPdf?: boolean;
   /**
    * Les autres propositions du MÊME immeuble pour la MÊME personne.
    *
@@ -174,7 +179,7 @@ export type ClientRelance = {
  */
 export function grouperParClient(
   props: PropositionRelance[],
-  libelles: Map<string, { libelle: string; prix?: string }>,
+  libelles: Map<string, { libelle: string; prix?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean }>,
   maintenant: number,
   jours = JOURS_RELANCE,
 ): ClientRelance[] {
@@ -210,6 +215,7 @@ export function grouperParClient(
     const ligne: ImmeubleRelance = {
       propositionId: p.id, immeubleId: p.immeubleId,
       libelle: im.libelle, prix: im.prix, jours: j, autresIds: [],
+      lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
     };
     vues.set(cle, ligne);
     e.immeubles.push(ligne);
@@ -241,13 +247,15 @@ export function grouperParClient(
 export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: string }): string {
   const un = c.immeubles.length === 1;
   const liste = c.immeubles
-    .map((i) => `  • ${i.libelle}${i.prix ? ` — ${i.prix}` : ""}${i.lien ? `\n    Dossier : ${i.lien}` : ""}`)
+    /* Le seul lien qui figure est le lien transfer.it, et seulement s'il est
+       encore valable ; le dossier PDF est joint au message quoi qu'il arrive. */
+    .map((i) => `  • ${i.libelle}${i.prix ? ` — ${i.prix}` : ""}${i.lien && !i.lienPerime ? `\n    Dossier, photos et plans : ${i.lien}` : ""}`)
     .join("\n");
   return [
     `Bonjour,`,
     ``,
     un
-      ? `Je reviens vers vous au sujet du dossier que je vous ai adressé :`
+      ? `Je reviens vers vous au sujet du dossier que je vous ai adressé (vous le retrouverez en pièce jointe) :`
       : `Je reviens vers vous au sujet des ${c.immeubles.length} dossiers que je vous ai adressés :`,
     ``,
     liste,

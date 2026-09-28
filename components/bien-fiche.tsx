@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
@@ -36,6 +38,7 @@ import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
+import { LienDossier } from "@/components/lien-dossier";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
@@ -1789,7 +1792,8 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
           !(typeof d.pdf === "string" && d.pdf) &&
           maintenant - new Date(String(d["Created Date"] ?? "")).getTime() < 5 * 60_000;
         return (
-        <Row key={d._id as string}>
+        <React.Fragment key={d._id as string}>
+        <Row>
           <div className="grow">
             <div className="t">
               Dossier V{String(d.version ?? "?")} {i === 0 && <Pastille ton="vert" plein>Dernière version</Pastille>}
@@ -1807,6 +1811,12 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
             <a className="fbtn" href={(d.pdf as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
           )}
         </Row>
+        {/* Le lien transfer.it du dossier et sa date (MAV, 28/09) : sur la
+            dernière version toujours ; sur une ancienne, seulement s'il en a un. */}
+        {(i === 0 || typeof d.lien_partage === "string") && (
+          <LienDossier immeubleId={String(b.im._id)} dossier={d} compact />
+        )}
+        </React.Fragment>
         );
       })}
       {b.dossiers.length === 0 && <div className="fempty">Aucun dossier.</div>}

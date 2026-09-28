@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
 import { apercuPdfDossier, createDossier, genererPdfDossier, updateBien } from "@/lib/bo/actions";
+import { LienDossier } from "@/components/lien-dossier";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { useRouter } from "next/navigation";
@@ -329,6 +330,16 @@ export function AddDossierButton({ b }: { b: BienData }) {
               <Link className="lnk" href={`/bien/${immeubleId}/dossier/${createdId}/imprimer`} target="_blank">
                 Ouvrir la version imprimable
               </Link>
+              {/* MAV (28/09) : « à chaque modification de dossier tu demandes le
+                  nouveau lien transfer.it et sa date de validité ». Le formulaire
+                  s'ouvre de lui-même ; il se ferme sans rien si on n'a pas encore
+                  le lien — il reste sur la fiche, section Dossiers. */}
+              <div className="dos-lien">
+                <b>Nouvelle version, nouveau lien.</b> Déposez le PDF, les photos et les plans sur transfer.it,
+                puis collez ici le lien et sa date de fin : c&apos;est lui que la commercialisation et les
+                relances enverront.
+                <LienDossier immeubleId={immeubleId} dossier={{ _id: createdId, version }} ouvert />
+              </div>
             </div>
           )}
         </Modale>
