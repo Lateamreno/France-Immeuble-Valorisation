@@ -272,10 +272,12 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
     un ? undefined : ``,
     un ? undefined : liste,
     ``,
+    /* MAV, 28/09 (après-midi) : « S'il vous intéresse je suis disponible pour
+       échanger, dans le cas contraire pouvez-vous simplement me l'indiquer
+       pour que je classe le dossier ? » */
     un
-      ? `Avez-vous eu le temps de l'étudier ? Même un « ce n'est pas pour moi » m'est utile :`
-      : `Avez-vous eu le temps de les étudier ? Un mot sur chacun m'est utile, même un « ce n'est pas pour moi » :`,
-    `cela me permet d'affiner ce que je vous envoie et de ne pas vous encombrer.`,
+      ? `Avez-vous eu le temps de l'étudier ? S'il vous intéresse, je suis disponible pour échanger. Dans le cas contraire, pouvez-vous simplement me l'indiquer pour que je classe le dossier ?`
+      : `Avez-vous eu le temps de les étudier ? Si l'un d'eux vous intéresse, je suis disponible pour échanger. Dans le cas contraire, pouvez-vous simplement me l'indiquer pour que je classe les dossiers ?`,
     ``,
     `Bien à vous,`,
     agent?.nom ?? "",

@@ -8164,3 +8164,11 @@ button { font-weight: 700; }
 .rlz-lien-bloc .ldos { margin: 8px 0 0; }
 .rlz-lw { display: flex; flex-direction: column; }
 .rlz-lw .ldos { margin: 0 0 8px 22px; }
+
+/* ── Réponse SMS sur une proposition (retours MailingVox) ────────────────── */
+.cfc-sms { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--line); color: var(--gray-txt); max-width: 100%; }
+.cfc-sms svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cfc-sms.oui { color: var(--green, #3db327); border-color: currentColor; }
+.cfc-sms.non { color: var(--red, #d1372a); border-color: currentColor; }
+.cfc-sms.nouveau { font-weight: 700; }
