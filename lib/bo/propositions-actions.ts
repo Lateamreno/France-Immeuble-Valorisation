@@ -14,6 +14,19 @@ import { NUMERO_STOP, envoyerSms, etatSms } from "@/lib/bo/sms";
 import { texteRelanceSms } from "@/lib/bo/relances";
 import { marquerRelances } from "@/lib/bo/relances-actions";
 
+const SB_URL_RPC = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+async function rpc(fn: string, args: Record<string, unknown>) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return;
+  const res = await fetch(`${SB_URL_RPC}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`${fn} : ${res.status}`);
+}
+
 export async function chargerPropositionsDuBien(immeubleId: string) {
   return propositionsDuBien(immeubleId);
 }
@@ -90,6 +103,15 @@ export async function relancerParSms(
       if (r.simulation || r.envoyes === 0) { echecs++; journal.push(`${num} : non envoyé`); continue; }
       envoyes++;
       await marquerRelances(e.propositionIds, chemins);
+      /* L'identifiant de campagne MailingVox, gardé sur la proposition : c'est
+         lui (`source`) que leur webhook renvoie avec chaque réponse, et c'est
+         par lui qu'un « Oui » retrouve sa ligne (documentation MailingVox,
+         « Recevoir les réponses (PUSH) »). */
+      if (r.campagne) {
+        for (const id of e.propositionIds) {
+          await rpc("bo_patch_doc", { p_table: "bo_proposition", p_id: id, p_patch: { sms_campagne: r.campagne, sms_relance_le: new Date().toISOString() } }).catch(() => undefined);
+        }
+      }
     } catch (err) {
       echecs++;
       journal.push(`${num} : ${err instanceof Error ? err.message : "échec"}`);
