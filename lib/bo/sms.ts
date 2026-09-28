@@ -425,7 +425,8 @@ export async function poserWebhooks(base: string): Promise<{ ok: boolean; messag
       ok: true,
       message:
         "Réponses, STOP et accusés de réception seront poussés vers le back-office. "
-        + "Les réponses arrivent sur la fiche du bien concerné.",
+        + "Chaque réponse s'inscrit sur la proposition concernée : elle se lit sur la fiche du bien "
+        + "et sur la fiche du contact, où toutes ses propositions sont réunies. Un STOP coupe ses relances.",
     };
   } catch {
     return { ok: false, message: "Réponse MailingVox illisible." };
