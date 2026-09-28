@@ -8158,3 +8158,9 @@ button { font-weight: 700; }
 .rlz-lien.ok { color: var(--green, #3db327); border-color: currentColor; }
 .rlz-lien.perime { color: var(--red, #d1372a); border-color: currentColor; font-weight: 700; }
 .rlz-lien.absent { color: var(--gray-lt); }
+
+/* ── Lien obligatoire avant relance (fenêtre et écran Relances) ─────────── */
+.rlz-lien-bloc { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--red, #d1372a); border-radius: 6px; font-size: 13px; }
+.rlz-lien-bloc .ldos { margin: 8px 0 0; }
+.rlz-lw { display: flex; flex-direction: column; }
+.rlz-lw .ldos { margin: 0 0 8px 22px; }

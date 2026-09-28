@@ -15,13 +15,16 @@ import { useState, useTransition } from "react";
 import { majLienDossier } from "@/lib/bo/actions";
 import { dateLien, expirationParDefaut, lienDuDossier, lienValide, VALIDITE_LIEN_JOURS } from "@/lib/bo/lien-dossier";
 
-export function LienDossier({ immeubleId, dossier, ouvert = false, compact = false }: {
+export function LienDossier({ immeubleId, dossier, ouvert = false, compact = false, onEnregistre }: {
   immeubleId: string;
   /** Le document du dossier (au moins `_id`, `version`, et le lien s'il existe). */
   dossier: Record<string, unknown>;
   /** Formulaire déplié d'emblée : la modale de création s'en sert. */
   ouvert?: boolean;
   compact?: boolean;
+  /** Prévenu quand un lien est posé : l'écran qui attendait ce lien pour
+   *  envoyer se met à jour sans recharger (MAV, 28/09). */
+  onEnregistre?: (lien: { url: string; expireLe?: string }) => void;
 }) {
   const etat = lienDuDossier(dossier);
   const [edite, setEdite] = useState(ouvert);
@@ -38,6 +41,7 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
       if (!r.ok) { setMsg(r.message); return; }
       setMsg(url.trim() ? `Lien enregistré, valable jusqu'au ${dateLien(r.expireLe)}.` : "Lien retiré.");
       setEdite(false);
+      if (url.trim()) onEnregistre?.({ url: url.trim(), expireLe: r.expireLe });
     });
 
   return (
@@ -91,7 +95,7 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
           </div>
           <div className="asst-note">
             transfer.it garde un envoi {VALIDITE_LIEN_JOURS}&nbsp;jours : c&apos;est la date proposée. Passé cette date,
-            le BO vous prévient avant tout envoi et les relances partent sans le lien (le PDF reste joint).
+            le BO vous redemande un lien avant tout envoi : rien ne part sans lien valable (le PDF, lui, est toujours joint).
           </div>
           {msg && <div className="dif-simu">{msg}</div>}
         </div>

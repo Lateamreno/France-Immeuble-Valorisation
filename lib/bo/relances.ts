@@ -148,6 +148,9 @@ export type ImmeubleRelance = {
   lienExpireLe?: string;
   /** Le dernier dossier n'a pas de PDF : la relance partira sans pièce jointe. */
   sansPdf?: boolean;
+  /** Le dernier dossier lui-même, pour y poser le lien sur place. */
+  dossierId?: string;
+  dossierVersion?: number;
   /**
    * Les autres propositions du MÊME immeuble pour la MÊME personne.
    *
@@ -160,6 +163,9 @@ export type ImmeubleRelance = {
    */
   autresIds: string[];
 };
+
+/** Le lien transfer.it manque ou est périmé : on n'envoie pas, on le demande (MAV, 28/09). */
+export const lienManquant = (i: Pick<ImmeubleRelance, "lien" | "lienPerime">) => !i.lien || i.lienPerime === true;
 
 export type ClientRelance = {
   contactId: string;
@@ -183,7 +189,7 @@ export type ClientRelance = {
  */
 export function grouperParClient(
   props: PropositionRelance[],
-  libelles: Map<string, { libelle: string; prix?: string; resume?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean }>,
+  libelles: Map<string, { libelle: string; prix?: string; resume?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean; dossierId?: string; dossierVersion?: number }>,
   maintenant: number,
   jours = JOURS_RELANCE,
 ): ClientRelance[] {
@@ -220,6 +226,7 @@ export function grouperParClient(
       propositionId: p.id, immeubleId: p.immeubleId,
       libelle: im.libelle, prix: im.prix, jours: j, autresIds: [],
       resume: im.resume, lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
+      dossierId: im.dossierId, dossierVersion: im.dossierVersion,
     };
     vues.set(cle, ligne);
     e.immeubles.push(ligne);

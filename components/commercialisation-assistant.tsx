@@ -63,6 +63,10 @@ export function AssistantCommercialisation({
      est encore valable. La mémoire de session prime si l'agent l'a retouché. */
   const lienDossierChoisi = lienDuDossier(dossiers.find((d) => S(d._id) === dossier) ?? dossiers[0]);
   const [lien, setLien] = useMemoire(`${memo}:lien`, lienDossierChoisi && !lienDossierChoisi.perime ? lienDossierChoisi.url : "");
+  /* Le lien transfer.it est OBLIGATOIRE (MAV, 28/09 : « de telle façon qu'on
+     envoie toujours un lien avec les e-mails ou les SMS ») : vide, ou égal au
+     lien périmé du dossier, rien ne part. */
+  const lienManque = !lien.trim() || !!(lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime);
 
   /* Sortir de l'assistant — « Fermer » comme « Terminer » — referme le
      dossier : la mémoire de CETTE commercialisation est jetée, sinon la
@@ -526,6 +530,12 @@ export function AssistantCommercialisation({
               qui suivront partiront sans lui. Pensez à le renouveler.
             </div>
           )}
+          {!lien.trim() && (
+            <div className="dif-simu">
+              <b>Le lien transfer.it est obligatoire</b> — les e-mails et les SMS ne partent pas sans lui.
+              Déposez le dossier, les photos et les plans sur transfer.it et collez le lien ici.
+            </div>
+          )}
           {lien.trim() && lien.trim() !== lienDossierChoisi?.url && dossier && (
             <div className="asst-note">
               Ce lien sera enregistré sur le dossier choisi, valable {89} jours ; les relances l&apos;utiliseront.
@@ -735,7 +745,8 @@ export function AssistantCommercialisation({
             <span className="sp" style={{ flex: 1 }} />
             <button
               className="kgo" type="button"
-              disabled={pending || envoiEnCours || mailsEnvoyes || restantes.length === 0 || pesee.depasse}
+              disabled={pending || envoiEnCours || mailsEnvoyes || restantes.length === 0 || pesee.depasse || lienManque}
+              title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
               onClick={async () => {
                 if (!commId) return;
                 const n = restantes.length;
@@ -891,7 +902,8 @@ export function AssistantCommercialisation({
             >{smsEnvoyes ? "SMS marqués envoyés ✓" : "Marquer les SMS comme envoyés"}</button>
             {pont?.configure && (
               <button className="kgo" type="button"
-                disabled={pending || smsEnvoyes || dest.telephones.length === 0}
+                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque}
+                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier (étape E-mails)" : undefined}
                 onClick={envoyerLesSms}>
                 <span className="ch">›</span>{" "}
                 {quandSms ? "Programmer" : "Envoyer"}{" "}

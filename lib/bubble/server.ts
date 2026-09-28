@@ -1851,6 +1851,8 @@ export type PropositionLigne = {
     resume?: string;
     /** Le lien transfer.it du DERNIER dossier de l'immeuble, et sa date de fin. */
     lien?: string; lienExpireLe?: string;
+    /** Ce dernier dossier, pour y poser le lien sur place quand il manque. */
+    dossierId?: string; dossierVersion?: number;
   };
   /** Vraie quand la proposition entre dans le compteur « à relancer ». */
   aRelancer: boolean;
@@ -2184,6 +2186,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
           resume: resumeDepuisDoc(im),
           lien: S2(derniers.get(String(p.IMMEUBLE))?.lien_partage),
           lienExpireLe: S2(derniers.get(String(p.IMMEUBLE))?.lien_expire_le),
+          dossierId: S2(derniers.get(String(p.IMMEUBLE))?._id),
+          dossierVersion: Number(derniers.get(String(p.IMMEUBLE))?.version) || undefined,
         } : undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im),
         archivee: phraseHorsVente(im),

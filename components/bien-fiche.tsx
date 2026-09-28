@@ -2079,6 +2079,8 @@ function EcranPropositions({ b }: { b: BienData }) {
         resume={resumeDepuisDoc(b.im)}
         lien={typeof b.dossiers[0]?.lien_partage === "string" ? (b.dossiers[0].lien_partage as string) : undefined}
         lienExpireLe={typeof b.dossiers[0]?.lien_expire_le === "string" ? (b.dossiers[0].lien_expire_le as string) : undefined}
+        dossierId={b.dossiers[0] ? String(b.dossiers[0]._id) : undefined}
+        dossierVersion={Number(b.dossiers[0]?.version) || undefined}
         agent={{ id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel }}
         titre={(badges) => <TitreAcheteurs cle="propositions" badges={badges} />}
         actions={(
@@ -2139,6 +2141,8 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
         return {
           propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), jours: p.jours, autresIds: [],
           lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+          dossierId: b.dossiers[0] ? String(b.dossiers[0]._id) : undefined,
+          dossierVersion: Number(b.dossiers[0]?.version) || undefined,
         };
       })()],
     };
