@@ -674,6 +674,14 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       const email = p.contact?.email ?? p.email;
       const tel = p.contact?.tel;
       const c = client(p)([p.id]);
+      /* MAV (28/09) : « s'il n'y a pas de pièce jointe ni de lien, il me faut
+         un popup qui me demande de l'ajouter, et il n'envoie pas sinon ». La
+         fenêtre de relance demande le lien et retient l'envoi. */
+      if (c.immeubles.some(lienManquant)) {
+        setRelance({ ids: [p.id], p });
+        setRapport("Le dossier n'a pas de lien transfer.it valable : indiquez-le dans la fenêtre, puis envoyez.");
+        return;
+      }
       const messages: string[] = [];
       try {
         if (mode !== "sms") {

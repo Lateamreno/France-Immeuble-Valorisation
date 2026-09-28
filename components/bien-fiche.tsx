@@ -39,7 +39,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
-import { lienDuDossier, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
+import { dateLien, etatLien, lienDuDossier, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
@@ -2133,6 +2133,11 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   }, [immeubleId]);
 
   const retenus = (liste ?? []).filter((p) => !retires.has(p.id));
+  /* Le lien transfer.it du dernier dossier, ou celui qu'on vient de poser ici
+     même : sans lien valable, on le demande et rien ne part (MAV, 28/09). */
+  const [lienLocal, setLienLocal] = useState<{ url: string; expireLe?: string } | null>(null);
+  const etatLienDossier = lienLocal ? etatLien(lienLocal.url, lienLocal.expireLe) : lienDuDossier(b.dossiers[0]);
+  const lienManque = !etatLienDossier || etatLienDossier.aRemplacer;
   /* Chaque destinataire reçoit le message d'un seul dossier : c'est la relance
      par immeuble. Le groupage par personne, lui, vit sur l'écran Relances. */
   const envois = retenus.map((p) => {
@@ -2140,7 +2145,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
       contactId: p.contactId ?? p.id, nom: p.nom, email: p.email ?? "",
       joursMax: p.jours ?? 0,
       immeubles: [(() => {
-        const l = lienDuDossier(b.dossiers[0]);
+        const l = etatLienDossier;
         return {
           propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), jours: p.jours, autresIds: [],
           lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe,
@@ -2176,7 +2181,8 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 })}>
                 Marquer relancées
               </button>
-              <button className="kgo" type="button" disabled={pending}
+              <button className="kgo" type="button" disabled={pending || lienManque}
+                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
                 onClick={() => start(async () => {
                   setRapport(null);
                   try {
@@ -2203,6 +2209,20 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
         <div className="fempty">
           Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier
           envoi date de moins de vingt-quatre heures.
+        </div>
+      )}
+      {liste && liste.length > 0 && lienManque && (
+        <div className="rlz-lien-bloc">
+          <b>Le lien transfer.it est obligatoire</b> — {etatLienDossier?.perime
+            ? `celui du dossier a expiré${etatLienDossier.expireLe ? ` le ${dateLien(etatLienDossier.expireLe)}` : ""}`
+            : etatLienDossier ? "celui du dossier est sous la réserve de cinq jours" : "le dossier n'en a pas"}. Indiquez-le : il sera
+          enregistré sur le dossier, et chaque relance le citera.
+          {b.dossiers[0] ? (
+            <LienDossier immeubleId={immeubleId} dossier={b.dossiers[0]} ouvert compact
+              onEnregistre={(l) => setLienLocal(l)} />
+          ) : (
+            <div className="dif-simu">Aucun dossier sur ce bien : créez-le d&apos;abord (section Dossiers).</div>
+          )}
         </div>
       )}
       {liste && liste.length > 0 && (
