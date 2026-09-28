@@ -14,8 +14,8 @@
 //   479 m², 9 %, 840 k€ HAI. Dossier, photos et plans : <lien> » puis le reste.
 //
 // Le prix s'écrit court : « 840 k€ » en dessous du million, « 1,2 M€ » au-delà
-// (« pas besoin de détail après les centaines de milliers »). La mention STOP
-// reste au bout des SMS : la CNIL l'impose et MailingVox refuse sans elle.
+// (« pas besoin de détail après les centaines de milliers »). Le mot STOP reste
+// dans la dernière ligne : la CNIL l'impose et MailingVox refuse sans lui.
 //
 // Module sans directive serveur : les écrans et les actions le lisent pareil.
 
@@ -105,28 +105,35 @@ export function objetDepuisDoc(im: Record<string, unknown> | null | undefined): 
 
 const lienOuRien = (lien: string | undefined) => (lien ?? "").trim();
 
-/** La dernière ligne des deux SMS, la même partout (MAV, 28/09). */
-export const REPONDRE_SMS = "Répondre : Oui pour étudier Non pour archiver";
+/**
+ * La dernière ligne des deux SMS, la même partout (MAV, 28/09).
+ *
+ * Le mot « STOP » y reste : MailingVox refuse la campagne sans lui (erreurs 24
+ * et 38) et la CNIL l'impose. Mais pas de numéro : l'expéditeur est un numéro
+ * court auquel on répond, et « ils ont juste à répondre STOP » (MAV, avec
+ * MailingVox, 28/09).
+ */
+export const REPONDRE_SMS = "Répondre : Oui pour étudier Non pour archiver STOP pour ne plus recevoir";
 
 /**
  * Le SMS d'envoi de dossier (commercialisation), mis en page comme MAV l'a
- * écrit : trois blocs séparés d'une ligne vide, la mention STOP au bout.
+ * écrit : trois blocs séparés d'une ligne vide.
  */
-export function smsEnvoiDossier(resume: string, lien: string | undefined, stop: string): string {
+export function smsEnvoiDossier(resume: string, lien: string | undefined): string {
   const l = lienOuRien(lien);
   return [
     `France Immeuble : Immeuble de rapport à vendre à ${resume || "…"}.`,
     l ? `Télécharger le dossier : ${l}` : "",
-    `${REPONDRE_SMS}\nSTOP au ${stop}`,
+    REPONDRE_SMS,
   ].filter(Boolean).join("\n\n");
 }
 
 /** Le SMS de relance, même mise en page. */
-export function smsRelance(resume: string, lien: string | undefined, stop: string): string {
+export function smsRelance(resume: string, lien: string | undefined): string {
   const l = lienOuRien(lien);
   return [
     `France Immeuble : Avez-vous pu regarder l'immeuble de ${resume || "…"} ?`,
     l ? `Dossier : ${l}` : "",
-    `${REPONDRE_SMS}\nSTOP au ${stop}`,
+    REPONDRE_SMS,
   ].filter(Boolean).join("\n\n");
 }

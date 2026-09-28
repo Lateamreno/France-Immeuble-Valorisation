@@ -300,8 +300,8 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
  * valable, la mention STOP que MailingVox exige. Texte validé par MAV le 28/09
  * (`smsRelance`). Le numéro STOP est celui du réglage, passé par l'appelant.
  */
-export function texteRelanceSms(resume: string, lien: string | undefined, stop: string): string {
-  return smsRelance(resume, lien, stop);
+export function texteRelanceSms(resume: string, lien: string | undefined, _stop?: string): string {
+  return smsRelance(resume, lien);
 }
 
 /** L'objet de l'e-mail : il dit combien de dossiers, sans faire de mystère. */
