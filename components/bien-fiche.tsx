@@ -40,7 +40,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
 import { lienDuDossier } from "@/lib/bo/lien-dossier";
-import { resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
+import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
@@ -2077,6 +2077,7 @@ function EcranPropositions({ b }: { b: BienData }) {
         libelle={[b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble"}
         prix={b.prix}
         resume={resumeDepuisDoc(b.im)}
+        court={objetDepuisDoc(b.im)}
         lien={typeof b.dossiers[0]?.lien_partage === "string" ? (b.dossiers[0].lien_partage as string) : undefined}
         lienExpireLe={typeof b.dossiers[0]?.lien_expire_le === "string" ? (b.dossiers[0].lien_expire_le as string) : undefined}
         dossierId={b.dossiers[0] ? String(b.dossiers[0]._id) : undefined}
@@ -2139,7 +2140,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
       immeubles: [(() => {
         const l = lienDuDossier(b.dossiers[0]);
         return {
-          propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), jours: p.jours, autresIds: [],
+          propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), jours: p.jours, autresIds: [],
           lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
           dossierId: b.dossiers[0] ? String(b.dossiers[0]._id) : undefined,
           dossierVersion: Number(b.dossiers[0]?.version) || undefined,

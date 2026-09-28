@@ -37,7 +37,7 @@ async function resumeEtLien(immeubleId: string): Promise<{ resume: string; lien?
   ]);
   const im = res?.ok ? ((await res.json()) as { data: Record<string, unknown> }[])[0]?.data : undefined;
   const l = lienDuDossier(dossiers.get(immeubleId));
-  return { resume: resumeDepuisDoc(im), lien: l && !l.perime ? l.url : undefined };
+  return { resume: resumeDepuisDoc(im, { sms: true }), lien: l && !l.perime ? l.url : undefined };
 }
 
 /** Le texte du SMS de relance, tel qu'il partira, pour le montrer avant. */

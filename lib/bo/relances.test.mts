@@ -69,8 +69,8 @@ ok(m.includes("3 dossiers"), "il annonce le nombre de dossiers");
 ok(m.includes("55 Rue Volant") && m.includes("56 Bd du Général") && m.includes("18 Bd du Président"), "les trois immeubles sont listés");
 ok(m.includes("2 912 590 €"), "le prix suit l'immeuble quand on l'a");
 ok(!m.includes("undefined"), "aucun trou de fusion");
-ok(objetRelance(g[0]) === "Votre avis sur 3 dossiers", "objet pluriel");
-ok(objetRelance(g[1]).startsWith("Votre avis sur Nanterre"), "objet singulier : l'immeuble est nommé");
+ok(objetRelance(g[0]).startsWith("Re : Relance Immeubles de "), "objet pluriel");
+ok(objetRelance(g[1]).startsWith("Re : Relance Immeuble de Nanterre"), "objet singulier : l'immeuble est nommé");
 console.log("\n--- le message rendu ---\n" + m + "\n---");
 
 console.log(ko === 0 ? `\nTout tient.` : `\n${ko} cas en échec.`);

@@ -1016,7 +1016,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
         const l = etatLien(x.p.immeuble!.lien, x.p.immeuble!.lienExpireLe);
         return {
           propositionId: x.p.id, immeubleId: x.p.immeuble!.id, libelle: x.p.immeuble!.libelle,
-          prix: x.p.immeuble!.prix, resume: x.p.immeuble!.resume, jours: x.jours, autresIds: [],
+          prix: x.p.immeuble!.prix, resume: x.p.immeuble!.resume, court: x.p.immeuble!.court, jours: x.jours, autresIds: [],
           lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
           dossierId: x.p.immeuble!.dossierId, dossierVersion: x.p.immeuble!.dossierVersion,
         };

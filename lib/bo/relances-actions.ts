@@ -134,7 +134,7 @@ export async function relancesDues(
   const immeubleIds = [...new Set(brutes.map((p) => String(p.IMMEUBLE ?? "")).filter(Boolean))];
   const { derniersDossiers } = await import("./piece-dossier");
   const { lienDuDossier } = await import("./lien-dossier");
-  const { resumeDepuisDoc } = await import("./resume-immeuble");
+  const { resumeDepuisDoc, objetDepuisDoc } = await import("./resume-immeuble");
   const { sourcePdfDossier } = await import("./piece-dossier");
   const [contacts, immeubles, dossiers] = await Promise.all([
     parPaquets("bo_contact", contactIds),
@@ -159,6 +159,7 @@ export async function relancesDues(
           ? `${Math.round(im.prix_hai as number).toLocaleString("fr-FR")} €`
           : undefined,
         resume: resumeDepuisDoc(im),
+        court: objetDepuisDoc(im),
         /* Le lien transfer.it du dernier dossier et sa date (MAV, 28/09), et
            si ce dossier a un PDF à joindre. */
         ...(() => {

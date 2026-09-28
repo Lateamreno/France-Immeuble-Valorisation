@@ -16,7 +16,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
 import { motifHorsVente } from "@/lib/bo/relances";
-import { resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
+import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
@@ -1854,6 +1854,8 @@ export type PropositionLigne = {
     id: string; libelle: string; prix?: string;
     /** « Sens (89), 479 m², 9 %, 840 k€ HAI » (MAV, 28/09) : ce que citent les relances. */
     resume?: string;
+    /** « Immeuble de Sens (89) - 9 % - 840 k€ » : l'objet de l'e-mail de relance. */
+    court?: string;
     /** Le lien transfer.it du DERNIER dossier de l'immeuble, et sa date de fin. */
     lien?: string; lienExpireLe?: string;
     /** Ce dernier dossier, pour y poser le lien sur place quand il manque. */
@@ -2193,6 +2195,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         immeuble: im ? {
           id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined,
           resume: resumeDepuisDoc(im),
+          court: objetDepuisDoc(im),
           lien: S2(derniers.get(String(p.IMMEUBLE))?.lien_partage),
           lienExpireLe: S2(derniers.get(String(p.IMMEUBLE))?.lien_expire_le),
           dossierId: S2(derniers.get(String(p.IMMEUBLE))?._id),
