@@ -62,11 +62,11 @@ export function AssistantCommercialisation({
   /* Le lien part du DOSSIER choisi (MAV, 28/09) : celui qu'on y a posé, s'il
      est encore valable. La mémoire de session prime si l'agent l'a retouché. */
   const lienDossierChoisi = lienDuDossier(dossiers.find((d) => S(d._id) === dossier) ?? dossiers[0]);
-  const [lien, setLien] = useMemoire(`${memo}:lien`, lienDossierChoisi && !lienDossierChoisi.perime ? lienDossierChoisi.url : "");
+  const [lien, setLien] = useMemoire(`${memo}:lien`, lienDossierChoisi && !lienDossierChoisi.aRemplacer ? lienDossierChoisi.url : "");
   /* Le lien transfer.it est OBLIGATOIRE (MAV, 28/09 : « de telle façon qu'on
      envoie toujours un lien avec les e-mails ou les SMS ») : vide, ou égal au
      lien périmé du dossier, rien ne part. */
-  const lienManque = !lien.trim() || !!(lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime);
+  const lienManque = !lien.trim() || !!(lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.aRemplacer);
 
   /* Sortir de l'assistant — « Fermer » comme « Terminer » — referme le
      dossier : la mémoire de CETTE commercialisation est jetée, sinon la
@@ -526,8 +526,8 @@ export function AssistantCommercialisation({
           )}
           {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && !lienDossierChoisi.perime && lienDossierChoisi.bientot && (
             <div className="dif-simu">
-              <b>Ce lien expire le {dateLien(lienDossierChoisi.expireLe)}</b> ({lienDossierChoisi.joursRestants} j) : les relances
-              qui suivront partiront sans lui. Pensez à le renouveler.
+              <b>Ce lien expire le {dateLien(lienDossierChoisi.expireLe)}</b> (dans {lienDossierChoisi.joursRestants} j, sous la réserve
+              de cinq jours) : à remplacer avant d&apos;envoyer.
             </div>
           )}
           {!lien.trim() && (

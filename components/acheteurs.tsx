@@ -813,6 +813,14 @@ function Resultats({
         <div className="lst-search" style={{ maxWidth: 280 }}>
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder="Nom, e-mail, téléphone…" value={q} onChange={(e) => setQ(e.target.value)} />
+          {/* Retour #436 — « une croix à droite ou un refresh rouge pour
+              supprimer ce que j'ai tapé, que la recherche se réinitialise ». */}
+          {q && (
+            <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+              onClick={() => setQ("")}>
+              <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5" /></svg>
+            </button>
+          )}
         </div>
         <Tribouton label="Avec contact" v={avecContact} set={setAvecContact} />
         <Tribouton label="Avec tél." v={avecTel} set={setAvecTel} />

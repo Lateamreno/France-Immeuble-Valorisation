@@ -172,16 +172,93 @@ export async function addSuivi(input: {
 
 /** Archive un immeuble avec le motif du référentiel, et la précision libre
  *  que le BO range dans `motif_archivage_txt` (retour #362). */
-export async function archiverImmeuble(immeubleId: string, motif: string, precision?: string) {
+export async function archiverImmeuble(
+  immeubleId: string,
+  motif: string,
+  precision?: string,
+  /** Retour #443 — l'e-mail « hors secteur » au propriétaire, relu et validé
+   *  à l'écran ; absent, rien ne part. */
+  mail?: { to: string; objet: string; corps: string },
+) {
+  let envoi: { ok: boolean; message: string } | undefined;
+  if (mail && mail.to.trim()) {
+    const [im, { envoyerPourAgent, adresseCopieCachee }] = await Promise.all([
+      bqOne("bo_immeuble", immeubleId).catch(() => null),
+      import("@/lib/bo/mail"),
+    ]);
+    const agentId = typeof im?.AGENT === "string" ? (im.AGENT as string) : undefined;
+    try {
+      /* MAV en copie cachée : « pour savoir si c'est bien parti et voir si les
+         liens fonctionnent toujours ». */
+      const bcc = await adresseCopieCachee(agentId);
+      await envoyerPourAgent(agentId, { to: mail.to.trim(), subject: mail.objet, text: mail.corps, bcc });
+      envoi = { ok: true, message: `E-mail envoyé à ${mail.to.trim()}${bcc ? `, copie cachée à ${bcc}` : ""}.` };
+    } catch (e) {
+      envoi = { ok: false, message: `E-mail non envoyé : ${e instanceof Error ? e.message : "échec"}.` };
+    }
+  }
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
     p_patch: cleanPatch({
       archived: true, Motif_archivage: motif, motif_archivage_txt: precision?.trim() || undefined,
       date_archivage: new Date().toISOString(),
+      mail_hors_secteur_le: envoi?.ok ? new Date().toISOString() : undefined,
     }),
   });
   refresh(immeubleId);
+  return envoi;
+}
+
+/**
+ * L'e-mail « hors secteur » proposé au moment d'archiver un formulaire
+ * (retour #443) : l'adresse du propriétaire, l'objet et le corps de MAV, avec
+ * le lien de la page de la commune sur Plein Bail. Tout se relit et se change
+ * à l'écran ; rien ne part d'ici.
+ */
+export async function apercuMailHorsSecteur(immeubleId: string): Promise<{
+  to?: string; objet: string; corps: string; agent?: string;
+}> {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const proprio = im && typeof im.PROPRIETAIRE === "string" ? await bqOne("bo_contact", im.PROPRIETAIRE).catch(() => null) : null;
+  const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  const adresse = [S(im?.adresse_numero_rue), S(im?.adresse_rue), S(im?.adresse_zipcode), S(im?.adresse_ville)].filter(Boolean).join(" ") || "votre immeuble";
+  const ville = S(im?.adresse_ville);
+  const cp = S(im?.adresse_zipcode);
+  const slug = ville.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const pageVille = ville && /^\d{5}$/.test(cp) ? `https://www.pleinbail.fr/villes/${slug}-${cp}` : "https://www.pleinbail.fr/villes";
+  const { getAgents } = await import("@/lib/bubble/server");
+  const agents = await getAgents().catch(() => []);
+  const agent = agents.find((a) => a.id === S(im?.AGENT));
+  const corps = [
+    "Madame, Monsieur bonjour,",
+    "",
+    `Nous vous remercions d'avoir fait appel à France Immeuble pour l'estimation de votre immeuble sis ${adresse}.`,
+    "",
+    "Malheureusement, n'étant pas encore implantés dans la région, nous ne serons pas en mesure de vous délivrer une estimation.",
+    "",
+    "Nous vous invitons donc à réaliser l'estimation de votre bien directement en ligne sur https://www.pleinbail.fr/estimation/immeuble-de-rapport",
+    "",
+    "En rentrant la commune, la surface totale et les loyers hors charges, vous aurez une première estimation de votre bien.",
+    "",
+    "C'est un service que nous offrons à nos clients et c'est bien entendu totalement gratuit et sans inscription.",
+    "",
+    `Vous pouvez d'ores et déjà regarder les données de la commune sur ${pageVille}`,
+    "",
+    "Vous pourrez d'ailleurs mettre gratuitement votre immeuble en vente en cliquant sur le bouton « déposer une annonce » dans la barre de menu du site.",
+    "",
+    "Cordialement",
+    "",
+    agent?.name ?? "France Immeuble",
+    "France Immeuble & Pleinbail",
+    agent?.tel ?? "",
+  ].join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  return {
+    to: S(proprio?.email) || undefined,
+    objet: `Estimation de votre immeuble sis ${adresse}`,
+    corps,
+    agent: agent?.name,
+  };
 }
 
 /** Transfère le suivi du dossier à un autre agent. */
@@ -4474,14 +4551,33 @@ export async function createCommercialisation(input: CommercialisationInput) {
   const now = new Date().toISOString();
   const commId = newId();
 
-  const propositions = input.cibles.map((c) => ({
+  /* Retour #438 — « deux fois Romain VOCI, cela ne devrait pas être possible
+     d'avoir des doublons ». Une personne qui a plusieurs recherches était
+     ciblée une fois par recherche : deux propositions, deux e-mails. Une
+     proposition PAR PERSONNE, qui porte toutes ses recherches matchées. */
+  const parPersonne = new Map<string, CommercialisationInput["cibles"][number] & { rechercheIds: string[] }>();
+  for (const c of input.cibles) {
+    const cle = c.contactId ?? `recherche:${c.rechercheId}`;
+    const deja = parPersonne.get(cle);
+    if (deja) {
+      if (!deja.rechercheIds.includes(c.rechercheId)) deja.rechercheIds.push(c.rechercheId);
+      deja.email = deja.email ?? c.email;
+      deja.telephone = deja.telephone ?? c.telephone;
+      deja.note = deja.note ?? c.note;
+    } else {
+      parPersonne.set(cle, { ...c, rechercheIds: [c.rechercheId] });
+    }
+  }
+  const cibles = [...parPersonne.values()];
+
+  const propositions = cibles.map((c) => ({
     id: newId(),
     doc: {
       IMMEUBLE: input.immeubleId,
       COMMERCIALISATION: commId,
       DOSSIER: input.dossierId ?? null,
       ACHETEUR: c.contactId ?? null,
-      RECHERCHEs: [c.rechercheId],
+      RECHERCHEs: c.rechercheIds,
       AGENTs: input.agentId ? [input.agentId] : [],
       Statut: "Envoyée",
       Source_proposition: "Commercialisation",
@@ -4994,7 +5090,9 @@ export async function noterProposition(propositionId: string, contactId: string,
   await rpc("bo_patch_doc", {
     p_table: "bo_proposition",
     p_id: propositionId,
-    p_patch: { commentaire: texte.trim() || null, date_modif: now, "Modified Date": now },
+    /* `commentaire_le` : la date du dernier retour écrit, qui fait remonter la
+       proposition en tête de liste (retour #437). */
+    p_patch: { commentaire: texte.trim() || null, commentaire_le: texte.trim() ? now : null, date_modif: now, "Modified Date": now },
   });
   revalidatePath(`/contact/${contactId}`);
   revalidatePath("/propositions");

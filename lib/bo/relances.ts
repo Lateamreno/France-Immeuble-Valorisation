@@ -153,6 +153,9 @@ export type ImmeubleRelance = {
   /** Le dernier dossier lui-même, pour y poser le lien sur place. */
   dossierId?: string;
   dossierVersion?: number;
+  /** Son PDF, à ouvrir avant d'envoyer (retour #439), et le nom sous lequel il part. */
+  pdf?: string;
+  pdfNom?: string;
   /**
    * Les autres propositions du MÊME immeuble pour la MÊME personne.
    *
@@ -191,7 +194,7 @@ export type ClientRelance = {
  */
 export function grouperParClient(
   props: PropositionRelance[],
-  libelles: Map<string, { libelle: string; prix?: string; resume?: string; court?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean; dossierId?: string; dossierVersion?: number }>,
+  libelles: Map<string, { libelle: string; prix?: string; resume?: string; court?: string; lien?: string; lienPerime?: boolean; lienExpireLe?: string; sansPdf?: boolean; dossierId?: string; dossierVersion?: number; pdf?: string; pdfNom?: string }>,
   maintenant: number,
   jours = JOURS_RELANCE,
 ): ClientRelance[] {
@@ -228,7 +231,7 @@ export function grouperParClient(
       propositionId: p.id, immeubleId: p.immeubleId,
       libelle: im.libelle, prix: im.prix, jours: j, autresIds: [],
       resume: im.resume, court: im.court, lien: im.lien, lienPerime: im.lienPerime, lienExpireLe: im.lienExpireLe, sansPdf: im.sansPdf,
-      dossierId: im.dossierId, dossierVersion: im.dossierVersion,
+      dossierId: im.dossierId, dossierVersion: im.dossierVersion, pdf: im.pdf, pdfNom: im.pdfNom,
     };
     vues.set(cle, ligne);
     e.immeubles.push(ligne);
@@ -285,6 +288,9 @@ export function messageRelance(c: ClientRelance, agent?: { nom?: string; tel?: s
     ``,
     `Bien à vous,`,
     agent?.nom ?? "",
+    /* Retour #441 : « sur la signature il faut qu'il y ait écrit France
+       Immeuble, là il y a juste nom, prénom et tél ». */
+    `France Immeuble`,
     agent?.tel ?? "",
   ].filter((l) => l !== undefined).join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
 }

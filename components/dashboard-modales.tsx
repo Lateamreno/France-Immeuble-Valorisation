@@ -6,7 +6,8 @@
 //   • fiche contact en survol — coordonnées seules, sans ouvrir le bien ;
 //   • « Transférer à un collègue » — agent destinataire + transfert éventuel
 //     du propriétaire, avec les droits du BO.
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { apercuMailHorsSecteur } from "@/lib/bo/actions";
 import { Modale } from "@/components/modale";
 
 /* ---------- Validation du formulaire (mode de contact) ---------- */
@@ -184,16 +185,38 @@ export function ModaleTransfert({
  * précision libre que le BO range dans `motif_archivage_txt`.
  */
 export function ModaleArchivage({
-  bien, motifs, onAnnuler, onArchiver,
+  bien, motifs, immeubleId, onAnnuler, onArchiver,
 }: {
   bien: { ville: string; adresse: string; contact?: string; photoUrl?: string; initiales?: string; initialesCouleur?: string; note?: string };
   motifs: readonly string[];
+  /** Avec lui, le motif « Hors Secteur » propose l'e-mail au propriétaire (retour #443). */
+  immeubleId?: string;
   onAnnuler: () => void;
-  onArchiver: (motif: string, precision: string) => void;
+  onArchiver: (motif: string, precision: string, mail?: { to: string; objet: string; corps: string }) => void;
 }) {
   const [motif, setMotif] = useState("");
   const [precision, setPrecision] = useState("");
   const [pending, start] = useTransition();
+  /* Retour #443 — « quand j'archive un formulaire pour le motif "hors
+     secteur", j'aimerais que le BO m'affiche le choix envoyer un e-mail oui
+     ou non (oui coché), et l'objet et le corps modifiables ». */
+  const horsSecteur = immeubleId !== undefined && /hors\s*secteur/i.test(motif);
+  const [apercu, setApercu] = useState<{ to?: string; objet: string; corps: string } | null>(null);
+  const [envoyerMail, setEnvoyerMail] = useState(true);
+  const [to, setTo] = useState<string | null>(null);
+  const [objet, setObjet] = useState<string | null>(null);
+  const [corps, setCorps] = useState<string | null>(null);
+  useEffect(() => {
+    if (!horsSecteur || apercu || !immeubleId) return;
+    let vivant = true;
+    apercuMailHorsSecteur(immeubleId).then((a) => { if (vivant) setApercu(a); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [horsSecteur, apercu, immeubleId]);
+  const mailTo = to ?? apercu?.to ?? "";
+  const mailObjet = objet ?? apercu?.objet ?? "";
+  const mailCorps = corps ?? apercu?.corps ?? "";
+  const mail = horsSecteur && envoyerMail && mailTo.trim() ? { to: mailTo.trim(), objet: mailObjet, corps: mailCorps } : undefined;
+  const pret = !!motif && !pending && !(horsSecteur && envoyerMail && (!apercu || !mailTo.trim()));
 
   return (
     <Modale onFermer={onAnnuler} className="tr" fermeDehors={false} entete={false} brut>
@@ -248,17 +271,42 @@ export function ModaleArchivage({
           </span>
           <input className="tr-sel" value={precision} placeholder="Facultatif — un mot pour la prochaine fois"
             onChange={(e) => setPrecision(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && motif && !pending) start(() => onArchiver(motif, precision.trim())); }} />
+            onKeyDown={(e) => { if (e.key === "Enter" && pret) start(() => onArchiver(motif, precision.trim(), mail)); }} />
         </div>
+
+        {horsSecteur && (
+          <div className="tr-mail">
+            <label className="tr-mail-oui">
+              <input type="checkbox" checked={envoyerMail} onChange={() => setEnvoyerMail((v) => !v)} />
+              <b>Envoyer un e-mail au propriétaire</b> — l&apos;estimation en ligne sur Plein Bail, et la page de sa commune.
+            </label>
+            {envoyerMail && (
+              !apercu ? <div className="tr-mail-att">Préparation du message…</div> : (
+                <>
+                  <label className="tr-mail-c"><span>À</span>
+                    <input className="min" type="email" value={mailTo} placeholder="adresse du propriétaire"
+                      onChange={(e) => setTo(e.target.value)} />
+                  </label>
+                  {!apercu.to && <div className="tr-mail-att rouge">Aucune adresse e-mail sur la fiche du propriétaire : indiquez-la, ou décochez l&apos;envoi.</div>}
+                  <label className="tr-mail-c"><span>Objet</span>
+                    <input className="min" value={mailObjet} onChange={(e) => setObjet(e.target.value)} />
+                  </label>
+                  <textarea className="min" rows={12} value={mailCorps} onChange={(e) => setCorps(e.target.value)} />
+                  <div className="tr-mail-att">Vous êtes en copie cachée de chaque envoi, pour voir qu&apos;il est parti et que les liens fonctionnent.</div>
+                </>
+              )
+            )}
+          </div>
+        )}
       </div>
       <div className="tr-foot">
         <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
         <span style={{ flex: 1 }} />
         {/* Fermé tant qu'aucun motif n'est choisi : archiver n'est pas un
             geste par défaut, c'est le retour #362 tout entier. */}
-        <button type="button" className="vf-go" disabled={!motif || pending}
-          onClick={() => motif && start(() => onArchiver(motif, precision.trim()))}>
-          <span className="ch">›</span> Archiver
+        <button type="button" className="vf-go" disabled={!pret}
+          onClick={() => pret && start(() => onArchiver(motif, precision.trim(), mail))}>
+          <span className="ch">›</span> {mail ? "Envoyer et archiver" : "Archiver"}
         </button>
       </div>
     </Modale>

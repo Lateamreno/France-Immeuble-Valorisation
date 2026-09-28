@@ -326,6 +326,19 @@ async function boiteAgent(agentId?: string) {
   return await boiteDe(agentId, agents).catch(() => null);
 }
 
+/**
+ * L'adresse en copie cachée des e-mails « de service » (retour #443) : MAV
+ * veut « être en copie cachée pour savoir si c'est bien parti et voir si les
+ * liens fonctionnent toujours ». `MAIL_COPIE` sur Vercel, sinon la boîte de
+ * l'agent qui envoie.
+ */
+export async function adresseCopieCachee(agentId?: string): Promise<string | undefined> {
+  const fixe = process.env.MAIL_COPIE?.trim();
+  if (fixe) return fixe;
+  const b = await boiteAgent(agentId);
+  return b?.adresse || undefined;
+}
+
 /** Y a-t-il une façon d'envoyer : une boîte d'agent, ou la route commune ? */
 export async function envoiPossible(agentId?: string): Promise<boolean> {
   if (mailConfigure()) return true;

@@ -370,10 +370,11 @@ function Card({
         <ModaleArchivage
           bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
           motifs={MOTIFS_ARCHIVAGE}
+          immeubleId={c.id}
           onAnnuler={() => setArchivage(false)}
-          onArchiver={(motif, precision) => {
+          onArchiver={(motif, precision, mail) => {
             setArchivage(false);
-            startTransition(() => archiverImmeuble(c.id, motif, precision || undefined));
+            startTransition(async () => { await archiverImmeuble(c.id, motif, precision || undefined, mail); });
           }}
         />
       )}
