@@ -17,13 +17,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
+import { dateLien, expirationParDefaut, lienDuDossier } from "@/lib/bo/lien-dossier";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -57,7 +58,10 @@ export function AssistantCommercialisation({
   const [dossier, setDossier] = useMemoire(`${memo}:dossier`, dossierId ?? S(dossiers[0]?._id));
   const mandats = b.mandats;
   const [mandat, setMandat] = useMemoire(`${memo}:mandat`, S(mandats[0]?._id));
-  const [lien, setLien] = useMemoire(`${memo}:lien`, "");
+  /* Le lien part du DOSSIER choisi (MAV, 28/09) : celui qu'on y a posé, s'il
+     est encore valable. La mémoire de session prime si l'agent l'a retouché. */
+  const lienDossierChoisi = lienDuDossier(dossiers.find((d) => S(d._id) === dossier) ?? dossiers[0]);
+  const [lien, setLien] = useMemoire(`${memo}:lien`, lienDossierChoisi && !lienDossierChoisi.perime ? lienDossierChoisi.url : "");
 
   /* Sortir de l'assistant — « Fermer » comme « Terminer » — referme le
      dossier : la mémoire de CETTE commercialisation est jetée, sinon la
@@ -286,6 +290,11 @@ export function AssistantCommercialisation({
           note: a.note,
         })),
       });
+      /* Le lien tapé ici devient celui du dossier, valable 89 jours : les
+         relances le retrouveront (MAV, 28/09). */
+      if (dossier && lien.trim() && lien.trim() !== lienDossierChoisi?.url) {
+        await majLienDossier(String(b.im._id), dossier, lien.trim(), expirationParDefaut()).catch(() => undefined);
+      }
       setCommId(res.commercialisationId);
       setCreees(res.propositions);
       setEtape("E-mails");
@@ -495,6 +504,26 @@ export function AssistantCommercialisation({
           </span>
           <input className="min" placeholder="https://… (dossier, photos, plans)" value={lien}
             onChange={(e) => { setLien(e.target.value); setMessage(messageCommercialisation(bienMail, e.target.value)); }} />
+          {/* MAV (28/09) : « que tu puisses me dire attention tu fais un envoi
+              d'un lien périmé, et me proposer de changer le lien ». */}
+          {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime && (
+            <div className="dif-simu">
+              <b>Attention, ce lien est périmé</b> — il a expiré le {dateLien(lienDossierChoisi.expireLe)}. Les destinataires
+              tomberaient sur une page vide. Créez un nouvel envoi sur transfer.it et collez le nouveau lien ci-dessus :
+              il remplacera l&apos;ancien sur le dossier, valable {89} jours.
+            </div>
+          )}
+          {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && !lienDossierChoisi.perime && lienDossierChoisi.bientot && (
+            <div className="dif-simu">
+              <b>Ce lien expire le {dateLien(lienDossierChoisi.expireLe)}</b> ({lienDossierChoisi.joursRestants} j) : les relances
+              qui suivront partiront sans lui. Pensez à le renouveler.
+            </div>
+          )}
+          {lien.trim() && lien.trim() !== lienDossierChoisi?.url && dossier && (
+            <div className="asst-note">
+              Ce lien sera enregistré sur le dossier choisi, valable {89} jours ; les relances l&apos;utiliseront.
+            </div>
+          )}
           <div className="asst-note">
             Le lien est inséré dans le corps de l&apos;e-mail. Préférez un lien expirant : il circulera
             auprès de {controle.personnes} destinataire{controle.personnes > 1 ? "s" : ""}. RGPD : caviardez les baux avant de les
@@ -713,6 +742,9 @@ export function AssistantCommercialisation({
                     <br /><br />
                     {pesee.message}
                     <br />
+                    {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime && (
+                      <><b style={{ color: "var(--red)" }}>Attention : le lien transfer.it du message est périmé (expiré le {dateLien(lienDossierChoisi.expireLe)}).</b><br /></>
+                    )}
                     {differe
                       ? "Une salve confiée à SendGrid ne s'annule plus depuis ici."
                       : "Un e-mail parti ne se rattrape pas."}

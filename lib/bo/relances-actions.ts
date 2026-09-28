@@ -132,9 +132,13 @@ export async function relancesDues(
   /* Les contacts et les immeubles, en une passe chacun. */
   const contactIds = [...new Set(brutes.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
   const immeubleIds = [...new Set(brutes.map((p) => String(p.IMMEUBLE ?? "")).filter(Boolean))];
-  const [contacts, immeubles] = await Promise.all([
+  const { derniersDossiers } = await import("./piece-dossier");
+  const { lienDuDossier } = await import("./lien-dossier");
+  const { sourcePdfDossier } = await import("./piece-dossier");
+  const [contacts, immeubles, dossiers] = await Promise.all([
     parPaquets("bo_contact", contactIds),
     parPaquets("bo_immeuble", immeubleIds),
+    derniersDossiers(immeubleIds),
   ]);
 
   const nomDe = (id: string) => {
@@ -153,6 +157,16 @@ export async function relancesDues(
         prix: typeof im.prix_hai === "number"
           ? `${Math.round(im.prix_hai as number).toLocaleString("fr-FR")} €`
           : undefined,
+        /* Le lien transfer.it du dernier dossier et sa date (MAV, 28/09), et
+           si ce dossier a un PDF à joindre. */
+        ...(() => {
+          const d = dossiers.get(id);
+          const l = lienDuDossier(d);
+          return {
+            lien: l?.url, lienPerime: l?.perime, lienExpireLe: l?.expireLe,
+            sansPdf: !d || !sourcePdfDossier(d),
+          };
+        })(),
       },
     ]),
   );
@@ -261,7 +275,7 @@ export async function marquerRelances(propositionIds: string[], chemins: string[
  * disparaîtrait de la liste sans avoir rien reçu.
  */
 export async function envoyerRelances(
-  envois: { contactId: string; email: string; objet: string; corps: string; propositionIds: string[] }[],
+  envois: { contactId: string; email: string; objet: string; corps: string; propositionIds: string[]; immeubleIds?: string[] }[],
   agentId?: string,
   repondreA?: string,
   /** Pages à rafraîchir en plus (la fiche contact d'où part la relance). */
@@ -280,10 +294,32 @@ export async function envoyerRelances(
   let envoyes = 0;
   let echecs = 0;
 
+  /* MAV (28/09) : « je veux qu'il y ait toujours une pièce jointe physique ».
+     Le dernier dossier de chaque immeuble est lu UNE fois pour toute la salve,
+     puis joint à chaque relance qui parle de cet immeuble. Un dossier sans PDF
+     est signalé dans le journal, il n'arrête pas l'envoi. */
+  const { derniersDossiers, lirePiece, nomPieceDossier, sourcePdfDossier } = await import("./piece-dossier");
+  const tousImmeubles = [...new Set(lot.flatMap((e) => e.immeubleIds ?? []))];
+  const dossiers = await derniersDossiers(tousImmeubles);
+  const pieces = new Map<string, { nom: string; contenu: Buffer; type: string }>();
+  for (const imId of tousImmeubles) {
+    const d = dossiers.get(imId);
+    const src = d ? sourcePdfDossier(d) : null;
+    if (!d || !src) { journal.push(`Immeuble ${imId} : aucun PDF de dossier à joindre.`); continue; }
+    const r = await lirePiece({ nom: nomPieceDossier(S(d.ville) ?? undefined, d.version), ...src });
+    if (r.ok) pieces.set(imId, r.piece);
+    else journal.push(`Immeuble ${imId} : ${r.message}`);
+  }
+
   for (const e of lot) {
     try {
+      const attachments = (e.immeubleIds ?? [])
+        .map((id) => pieces.get(id))
+        .filter((p): p is { nom: string; contenu: Buffer; type: string } => !!p)
+        .map((p) => ({ filename: p.nom, content: p.contenu, contentType: p.type }));
       await envoyerPourAgent(agentId, {
         to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
+        attachments: attachments.length ? attachments : undefined,
       });
       envoyes++;
       for (const id of e.propositionIds) {

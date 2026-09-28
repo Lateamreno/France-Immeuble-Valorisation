@@ -2769,6 +2769,44 @@ export async function setOffreStatut(
 /* ---------- Dossiers de commercialisation (versionnés) ---------- */
 
 /** Génère un dossier complet versionné (V1, V2…) — snapshot chiffré. */
+/**
+ * Le lien de partage d'un dossier et sa date de fin (MAV, 28/09).
+ *
+ * Le lien vit sur le DOSSIER : la commercialisation, les relances et l'écran
+ * Dossiers le lisent là. Sans date, on prend 89 jours — la durée de vie d'un
+ * envoi transfer.it. Le lien vide efface.
+ */
+export async function majLienDossier(
+  immeubleId: string,
+  dossierId: string,
+  lien: string,
+  expireLe?: string,
+) {
+  const { lienValide, expirationParDefaut } = await import("./lien-dossier");
+  const url = lien.trim();
+  if (url && !lienValide(url)) {
+    return { ok: false as const, message: "Le lien doit être une adresse https complète (transfer.it, WeTransfer…)." };
+  }
+  const fin = (expireLe ?? "").slice(0, 10);
+  if (fin && !/^\d{4}-\d{2}-\d{2}$/.test(fin)) {
+    return { ok: false as const, message: "La date de fin n'est pas lisible." };
+  }
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_dossier",
+    p_id: dossierId,
+    p_patch: {
+      lien_partage: url || null,
+      lien_expire_le: url ? (fin || expirationParDefaut()) : null,
+      lien_pose_le: url ? now : null,
+      "Modified Date": now,
+    },
+  });
+  revalidatePath(`/bien/${immeubleId}`);
+  revalidatePath("/relances");
+  return { ok: true as const, expireLe: url ? (fin || expirationParDefaut()) : undefined };
+}
+
 export async function createDossier(
   immeubleId: string,
   agentId: string,

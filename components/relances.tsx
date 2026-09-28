@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { dateLien } from "@/lib/bo/lien-dossier";
+
 /**
  * L'écran Relances — la relance hebdomadaire, groupée PAR CLIENT.
  *
@@ -73,6 +76,7 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
         objet: objetRelance(c),
         corps: textes[c.contactId] ?? messageRelance(c, agent),
         propositionIds: c.immeubles.flatMap((i) => [i.propositionId, ...i.autresIds]),
+        immeubleIds: c.immeubles.map((i) => i.immeubleId),
         dossiers: c.immeubles.length,
       }));
   }, [bilan, retires, textes, agent]);
@@ -309,6 +313,22 @@ function CarteClient({
               <PuceImmeuble nouvelOnglet id={i.immeubleId} libelle={i.libelle} petit plat />
               {i.prix && <span className="rlz-prix">{i.prix}</span>}
               <span className="rlz-j">{jrs(i.jours)}</span>
+              {/* Le lien transfer.it du dossier (MAV, 28/09) : périmé, on le dit
+                  et on mène là où il se change ; absent, on le dit aussi. */}
+              {i.lienPerime ? (
+                <Link className="rlz-lien perime" href={`/bien/${i.immeubleId}?ecran=dossiers`} target="_blank"
+                  title="Le lien transfer.it de ce dossier a expiré : la relance partira sans lien. Cliquez pour le remplacer sur la fiche.">
+                  lien périmé{i.lienExpireLe ? ` depuis le ${dateLien(i.lienExpireLe)}` : ""} — à remplacer
+                </Link>
+              ) : i.lien ? (
+                <span className="rlz-lien ok" title={`Lien transfer.it valable${i.lienExpireLe ? ` jusqu'au ${dateLien(i.lienExpireLe)}` : ""}`}>lien transfer.it ✓</span>
+              ) : (
+                <Link className="rlz-lien absent" href={`/bien/${i.immeubleId}?ecran=dossiers`} target="_blank"
+                  title="Aucun lien transfer.it sur le dernier dossier : la relance partira avec le PDF seul. Cliquez pour en poser un.">
+                  sans lien transfer.it
+                </Link>
+              )}
+              {i.sansPdf && <span className="rlz-lien perime" title="Le dernier dossier n'a pas de PDF : rien à joindre.">sans PDF</span>}
               <span className="sp" style={{ flex: 1 }} />
               <button type="button" className="rlz-x"
                 title={off ? "Remettre dans cet envoi" : "Retirer de cet envoi (sans couper les relances)"}
