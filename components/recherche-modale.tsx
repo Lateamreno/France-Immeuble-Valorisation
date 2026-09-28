@@ -213,8 +213,10 @@ function ChoixMultiple({
         </div>
       )}
       <div className="rmx-champ">
+        {/* La barre verticale devant l'exemple dit qu'on peut taper ici
+            (MAV, 28/09, suite du #435). */}
         <input
-          className="min" placeholder={placeholder} value={saisie}
+          className="min" placeholder={`| ${placeholder}`} value={saisie}
           onChange={(e) => { setSaisie(e.target.value); setOuvert(true); }}
           onFocus={() => setOuvert(true)}
           /* Le flou est différé : sans ça, le clic sur une proposition
