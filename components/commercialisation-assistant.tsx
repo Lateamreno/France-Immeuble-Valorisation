@@ -808,8 +808,9 @@ export function AssistantCommercialisation({
               clic plutôt que de récupérer un code d'erreur après. */}
           {!/\bstop\b/i.test(sms) && (
             <div className="dif-simu">
-              <b>Mention « STOP » absente</b> — MailingVox refusera la campagne, et c&apos;est une
-              obligation CNIL. Ajoutez « STOP au {pont?.numeroStop ?? "36200"} » à la fin du message.
+              <b>Mot « STOP » absent</b> — MailingVox refusera la campagne, et c&apos;est une
+              obligation CNIL. Ajoutez « STOP pour ne plus recevoir » à la fin du message : répondre STOP suffit,
+              pas besoin de numéro.
             </div>
           )}
           {pont?.numeroStop && /\bstop au (\d{4,5})\b/i.test(sms)
@@ -1087,5 +1088,5 @@ function smsParDefaut(b: BienData, lien: string) {
      affiche —, le résumé du bien, le lien transfer.it, Oui / Non, STOP. Le
      numéro STOP est celui que MailingVox route (`MAILINGVOX_STOP`) ; l'écran
      signale la divergence si ce littéral s'en écarte. */
-  return smsEnvoiDossier(resumeDepuisDoc(b.im, { sms: true }), lien, "36200");
+  return smsEnvoiDossier(resumeDepuisDoc(b.im, { sms: true }), lien);
 }
