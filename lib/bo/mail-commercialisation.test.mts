@@ -33,7 +33,7 @@ test("objet : la ligne complète de MAV", () => {
     objetCommercialisation({
       ville: "Lille", codePostal: "59000", prixHai: 425_200, renta: 9.2, prixM2: 2203,
     }),
-    "Immeuble à vendre à Lille (59), 425 k€, 9,2 %, 2 203 €/m²",
+    "Immeuble à vendre à Lille (59) - 425 k€ - 9,2 % - 2 203 €/m²",
   );
 });
 
@@ -147,7 +147,7 @@ test("la ville ne reçoit pas deux fois son code postal", () => {
   assert.equal(villeNue("Viry-Châtillon"), "Viry-Châtillon");
   assert.equal(
     objetCommercialisation({ ville: "Lille (59000)", codePostal: "59000", prixHai: 425_200 }),
-    "Immeuble à vendre à Lille (59), 425 k€",
+    "Immeuble à vendre à Lille (59) - 425 k€",
   );
   const m = messageCommercialisation({
     ville: "Lille (59000)", codePostal: "59000", surfaceCarrez: 193,

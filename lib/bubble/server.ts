@@ -16,6 +16,8 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
 import { motifHorsVente } from "@/lib/bo/relances";
+import { resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
+import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
@@ -1843,7 +1845,13 @@ export type PropositionLigne = {
   statut?: string;
   motif?: string;
   commentaire?: string;
-  immeuble?: { id: string; libelle: string; prix?: string };
+  immeuble?: {
+    id: string; libelle: string; prix?: string;
+    /** « Sens (89), 479 m², 9 %, 840 k€ HAI » (MAV, 28/09) : ce que citent les relances. */
+    resume?: string;
+    /** Le lien transfer.it du DERNIER dossier de l'immeuble, et sa date de fin. */
+    lien?: string; lienExpireLe?: string;
+  };
   /** Vraie quand la proposition entre dans le compteur « à relancer ». */
   aRelancer: boolean;
   /** L'immeuble n'est plus à la vente — « Archivé le 03/03/26 car Mandat
@@ -2090,6 +2098,9 @@ export async function getContact(id: string): Promise<ContactData | null> {
   const dossiers = new Map<string, Record<string, unknown>>();
   for (const r of await parIds("dossier", [...new Set(propositions.map((p) => String(p.DOSSIER ?? "")).filter(Boolean))]).catch(() => []))
     dossiers.set(String(r._id), r);
+  /* Le DERNIER dossier de chaque immeuble proposé : c'est son lien transfer.it
+     que les relances citent (MAV, 28/09), pas celui de la version envoyée. */
+  const derniers = await derniersDossiers([...new Set(propositions.map((p) => String(p.IMMEUBLE ?? "")).filter(Boolean))]).catch(() => new Map<string, Record<string, unknown>>());
   const recherchesDuContact = recherchesBO.filter((r) => r.contact?.id === id);
 
   const tous = await agents();
@@ -2168,7 +2179,12 @@ export async function getContact(id: string): Promise<ContactData | null> {
         statut: st,
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
-        immeuble: im ? { id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined } : undefined,
+        immeuble: im ? {
+          id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined,
+          resume: resumeDepuisDoc(im),
+          lien: S2(derniers.get(String(p.IMMEUBLE))?.lien_partage),
+          lienExpireLe: S2(derniers.get(String(p.IMMEUBLE))?.lien_expire_le),
+        } : undefined,
         aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im),
         archivee: phraseHorsVente(im),
         refusee: (st ?? "").startsWith("Refus"),

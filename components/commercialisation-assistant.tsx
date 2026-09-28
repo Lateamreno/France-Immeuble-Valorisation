@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
 import { dateLien, expirationParDefaut, lienDuDossier } from "@/lib/bo/lien-dossier";
+import { resumeDepuisDoc, smsEnvoiDossier } from "@/lib/bo/resume-immeuble";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
   messageCommercialisation, objetCommercialisation, type BienMail,
@@ -110,7 +111,7 @@ export function AssistantCommercialisation({
 
   const [objet, setObjet] = useMemoire(`${memo}:objet`, objetCommercialisation(bienMail));
   const [message, setMessage] = useMemoire(`${memo}:message`, messageCommercialisation(bienMail, lien));
-  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b));
+  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b, lien));
   /* Retour MAV : « ce que je veux faire c'est une programmation ». Vide =
      envoi immédiat. Le format est celui d'un `datetime-local`, donc lu dans
      le fuseau du navigateur — celui de l'agent, qui est celui qu'il a en tête. */
@@ -503,7 +504,13 @@ export function AssistantCommercialisation({
             </a>
           </span>
           <input className="min" placeholder="https://… (dossier, photos, plans)" value={lien}
-            onChange={(e) => { setLien(e.target.value); setMessage(messageCommercialisation(bienMail, e.target.value)); }} />
+            onChange={(e) => {
+              const v = e.target.value;
+              setLien(v);
+              setMessage(messageCommercialisation(bienMail, v));
+              /* Le SMS suit le lien tant qu'il n'a pas été retouché à la main. */
+              if (sms === smsParDefaut(b, lien)) setSms(smsParDefaut(b, v));
+            }} />
           {/* MAV (28/09) : « que tu puisses me dire attention tu fais un envoi
               d'un lien périmé, et me proposer de changer le lien ». */}
           {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime && (
@@ -1061,20 +1068,12 @@ function libelleMandat(m: Record<string, unknown>): string {
 /* ---------- Messages par défaut, fusionnés depuis la fiche ---------- */
 
 
-function smsParDefaut(b: BienData) {
-  const im = b.im;
-  /* « France Immeuble » EN TÊTE (demande MAV) : l'expéditeur est un numéro
-     court à cinq chiffres — choisi, pour que le client puisse répondre — donc
-     c'est le début du texte qui dit qui écrit. Et c'est précisément ce que la
-     liste de conversations affiche en aperçu. */
-  const bits = [
-    `France Immeuble — immeuble à vendre ${b.ville || ""}`.trim(),
-    typeof im.surface_carrez === "number" ? `${Math.round(im.surface_carrez as number)} m²` : "",
-    typeof im.fin_renta_ba === "number" ? `${im.fin_renta_ba} % brut` : "",
-    euros(im.prix_hai) ?? "",
-  ].filter(Boolean);
-  /* Le numéro de désinscription : celui que MailingVox route. Il est
-     réglable côté serveur (`MAILINGVOX_STOP`) et l'écran signale la
-     divergence si ce littéral s'en écarte. */
-  return `${bits.join(" · ")} — dossier sur demande. STOP au 36200`;
+function smsParDefaut(b: BienData, lien: string) {
+  /* Texte validé par MAV le 28/09 (`smsEnvoiDossier`) : « France Immeuble »
+     EN TÊTE — l'expéditeur est un numéro court, c'est le début du texte qui
+     dit qui écrit, et c'est ce que l'aperçu de la liste de conversations
+     affiche —, le résumé du bien, le lien transfer.it, Oui / Non, STOP. Le
+     numéro STOP est celui que MailingVox route (`MAILINGVOX_STOP`) ; l'écran
+     signale la divergence si ce littéral s'en écarte. */
+  return smsEnvoiDossier(resumeDepuisDoc(b.im), lien, "36200");
 }
