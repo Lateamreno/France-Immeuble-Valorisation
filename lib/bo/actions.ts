@@ -225,8 +225,10 @@ export async function apercuMailHorsSecteur(immeubleId: string): Promise<{
   const adresse = [S(im?.adresse_numero_rue), S(im?.adresse_rue), S(im?.adresse_zipcode), S(im?.adresse_ville)].filter(Boolean).join(" ") || "votre immeuble";
   const ville = S(im?.adresse_ville);
   const cp = S(im?.adresse_zipcode);
-  const slug = ville.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const pageVille = ville && /^\d{5}$/.test(cp) ? `https://www.pleinbail.fr/villes/${slug}-${cp}` : "https://www.pleinbail.fr/villes";
+  /* La page de la commune se termine par le code INSEE, pas le code postal :
+     on la retrouve dans le plan du site plutôt que de la deviner. */
+  const { pageCommunePleinBail } = await import("@/lib/bo/commune-pleinbail");
+  const pageVille = await pageCommunePleinBail(ville, cp);
   const { getAgents } = await import("@/lib/bubble/server");
   const agents = await getAgents().catch(() => []);
   const agent = agents.find((a) => a.id === S(im?.AGENT));
