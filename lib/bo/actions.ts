@@ -4505,7 +4505,7 @@ export async function createCommercialisation(input: CommercialisationInput) {
      on créait les propositions, et le bien restait en « Préparation mandat et
      dossier » — donc le tableau de bord ne montrait jamais où en était
      réellement la commercialisation. */
-  const im = await bqOne("immeuble", input.immeubleId).catch(() => null);
+  const im = await bqOne("bo_immeuble", input.immeubleId).catch(() => null);
   const cible = im ? colonneApres(String(im.Statut ?? ""), input.cibles.map((c) => c.note)) : null;
   if (cible) {
     await rpc("bo_patch_doc", {
