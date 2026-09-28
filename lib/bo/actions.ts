@@ -4920,6 +4920,18 @@ export async function retoursSms(limite = 100) {
 }
 
 /** L'état du pont MailingVox, pour que l'écran sache s'il peut envoyer. */
+/**
+ * Relit chez MailingVox les réponses et les STOP des trente derniers jours et
+ * range ce qui manque (Réglages › Envois). Ce que le webhook n'a pas reçu —
+ * déclaré après coup, serrure posée après coup — arrive par ici.
+ */
+export async function relireRetoursSms() {
+  const { relireRetours } = await import("./sms-retours");
+  const r = await relireRetours(30);
+  revalidatePath("/", "layout");
+  return r;
+}
+
 export async function etatEnvoiSms() {
   const { etatSms, PLAFOND_SMS, NUMERO_STOP } = await import("./sms");
   return { ...etatSms(), plafond: PLAFOND_SMS, numeroStop: NUMERO_STOP };

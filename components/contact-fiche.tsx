@@ -33,7 +33,7 @@ import { envoyerRelances } from "@/lib/bo/relances-actions";
 import { relancerParSms } from "@/lib/bo/propositions-actions";
 import { etatLien } from "@/lib/bo/lien-dossier";
 import {
-  JOURS_RELANCE, joursDepuis, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
+  JOURS_RELANCE, joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
 } from "@/lib/bo/relances";
 import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
@@ -1031,6 +1031,13 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
       setRapport(null);
       const c = client(ids);
       if (c.immeubles.length === 0) return;
+      /* Sans lien transfer.it valable, la fenêtre le demande et rien ne part
+         (MAV, 28/09). */
+      if (c.immeubles.some(lienManquant)) {
+        setRelance({ ids });
+        setRapport("Un dossier n'a pas de lien transfer.it valable : indiquez-le dans la fenêtre, puis envoyez.");
+        return;
+      }
       const messages: string[] = [];
       try {
         if (mode !== "sms") {

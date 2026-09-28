@@ -9,7 +9,7 @@
 // descend au navigateur : seulement « présent / absent ») et porte le seul
 // geste à faire une fois : déclarer nos adresses de réception chez MailingVox.
 import { useState, useTransition } from "react";
-import { brancherRetoursSms } from "@/lib/bo/actions";
+import { brancherRetoursSms, relireRetoursSms } from "@/lib/bo/actions";
 
 export type EtatEnvois = {
   masse: { configure: boolean; expediteur: string; plafondJour: number };
@@ -95,6 +95,22 @@ export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
         <span className="rgl-aide">
           Déclare chez MailingVox les trois adresses où pousser réponses, STOP et accusés. À faire une
           fois par adresse publique, depuis la production.
+        </span>
+      </div>
+      <div className="rgl-env-act">
+        <button
+          type="button" className="fchip" disabled={pending || !etat.sms.configure}
+          onClick={() => start(async () => {
+            const r = await relireRetoursSms();
+            setMsg(r.message);
+          })}
+        >
+          {pending ? "Relecture…" : "Relire les réponses reçues chez MailingVox"}
+        </button>
+        <span className="rgl-aide">
+          Va chercher par leur API les réponses et les STOP des trente derniers jours, et range ceux
+          que le webhook n&apos;a pas reçus — déclaré après coup, serrure posée après coup. Sans risque
+          de doublon.
         </span>
       </div>
       {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
