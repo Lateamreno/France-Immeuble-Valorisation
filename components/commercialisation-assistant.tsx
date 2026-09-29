@@ -25,8 +25,9 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerMailsCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
+import { createCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
+import { useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
 type Etape = (typeof ETAPES)[number];
@@ -141,7 +142,23 @@ export function AssistantCommercialisation({
      reste ouverte : l'envoi tourne, l'agent avance. */
   const [progres, setProgres] = useMemoire<{ fait: number; total: number; echecs: number; enCours: boolean; message?: string } | null>(`${memo}:progres`, null);
   const [faits, setFaits] = useState<string[]>([]);
-  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  /* MAV, 29/09 : « mets aussi les e-mails de commercialisation sur la file ».
+     L'envoi ne tourne plus dans cette page : il est inscrit sur la file du
+     serveur (components/salve-relances.tsx), et la page ne fait qu'en lire
+     l'avancement — fermée, l'automate continue. `faitsAvant` : ce qui était
+     déjà parti quand la salve a été lancée, pour que le compteur reste
+     celui de la commercialisation entière. */
+  const { salve, lancerCommercialisation } = useSalveRelances();
+  useBudgetSalveLong();
+  const [faitsAvant, setFaitsAvant] = useMemoire<number>(`${memo}:faits-avant`, 0);
+  const salveCom = salve && salve.genre === "commercialisation" && salve.commId === commId ? salve : null;
+  const envoiEnCours = !!salveCom?.enCours;
+  const progresAffiche = salveCom
+    ? {
+      fait: faitsAvant + salveCom.mails.fait, total: faitsAvant + salveCom.mails.total, echecs: salveCom.mails.echecs,
+      enCours: salveCom.enCours, message: salveCom.message,
+    }
+    : progres;
   useEffect(() => {
     if (!commId) return;
     let vivant = true;
@@ -207,41 +224,38 @@ export function AssistantCommercialisation({
 
   const envoyerParLots = async (adresses: string[], quand?: string) => {
     if (!commId) return;
-    const LOT = 12;
     const total = faits.length + adresses.length;
-    const lotsMails = paquets(adresses, LOT);
-    const etat = { fait: faits.length, rates: [] as { email: string; raison: string }[] };
-    setEnvoiEnCours(true);
+    const avant = faits.length;
+    setFaitsAvant(avant);
     setEnvoiMail(null);
-    setProgres({ fait: etat.fait, total, echecs: 0, enCours: true });
-    for (const lot of lotsMails) {
-      const r = await envoyerMailsCommercialisation({
+    setProgres({ fait: avant, total, echecs: 0, enCours: true });
+    const r = await lancerCommercialisation({
+      titre: `Commercialisation ${b.ville || "immeuble"}`,
+      agentNom: b.agentNom,
+      charge: {
         immeubleId: String(b.im._id), commId, objet, message,
-        destinataires: lot,
-        pieces: piecesJointes,
-        quand, agentId: String(b.im.AGENT ?? "") || undefined,
-        total,
-      }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
-      if (!r.ok || !("fait" in r)) {
-        setProgres({ fait: etat.fait, total, echecs: etat.rates.length, enCours: false, message: ("message" in r && r.message) || "L'envoi s'est interrompu — cliquez pour reprendre." });
-        setEnvoiEnCours(false);
-        return;
-      }
-      const echecsLot = r.echecs ?? [];
-      etat.fait = r.fait;
-      etat.rates = [...etat.rates, ...echecsLot];
-      setFaits((f) => [...new Set([...f, ...lot.filter((a) => !echecsLot.some((x) => x.email === a))])]);
-      setProgres({ fait: etat.fait, total: r.total || total, echecs: etat.rates.length, enCours: true });
+        destinataires: adresses, pieces: piecesJointes,
+        quand, agentId: String(b.im.AGENT ?? "") || undefined, total,
+      },
+      /* À la fin — même si cette page a été fermée entre-temps et rouverte,
+         l'état se relit sur la commercialisation. */
+      apres: async () => {
+        const e = await etatMailsCommercialisation(commId).catch(() => null);
+        if (!e) return;
+        setFaits(e.faits);
+        setProgres({ fait: e.faits.length, total: e.total ?? total, echecs: e.echecs.length, enCours: false });
+        if (e.termine) setMailsEnvoyes(true);
+        setEnvoiMail(
+          (quand ? `${e.faits.length} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${e.faits.length} e-mails envoyés`)
+          + (piecesJointes.length ? ` avec ${piecesJointes.length} pièce${piecesJointes.length > 1 ? "s" : ""} jointe${piecesJointes.length > 1 ? "s" : ""}` : " sans pièce jointe")
+          + "."
+          + (e.echecs.length ? ` ${e.echecs.length} en échec : ${e.echecs.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}` : ""),
+        );
+      },
+    });
+    if (!r.ok) {
+      setProgres({ fait: avant, total, echecs: 0, enCours: false, message: r.message ?? "La salve n'a pas pu être lancée." });
     }
-    setProgres({ fait: etat.fait, total, echecs: etat.rates.length, enCours: false });
-    setEnvoiEnCours(false);
-    setMailsEnvoyes(true);
-    setEnvoiMail(
-      (quand ? `${etat.fait} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${etat.fait} e-mails envoyés`)
-      + (piecesJointes.length ? ` avec ${piecesJointes.length} pièce${piecesJointes.length > 1 ? "s" : ""} jointe${piecesJointes.length > 1 ? "s" : ""}` : " sans pièce jointe")
-      + "."
-      + (etat.rates.length ? ` ${etat.rates.length} en échec : ${etat.rates.slice(0, 3).map((x) => `${x.email} — ${x.raison}`).join(" · ")}` : ""),
-    );
   };
 
   /* Retour #427 — ce qui a bougé depuis le dernier dossier : le prix de la
@@ -378,14 +392,18 @@ export function AssistantCommercialisation({
         <button className="fadd" type="button" onClick={fermer}>Fermer</button>
       </div>
 
-      {progres && (
-        <div className={`asst-prog${progres.enCours ? " encours" : progres.fait >= progres.total && progres.total > 0 ? " ok" : ""}`}>
+      {progresAffiche && (
+        <div className={`asst-prog${progresAffiche.enCours ? " encours" : progresAffiche.fait >= progresAffiche.total && progresAffiche.total > 0 ? " ok" : ""}`}>
           <svg viewBox="0 0 24 24" aria-hidden><path d="M3 7.5 12 13l9-5.5" /><rect x="3" y="5" width="18" height="14" rx="2" /></svg>
-          <b>{progres.fait} / {progres.total}</b> e-mails envoyés
-          {progres.enCours && <i className="asst-spin" aria-hidden />}
-          {progres.echecs > 0 && <span className="rouge">· {progres.echecs} en échec</span>}
-          {progres.message && <span className="rouge">· {progres.message}</span>}
-          {!progres.enCours && progres.fait < progres.total && etape !== "E-mails" && (
+          <b>{progresAffiche.fait} / {progresAffiche.total}</b> e-mails envoyés
+          {progresAffiche.enCours && <i className="asst-spin" aria-hidden />}
+          {progresAffiche.echecs > 0 && <span className="rouge">· {progresAffiche.echecs} en échec</span>}
+          {progresAffiche.message && <span className="rouge">· {progresAffiche.message}</span>}
+          {progresAffiche.enCours && (
+            <span className="salve-attente">L&apos;envoi tourne sur le serveur : vous pouvez fermer l&apos;assistant, la pastille en bas de l&apos;écran le suit.</span>
+          )}
+          <div className="salve-barre"><i style={{ width: `${progresAffiche.total > 0 ? Math.round((progresAffiche.fait / progresAffiche.total) * 100) : 0}%` }} /></div>
+          {!progresAffiche.enCours && progresAffiche.fait < progresAffiche.total && etape !== "E-mails" && (
             <button type="button" className="fadd" onClick={() => setEtape("E-mails")}>Reprendre l&apos;envoi</button>
           )}
         </div>

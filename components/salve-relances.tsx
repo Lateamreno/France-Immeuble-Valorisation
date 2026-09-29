@@ -24,8 +24,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { EtatSalve } from "@/lib/bo/relances-file";
 import {
-  arreterSalveRelances, derniereSalveRelances, lancerSalveRelances, tournerSalveRelances,
+  arreterSalveRelances, derniereSalveRelances, lancerSalveCommercialisation, lancerSalveRelances, tournerSalveRelances,
 } from "@/lib/bo/relances-actions";
+import type { ChargeCommercialisation } from "@/lib/bo/relances-file";
 import { PLAFOND_RELANCES } from "@/lib/bo/relances";
 
 export type EnvoiRelance = {
@@ -51,6 +52,8 @@ type Contexte = {
   salve: ProgresSalve | null;
   /** Vrai si la salve est inscrite ; sinon le message dit pourquoi. */
   lancer: (l: Lancement) => Promise<{ ok: boolean; message?: string }>;
+  /** Les e-mails d'une commercialisation, sur la même file. */
+  lancerCommercialisation: (l: { titre: string; agentNom?: string; charge: ChargeCommercialisation; apres?: Lancement["apres"] }) => Promise<{ ok: boolean; message?: string }>;
   arreter: () => void;
   effacer: () => void;
   /** Le budget d'un tour depuis cette page : long sur les pages qui le
@@ -131,6 +134,16 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     return { ok: true };
   };
 
+  const lancerCommercialisation: Contexte["lancerCommercialisation"] = async (l) => {
+    const r = await lancerSalveCommercialisation({ titre: l.titre, agentNom: l.agentNom, charge: l.charge });
+    if (!r.ok) { if (r.etat) { setSalve(r.etat); idRef.current = r.etat.id; } return { ok: false, message: r.message }; }
+    apresRef.current = l.apres;
+    idRef.current = r.etat.id;
+    setSalve(r.etat);
+    void tour();
+    return { ok: true };
+  };
+
   const arreter = () => {
     const id = idRef.current ?? salve?.id;
     if (!id) return;
@@ -139,7 +152,7 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
   const effacer = () => { if (!salve?.enCours) setSalve(null); };
   const budget = useCallback((ms: number) => { budgetRef.current = ms; }, []);
 
-  return <Ctx.Provider value={{ salve, lancer, arreter, effacer, budget }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ salve, lancer, lancerCommercialisation, arreter, effacer, budget }}>{children}</Ctx.Provider>;
 }
 
 export function useSalveRelances(): Contexte {
