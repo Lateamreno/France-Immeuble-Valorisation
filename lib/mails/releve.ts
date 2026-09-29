@@ -32,6 +32,12 @@ import { toutesLesBoites } from "@/lib/mails/boites";
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+/* Une relève s'arrête d'elle-même sous la coupure Vercel (soixante secondes),
+   toutes boîtes confondues ; et la première relève d'une boîte ne remonte que
+   ses derniers messages. */
+const BUDGET_RELEVE_MS = 35_000;
+const PREMIERE_RELEVE = 300;
+
 /** Une boîte à relever, telle que la relève en a besoin. */
 type ARelever = {
   /** Clé du curseur en base : une adresse peut avoir plusieurs dossiers. */
@@ -214,8 +220,12 @@ export async function relever(max = 100): Promise<Bilan> {
   if (!boites.length) return total;
 
   const r = recherchesSupabase();
+  /* Le budget vaut pour TOUTES les boîtes : deux boîtes qui prendraient
+     chacune leur temps plein feraient couper la route. */
+  const finAvant = Date.now() + BUDGET_RELEVE_MS;
   for (const c of boites) {
-    const b = await releverUne(c, r, max).catch((e): Bilan => ({
+    if (Date.now() > finAvant) break;
+    const b = await releverUne(c, r, max, finAvant).catch((e): Bilan => ({
       configuree: true, lus: 0, entres: 0, ignores: 0, doublons: 0, dernierUid: 0,
       erreurs: [e instanceof Error ? e.message : String(e)],
     }));
@@ -230,7 +240,7 @@ export async function relever(max = 100): Promise<Bilan> {
   return total;
 }
 
-async function releverUne(c: ARelever, r: Recherches, max: number): Promise<Bilan> {
+async function releverUne(c: ARelever, r: Recherches, max: number, finAvant: number): Promise<Bilan> {
   const bilan: Bilan = {
     configuree: true,
     lus: 0, entres: 0, ignores: 0, doublons: 0, dernierUid: 0, erreurs: [],
@@ -243,8 +253,30 @@ async function releverUne(c: ARelever, r: Recherches, max: number): Promise<Bila
   const etats = await sb<{ boite: string; dernier_uid: number }>(
     `fi_releve_etat?select=boite,dernier_uid&boite=eq.${encodeURIComponent(c.cle)}&limit=1`,
   );
-  const depuis = etats[0]?.dernier_uid ?? 0;
+  let depuis = etats[0]?.dernier_uid ?? 0;
   bilan.dernierUid = depuis;
+
+  /* Le curseur s'enregistre EN COURS de route, pas seulement à la fin : la
+     route Vercel coupe à soixante secondes, et une relève coupée avant d'avoir
+     posé son curseur repartait du même endroit au passage suivant. C'est ce
+     qui a bloqué la boîte de MAV sur ses cent premiers messages de 2018
+     (vu le 29/09 : aucune réponse récente dans l'écran Mails). */
+  const sauver = async () => {
+    await sb("fi_releve_etat", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify([{
+        boite: c.cle,
+        dernier_uid: bilan.dernierUid,
+        derniere_le: new Date().toISOString(),
+        dernier_message: bilan.erreurs.length
+          ? `${bilan.erreurs.length} erreur(s) : ${bilan.erreurs[0]}`
+          : `${bilan.entres} message(s) entré(s)`,
+        lus: bilan.lus,
+        ignores: bilan.ignores,
+      }]),
+    }).catch(() => undefined);
+  };
 
   const client = new ImapFlow({
     host: c.host, port: c.port, secure: c.port === 993,
@@ -255,6 +287,18 @@ async function releverUne(c: ARelever, r: Recherches, max: number): Promise<Bila
   await client.connect();
   const verrou = await client.getMailboxLock(c.dossier);
   try {
+    /* Première relève d'une boîte (aucun curseur) : on part des derniers
+       messages, pas du premier de la boîte. L'écran Mails sert à voir les
+       réponses qui arrivent, pas à réimporter des années de courrier — et à
+       cent messages par quart d'heure, les remonter prendrait des mois. */
+    if (!etats[0]) {
+      const bal = client.mailbox;
+      const uidNext = bal && typeof bal === "object" && typeof bal.uidNext === "number" ? bal.uidNext : 0;
+      if (uidNext > PREMIERE_RELEVE + 1) {
+        depuis = uidNext - 1 - PREMIERE_RELEVE;
+        bilan.dernierUid = depuis;
+      }
+    }
     /* `uid:*` renvoie toujours au moins le dernier message même quand il n'y
        a rien de neuf : le filtre sur `uid > depuis` reste indispensable. */
     for await (const msg of client.fetch(
@@ -262,9 +306,10 @@ async function releverUne(c: ARelever, r: Recherches, max: number): Promise<Bila
       { uid: true, source: true, envelope: true },
     )) {
       if (msg.uid <= depuis) continue;
-      if (bilan.lus >= max) break;
+      if (bilan.lus >= max || Date.now() > finAvant) break;
       bilan.lus += 1;
       bilan.dernierUid = Math.max(bilan.dernierUid, msg.uid);
+      if (bilan.lus % 10 === 0) await sauver();
 
       try {
         const parse = await simpleParser(msg.source as Buffer);

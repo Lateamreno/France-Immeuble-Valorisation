@@ -296,7 +296,11 @@ export async function envoyerSms(
   }
 
   if (!j.resultat) {
-    const texteErreur = typeof j.erreur_texte === "string" && j.erreur_texte ? j.erreur_texte : undefined;
+    /* Leur texte d'erreur arrive en HTML (« <br>Vous pouvez acheter… ») :
+       on garde la phrase, pas les balises ni l'invitation à payer. */
+    const texteErreur = typeof j.erreur_texte === "string" && j.erreur_texte
+      ? j.erreur_texte.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/^erreur\s+/i, "").split(/\.\s/)[0].trim()
+      : undefined;
     throw new Error(`MailingVox a refusé la campagne : ${texteErreur ?? direErreurs(j.erreurs)}.`);
   }
 
