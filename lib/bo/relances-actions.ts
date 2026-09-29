@@ -448,6 +448,71 @@ async function ecrireFi(table: string, methode: "POST" | "PATCH", corps: Record<
 }
 
 /**
+ * Le récapitulatif d'une salve de relances, dans la boîte de l'agent (MAV,
+ * 29/09 : « ok pour un récap à la fin de chaque salve »). C'est sa trace :
+ * les relances groupées partent par le relais, elles ne sont pas dans ses
+ * « Envoyés ». Part de sa boîte vers lui-même ; à défaut, par le relais.
+ * Rend l'adresse servie, ou la raison de l'échec.
+ */
+export async function recapSalveRelances(r: {
+  titre: string; agentId?: string; voie: "masse" | "boite"; expediteur?: string;
+  objet: string; corps: string;
+  mails: { fait: number; total: number; echecs: number };
+  sms: { fait: number; total: number; echecs: number };
+  journal: string[];
+  destinataires: string[];
+  arretee?: boolean;
+  smsTexte?: string;
+}): Promise<{ ok: boolean; adresse?: string; message?: string }> {
+  const mail = await import("@/lib/bo/mail");
+  const adresse = await mail.adresseCopieCachee(r.agentId);
+  if (!adresse) return { ok: false, message: "aucune adresse pour le récapitulatif (MAIL_COPIE ou boîte de l'agent)" };
+  const quand = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" });
+  const pl = (n: number, m: string) => `${n} ${m}${n > 1 ? "s" : ""}`;
+  const etat = r.arretee ? "arrêtée avant la fin" : "terminée";
+  const bilanMails = r.mails.total ? `${r.mails.fait} / ${r.mails.total} e-mail${r.mails.total > 1 ? "s" : ""} envoyé${r.mails.fait > 1 ? "s" : ""}${r.mails.echecs ? ` · ${pl(r.mails.echecs, "échec")}` : ""}` : "pas d'e-mail";
+  const bilanSms = r.sms.total ? `${r.sms.fait} / ${r.sms.total} SMS envoyé${r.sms.fait > 1 ? "s" : ""}${r.sms.echecs ? ` · ${pl(r.sms.echecs, "échec")}` : ""}` : "pas de SMS";
+  const sujet = `Récapitulatif — ${r.titre} : ${bilanMails}${r.sms.total ? `, ${bilanSms}` : ""}`;
+  const lignes = [
+    `${r.titre} — salve ${etat} le ${quand}.`,
+    ``,
+    `E-mails : ${bilanMails}.`,
+    `SMS : ${bilanSms}.`,
+    `Route : ${r.voie === "masse" ? `relais SendGrid${r.expediteur ? `, expéditeur ${r.expediteur}` : ""}` : "votre boîte"}.`,
+    ``,
+    `Objet envoyé : ${r.objet}`,
+    ``,
+    `--- Message envoyé ---`,
+    r.corps.trim(),
+    `--- fin du message ---`,
+    ...(r.smsTexte ? [``, `--- SMS envoyé ---`, r.smsTexte.trim(), `--- fin du SMS ---`] : []),
+    ``,
+    r.journal.length ? `Échecs et remarques (${r.journal.length}) :` : `Aucun échec.`,
+    ...r.journal.slice(0, 60).map((l) => `  • ${l}`),
+    ...(r.journal.length > 60 ? [`  … et ${r.journal.length - 60} de plus, voir Mails › Salves.`] : []),
+    ``,
+    `Destinataires (${r.destinataires.length}) :`,
+    ...r.destinataires.map((d) => `  • ${d}`),
+    ``,
+    `Ce récapitulatif est envoyé automatiquement par le back-office à la fin de chaque salve de relances.`,
+  ];
+  const texte = lignes.join("\n");
+  try {
+    await mail.envoyerPourAgent(r.agentId, { to: adresse, subject: sujet, text: texte });
+    return { ok: true, adresse };
+  } catch (e1) {
+    if (!mail.masseConfiguree()) return { ok: false, message: e1 instanceof Error ? e1.message : String(e1) };
+    try {
+      const a = await agentExpediteur(r.agentId);
+      await mail.envoyerEnMasse({ to: adresse, subject: sujet, text: texte, replyTo: a.email, agent: a });
+      return { ok: true, adresse };
+    } catch (e2) {
+      return { ok: false, message: e2 instanceof Error ? e2.message : String(e2) };
+    }
+  }
+}
+
+/**
  * Par où part une relance groupée, et sous quelle adresse : ce que la fenêtre
  * annonce avant le clic. Le relais SendGrid s'il est configuré, la boîte de
  * l'agent sinon (avec son plafond horaire).

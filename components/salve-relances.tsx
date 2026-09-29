@@ -33,7 +33,7 @@
  */
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
-  envoyerRelances, ouvrirSalveRelances, relancesDerniereHeure, voieRelancesGroupees,
+  envoyerRelances, ouvrirSalveRelances, recapSalveRelances, relancesDerniereHeure, voieRelancesGroupees,
 } from "@/lib/bo/relances-actions";
 import { relancerParSms } from "@/lib/bo/propositions-actions";
 import { PLAFOND_RELANCES } from "@/lib/bo/relances";
@@ -59,6 +59,8 @@ export type ProgresSalve = {
   arrete?: boolean;
   /** Le moment de la fin, pour que la pastille s'efface d'elle-même. */
   finieA?: number;
+  /** Le récapitulatif envoyé dans la boîte de l'agent — ou pourquoi pas. */
+  recap?: string;
 };
 
 type Lancement = {
@@ -114,10 +116,11 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     };
     const maj = () => setSalve({ ...p, mails: { ...p.mails }, sms: { ...p.sms }, journal: [...p.journal] });
     maj();
+    let expediteur: string | undefined;
     try {
       if (l.mails.length) {
         const route = await voieRelancesGroupees(l.agent?.id);
-        p.voie = route.voie; maj();
+        p.voie = route.voie; expediteur = route.expediteur || undefined; maj();
         const relais = route.voie === "masse";
         const lotTaille = relais ? LOT_RELAIS : LOT_BOITE;
         /* La ligne de salve : le journal des salves la montre en direct et le
@@ -172,6 +175,26 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     p.finieA = Date.now();
     actif.current = false;
     maj();
+    /* Le récapitulatif dans la boîte de l'agent (MAV, 29/09) : sa trace,
+       puisque la salve n'est pas dans ses « Envoyés ». Même arrêtée. */
+    if (p.mails.fait + p.sms.fait + p.mails.echecs + p.sms.echecs > 0) {
+      try {
+        const r = await recapSalveRelances({
+          titre: l.titre, agentId: l.agent?.id, voie: p.voie, expediteur,
+          objet: l.mails[0]?.objet ?? "", corps: l.mails[0]?.corps ?? "",
+          mails: p.mails, sms: p.sms, journal: p.journal,
+          destinataires: [
+            ...l.mails.map((m) => m.email),
+            ...l.sms.filter((s) => s.tel).map((s) => `${s.libelle} (SMS)`),
+          ],
+          arretee: p.arrete, smsTexte: l.sms[0]?.texte,
+        });
+        p.recap = r.ok ? `Récapitulatif envoyé à ${r.adresse}.` : `Récapitulatif non envoyé : ${r.message ?? "?"}`;
+      } catch (e) {
+        p.recap = `Récapitulatif non envoyé : ${e instanceof Error ? e.message : String(e)}`;
+      }
+      maj();
+    }
     try { await l.apres?.(); } catch { /* l'écran d'origine n'est plus là */ }
   };
 
@@ -237,6 +260,7 @@ export function ProgresSalveRelances({ p, onArreter, compact }: { p: ProgresSalv
       {p.message && <span className="rouge">· {p.message}</span>}
       {p.termine && <span>· terminé{echecs > 0 ? `, ${echecs} en échec` : ""}</span>}
       {p.arrete && <span>· arrêté — ce qui est parti est marqué relancé, le reste attend</span>}
+      {p.recap && <span className="salve-attente">{p.recap}</span>}
       {p.enCours && onArreter && <button type="button" className="fadd" onClick={onArreter}>Arrêter</button>}
       {!p.enCours && p.journal.length > 0 && (
         <details className="salve-journal">
