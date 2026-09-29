@@ -362,7 +362,7 @@ export async function envoyerRelances(
       }
     } catch (err) {
       echecs++;
-      journal.push(`${e.email} : ${err instanceof Error ? err.message : "échec d'envoi"}`);
+      journal.push(`E-mail ${e.email} : ${err instanceof Error ? err.message : "échec d'envoi"}`);
     }
     await new Promise((r) => setTimeout(r, 400));
   }

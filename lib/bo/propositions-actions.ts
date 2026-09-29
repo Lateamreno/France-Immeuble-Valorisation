@@ -100,7 +100,7 @@ export async function relancerParSms(
          renvoie avec chaque réponse, et c'est ainsi qu'un « Oui » retrouve sa
          ligne (MAV, 28/09 : les retours SMS remontés dans l'application). */
       const r = await envoyerSms([num], texte, { nom: `Relance ${e.propositionIds[0] ?? ""}`.trim().slice(0, 50) });
-      if (r.simulation || r.envoyes === 0) { echecs++; journal.push(`${num} : non envoyé`); continue; }
+      if (r.simulation || r.envoyes === 0) { echecs++; journal.push(`SMS ${num} : MailingVox n'a rien envoyé${r.simulation ? " (clé MailingVox absente)" : ""}`); continue; }
       envoyes++;
       await marquerRelances(e.propositionIds, chemins);
       /* L'identifiant de campagne MailingVox, gardé sur la proposition : c'est
@@ -114,7 +114,7 @@ export async function relancerParSms(
       }
     } catch (err) {
       echecs++;
-      journal.push(`${num} : ${err instanceof Error ? err.message : "échec"}`);
+      journal.push(`SMS ${num} : ${err instanceof Error ? err.message : "échec MailingVox"}`);
     }
     await new Promise((r) => setTimeout(r, 300));
   }
