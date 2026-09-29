@@ -758,3 +758,44 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
     .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant), tel: telDe(p.contactId ?? "") }))
     .sort((a, b) => (b.jours ?? 999) - (a.jours ?? 999));
 }
+
+/* ---------------------------------------------------- La file des salves
+   (lib/bo/relances-file.ts) : la salve est écrite en base et c'est le serveur
+   qui l'envoie, page ouverte ou non. Ces actions sont ce que les écrans et la
+   pastille appellent. */
+
+export async function lancerSalveRelances(s: {
+  titre: string; agentId?: string; agentNom?: string; immeubleId?: string;
+  mails: { contactId: string; email: string; objet: string; corps: string; propositionIds: string[]; immeubleIds?: string[] }[];
+  sms: { contactId?: string; tel?: string; immeubleId: string; libelle: string; propositionIds: string[]; texte?: string }[];
+  chemins?: string[];
+}) {
+  const file = await import("./relances-file");
+  /* Une seule salve à la fois : la file est courte et lisible. */
+  const active = await file.etat();
+  if (active) return { ok: false as const, message: `Une relance est déjà en cours (${active.titre}) : attendez sa fin, ou arrêtez-la depuis la pastille.`, etat: active };
+  const etat = await file.inscrire(s);
+  return { ok: true as const, etat };
+}
+
+/** Fait avancer une salve pendant `budgetMs` au plus (plafonné à 45 s). */
+export async function tournerSalveRelances(id: string, budgetMs = 40_000) {
+  const file = await import("./relances-file");
+  return file.tourner(id, Math.max(3_000, Math.min(45_000, budgetMs)));
+}
+
+export async function etatSalveRelances(id?: string) {
+  const file = await import("./relances-file");
+  return file.etat(id);
+}
+
+/** La salve à montrer dans la pastille : en cours, ou finie depuis peu. */
+export async function derniereSalveRelances() {
+  const file = await import("./relances-file");
+  return file.derniere();
+}
+
+export async function arreterSalveRelances(id: string) {
+  const file = await import("./relances-file");
+  return file.arreter(id);
+}

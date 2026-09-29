@@ -2,40 +2,30 @@
 
 /**
  * Une salve de relances qui se conduit toute seule, se suit de partout, et
- * survit à la fermeture de sa fenêtre.
+ * survit à la fermeture de la page.
  *
- * MAV, 29/09 : « j'ai appuyé sur Envoyer mais rien ne se passe » ; « pour la
- * limite je ne veux pas avoir à la gérer moi-même » ; « on doit pouvoir
- * fermer la fenêtre, faire autre chose, et voir où en est la relance ».
+ * MAV, 29/09 : « j'ai appuyé sur Envoyer mais rien ne se passe » ; « on doit
+ * pouvoir fermer la fenêtre, faire autre chose, et voir où en est la relance » ;
+ * puis, après une salve coupée à 144 sur 189 quand iOS a suspendu l'onglet :
+ * « il faut qu'on puisse fermer la page une fois la commande lancée ».
  *
- * Deux défauts derrière le premier constat : le bouton se contentait de se
- * griser, et l'envoi entier partait dans UN appel serveur, que Vercel coupe à
- * soixante secondes — sur Argenteuil, dix-huit e-mails sont partis avant la
- * coupure, sans que l'écran le montre.
- *
- * D'où cette forme :
- *   • la salve vit dans un contexte posé sur toute l'application, pas dans la
- *     fenêtre qui l'a lancée : on ferme la fenêtre, on change de page, elle
- *     continue, et une pastille en bas de l'écran dit où elle en est ;
- *   • l'envoi part par petits paquets, un appel serveur par paquet, et le
- *     compteur avance à chaque paquet — « 42 / 226 e-mails envoyés », avec
- *     une barre ;
- *   • par le relais SendGrid (« option SendGrid », MAV) : 226 e-mails en
- *     quelques minutes, sans toucher à la boîte OVH. Si le relais n'est pas
- *     configuré, la boîte de l'agent prend le relais avec son plafond horaire
- *     (`PLAFOND_RELANCES`), tenu ici — la salve attend, compte à rebours, et
- *     repart seule ;
- *   • « Arrêter » coupe proprement : ce qui est parti reste marqué relancé,
- *     ce qui n'est pas parti reste à relancer.
- *
- * C'est le navigateur qui conduit : l'onglet doit rester ouvert. Une seule
- * salve à la fois.
+ * La salve vit donc EN BASE (lib/bo/relances-file.ts), pas dans le navigateur.
+ * Ce fichier n'est que sa vitrine :
+ *   • `lancer` inscrit la salve et la fait démarrer ;
+ *   • tant qu'une page du BO est ouverte, elle fait tourner l'automate en
+ *     boucle (un tour de quelques secondes à quarante secondes, selon la page)
+ *     et relit l'état ; page fermée ou onglet suspendu, le cron Vercel prend
+ *     la suite chaque minute ;
+ *   • la pastille en bas de l'écran lit l'état au montage — elle réapparaît
+ *     donc après un rechargement ou un retour depuis une autre application —
+ *     et un tap l'ouvre sur le détail et « Arrêter ».
+ * Une seule salve à la fois.
  */
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import type { EtatSalve } from "@/lib/bo/relances-file";
 import {
-  envoyerRelances, ouvrirSalveRelances, recapSalveRelances, relancesDerniereHeure, voieRelancesGroupees,
+  arreterSalveRelances, derniereSalveRelances, lancerSalveRelances, tournerSalveRelances,
 } from "@/lib/bo/relances-actions";
-import { relancerParSms } from "@/lib/bo/propositions-actions";
 import { PLAFOND_RELANCES } from "@/lib/bo/relances";
 
 export type EnvoiRelance = {
@@ -44,24 +34,7 @@ export type EnvoiRelance = {
 export type EnvoiSmsRelance = {
   contactId?: string; tel?: string; immeubleId: string; libelle: string; propositionIds: string[]; texte?: string;
 };
-
-export type ProgresSalve = {
-  titre: string;
-  voie: "masse" | "boite";
-  mails: { fait: number; total: number; echecs: number };
-  sms: { fait: number; total: number; echecs: number };
-  enCours: boolean;
-  /** L'heure (ms) à laquelle la salve repartira : la boîte a atteint son plafond. */
-  repriseA?: number;
-  journal: string[];
-  message?: string;
-  termine?: boolean;
-  arrete?: boolean;
-  /** Le moment de la fin, pour que la pastille s'efface d'elle-même. */
-  finieA?: number;
-  /** Le récapitulatif envoyé dans la boîte de l'agent — ou pourquoi pas. */
-  recap?: string;
-};
+export type ProgresSalve = EtatSalve;
 
 type Lancement = {
   titre: string;
@@ -76,135 +49,110 @@ type Lancement = {
 
 type Contexte = {
   salve: ProgresSalve | null;
-  /** Faux si une salve tourne déjà : une seule à la fois. */
-  lancer: (l: Lancement) => boolean;
+  /** Vrai si la salve est inscrite ; sinon le message dit pourquoi. */
+  lancer: (l: Lancement) => Promise<{ ok: boolean; message?: string }>;
   arreter: () => void;
   effacer: () => void;
+  /** Le budget d'un tour depuis cette page : long sur les pages qui le
+   *  permettent (fiche du bien, Relances), court ailleurs. */
+  budget: (ms: number) => void;
 };
 
 const Ctx = createContext<Contexte | null>(null);
 
-/* Douze e-mails par appel sur le relais (rapide), six par la boîte (le PDF
-   joint et la poignée de main SMTP pèsent) ; loin de la coupure à soixante
-   secondes. Les SMS partent par vingt-cinq, MailingVox répond vite. */
-const LOT_RELAIS = 12;
-const LOT_BOITE = 6;
-const LOT_SMS = 25;
-const HEURE = 3_600_000;
-const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/* Un tour court partout par défaut : il tient sous la durée minimale d'une
+   fonction Vercel, quelle que soit la page. Les pages qui ont soixante
+   secondes montent le budget. */
+const BUDGET_COURT = 8_000;
+const RELECTURE_MS = 4_000;
 
 export function SalveRelancesProvider({ children }: { children: React.ReactNode }) {
   const [salve, setSalve] = useState<ProgresSalve | null>(null);
-  const actif = useRef(false);
+  const budgetRef = useRef(BUDGET_COURT);
+  const apresRef = useRef<Lancement["apres"]>(undefined);
+  const enTour = useRef(false);
+  const idRef = useRef<string | null>(null);
 
-  const arreter = () => { actif.current = false; };
-  const effacer = () => { if (!actif.current) setSalve(null); };
-
-  const lancer = (l: Lancement): boolean => {
-    if (actif.current) return false;
-    actif.current = true;
-    void conduire(l);
-    return true;
-  };
-
-  const conduire = async (l: Lancement) => {
-    const p: ProgresSalve = {
-      titre: l.titre, voie: "boite",
-      mails: { fait: 0, total: l.mails.length, echecs: 0 },
-      sms: { fait: 0, total: l.sms.length, echecs: 0 },
-      enCours: true, journal: [],
-    };
-    const maj = () => setSalve({ ...p, mails: { ...p.mails }, sms: { ...p.sms }, journal: [...p.journal] });
-    maj();
-    let expediteur: string | undefined;
+  /* Un tour de l'automate depuis cette page, puis relecture. Une seule main
+     à la fois par page ; le verrou serveur fait le reste. */
+  const tour = useCallback(async () => {
+    const id = idRef.current;
+    if (!id || enTour.current) return;
+    enTour.current = true;
     try {
-      if (l.mails.length) {
-        const route = await voieRelancesGroupees(l.agent?.id);
-        p.voie = route.voie; expediteur = route.expediteur || undefined; maj();
-        const relais = route.voie === "masse";
-        const lotTaille = relais ? LOT_RELAIS : LOT_BOITE;
-        /* La ligne de salve : le journal des salves la montre en direct et le
-           plafond du jour la compte. */
-        const salveId = relais
-          ? await ouvrirSalveRelances({
-            titre: l.titre, total: l.mails.length, objet: l.mails[0].objet, corps: l.mails[0].corps,
-            agentId: l.agent?.id, immeubleId: l.immeubleId,
-          })
-          : "";
-        let fenetre = relais ? { n: 0, premiere: null as string | null } : await relancesDerniereHeure();
-        for (let i = 0; i < l.mails.length && actif.current;) {
-          const lot = l.mails.slice(i, i + lotTaille);
-          if (!relais && fenetre.n + lot.length > PLAFOND_RELANCES && fenetre.premiere) {
-            /* La fenêtre glissante se libère une heure après son premier envoi ;
-               quinze secondes de marge, puis on relit la base plutôt que de
-               deviner. */
-            const reprise = new Date(fenetre.premiere).getTime() + HEURE + 15_000;
-            p.repriseA = reprise; maj();
-            while (actif.current && Date.now() < reprise) await dormir(1000);
-            p.repriseA = undefined; maj();
-            if (!actif.current) break;
-            fenetre = await relancesDerniereHeure();
-            continue;
-          }
-          const r = await envoyerRelances(lot, l.agent?.id, undefined, l.chemins ?? [], {
-            voie: relais ? "masse" : "boite", salveId: salveId || undefined,
-            avant: { envoyes: p.mails.fait, echecs: p.mails.echecs },
-          });
-          i += lot.length;
-          p.mails.fait += r.envoyes;
-          p.mails.echecs += r.echecs;
-          p.journal.push(...r.journal);
-          fenetre.n += r.envoyes;
-          if (!fenetre.premiere && r.envoyes) fenetre.premiere = new Date().toISOString();
-          maj();
-        }
+      const e = await tournerSalveRelances(id, budgetRef.current);
+      if (e) setSalve(e);
+      if (e && !e.enCours) {
+        idRef.current = null;
+        const f = apresRef.current; apresRef.current = undefined;
+        try { await f?.(); } catch { /* l'écran d'origine n'est plus là */ }
       }
-      for (let i = 0; i < l.sms.length && actif.current; i += LOT_SMS) {
-        const s = await relancerParSms(l.sms.slice(i, i + LOT_SMS), l.agent?.nom, l.chemins ?? []);
-        p.sms.fait += s.envoyes;
-        p.sms.echecs += s.echecs;
-        p.journal.push(...s.journal);
-        maj();
-      }
-    } catch (e) {
-      p.message = e instanceof Error ? e.message : "L'envoi a échoué.";
+    } catch {
+      /* Réseau coupé, onglet suspendu : le cron continue, on relira. */
+    } finally {
+      enTour.current = false;
     }
-    p.enCours = false;
-    p.termine = actif.current && !p.message;
-    p.arrete = !actif.current;
-    p.finieA = Date.now();
-    actif.current = false;
-    maj();
-    /* Le récapitulatif dans la boîte de l'agent (MAV, 29/09) : sa trace,
-       puisque la salve n'est pas dans ses « Envoyés ». Même arrêtée. */
-    if (p.mails.fait + p.sms.fait + p.mails.echecs + p.sms.echecs > 0) {
-      try {
-        const r = await recapSalveRelances({
-          titre: l.titre, agentId: l.agent?.id, voie: p.voie, expediteur,
-          objet: l.mails[0]?.objet ?? "", corps: l.mails[0]?.corps ?? "",
-          mails: p.mails, sms: p.sms, journal: p.journal,
-          destinataires: [
-            ...l.mails.map((m) => m.email),
-            ...l.sms.filter((s) => s.tel).map((s) => `${s.libelle} (SMS)`),
-          ],
-          arretee: p.arrete, smsTexte: l.sms[0]?.texte,
-        });
-        p.recap = r.ok ? `Récapitulatif envoyé à ${r.adresse}.` : `Récapitulatif non envoyé : ${r.message ?? "?"}`;
-      } catch (e) {
-        p.recap = `Récapitulatif non envoyé : ${e instanceof Error ? e.message : String(e)}`;
-      }
-      maj();
-    }
-    try { await l.apres?.(); } catch { /* l'écran d'origine n'est plus là */ }
+  }, []);
+
+  /* Au montage : y a-t-il une salve en cours (ou finie à l'instant) ? C'est
+     ce qui fait réapparaître la pastille après un rechargement. */
+  useEffect(() => {
+    let vivant = true;
+    derniereSalveRelances().then((e) => {
+      if (!vivant || !e) return;
+      setSalve(e);
+      if (e.enCours) { idRef.current = e.id; void tour(); }
+    }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [tour]);
+
+  /* Tant qu'une salve est en cours : un tour dès que le précédent finit, et
+     une relecture régulière (si c'est le cron qui travaille). */
+  const enCours = !!salve?.enCours;
+  useEffect(() => {
+    if (!enCours) return;
+    const t = setInterval(() => {
+      if (enTour.current) return;
+      void tour();
+    }, RELECTURE_MS);
+    return () => clearInterval(t);
+  }, [enCours, tour]);
+
+  const lancer = async (l: Lancement) => {
+    const r = await lancerSalveRelances({
+      titre: l.titre, agentId: l.agent?.id, agentNom: l.agent?.nom, immeubleId: l.immeubleId,
+      mails: l.mails, sms: l.sms, chemins: l.chemins,
+    });
+    if (!r.ok) { if (r.etat) { setSalve(r.etat); idRef.current = r.etat.id; } return { ok: false, message: r.message }; }
+    apresRef.current = l.apres;
+    idRef.current = r.etat.id;
+    setSalve(r.etat);
+    void tour();
+    return { ok: true };
   };
 
-  return <Ctx.Provider value={{ salve, lancer, arreter, effacer }}>{children}</Ctx.Provider>;
+  const arreter = () => {
+    const id = idRef.current ?? salve?.id;
+    if (!id) return;
+    void arreterSalveRelances(id).then((e) => { if (e) setSalve(e); if (e && !e.enCours) idRef.current = null; }).catch(() => undefined);
+  };
+  const effacer = () => { if (!salve?.enCours) setSalve(null); };
+  const budget = useCallback((ms: number) => { budgetRef.current = ms; }, []);
+
+  return <Ctx.Provider value={{ salve, lancer, arreter, effacer, budget }}>{children}</Ctx.Provider>;
 }
 
 export function useSalveRelances(): Contexte {
   const c = useContext(Ctx);
   if (!c) throw new Error("useSalveRelances : SalveRelancesProvider absent de la coquille.");
   return c;
+}
+
+/** À poser sur une page qui laisse soixante secondes à ses actions : les
+ *  tours y sont longs, et la salve avance vite tant qu'on y reste. */
+export function useBudgetSalveLong() {
+  const { budget } = useSalveRelances();
+  useEffect(() => { budget(40_000); return () => budget(BUDGET_COURT); }, [budget]);
 }
 
 const heureDe = (ms: number) => new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -248,13 +196,14 @@ export function ProgresSalveRelances({ p, onArreter, compact }: { p: ProgresSalv
       {p.repriseA && (
         <span className="salve-attente">
           La boîte a atteint {PLAFOND_RELANCES} e-mails dans l&apos;heure : la suite part toute seule à {heureDe(p.repriseA)}
-          {minutes > 0 ? ` (dans ${minutes} min)` : ""}. Gardez l&apos;application ouverte.
+          {minutes > 0 ? ` (dans ${minutes} min)` : ""}.
         </span>
       )}
       {p.enCours && !p.repriseA && !compact && (
         <span className="salve-attente">
           {p.voie === "masse" ? "Envoi par le relais SendGrid, sous votre adresse agence." : "Envoi depuis votre boîte."}
-          {" "}Vous pouvez fermer cette fenêtre : la pastille en bas de l&apos;écran suit l&apos;envoi. Gardez l&apos;application ouverte.
+          {" "}L&apos;envoi se fait sur le serveur : vous pouvez fermer cette fenêtre, changer de page ou d&apos;application,
+          il continue. La pastille en bas de l&apos;écran le suit.
         </span>
       )}
       {p.message && <span className="rouge">· {p.message}</span>}
@@ -265,7 +214,7 @@ export function ProgresSalveRelances({ p, onArreter, compact }: { p: ProgresSalv
       {!p.enCours && p.journal.length > 0 && (
         <details className="salve-journal">
           <summary>{p.journal.length} détail{p.journal.length > 1 ? "s" : ""}</summary>
-          <ul>{p.journal.slice(0, 40).map((l, i) => <li key={i}>{l}</li>)}</ul>
+          <ul>{p.journal.slice(-40).map((l, i) => <li key={i}>{l}</li>)}</ul>
         </details>
       )}
     </div>
@@ -274,7 +223,7 @@ export function ProgresSalveRelances({ p, onArreter, compact }: { p: ProgresSalv
 
 /**
  * La pastille : en bas de l'écran, sur toutes les pages, tant qu'une salve
- * tourne — et encore une minute après sa fin, pour lire le bilan. Un tap
+ * tourne — et encore un moment après sa fin, pour lire le bilan. Un tap
  * l'ouvre sur le détail.
  */
 export function PastilleSalve() {
@@ -290,9 +239,10 @@ export function PastilleSalve() {
   if (!salve) return null;
   const total = salve.mails.total + salve.sms.total;
   const fait = salve.mails.fait + salve.mails.echecs + salve.sms.fait + salve.sms.echecs;
+  const rate = !salve.enCours && (salve.message || (salve.mails.fait + salve.sms.fait === 0 && salve.mails.echecs + salve.sms.echecs > 0));
   return (
     <>
-      <button type="button" className={`salve-pastille${salve.enCours ? " encours" : salve.message || (salve.mails.fait + salve.sms.fait === 0 && salve.mails.echecs + salve.sms.echecs > 0) ? " rouge" : ""}`}
+      <button type="button" className={`salve-pastille${salve.enCours ? " encours" : rate ? " rouge" : ""}`}
         onClick={() => setOuverte((o) => !o)} aria-expanded={ouverte}
         title={ouverte ? "Replier" : "Voir l'avancement"}>
         {salve.enCours ? <i className="asst-spin" aria-hidden /> : null}

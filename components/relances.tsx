@@ -30,7 +30,7 @@ import {
   type BilanRelances, type ClientRelance,
 } from "@/lib/bo/relances";
 import { couperRelancesLot, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
-import { ProgresSalveRelances, useSalveRelances } from "@/components/salve-relances";
+import { ProgresSalveRelances, useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 import { Modale } from "@/components/modale";
 import { PuceImmeuble } from "@/components/puce-immeuble";
 import { LienDossier } from "@/components/lien-dossier";
@@ -57,6 +57,7 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
   /* La salve se conduit toute seule — paquets, plafond horaire, progression —
      et le dit à l'écran (MAV, 29/09). */
   const { salve: progres, lancer, arreter } = useSalveRelances();
+  useBudgetSalveLong();
   const envoiEnCours = !!progres?.enCours;
 
   const recharger = async (f = fenetre) => setCharge({ f, b: await relancesDues(7, f) });
@@ -214,11 +215,11 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
         <ModaleSalve
           envois={envois} agent={agent} pending={pending}
           onFermer={() => setSalve(false)}
-          onEnvoyer={() => {
+          onEnvoyer={() => start(async () => {
             setSalve(false);
-            const ok = lancer({ titre: "Relances hebdomadaires", mails: envois, sms: [], agent, apres: () => recharger() });
-            if (!ok) setErreur("Une relance est déjà en cours : attendez sa fin, ou arrêtez-la depuis la pastille en bas de l'écran.");
-          }}
+            const r = await lancer({ titre: "Relances hebdomadaires", mails: envois, sms: [], agent, apres: () => recharger() });
+            if (!r.ok) setErreur(r.message ?? "La relance n'a pas pu être lancée.");
+          })}
         />
       )}
     </div>
