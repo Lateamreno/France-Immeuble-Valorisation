@@ -809,3 +809,16 @@ export async function arreterSalveRelances(id: string) {
   const file = await import("./relances-file");
   return file.arreter(id);
 }
+
+/** Les e-mails d'une commercialisation sur la file : même automate que les
+ *  relances, l'assistant peut se fermer (MAV, 29/09). */
+export async function lancerSalveCommercialisation(s: {
+  titre: string; agentNom?: string;
+  charge: import("./relances-file").ChargeCommercialisation;
+}) {
+  const file = await import("./relances-file");
+  const active = await file.etat();
+  if (active) return { ok: false as const, message: `Une salve est déjà en cours (${active.titre}) : attendez sa fin, ou arrêtez-la depuis la pastille.`, etat: active };
+  const etat = await file.inscrireCommercialisation(s.titre, s.charge, s.agentNom);
+  return { ok: true as const, etat };
+}

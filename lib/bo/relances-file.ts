@@ -35,10 +35,22 @@ export type EnvoiSms = {
   contactId?: string; tel?: string; immeubleId: string; libelle: string; propositionIds: string[]; texte?: string;
 };
 
+/** Ce qu'une salve de commercialisation emporte : ce que l'assistant a validé. */
+export type ChargeCommercialisation = {
+  immeubleId: string; commId: string; objet: string; message: string;
+  destinataires: string[];
+  pieces?: { nom: string; path?: string; url?: string }[];
+  quand?: string; agentId?: string;
+  /** Le nombre total d'adresses de la commercialisation (reprise comprise). */
+  total: number;
+};
+
 export type SalveLigne = {
   id: string;
   created_at: string;
   updated_at: string;
+  genre: "relances" | "commercialisation";
+  charge: Partial<ChargeCommercialisation>;
   titre: string;
   agent_id: string | null;
   agent_nom: string | null;
@@ -70,6 +82,9 @@ export type SalveLigne = {
 /** Ce que les écrans affichent — jamais la liste des destinataires. */
 export type EtatSalve = {
   id: string;
+  genre: "relances" | "commercialisation";
+  /** La commercialisation servie, pour que l'assistant reconnaisse sa salve. */
+  commId?: string;
   titre: string;
   voie: "boite" | "masse";
   statut: SalveLigne["statut"];
@@ -109,9 +124,10 @@ async function ecrire(methode: "POST" | "PATCH", corps: Record<string, unknown>,
 
 export function versEtat(l: SalveLigne): EtatSalve {
   const enCours = l.statut === "en_cours";
+  const totalMails = l.genre === "commercialisation" ? (l.charge.destinataires?.length ?? 0) : l.mails.length;
   return {
-    id: l.id, titre: l.titre, voie: l.voie, statut: l.statut,
-    mails: { fait: l.fait_mail, total: l.mails.length, echecs: l.echecs_mail },
+    id: l.id, genre: l.genre ?? "relances", commId: l.charge.commId, titre: l.titre, voie: l.voie, statut: l.statut,
+    mails: { fait: l.fait_mail, total: totalMails, echecs: l.echecs_mail },
     sms: { fait: l.fait_sms, total: l.sms.length, echecs: l.echecs_sms },
     enCours,
     repriseA: enCours && l.reprise_a ? new Date(l.reprise_a).getTime() : undefined,
@@ -147,6 +163,19 @@ export async function inscrire(s: {
     titre: s.titre, agent_id: s.agentId ?? null, agent_nom: s.agentNom ?? null, immeuble_id: s.immeubleId ?? null,
     voie, expediteur, objet: s.mails[0]?.objet ?? null, corps: s.mails[0]?.corps ?? null, sms_texte: s.sms[0]?.texte ?? null,
     mails: s.mails, sms: s.sms, chemins: s.chemins ?? [], salve_id: salveId, statut: "en_cours",
+  });
+  return versEtat(l);
+}
+
+/** Inscrit les e-mails d'une commercialisation (MAV, 29/09 : « mets aussi
+ *  les e-mails de commercialisation sur la file »). Même file, même
+ *  automate : l'assistant se ferme, l'envoi continue. */
+export async function inscrireCommercialisation(titre: string, ch: ChargeCommercialisation, agentNom?: string): Promise<EtatSalve> {
+  const [l] = await ecrire("POST", {
+    genre: "commercialisation", charge: ch,
+    titre, agent_id: ch.agentId ?? null, agent_nom: agentNom ?? null, immeuble_id: ch.immeubleId,
+    voie: "masse", expediteur: null, objet: ch.objet, corps: ch.message, sms_texte: null,
+    mails: [], sms: [], chemins: [`/bien/${ch.immeubleId}`], salve_id: null, statut: "en_cours",
   });
   return versEtat(l);
 }
@@ -211,6 +240,10 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
   const encoreEnCours = async () => (await lire(`id=eq.${encodeURIComponent(id)}&select=statut`))[0]?.statut === "en_cours";
 
   try {
+    if (l.genre === "commercialisation") {
+      await tournerCommercialisation(l, { poser, journal, tempsRestant, encoreEnCours });
+      return etat(id);
+    }
     const { envoyerRelances, relancesDerniereHeure } = await import("./relances-actions");
     const { relancerParSms } = await import("./propositions-actions");
     const relais = l.voie === "masse";
@@ -280,6 +313,50 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
   return etat(id);
 }
 
+/**
+ * Les e-mails d'une commercialisation, par paquets de douze : chaque paquet
+ * passe par `envoyerMailsCommercialisation`, qui inscrit sur la
+ * commercialisation elle-même les adresses servies (la reprise s'en sert) et
+ * la marque envoyée quand tout est parti. Ici on ne fait qu'avancer le
+ * curseur et compter.
+ */
+async function tournerCommercialisation(l: SalveLigne, o: {
+  poser: (p: Record<string, unknown>) => Promise<void>;
+  journal: string[];
+  tempsRestant: () => number;
+  encoreEnCours: () => Promise<boolean>;
+}) {
+  const ch = l.charge as ChargeCommercialisation;
+  const adresses = ch.destinataires ?? [];
+  const { envoyerMailsCommercialisation } = await import("./actions");
+  let curseur = l.curseur_mail;
+  let fait = l.fait_mail;
+  let echecs = l.echecs_mail;
+  /* Un paquet avec ses pièces jointes prend dix secondes : on ne l'entame que
+     s'il reste de quoi le finir. */
+  while (curseur < adresses.length && o.tempsRestant() > 14_000) {
+    if (!(await o.encoreEnCours())) break;
+    const lot = adresses.slice(curseur, curseur + LOT_RELAIS);
+    const r = await envoyerMailsCommercialisation({
+      immeubleId: ch.immeubleId, commId: ch.commId, objet: ch.objet, message: ch.message,
+      destinataires: lot, pieces: ch.pieces, quand: ch.quand, agentId: ch.agentId, total: ch.total,
+    });
+    if (!r.ok || !("envoyes" in r)) throw new Error(("message" in r && r.message) || "L'envoi s'est interrompu.");
+    curseur += lot.length;
+    fait += r.envoyes;
+    echecs += r.echecs.length;
+    o.journal.push(...r.echecs.map((e) => `E-mail ${e.email} : ${e.raison}`));
+    await o.poser({ curseur_mail: curseur, fait_mail: fait, echecs_mail: echecs });
+  }
+  if (curseur >= adresses.length && (await o.encoreEnCours())) {
+    await o.poser({ statut: "terminee", finie_at: new Date().toISOString(), verrou_jusqua: null });
+    const [fin] = await lire(`id=eq.${encodeURIComponent(l.id)}`);
+    if (fin) await recapituler(fin);
+  } else {
+    await o.poser({ verrou_jusqua: null });
+  }
+}
+
 /** Un tour sur la salve active la plus ancienne : ce que le cron appelle. */
 export async function tournerLaFile(budgetMs = BUDGET_MS): Promise<EtatSalve | null> {
   const [l] = await lire(`statut=eq.en_cours&order=created_at.asc&limit=1`);
@@ -297,10 +374,12 @@ async function recapituler(l: SalveLigne) {
     const r = await recapSalveRelances({
       titre: l.titre, agentId: l.agent_id ?? undefined, voie: l.voie, expediteur: l.expediteur ?? undefined,
       objet: l.objet ?? "", corps: l.corps ?? "",
-      mails: { fait: l.fait_mail, total: l.mails.length, echecs: l.echecs_mail },
+      mails: { fait: l.fait_mail, total: l.genre === "commercialisation" ? ((l.charge as ChargeCommercialisation).destinataires?.length ?? 0) : l.mails.length, echecs: l.echecs_mail },
       sms: { fait: l.fait_sms, total: l.sms.length, echecs: l.echecs_sms },
       journal: l.journal ?? [],
-      destinataires: [...l.mails.map((m) => m.email), ...l.sms.filter((s) => s.tel).map((s) => `${s.libelle} (SMS)`)],
+      destinataires: l.genre === "commercialisation"
+        ? ((l.charge as ChargeCommercialisation).destinataires ?? [])
+        : [...l.mails.map((m) => m.email), ...l.sms.filter((s) => s.tel).map((s) => `${s.libelle} (SMS)`)],
       arretee: l.statut !== "terminee", smsTexte: l.sms_texte ?? undefined,
     });
     recap = r.ok ? `Récapitulatif envoyé à ${r.adresse}.` : `Récapitulatif non envoyé : ${r.message ?? "?"}`;
