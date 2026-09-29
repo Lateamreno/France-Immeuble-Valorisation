@@ -373,6 +373,23 @@ export async function envoyerRelances(
   return { envoyes, echecs, journal, restants: Math.max(0, envois.length - lot.length) };
 }
 
+/**
+ * Ce que la boîte a envoyé dans l'heure : le nombre de propositions marquées
+ * relancées depuis soixante minutes, et la première d'entre elles — c'est elle
+ * qui dit quand la fenêtre se libère. La salve (components/salve-relances.tsx)
+ * s'en sert pour tenir le plafond horaire toute seule, y compris après une
+ * page fermée et rouverte.
+ */
+export async function relancesDerniereHeure(): Promise<{ n: number; premiere: string | null }> {
+  const depuis = new Date(Date.now() - 3_600_000).toISOString();
+  const rows = await pgBrut(
+    `bo_proposition?select=d:data->>date_last_relance&data->>date_last_relance=gte.${encodeURIComponent(depuis)}&order=data->>date_last_relance.asc`,
+    1000,
+  );
+  const dates = rows.map((r) => S(r.d) ?? "").filter(Boolean);
+  return { n: dates.length, premiere: dates[0] ?? null };
+}
+
 /** L'envoi est-il possible depuis la boîte de cet agent ? L'écran le demande
  *  avant de proposer un bouton qui enverrait dans le vide. */
 export async function relanceEnvoiPossible(agentId?: string) {

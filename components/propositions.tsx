@@ -448,7 +448,9 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
                 onFait(`${parts.join(" ")} Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`.trim());
               }
             })}>
-            <span className="ch">›</span> Envoyer {mail && sms ? "l'e-mail + le SMS" : sms ? "le SMS" : "l'e-mail"}
+            {pending
+              ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
+              : <><span className="ch">›</span> Envoyer {mail && sms ? "l'e-mail + le SMS" : sms ? "le SMS" : "l'e-mail"}</>}
           </button>
         </>
       }

@@ -2,6 +2,8 @@ import { getAgents } from "@/lib/bubble/server";
 import { EcranRelances } from "@/components/relances";
 
 export const dynamic = "force-dynamic";
+/* Un paquet de relances avec ses PDF joints doit avoir le temps de partir. */
+export const maxDuration = 60;
 
 /**
  * L'écran Relances.

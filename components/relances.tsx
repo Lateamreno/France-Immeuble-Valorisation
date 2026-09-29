@@ -29,7 +29,8 @@ import {
   PLAFOND_RELANCES, lienManquant, messageRelance, objetRelance,
   type BilanRelances, type ClientRelance,
 } from "@/lib/bo/relances";
-import { couperRelancesLot, envoyerRelances, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
+import { couperRelancesLot, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
+import { ProgresSalveRelances, useSalveRelances } from "@/components/salve-relances";
 import { Modale } from "@/components/modale";
 import { PuceImmeuble } from "@/components/puce-immeuble";
 import { LienDossier } from "@/components/lien-dossier";
@@ -53,7 +54,10 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
   const [retires, setRetires] = useState<Set<string>>(new Set());
   const [textes, setTextes] = useState<Record<string, string>>({});
   const [salve, setSalve] = useState(false);
-  const [rapport, setRapport] = useState<string | null>(null);
+  /* La salve se conduit toute seule — paquets, plafond horaire, progression —
+     et le dit à l'écran (MAV, 29/09). */
+  const { progres, lancer, arreter } = useSalveRelances(agent);
+  const envoiEnCours = !!progres?.enCours;
 
   const recharger = async (f = fenetre) => setCharge({ f, b: await relancesDues(7, f) });
 
@@ -136,20 +140,22 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
                 <b>{envois.length} personne{envois.length > 1 ? "s" : ""}</b> à relancer sur{" "}
                 <b>{total} dossier{total > 1 ? "s" : ""}</b>.
                 {envois.length > PLAFOND_RELANCES && (
-                  <> Envoi par paquets de {PLAFOND_RELANCES} — les messages partent de votre
-                  boîte, une rafale plus large la ferait brider pour la journée.</>
+                  <> Les messages partent de votre boîte : au-delà de {PLAFOND_RELANCES} dans l&apos;heure,
+                  l&apos;envoi fait une pause et repart tout seul, page ouverte.</>
                 )}
               </div>
               <span className="sp" style={{ flex: 1 }} />
-              <button className="kgo" type="button" disabled={pending || sansLien.length > 0}
+              <button className="kgo" type="button" disabled={pending || envoiEnCours || sansLien.length > 0}
                 title={sansLien.length ? "Des dossiers n'ont pas de lien transfer.it valable : posez-les d'abord" : undefined}
                 onClick={() => setSalve(true)}>
-                <span className="ch">›</span> Tout relancer ({Math.min(envois.length, PLAFOND_RELANCES)})
+                {envoiEnCours
+                  ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
+                  : <><span className="ch">›</span> Tout relancer ({envois.length})</>}
               </button>
             </div>
           )}
 
-          {rapport && <div className="rlz-rapport">{rapport}</div>}
+          {progres && <ProgresSalveRelances p={progres} onArreter={arreter} />}
 
           {/* L'arriéré. On le montre plutôt que de le taire : il vaut décision,
               pas découverte au détour d'un envoi. */}
@@ -210,21 +216,10 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
         <ModaleSalve
           envois={envois} agent={agent} pending={pending}
           onFermer={() => setSalve(false)}
-          onEnvoyer={() => start(async () => {
+          onEnvoyer={() => {
             setSalve(false);
-            setRapport(null);
-            try {
-              const r = await envoyerRelances(envois, agent?.id);
-              setRapport(
-                `${r.envoyes} relance${r.envoyes > 1 ? "s" : ""} envoyée${r.envoyes > 1 ? "s" : ""}`
-                + (r.echecs ? ` · ${r.echecs} échec${r.echecs > 1 ? "s" : ""} : ${r.journal.slice(0, 3).join(" · ")}` : "")
-                + (r.restants ? ` · ${r.restants} en attente du prochain paquet` : ""),
-              );
-            } catch (e) {
-              setRapport(e instanceof Error ? e.message : "L'envoi a échoué.");
-            }
-            await recharger();
-          })}
+            void lancer(envois, [], () => recharger());
+          }}
         />
       )}
     </div>
@@ -239,7 +234,7 @@ function ModaleSalve({ envois, agent, pending, onFermer, onEnvoyer }: {
   onFermer: () => void;
   onEnvoyer: () => void;
 }) {
-  const lot = envois.slice(0, PLAFOND_RELANCES);
+  const lot = envois;
   const dossiers = lot.reduce((s, e) => s + e.dossiers, 0);
   return (
     <Modale
@@ -261,8 +256,9 @@ function ModaleSalve({ envois, agent, pending, onFermer, onEnvoyer }: {
         <b>{dossiers} dossier{dossiers > 1 ? "s" : ""}</b>. Ils partent de la boîte
         de {agent?.nom ?? "l'agent"}, un à un, et chaque proposition n&apos;est marquée
         relancée que si son message est bien parti.
-        {envois.length > lot.length && (
-          <> Les {envois.length - lot.length} restantes attendront un second clic.</>
+        {envois.length > PLAFOND_RELANCES && (
+          <> Au-delà de {PLAFOND_RELANCES} dans l&apos;heure, l&apos;envoi fait une pause et repart
+          tout seul : gardez la page ouverte, la progression s&apos;affiche.</>
         )}
       </div>
       <span className="mlab">Destinataires</span>
