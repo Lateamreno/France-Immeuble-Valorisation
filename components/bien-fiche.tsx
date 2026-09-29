@@ -56,7 +56,7 @@ import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actio
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import {
   couperRelances, departRechercheDeProposition, marquerRelances,
-  noterRetour, propositionsARelancer, relanceEnvoiPossible,
+  noterRetour, propositionsARelancer, relanceEnvoiPossible, voieRelancesGroupees,
 } from "@/lib/bo/relances-actions";
 import { apercuRelanceSms } from "@/lib/bo/propositions-actions";
 import { messageRelance, objetRelance, PLAFOND_RELANCES } from "@/lib/bo/relances";
@@ -2145,8 +2145,11 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const agent = { nom: b.agentNom, tel: b.agentTel };
   /* La salve se conduit toute seule — paquets, plafond horaire, progression —
      et le dit à l'écran (MAV, 29/09). */
-  const { progres, lancer, arreter } = useSalveRelances({ id: agentId, nom: b.agentNom });
-  const envoiEnCours = !!progres?.enCours;
+  const { salve, lancer, arreter } = useSalveRelances();
+  const envoiEnCours = !!salve?.enCours;
+  /* Cette fenêtre montre la salve qu'elle a lancée (ou celle qui tourne). */
+  const progres = salve;
+  const [voie, setVoie] = useState<{ voie: "masse" | "boite"; expediteur: string } | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -2197,6 +2200,9 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
     relanceEnvoiPossible(agentId)
       .then((p) => { if (vivant) setPossible(p); })
       .catch(() => { if (vivant) setPossible(false); });
+    voieRelancesGroupees(agentId)
+      .then((v) => { if (vivant) setVoie(v); })
+      .catch(() => undefined);
     apercuRelanceSms(immeubleId)
       .then((a) => { if (vivant) setApercuSms(a); })
       .catch(() => undefined);
@@ -2219,8 +2225,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
       titre="Relancer les propositions en attente" onFermer={onFermer} largeur={640}
       pied={
         <>
-          <button className="fadd" type="button" onClick={onFermer} disabled={envoiEnCours}
-            title={envoiEnCours ? "Un envoi est en cours : arrêtez-le d'abord, ou attendez la fin" : undefined}>Fermer</button>
+          <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
           <span className="sp" style={{ flex: 1 }} />
           {retenus.length > 0 && (
             <>
@@ -2234,18 +2239,21 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 {pending ? <><i className="asst-spin" aria-hidden /> Un instant…</> : "Marquer relancées"}
               </button>
               <button className="kgo" type="button"
-                disabled={pending || envoiEnCours || lienManque || rienAEnvoyer || (mail && possible === false) || (sms && apercuSms?.configure === false)}
-                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
+                disabled={pending || envoiEnCours || lienManque || rienAEnvoyer || (mail && voie?.voie !== "masse" && possible === false) || (sms && apercuSms?.configure === false)}
+                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : envoiEnCours ? "Une relance est déjà en cours" : undefined}
                 onClick={() => {
                   setRapport(null);
-                  void lancer(
-                    mail ? avecMail.map((p) => ({
+                  const ok = lancer({
+                    titre: `Relance ${b.ville || libelle}`,
+                    agent: { id: agentId, nom: b.agentNom }, immeubleId,
+                    mails: mail ? avecMail.map((p) => ({
                       contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
                       propositionIds: [p.id], immeubleIds: [immeubleId],
                     })) : [],
-                    sms ? avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })) : [],
-                    recharger,
-                  );
+                    sms: sms ? avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })) : [],
+                    apres: recharger,
+                  });
+                  if (!ok) setRapport("Une relance est déjà en cours : attendez sa fin, ou arrêtez-la depuis la pastille en bas de l'écran.");
                 }}>
                 {envoiEnCours
                   ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
@@ -2332,10 +2340,17 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
             objet={objet} onObjet={setObjetTexte}
             corps={corps} onCorps={setCorpsTexte}
             note={<>
-              Le même message part de la boîte de {b.agentNom ?? "l'agent"} à chaque destinataire,
-              avec le PDF du dernier dossier en pièce jointe. Au-delà de {PLAFOND_RELANCES}&nbsp;e-mails dans
-              l&apos;heure, l&apos;envoi fait une pause et repart tout seul : gardez la page ouverte.
-              {possible === false && " Aucune boîte d'envoi n'est branchée : les e-mails ne peuvent pas partir d'ici."}
+              {voie?.voie === "masse" ? (
+                <>Le même message part à chaque destinataire par le relais SendGrid, sous votre adresse
+                  agence{voie.expediteur ? <> (<b>{voie.expediteur}</b>)</> : null}, réponse vers vous, avec le PDF du
+                  dernier dossier en pièce jointe. Quelques minutes pour tout le monde ; vous pouvez fermer cette
+                  fenêtre pendant l&apos;envoi, la pastille en bas de l&apos;écran le suit.</>
+              ) : (
+                <>Le même message part de la boîte de {b.agentNom ?? "l'agent"} à chaque destinataire,
+                  avec le PDF du dernier dossier en pièce jointe. Au-delà de {PLAFOND_RELANCES}&nbsp;e-mails dans
+                  l&apos;heure, l&apos;envoi fait une pause et repart tout seul : gardez l&apos;application ouverte.
+                  {possible === false && " Aucune boîte d'envoi n'est branchée : les e-mails ne peuvent pas partir d'ici."}</>
+              )}
             </>}
             sms={sms} onSms={() => setSms((v) => !v)} smsDispo={avecTel.length > 0} smsConfigure={apercuSms?.configure}
             smsLibelle={avecTel.length ? ` à ${pluriel(avecTel.length, "personne")} avec un portable` : " — personne n'a de portable"}
