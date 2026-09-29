@@ -5,6 +5,7 @@
 // toggles) → résultats en vues matchées / ajoutées / retirées / ciblées →
 // « Commercialiser » qui enchaîne sur l'assistant d'envoi.
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import {
   carte, comptesParGrade, destinataires, FILTRES_MATCH_DEFAUT, matcher,
@@ -32,6 +33,7 @@ const parse = (s: string) => {
 
 type Source = "from_est" | "from_imm" | "from_doss";
 type Vue = "matchees" | "ajoutees" | "retirees" | "ciblees";
+const VUES_RESULTATS: readonly Vue[] = ["matchees", "ajoutees", "retirees", "ciblees"];
 type Tri = "oui" | "non" | "tous";
 
 type Resultat = {
@@ -614,7 +616,11 @@ function Resultats({
   onRelancer: () => void;
   onFermer: () => void;
 }) {
-  const [vue, setVue] = useState<Vue>("matchees");
+  /* L'onglet des résultats vit dans l'adresse : le retour arrière le
+     restitue (MAV, 29/09). */
+  const departVue = useDepartUrl<Vue>("resultats", "matchees", VUES_RESULTATS);
+  const [vue, setVue] = useState<Vue>(departVue);
+  useMemoireUrl("resultats", vue, "matchees", { empiler: true, valides: VUES_RESULTATS, sur: setVue });
   /* Ce que l'agent a décidé — retirer une recherche, en ajouter une, ouvrir
      l'assistant — survit à la navigation (#329). Les filtres d'affichage et la
      recherche plein texte, eux, se refont d'un clic : les mémoriser

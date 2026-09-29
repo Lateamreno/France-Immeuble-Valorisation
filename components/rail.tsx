@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV, NAV_DECOUPE } from "@/lib/nav";
 import { changerMode } from "@/lib/bo/mode";
-import { Precedent } from "@/components/precedent";
 import type { Mode } from "@/lib/decoupe";
 import { useTransition } from "react";
 
@@ -52,10 +51,9 @@ export function Rail({ mode = "bloc" }: { mode?: Mode }) {
 
   return (
     <aside className={`side${decoupe ? " mode-decoupe" : ""}`}>
-      {/* Retour #212 : revenir en arrière depuis n'importe où. En tête du
-          menu, au-dessus de la bascule de métier — c'est le premier geste
-          qu'on fait, il est là où l'œil arrive. */}
-      <Precedent />
+      {/* Le bouton « Précédent » (#212) a vécu ici jusqu'au 29/09 : chaque
+          page, menu et sous-menu ayant son adresse, le retour arrière du
+          navigateur suffit (MAV). */}
       {/* Changer de mode emmène au tableau de bord du mode choisi (retour
           #106). Le menu changeait sous les yeux de l'agent, mais la page
           restait celle de l'autre métier : on se retrouvait avec la sidebar

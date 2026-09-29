@@ -233,7 +233,9 @@ export function BienFiche({
   const defautSect: SectionKey = contenu || ouvrir ? "encours" : "suivi";
   const departSect = useDepartUrl<SectionKey>("ecran", defautSect, SECTIONS);
   const [sect, setSect] = useState<SectionKey>(departSect);
-  useMemoireUrl("ecran", sect, defautSect);
+  /* Chaque rubrique est une entrée d'historique : le retour arrière du
+     navigateur ramène à la rubrique d'avant (MAV, 29/09). */
+  useMemoireUrl("ecran", sect, defautSect, { empiler: true, valides: SECTIONS, sur: setSect });
 
   /* Nouvelle demande d'ouverture : on montre l'écran demandé. Ajuster l'état
      pendant le rendu est la façon prévue de réagir à un changement de props ;
@@ -353,7 +355,16 @@ export function BienFiche({
   const [sous, setSous] = useState<Partial<Record<SectionKey, string>>>(
     () => (departSous ? { [departSect]: departSous } : {}),
   );
-  useMemoireUrl("sous", sous[sect], SOUS_ONGLETS[sect]?.[0]?.key);
+  useMemoireUrl("sous", sous[sect], SOUS_ONGLETS[sect]?.[0]?.key, {
+    empiler: true, valides: SOUS_TOUS,
+    /* Au retour arrière, la rubrique restaurée se lit dans l'adresse, pas
+       dans `sect` : les deux clés reviennent dans le même geste, et `sect`
+       n'a pas encore bougé. */
+    sur: (v) => {
+      const s = (new URL(window.location.href).searchParams.get("ecran") ?? defautSect) as SectionKey;
+      setSous((p) => ({ ...p, [s]: v || undefined }));
+    },
+  });
   /** Sections dont les sous-menus sont repliés (retour #62 : recliquer plie). */
   const [plies, setPlies] = useState<Set<SectionKey>>(new Set());
   const basculer = (k: SectionKey) => {
