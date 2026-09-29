@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
+import { ProgresSalveRelances, useSalveRelances } from "@/components/salve-relances";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,10 +55,10 @@ import { ContactPicker } from "@/components/contact-picker";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import {
-  couperRelances, departRechercheDeProposition, envoyerRelances, marquerRelances,
+  couperRelances, departRechercheDeProposition, marquerRelances,
   noterRetour, propositionsARelancer, relanceEnvoiPossible,
 } from "@/lib/bo/relances-actions";
-import { apercuRelanceSms, relancerParSms } from "@/lib/bo/propositions-actions";
+import { apercuRelanceSms } from "@/lib/bo/propositions-actions";
 import { messageRelance, objetRelance, PLAFOND_RELANCES } from "@/lib/bo/relances";
 import { Copier, copierTexte } from "@/components/copier";
 import { EspaceVendeur, PrixEcran } from "@/components/prix";
@@ -2136,6 +2137,10 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const libelle = [b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble";
   const agentId = String(b.im.AGENT ?? "") || undefined;
   const agent = { nom: b.agentNom, tel: b.agentTel };
+  /* La salve se conduit toute seule — paquets, plafond horaire, progression —
+     et le dit à l'écran (MAV, 29/09). */
+  const { progres, lancer, arreter } = useSalveRelances({ id: agentId, nom: b.agentNom });
+  const envoiEnCours = !!progres?.enCours;
 
   useEffect(() => {
     let vivant = true;
@@ -2191,7 +2196,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
 
   const avecMail = retenus.filter((p) => p.email);
   const avecTel = retenus.filter((p) => p.tel);
-  const nbMails = mail ? Math.min(avecMail.length, PLAFOND_RELANCES) : 0;
+  const nbMails = mail ? avecMail.length : 0;
   const nbSms = sms ? avecTel.length : 0;
   const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
   const libelleEnvoi = [mail && nbMails ? pluriel(nbMails, "e-mail") : "", sms && nbSms ? pluriel(nbSms, "SMS").replace(/SMSs$/, "SMS") : ""].filter(Boolean).join(" + ");
@@ -2204,65 +2209,50 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
       titre="Relancer les propositions en attente" onFermer={onFermer} largeur={640}
       pied={
         <>
-          <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+          <button className="fadd" type="button" onClick={onFermer} disabled={envoiEnCours}
+            title={envoiEnCours ? "Un envoi est en cours : arrêtez-le d'abord, ou attendez la fin" : undefined}>Fermer</button>
           <span className="sp" style={{ flex: 1 }} />
           {retenus.length > 0 && (
             <>
-              <button className="fadd" type="button" disabled={pending}
+              <button className="fadd" type="button" disabled={pending || envoiEnCours}
                 title="Marquer relancées sans rien envoyer — quand l'envoi s'est fait ailleurs"
                 onClick={() => start(async () => {
                   await marquerRelances(retenus.map((p) => p.id));
                   setRapport(`${retenus.length} proposition${retenus.length > 1 ? "s" : ""} marquée${retenus.length > 1 ? "s" : ""} relancée${retenus.length > 1 ? "s" : ""}.`);
                   await recharger();
                 })}>
-                Marquer relancées
+                {pending ? <><i className="asst-spin" aria-hidden /> Un instant…</> : "Marquer relancées"}
               </button>
               <button className="kgo" type="button"
-                disabled={pending || lienManque || rienAEnvoyer || (mail && possible === false) || (sms && apercuSms?.configure === false)}
+                disabled={pending || envoiEnCours || lienManque || rienAEnvoyer || (mail && possible === false) || (sms && apercuSms?.configure === false)}
                 title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
-                onClick={() => start(async () => {
+                onClick={() => {
                   setRapport(null);
-                  const parts: string[] = [];
-                  try {
-                    if (mail && nbMails) {
-                      const r = await envoyerRelances(
-                        avecMail.map((p) => ({
-                          contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
-                          propositionIds: [p.id], immeubleIds: [immeubleId],
-                        })),
-                        agentId,
-                      );
-                      parts.push(
-                        `${pluriel(r.envoyes, "e-mail")} envoyé${r.envoyes > 1 ? "s" : ""}`
-                        + (r.echecs ? ` · ${pluriel(r.echecs, "échec")} : ${r.journal.slice(0, 2).join(" · ")}` : "")
-                        + (r.restants ? ` · ${r.restants} au-delà du plafond de ${PLAFOND_RELANCES}` : ""),
-                      );
-                    }
-                    if (sms && nbSms) {
-                      const s = await relancerParSms(
-                        avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })),
-                        b.agentNom,
-                      );
-                      parts.push(`${s.envoyes} SMS envoyé${s.envoyes > 1 ? "s" : ""}` + (s.echecs ? ` · ${pluriel(s.echecs, "échec")} : ${s.journal.slice(0, 2).join(" · ")}` : ""));
-                    }
-                    setRapport(parts.join(" — "));
-                  } catch (e) {
-                    setRapport(`${parts.join(" — ")} ${e instanceof Error ? e.message : "L'envoi a échoué."}`.trim());
-                  }
-                  await recharger();
-                })}>
-                <span className="ch">›</span> Envoyer {libelleEnvoi || "la relance"}
+                  void lancer(
+                    mail ? avecMail.map((p) => ({
+                      contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
+                      propositionIds: [p.id], immeubleIds: [immeubleId],
+                    })) : [],
+                    sms ? avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })) : [],
+                    recharger,
+                  );
+                }}>
+                {envoiEnCours
+                  ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
+                  : <><span className="ch">›</span> Envoyer {libelleEnvoi || "la relance"}</>}
               </button>
             </>
           )}
         </>
       }
     >
+      {progres && <ProgresSalveRelances p={progres} onArreter={arreter} />}
       {!liste && <div className="fempty">Lecture des propositions…</div>}
       {liste && liste.length === 0 && (
         <div className="fempty">
-          Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier
-          envoi date de moins de vingt-quatre heures.
+          {progres?.termine
+            ? "Tout le monde a été relancé : il n'y a plus personne en attente sur ce bien."
+            : "Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier envoi date de moins de vingt-quatre heures."}
         </div>
       )}
       {liste && liste.length > 0 && lienManque && (
@@ -2315,7 +2305,8 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
             corps={corps} onCorps={setCorpsTexte}
             note={<>
               Le même message part de la boîte de {b.agentNom ?? "l'agent"} à chaque destinataire,
-              avec le PDF du dernier dossier en pièce jointe. {PLAFOND_RELANCES} e-mails au plus par clic.
+              avec le PDF du dernier dossier en pièce jointe. Au-delà de {PLAFOND_RELANCES}&nbsp;e-mails dans
+              l&apos;heure, l&apos;envoi fait une pause et repart tout seul : gardez la page ouverte.
               {possible === false && " Aucune boîte d'envoi n'est branchée : les e-mails ne peuvent pas partir d'ici."}
             </>}
             sms={sms} onSms={() => setSms((v) => !v)} smsDispo={avecTel.length > 0} smsConfigure={apercuSms?.configure}

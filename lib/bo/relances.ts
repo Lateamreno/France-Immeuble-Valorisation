@@ -31,13 +31,14 @@ export const JOURS_RELANCE = 7;
 export const FENETRE_DEFAUT = 90;
 
 /**
- * Le nombre de relances qu'un seul clic peut expédier.
+ * Le nombre de relances que la boîte peut expédier dans UNE heure.
  *
- * Les messages partent de la boîte de l'agent, une par une. Quatre cents
- * messages en rafale depuis une boîte Gmail ordinaire, c'est la limite
- * quotidienne atteinte et la boîte bridée pour la journée — celle qui sert
- * aussi à répondre aux clients. On envoie donc par paquets, et l'écran dit
- * combien il reste.
+ * Les messages partent de la boîte de l'agent, une par une. Les boîtes du BO
+ * sont chez OVH, qui limite les envois à l'heure ; au-delà, la boîte est
+ * bridée — celle qui sert aussi à répondre aux clients. La salve
+ * (components/salve-relances.tsx) tient ce plafond toute seule : elle envoie
+ * jusqu'à cent cinquante, attend l'heure qui libère la fenêtre, et repart
+ * (MAV, 29/09 : « je ne veux pas avoir à la gérer moi-même »).
  */
 export const PLAFOND_RELANCES = 150;
 
