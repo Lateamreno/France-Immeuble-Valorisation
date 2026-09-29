@@ -5,7 +5,7 @@ import React from "react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
-import { EcranPropositionsBien, JOURS_ENTRE_RELANCES } from "@/components/propositions";
+import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,8 +55,9 @@ import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actio
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import {
   couperRelances, departRechercheDeProposition, envoyerRelances, marquerRelances,
-  noterRetour, propositionsARelancer,
+  noterRetour, propositionsARelancer, relanceEnvoiPossible,
 } from "@/lib/bo/relances-actions";
+import { apercuRelanceSms, relancerParSms } from "@/lib/bo/propositions-actions";
 import { messageRelance, objetRelance, PLAFOND_RELANCES } from "@/lib/bo/relances";
 import { Copier, copierTexte } from "@/components/copier";
 import { EspaceVendeur, PrixEcran } from "@/components/prix";
@@ -2133,6 +2134,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const [rapport, setRapport] = useState<string | null>(null);
   const immeubleId = String(b.im._id);
   const libelle = [b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble";
+  const agentId = String(b.im.AGENT ?? "") || undefined;
   const agent = { nom: b.agentNom, tel: b.agentTel };
 
   useEffect(() => {
@@ -2149,34 +2151,57 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const [lienLocal, setLienLocal] = useState<{ url: string; expireLe?: string } | null>(null);
   const etatLienDossier = lienLocal ? etatLien(lienLocal.url, lienLocal.expireLe) : lienDuDossier(b.dossiers[0]);
   const lienManque = !etatLienDossier || etatLienDossier.aRemplacer;
-  /* Chaque destinataire reçoit le message d'un seul dossier : c'est la relance
-     par immeuble. Le groupage par personne, lui, vit sur l'écran Relances. */
-  const envois = retenus.map((p) => {
-    const c = {
-      contactId: p.contactId ?? p.id, nom: p.nom, email: p.email ?? "",
-      joursMax: p.jours ?? 0,
-      immeubles: [(() => {
-        const l = etatLienDossier;
-        return {
-          propositionId: p.id, immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), jours: p.jours, autresIds: [],
-          lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe,
-          dossierId: b.dossiers[0] ? String(b.dossiers[0]._id) : undefined,
-          dossierVersion: Number(b.dossiers[0]?.version) || undefined,
-          pdf: urlPdfDossier(b.dossiers[0]),
-          pdfNom: b.dossiers[0] ? nomPdfDossier(String(b.im.adresse_ville ?? ""), b.dossiers[0].version) : undefined,
-        };
-      })()],
-    };
-    return {
-      contactId: c.contactId, email: c.email,
-      objet: objetRelance(c), corps: messageRelance(c, agent),
-      propositionIds: [p.id], immeubleIds: [immeubleId],
-    };
-  });
+
+  /* MAV, 29/09 : « lorsque je clique sur Relancer tous ceux en attente, que ça
+     me propose de modifier le texte des relances par e-mail et SMS, et même
+     l'objet, et d'exclure certaines personnes au besoin ». Le message est le
+     même pour tout le monde — un seul dossier, pas de prénom dans le modèle —
+     donc une seule rédaction, relue une fois, qui part à chacun. */
+  const dossier = b.dossiers[0];
+  const immeubleRelance = {
+    propositionId: "", immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), autresIds: [],
+    lien: etatLienDossier?.url, lienPerime: etatLienDossier?.aRemplacer, lienExpireLe: etatLienDossier?.expireLe,
+    dossierId: dossier ? String(dossier._id) : undefined,
+    dossierVersion: Number(dossier?.version) || undefined,
+    pdf: urlPdfDossier(dossier),
+    pdfNom: dossier ? nomPdfDossier(String(b.im.adresse_ville ?? ""), dossier.version) : undefined,
+  };
+  const modele = { contactId: "", nom: "", email: "", joursMax: 0, immeubles: [immeubleRelance] };
+  const [objetTexte, setObjetTexte] = useState<string | null>(null);
+  const [corpsTexte, setCorpsTexte] = useState<string | null>(null);
+  const [smsTexte, setSmsTexte] = useState<string | null>(null);
+  const objet = objetTexte ?? objetRelance(modele);
+  const corps = corpsTexte ?? messageRelance(modele, agent);
+  const [mail, setMail] = useState(true);
+  const [sms, setSms] = useState(false);
+  const [possible, setPossible] = useState<boolean | null>(null);
+  const [apercuSms, setApercuSms] = useState<{ texte: string; configure: boolean } | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    let vivant = true;
+    relanceEnvoiPossible(agentId)
+      .then((p) => { if (vivant) setPossible(p); })
+      .catch(() => { if (vivant) setPossible(false); });
+    apercuRelanceSms(immeubleId)
+      .then((a) => { if (vivant) setApercuSms(a); })
+      .catch(() => undefined);
+    return () => { vivant = false; };
+  }, [agentId, immeubleId, refresh]);
+  const smsCorps = smsTexte ?? apercuSms?.texte ?? "";
+
+  const avecMail = retenus.filter((p) => p.email);
+  const avecTel = retenus.filter((p) => p.tel);
+  const nbMails = mail ? Math.min(avecMail.length, PLAFOND_RELANCES) : 0;
+  const nbSms = sms ? avecTel.length : 0;
+  const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const libelleEnvoi = [mail && nbMails ? pluriel(nbMails, "e-mail") : "", sms && nbSms ? pluriel(nbSms, "SMS").replace(/SMSs$/, "SMS") : ""].filter(Boolean).join(" + ");
+  const rienAEnvoyer = (!mail && !sms) || (mail && !sms && nbMails === 0) || (sms && !mail && nbSms === 0) || (mail && sms && nbMails === 0 && nbSms === 0);
+
+  const recharger = async () => setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
 
   return (
     <Modale
-      titre="Relancer les propositions en attente" onFermer={onFermer} largeur={620}
+      titre="Relancer les propositions en attente" onFermer={onFermer} largeur={640}
       pied={
         <>
           <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
@@ -2188,27 +2213,45 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 onClick={() => start(async () => {
                   await marquerRelances(retenus.map((p) => p.id));
                   setRapport(`${retenus.length} proposition${retenus.length > 1 ? "s" : ""} marquée${retenus.length > 1 ? "s" : ""} relancée${retenus.length > 1 ? "s" : ""}.`);
-                  setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
+                  await recharger();
                 })}>
                 Marquer relancées
               </button>
-              <button className="kgo" type="button" disabled={pending || lienManque}
+              <button className="kgo" type="button"
+                disabled={pending || lienManque || rienAEnvoyer || (mail && possible === false) || (sms && apercuSms?.configure === false)}
                 title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
                 onClick={() => start(async () => {
                   setRapport(null);
+                  const parts: string[] = [];
                   try {
-                    const r = await envoyerRelances(envois, String(b.im.AGENT ?? "") || undefined);
-                    setRapport(
-                      `${r.envoyes} relance${r.envoyes > 1 ? "s" : ""} envoyée${r.envoyes > 1 ? "s" : ""}`
-                      + (r.echecs ? ` · ${r.echecs} échec${r.echecs > 1 ? "s" : ""} : ${r.journal.slice(0, 2).join(" · ")}` : "")
-                      + (r.restants ? ` · ${r.restants} au-delà du plafond de ${PLAFOND_RELANCES}` : ""),
-                    );
+                    if (mail && nbMails) {
+                      const r = await envoyerRelances(
+                        avecMail.map((p) => ({
+                          contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
+                          propositionIds: [p.id], immeubleIds: [immeubleId],
+                        })),
+                        agentId,
+                      );
+                      parts.push(
+                        `${pluriel(r.envoyes, "e-mail")} envoyé${r.envoyes > 1 ? "s" : ""}`
+                        + (r.echecs ? ` · ${pluriel(r.echecs, "échec")} : ${r.journal.slice(0, 2).join(" · ")}` : "")
+                        + (r.restants ? ` · ${r.restants} au-delà du plafond de ${PLAFOND_RELANCES}` : ""),
+                      );
+                    }
+                    if (sms && nbSms) {
+                      const s = await relancerParSms(
+                        avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })),
+                        b.agentNom,
+                      );
+                      parts.push(`${s.envoyes} SMS envoyé${s.envoyes > 1 ? "s" : ""}` + (s.echecs ? ` · ${pluriel(s.echecs, "échec")} : ${s.journal.slice(0, 2).join(" · ")}` : ""));
+                    }
+                    setRapport(parts.join(" — "));
                   } catch (e) {
-                    setRapport(e instanceof Error ? e.message : "L'envoi a échoué.");
+                    setRapport(`${parts.join(" — ")} ${e instanceof Error ? e.message : "L'envoi a échoué."}`.trim());
                   }
-                  setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
+                  await recharger();
                 })}>
-                <span className="ch">›</span> Envoyer {Math.min(retenus.length, PLAFOND_RELANCES)} relance{retenus.length > 1 ? "s" : ""}
+                <span className="ch">›</span> Envoyer {libelleEnvoi || "la relance"}
               </button>
             </>
           )}
@@ -2228,9 +2271,9 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
             ? `celui du dossier a expiré${etatLienDossier.expireLe ? ` le ${dateLien(etatLienDossier.expireLe)}` : ""}`
             : etatLienDossier ? "celui du dossier est sous la réserve de cinq jours" : "le dossier n'en a pas"}. Indiquez-le : il sera
           enregistré sur le dossier, et chaque relance le citera.
-          {b.dossiers[0] ? (
-            <LienDossier immeubleId={immeubleId} dossier={b.dossiers[0]} ouvert compact
-              onEnregistre={(l) => setLienLocal(l)} />
+          {dossier ? (
+            <LienDossier immeubleId={immeubleId} dossier={dossier} ouvert compact
+              onEnregistre={(l) => { setLienLocal(l); setCorpsTexte(null); setSmsTexte(null); setRefresh((n) => n + 1); }} />
           ) : (
             <div className="dif-simu">Aucun dossier sur ce bien : créez-le d&apos;abord (section Dossiers).</div>
           )}
@@ -2240,17 +2283,19 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
         <>
           <div className="asst-note">
             <b>{retenus.length}</b> personne{retenus.length > 1 ? "s" : ""} sans réponse
-            sur <b>{libelle}</b>. Les messages partent de la boîte de
-            {" "}{b.agentNom ?? "l'agent"}, un à un, et ne sont marqués relancés que
-            s&apos;ils partent vraiment.
+            sur <b>{libelle}</b>{avecTel.length ? <>, dont <b>{avecTel.length}</b> avec un portable</> : null}.
+            Retirez celles que vous ne voulez pas relancer ; les messages partent un à un et ne sont
+            marqués relancés que s&apos;ils partent vraiment.
           </div>
-          <div className="rlz-lignes" style={{ padding: 0, maxHeight: 300, overflowY: "auto" }}>
+          <span className="mlab">Destinataires</span>
+          <div className="rlz-lignes" style={{ padding: 0, maxHeight: 220, overflowY: "auto", marginBottom: 12 }}>
             {liste.map((p) => {
               const off = retires.has(p.id);
               return (
                 <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
                   <span>{p.nom}</span>
                   <span className="rlz-prix">{p.email}</span>
+                  <span className="rlz-j">{p.tel ? "e-mail + SMS" : "e-mail"}</span>
                   <span className="rlz-j">{p.jours === undefined ? "date inconnue" : `${p.jours} j`}</span>
                   <span className="sp" style={{ flex: 1 }} />
                   <button type="button" className="rlz-x" onClick={() => setRetires((s) => {
@@ -2262,6 +2307,21 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
               );
             })}
           </div>
+          <RedactionRelance
+            pieces={[immeubleRelance]}
+            mail={mail} onMail={() => setMail((v) => !v)} mailDispo={avecMail.length > 0}
+            mailLibelle={avecMail.length ? ` à ${pluriel(avecMail.length, "personne")}` : " — personne n'a d'adresse"}
+            objet={objet} onObjet={setObjetTexte}
+            corps={corps} onCorps={setCorpsTexte}
+            note={<>
+              Le même message part de la boîte de {b.agentNom ?? "l'agent"} à chaque destinataire,
+              avec le PDF du dernier dossier en pièce jointe. {PLAFOND_RELANCES} e-mails au plus par clic.
+              {possible === false && " Aucune boîte d'envoi n'est branchée : les e-mails ne peuvent pas partir d'ici."}
+            </>}
+            sms={sms} onSms={() => setSms((v) => !v)} smsDispo={avecTel.length > 0} smsConfigure={apercuSms?.configure}
+            smsLibelle={avecTel.length ? ` à ${pluriel(avecTel.length, "personne")} avec un portable` : " — personne n'a de portable"}
+            smsCorps={apercuSms ? smsCorps : null} onSmsCorps={setSmsTexte}
+          />
         </>
       )}
       {rapport && <div className="rlz-rapport" style={{ marginTop: 12 }}>{rapport}</div>}

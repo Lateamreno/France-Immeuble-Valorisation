@@ -390,7 +390,10 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
   const manquants = c.immeubles.filter(lienManquant);
   const lienOk = manquants.length === 0;
   const corps = texte ?? messageRelance(c, agent);
-  const objet = objetRelance(c);
+  /* L'objet aussi se retouche (MAV, 29/09 : « modifier le texte des relances
+     par e-mail et SMS, et même l'objet »). */
+  const [objetTexte, setObjetTexte] = useState<string | null>(null);
+  const objet = objetTexte ?? objetRelance(c);
   const agentId = agent?.id;
   const agentNom = agent?.nom;
   const premierLibelle = c.immeubles[0]?.libelle ?? "";
@@ -485,11 +488,55 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
           ))}
         </div>
       )}
+      <RedactionRelance
+        pieces={c.immeubles}
+        mail={mail} onMail={() => setMail((v) => !v)} mailDispo={!!email}
+        mailLibelle={email ? ` à ${email}` : " — pas d'adresse sur la fiche"}
+        objet={objet} onObjet={setObjetTexte}
+        corps={corps} onCorps={setTexte}
+        note={<>
+          Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
+          Le PDF du dernier dossier est joint ; son lien transfer.it est cité s&apos;il est encore valable.
+          {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
+        </>}
+        sms={sms} onSms={() => setSms((v) => !v)} smsDispo={!!tel} smsConfigure={apercuSms?.configure}
+        smsLibelle={tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
+        smsCorps={apercuSms ? smsCorps : null} onSmsCorps={setSmsTexte}
+      />
+    </Modale>
+  );
+}
+
+/**
+ * La rédaction d'une relance — le même bloc pour la relance d'une personne
+ * (fiche contact, carte) et pour la relance groupée d'un immeuble (MAV,
+ * 29/09 : « qu'on me propose de modifier le texte des relances par e-mail et
+ * SMS, et même l'objet »). Les pièces jointes à ouvrir avant l'envoi
+ * (#439), l'e-mail et son objet, le SMS et son compteur (#440).
+ */
+export function RedactionRelance({
+  pieces, mail, onMail, mailDispo, mailLibelle, objet, onObjet, corps, onCorps, note,
+  sms, onSms, smsDispo, smsConfigure, smsLibelle, smsCorps, onSmsCorps,
+}: {
+  pieces: { immeubleId: string; libelle: string; pdf?: string; pdfNom?: string }[];
+  mail: boolean; onMail: () => void; mailDispo: boolean; mailLibelle: string;
+  objet: string; onObjet: (v: string) => void;
+  corps: string; onCorps: (v: string) => void;
+  note: React.ReactNode;
+  sms: boolean; onSms: () => void; smsDispo: boolean; smsConfigure?: boolean; smsLibelle: string;
+  /** Null tant que le modèle n'est pas arrivé. */
+  smsCorps: string | null; onSmsCorps: (v: string) => void;
+}) {
+  const avecPdf = pieces.filter((i) => i.pdf);
+  const sansPdf = pieces.filter((i) => !i.pdf);
+  const s = smsCorps ?? "";
+  return (
+    <>
       {/* Retour #439 — « une vraie PJ, et que je puisse l'ouvrir avant envoi ». */}
-      {c.immeubles.some((i) => i.pdf) && (
+      {avecPdf.length > 0 && (
         <div className="rlz-pj">
-          <span className="mlab">Pièce{c.immeubles.filter((i) => i.pdf).length > 1 ? "s" : ""} jointe{c.immeubles.filter((i) => i.pdf).length > 1 ? "s" : ""} à l&apos;e-mail</span>
-          {c.immeubles.filter((i) => i.pdf).map((i) => (
+          <span className="mlab">Pièce{avecPdf.length > 1 ? "s" : ""} jointe{avecPdf.length > 1 ? "s" : ""} à l&apos;e-mail</span>
+          {avecPdf.map((i) => (
             <a key={i.immeubleId} className="rlz-pj-a" href={i.pdf} target="_blank" rel="noreferrer" title="Ouvrir le PDF tel qu'il partira">
               <svg viewBox="0 0 24 24"><path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.2 3.2 0 0 1 4.5 4.5L10 18.5a1.4 1.4 0 0 1-2-2L16 8.5" /></svg>
               {i.pdfNom ?? "Dossier.pdf"} <span>ouvrir ↗</span>
@@ -497,46 +544,41 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
           ))}
         </div>
       )}
-      {c.immeubles.some((i) => !i.pdf) && (
-        <div className="dif-simu">Aucun PDF sur {c.immeubles.filter((i) => !i.pdf).map((i) => i.libelle).join(", ")} : la relance partirait sans pièce jointe.</div>
+      {sansPdf.length > 0 && (
+        <div className="dif-simu">Aucun PDF sur {sansPdf.map((i) => i.libelle).join(", ")} : la relance partirait sans pièce jointe.</div>
       )}
-      <label className={`prop-sms${!email ? " off" : ""}`}>
-        <input type="checkbox" checked={mail} disabled={!email} onChange={() => setMail((v) => !v)} />
-        <span><b>Envoyer l&apos;e-mail</b>{email ? ` à ${email}` : " — pas d'adresse sur la fiche"}</span>
+      <label className={`prop-sms${!mailDispo ? " off" : ""}`}>
+        <input type="checkbox" checked={mail} disabled={!mailDispo} onChange={onMail} />
+        <span><b>Envoyer l&apos;e-mail</b>{mailLibelle}</span>
       </label>
-      <span className="mlab">Objet</span>
-      <input className="min" value={objet} readOnly />
+      <span className="mlab">Objet — modifiable avant l&apos;envoi</span>
+      <input className="min" value={objet} onChange={(e) => onObjet(e.target.value)} />
       <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
-      <textarea className="min" rows={11} value={corps} onChange={(e) => setTexte(e.target.value)} />
-      <div className="asst-note">
-        Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
-        Le PDF du dernier dossier est joint ; son lien transfer.it est cité s&apos;il est encore valable.
-        {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
-      </div>
+      <textarea className="min" rows={11} value={corps} onChange={(e) => onCorps(e.target.value)} />
+      <div className="asst-note">{note}</div>
       {/* #373 — le SMS en plus, avec son texte tel qu'il partira. */}
-      <label className={`prop-sms${!tel || apercuSms?.configure === false ? " off" : ""}`}>
-        <input type="checkbox" checked={sms} disabled={!tel || apercuSms?.configure === false}
-          onChange={() => setSms((v) => !v)} />
+      <label className={`prop-sms${!smsDispo || smsConfigure === false ? " off" : ""}`}>
+        <input type="checkbox" checked={sms} disabled={!smsDispo || smsConfigure === false} onChange={onSms} />
         <span>
-          <b>Envoyer le SMS</b>{tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
-          {apercuSms?.configure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
+          <b>Envoyer le SMS</b>{smsLibelle}
+          {smsConfigure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
         </span>
       </label>
-      {sms && apercuSms && (
+      {sms && smsCorps !== null && (
         <>
           <span className="mlab" style={{ marginTop: 8 }}>SMS — modifiable avant l&apos;envoi</span>
-          <textarea className="min" rows={4} value={smsCorps} onChange={(e) => setSmsTexte(e.target.value)} />
-          <div className={`asst-note${segments(smsCorps) > 2 ? " rouge" : ""}`}>
+          <textarea className="min" rows={4} value={s} onChange={(e) => onSmsCorps(e.target.value)} />
+          <div className={`asst-note${segments(s) > 2 ? " rouge" : ""}`}>
             {/* Retour #440 : « afficher le nombre de caractères et prévenir quand
                 on dépasse ». Vos modèles font deux segments : c'est la norme ;
                 au-delà, on le dit en rouge. */}
-            {smsCorps.length}&nbsp;caractères · {segments(smsCorps)}&nbsp;segment{segments(smsCorps) > 1 ? "s" : ""} facturé{segments(smsCorps) > 1 ? "s" : ""}
-            {segments(smsCorps) > 2 && <b> — plus de deux segments : raccourcissez.</b>}
-            {!/\bstop\b/i.test(smsCorps) && <b> La mention « STOP » est obligatoire : sans elle, MailingVox refuse.</b>}
+            {s.length}&nbsp;caractères · {segments(s)}&nbsp;segment{segments(s) > 1 ? "s" : ""} facturé{segments(s) > 1 ? "s" : ""}
+            {segments(s) > 2 && <b> — plus de deux segments : raccourcissez.</b>}
+            {!/\bstop\b/i.test(s) && <b> La mention « STOP » est obligatoire : sans elle, MailingVox refuse.</b>}
           </div>
         </>
       )}
-    </Modale>
+    </>
   );
 }
 
