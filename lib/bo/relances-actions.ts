@@ -553,9 +553,12 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
     if (!c) return "Acquéreur";
     return `${S(c["prénom"]) ?? ""} ${S(c.nom) ?? ""}`.trim() || S(c.email) || "Acquéreur";
   };
+  /* Le portable, pour que la relance groupée puisse aussi partir en SMS
+     (MAV, 29/09 : « modifier le texte des relances par e-mail et SMS »). */
+  const telDe = (id: string) => S(contacts.get(id)?.portable);
   return rows
     .map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente))
     .filter((p) => aRelancer(p, maintenant, jours))
-    .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant) }))
+    .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant), tel: telDe(p.contactId ?? "") }))
     .sort((a, b) => (b.jours ?? 999) - (a.jours ?? 999));
 }
