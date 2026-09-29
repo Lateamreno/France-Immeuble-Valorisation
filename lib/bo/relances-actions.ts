@@ -287,13 +287,41 @@ export async function envoyerRelances(
   repondreA?: string,
   /** Pages à rafraîchir en plus (la fiche contact d'où part la relance). */
   chemins: string[] = [],
+  /**
+   * La relance GROUPÉE part par le relais SendGrid (MAV, 29/09 : « option
+   * SendGrid ») : sous l'adresse agence de l'agent, réponse vers lui, sans
+   * toucher à la boîte OVH ni à son plafond. `salveId` est la ligne
+   * `fi_salve` ouverte pour cette salve : elle porte le compte, et c'est par
+   * elle que le plafond du jour la voit. La relance d'UNE personne reste sur
+   * la boîte de l'agent : c'est une conversation.
+   */
+  options: { voie?: "boite" | "masse"; salveId?: string; avant?: { envoyes: number; echecs: number } } = {},
 ) {
-  const { envoiPossible, envoyerPourAgent } = await import("@/lib/bo/mail");
-  if (!(await envoiPossible(agentId))) {
+  const mail = await import("@/lib/bo/mail");
+  const { envoyerPourAgent } = mail;
+  const parRelais = options.voie === "masse";
+  if (parRelais && !mail.masseConfiguree()) {
+    throw new Error("Route d'envoi en masse (SendGrid) non configurée : la relance groupée ne peut pas partir.");
+  }
+  if (!parRelais && !(await mail.envoiPossible(agentId))) {
     throw new Error(
       "Aucune boîte d'envoi n'est branchée : les messages ne peuvent pas partir. "
       + "Utilisez « Ouvrir dans le client mail » en attendant.",
     );
+  }
+  /* Par le relais : l'expéditeur est l'agent, sous son adresse agence, et le
+     plafond du jour (tous envois de masse confondus) se vérifie AVANT le lot. */
+  let agentMasse: { nom?: string; email?: string } = {};
+  if (parRelais) {
+    agentMasse = await agentExpediteur(agentId);
+    const { quotaDuJour } = await import("./mails-actions");
+    const q = await quotaDuJour();
+    if (q.envoyes + envois.length > q.plafond) {
+      throw new Error(
+        `Plafond du jour : ${q.envoyes} message${q.envoyes > 1 ? "s" : ""} déjà parti${q.envoyes > 1 ? "s" : ""} sur ${q.plafond}, `
+        + `il en reste ${q.reste}. Reprenez demain.`,
+      );
+    }
   }
   const lot = envois.slice(0, PLAFOND_RELANCES);
   const now = new Date().toISOString();
@@ -348,10 +376,18 @@ export async function envoyerRelances(
         .map((id) => pieces.get(id))
         .filter((p): p is { nom: string; contenu: Buffer; type: string } => !!p)
         .map((p) => ({ filename: p.nom, content: p.contenu, contentType: p.type }));
-      await envoyerPourAgent(agentId, {
-        to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
-        attachments: attachments.length ? attachments : undefined,
-      });
+      if (parRelais) {
+        await mail.envoyerEnMasse({
+          to: e.email, subject: e.objet, text: e.corps,
+          replyTo: repondreA ?? agentMasse.email, agent: agentMasse,
+          pieces: attachments.length ? attachments.map((a) => ({ nom: a.filename, contenu: a.content, type: a.contentType })) : undefined,
+        });
+      } else {
+        await envoyerPourAgent(agentId, {
+          to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
+          attachments: attachments.length ? attachments : undefined,
+        });
+      }
       envoyes++;
       for (const id of e.propositionIds) {
         await rpc("bo_patch_doc", {
@@ -364,13 +400,91 @@ export async function envoyerRelances(
       echecs++;
       journal.push(`E-mail ${e.email} : ${err instanceof Error ? err.message : "échec d'envoi"}`);
     }
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, parRelais ? 150 : 400));
+  }
+
+  /* Le compte de la salve, sur sa ligne : c'est elle que lit le journal des
+     salves (Mails › Salves) et le plafond du jour. */
+  if (options.salveId) {
+    const avant = options.avant ?? { envoyes: 0, echecs: 0 };
+    await ecrireFi("fi_salve", "PATCH", {
+      envoyes: avant.envoyes + envoyes, echecs: avant.echecs + echecs,
+      journal: journal.slice(0, 50), envoye_at: new Date().toISOString(),
+    }, `id=eq.${encodeURIComponent(options.salveId)}`).catch(() => undefined);
   }
 
   revalidatePath("/relances");
   revalidatePath("/propositions");
   for (const c of chemins) revalidatePath(c);
   return { envoyes, echecs, journal, restants: Math.max(0, envois.length - lot.length) };
+}
+
+/** L'agent tel qu'il signe une salve : nom affiché et adresse (le Reply-To). */
+async function agentExpediteur(agentId?: string): Promise<{ nom?: string; email?: string }> {
+  if (!agentId) return {};
+  const { getAgentFiche } = await import("@/lib/bubble/server");
+  const a = await getAgentFiche(agentId).catch(() => null);
+  if (!a) return {};
+  return {
+    nom: [a["prénom"], a.nom].filter(Boolean).join(" ").trim() || undefined,
+    email: typeof a.email === "string" && a.email.includes("@") ? a.email : undefined,
+  };
+}
+
+/** Écrit dans nos tables `fi_*` (jamais dans le miroir `bo_*`). */
+async function ecrireFi(table: string, methode: "POST" | "PATCH", corps: Record<string, unknown>, filtre = "") {
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : écriture impossible");
+  const res = await fetch(`${SB_URL}/rest/v1/${table}${filtre ? `?${filtre}` : ""}`, {
+    method: methode,
+    headers: {
+      apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json", Prefer: "return=representation",
+    },
+    body: JSON.stringify(corps),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Écriture ${table} ${res.status} : ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()) as Record<string, unknown>[];
+}
+
+/**
+ * Par où part une relance groupée, et sous quelle adresse : ce que la fenêtre
+ * annonce avant le clic. Le relais SendGrid s'il est configuré, la boîte de
+ * l'agent sinon (avec son plafond horaire).
+ */
+export async function voieRelancesGroupees(agentId?: string): Promise<{
+  voie: "masse" | "boite"; expediteur: string; repondreA?: string;
+}> {
+  const { masseConfiguree, expediteurDe } = await import("@/lib/bo/mail");
+  if (!masseConfiguree()) return { voie: "boite", expediteur: "" };
+  const a = await agentExpediteur(agentId);
+  return { voie: "masse", expediteur: expediteurDe(a), repondreA: a.email };
+}
+
+/**
+ * Ouvre la ligne de salve d'une relance groupée par le relais : le journal
+ * des salves la montre en direct, et le plafond du jour la compte.
+ */
+export async function ouvrirSalveRelances(s: {
+  titre: string; total: number; objet: string; corps: string; agentId?: string; immeubleId?: string;
+}): Promise<string> {
+  try {
+    const [cree] = await ecrireFi("fi_salve", "POST", {
+      agent_id: s.agentId ?? null,
+      libelle: s.titre,
+      cible: "relances",
+      filtres: { relance: true, immeubleId: s.immeubleId ?? null, total: s.total },
+      objet: s.objet, corps: s.corps,
+      destinataires: [],
+      statut: "envoyee", envoyes: 0, echecs: 0,
+      envoye_at: new Date().toISOString(),
+    });
+    return String(cree?.id ?? "");
+  } catch {
+    /* Sans ligne, la salve part quand même : le journal la manquera, pas les
+       destinataires. */
+    return "";
+  }
 }
 
 /**

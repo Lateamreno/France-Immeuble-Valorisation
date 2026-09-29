@@ -26,7 +26,7 @@ import { dateLien } from "@/lib/bo/lien-dossier";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  PLAFOND_RELANCES, lienManquant, messageRelance, objetRelance,
+  lienManquant, messageRelance, objetRelance,
   type BilanRelances, type ClientRelance,
 } from "@/lib/bo/relances";
 import { couperRelancesLot, marquerRelances, relancesDues } from "@/lib/bo/relances-actions";
@@ -56,7 +56,7 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
   const [salve, setSalve] = useState(false);
   /* La salve se conduit toute seule — paquets, plafond horaire, progression —
      et le dit à l'écran (MAV, 29/09). */
-  const { progres, lancer, arreter } = useSalveRelances(agent);
+  const { salve: progres, lancer, arreter } = useSalveRelances();
   const envoiEnCours = !!progres?.enCours;
 
   const recharger = async (f = fenetre) => setCharge({ f, b: await relancesDues(7, f) });
@@ -139,10 +139,8 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
               <div>
                 <b>{envois.length} personne{envois.length > 1 ? "s" : ""}</b> à relancer sur{" "}
                 <b>{total} dossier{total > 1 ? "s" : ""}</b>.
-                {envois.length > PLAFOND_RELANCES && (
-                  <> Les messages partent de votre boîte : au-delà de {PLAFOND_RELANCES} dans l&apos;heure,
-                  l&apos;envoi fait une pause et repart tout seul, page ouverte.</>
-                )}
+                {" "}Par le relais SendGrid sous votre adresse agence, réponse vers vous ; la pastille en bas
+                de l&apos;écran suit l&apos;envoi si vous changez de page.
               </div>
               <span className="sp" style={{ flex: 1 }} />
               <button className="kgo" type="button" disabled={pending || envoiEnCours || sansLien.length > 0}
@@ -218,7 +216,8 @@ export function EcranRelances({ agent }: { agent?: { id?: string; nom?: string; 
           onFermer={() => setSalve(false)}
           onEnvoyer={() => {
             setSalve(false);
-            void lancer(envois, [], () => recharger());
+            const ok = lancer({ titre: "Relances hebdomadaires", mails: envois, sms: [], agent, apres: () => recharger() });
+            if (!ok) setErreur("Une relance est déjà en cours : attendez sa fin, ou arrêtez-la depuis la pastille en bas de l'écran.");
           }}
         />
       )}
@@ -256,10 +255,8 @@ function ModaleSalve({ envois, agent, pending, onFermer, onEnvoyer }: {
         <b>{dossiers} dossier{dossiers > 1 ? "s" : ""}</b>. Ils partent de la boîte
         de {agent?.nom ?? "l'agent"}, un à un, et chaque proposition n&apos;est marquée
         relancée que si son message est bien parti.
-        {envois.length > PLAFOND_RELANCES && (
-          <> Au-delà de {PLAFOND_RELANCES} dans l&apos;heure, l&apos;envoi fait une pause et repart
-          tout seul : gardez la page ouverte, la progression s&apos;affiche.</>
-        )}
+        {" "}Par le relais SendGrid, sous votre adresse agence ; la progression s&apos;affiche, et la
+        pastille en bas de l&apos;écran la suit si vous changez de page.
       </div>
       <span className="mlab">Destinataires</span>
       <div className="rlz-dest">

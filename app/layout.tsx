@@ -8,6 +8,7 @@ import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
 import { listFeedbackOuverts } from "@/lib/bo/feedback";
 import { lireMode } from "@/lib/bo/mode";
+import { PastilleSalve, SalveRelancesProvider } from "@/components/salve-relances";
 
 /** Un déploiement de recette porte la marque en négatif et le dit dans le
  *  titre : avec le tableau de bord Vercel, la preview et la production
@@ -55,15 +56,20 @@ export default async function RootLayout({
   return (
     <html lang="fr">
       <body>
-        <div className="shell">
-          <Burger />
-          <Rail mode={await lireMode()} />
-          <div className="main">
-            {children}
-            <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
+        {/* La salve de relances vit ici, au-dessus des pages : on ferme la
+            fenêtre, on change de page, elle continue, et sa pastille la suit. */}
+        <SalveRelancesProvider>
+          <div className="shell">
+            <Burger />
+            <Rail mode={await lireMode()} />
+            <div className="main">
+              {children}
+              <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
+            </div>
+            <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
+            <PastilleSalve />
           </div>
-          <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
-        </div>
+        </SalveRelancesProvider>
       </body>
     </html>
   );

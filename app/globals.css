@@ -8209,3 +8209,29 @@ button { font-weight: 700; }
 .rlz-24h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; background: #f6f6f4; font-size: 12.5px; }
 .rlz-24h b { font-family: var(--font-title); }
 .rlz-recent { color: var(--gold-bo); font-weight: 600; }
+
+/* La barre de progression d'une salve, et sa pastille de suivi (toutes pages). */
+.salve-barre { flex-basis: 100%; height: 6px; border-radius: 3px; background: #e6e4dd; overflow: hidden; }
+.salve-barre i { display: block; height: 100%; background: var(--gold-bo); transition: width .3s ease; }
+.salve-barre.mini { flex-basis: auto; width: 90px; height: 5px; background: rgba(255, 255, 255, .25); }
+.salve-barre.mini i { background: #fff; }
+.salve-prog .salve-titre { flex-basis: 100%; font-size: 13px; }
+.salve-prog.compact { padding: 8px 12px; margin: 0; border: 0; }
+.salve-pastille {
+  position: fixed; right: 16px; bottom: calc(var(--bottbar-h) + 62px); z-index: 998;
+  display: inline-flex; align-items: center; gap: 9px; max-width: calc(100vw - 32px);
+  border: 0; border-radius: 20px; padding: 8px 14px; cursor: pointer;
+  background: var(--slate); color: #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, .22);
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 600;
+}
+.salve-pastille.encours { background: #4b5563; }
+.salve-pastille.rouge { background: var(--red); }
+.salve-pastille .asst-spin { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
+.salve-pastille-t { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.salve-panneau {
+  position: fixed; right: 16px; bottom: calc(var(--bottbar-h) + 104px); z-index: 998;
+  width: min(520px, calc(100vw - 32px)); background: #fff; border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22); padding: 12px 12px 8px;
+}
+.salve-panneau .salve-prog { margin: 0 0 8px; }
+.salve-panneau-pied { display: flex; gap: 8px; justify-content: flex-end; }
