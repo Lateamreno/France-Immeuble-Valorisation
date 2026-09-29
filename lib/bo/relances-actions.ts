@@ -393,7 +393,7 @@ export async function envoyerRelances(
         await rpc("bo_patch_doc", {
           p_table: "bo_proposition",
           p_id: id,
-          p_patch: { date_last_relance: now, date_modif: now, "Modified Date": now },
+          p_patch: { date_last_relance: now, mail_relance_le: now, date_modif: now, "Modified Date": now },
         }).catch(() => {});
       }
     } catch (err) {
@@ -752,8 +752,18 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
   /* Le portable, pour que la relance groupée puisse aussi partir en SMS
      (MAV, 29/09 : « modifier le texte des relances par e-mail et SMS »). */
   const telDe = (id: string) => S(contacts.get(id)?.portable);
+  /* Ce que chacun a déjà reçu, canal par canal (MAV, 29/09 : « comment je
+     fais pour les SMS ? » après une salve où l'e-mail est parti et pas le
+     SMS) : l'e-mail de relance date son canal depuis aujourd'hui ; avant, la
+     seule date était `date_last_relance`, qu'on lit comme un e-mail si aucun
+     SMS n'a été daté. */
+  const canaux = (p: Record<string, unknown>) => {
+    const smsLe = S(p.sms_relance_le);
+    const mailLe = S(p.mail_relance_le) ?? (smsLe ? undefined : S(p.date_last_relance));
+    return { mailLe, smsLe };
+  };
   return rows
-    .map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente))
+    .map((p) => ({ ...versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente), ...canaux(p) }))
     .filter((p) => aRelancer(p, maintenant, jours))
     .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant), tel: telDe(p.contactId ?? "") }))
     .sort((a, b) => (b.jours ?? 999) - (a.jours ?? 999));
