@@ -4017,26 +4017,6 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 /* ==================================================== Mode Découpe
    Le sélecteur change le menu et le tableau de bord — jamais la fiche
    immeuble, qui reste unique et partagée entre les deux métiers. */
-/* Retour #212 : revenir à la page d'avant, depuis n'importe où. En tête du
-   menu, discret — c'est un geste de navigation, pas une action de l'écran.
-   `flex: none` pour la même raison que `.modesw` ci-dessous : dans une colonne
-   flex, un enfant sans cette consigne se fait écraser. */
-.side .prec {
-  display: flex; align-items: center; gap: 9px;
-  margin: 10px 12px 4px; padding: 7px 10px;
-  border: 1px solid #4a4a52; border-radius: 5px; background: none;
-  color: #9d9da2; cursor: pointer; flex: none;
-  font-family: var(--font-title); font-size: 12px; font-weight: 600;
-}
-.side .prec svg {
-  width: 13px; height: 13px; flex: none;
-  fill: none; stroke: currentColor; stroke-width: 2.2;
-  stroke-linecap: round; stroke-linejoin: round;
-}
-.side .prec:hover { background: #393940; color: #fff; border-color: #6a6a73; }
-/* En fenêtre étroite, le doublon de la barre du haut : mêmes cotes que les
-   autres boutons de cette barre, on ne fait qu'y ranger la flèche. */
-.brg-g { display: inline-flex; align-items: center; gap: 8px; }
 
 .modesw {
   display: flex; margin: 10px 12px 5px; border-radius: 5px; overflow: hidden;

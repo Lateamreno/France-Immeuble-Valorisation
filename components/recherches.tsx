@@ -8,6 +8,7 @@
  * le seul en rouge : c'est le travail qui reste à faire. */
 
 import { useEffect, useMemo, useState } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import type { RechercheCard } from "@/lib/bubble/server";
 import { chargerToutesRecherches } from "@/lib/bo/recherches-actions";
 import { CarteRecherche, DESTINATIONS, ModaleRecherche } from "@/components/carte-recherche";
@@ -17,6 +18,7 @@ import { PanneauAProposer } from "@/components/a-proposer";
 const TAILLES = [10, 25, 50, 100];
 
 type Vue = "en_cours" | "en_attente" | "archivees";
+const VUES: readonly Vue[] = ["en_cours", "en_attente", "archivees"];
 
 export function EcranRecherches({
   premieres, total, agents,
@@ -40,7 +42,10 @@ export function EcranRecherches({
   }, [premieres]);
   const rows = tout ?? premieres;
   const complet = tout !== null || premieres.length >= total;
-  const [vue, setVue] = useState<Vue>("en_cours");
+  /* L'onglet vit dans l'adresse : le retour arrière le restitue (MAV, 29/09). */
+  const departVue = useDepartUrl<Vue>("vue", "en_cours", VUES);
+  const [vue, setVue] = useState<Vue>(departVue);
+  useMemoireUrl("vue", vue, "en_cours", { empiler: true, valides: VUES, sur: setVue });
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState("");
   const [cible, setCible] = useState("");

@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Brouillon, Dossier, MessageType, Salve } from "@/lib/mails/serveur";
@@ -40,6 +41,8 @@ const BOITES: { cle: Vue; label: string; d: React.ReactNode }[] = [
     d: <path d="M5 7h14M10 7V4.8h4V7M6.6 7l.8 12.2a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L17.4 7M10.4 10.6v6M13.6 10.6v6" /> },
 ];
 
+const VUES: readonly Vue[] = [...BOITES.map((b) => b.cle), "messages_types", "salves"];
+
 const jour = (d?: string) => {
   if (!d) return "";
   const x = new Date(d);
@@ -66,7 +69,11 @@ export function EcranMails({
   amorce?: { to: string; objet: string; corps: string };
 }) {
   const router = useRouter();
-  const [vue, setVue] = useState<Vue>("reception");
+  /* La boîte ouverte vit dans l'adresse : le retour arrière la restitue
+     (MAV, 29/09). */
+  const departVue = useDepartUrl<Vue>("boite", "reception", VUES);
+  const [vue, setVue] = useState<Vue>(departVue);
+  useMemoireUrl("boite", vue, "reception", { empiler: true, valides: VUES, sur: setVue });
   const [redaction, setRedaction] = useState<
     null | { brouillon?: Brouillon; modele?: MessageType; reponse?: Reponse; amorce?: typeof amorce }
   >(amorce ? { amorce } : null);

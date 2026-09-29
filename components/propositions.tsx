@@ -18,6 +18,7 @@
  */
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import type { PropositionLigne } from "@/lib/bubble/server";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
@@ -554,6 +555,7 @@ export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins,
    ------------------------------------------------------------------------ */
 
 export type VuePropositions = "toutes" | "en_cours" | "refusees" | "terminees" | "archivees";
+export const VUES_PROPOSITIONS: readonly VuePropositions[] = ["toutes", "en_cours", "refusees", "terminees", "archivees"];
 
 /** La catégorie d'une proposition, dans l'ordre de priorité : l'immeuble
  *  hors vente d'abord, puis le refus, puis les statuts clos. */
@@ -614,7 +616,11 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
 }) {
   const [lignes, setLignes] = useState<PropositionLigne[] | null>(null);
   const [version, setVersion] = useState(0);
-  const [vue, setVue] = useState<VuePropositions>("en_cours");
+  /* La vue est un onglet : elle vit dans l'adresse et le retour arrière la
+     restitue (MAV, 29/09). */
+  const departVue = useDepartUrl<VuePropositions>("props", "en_cours", VUES_PROPOSITIONS);
+  const [vue, setVue] = useState<VuePropositions>(departVue);
+  useMemoireUrl("props", vue, "en_cours", { empiler: true, valides: VUES_PROPOSITIONS, sur: setVue });
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<"date" | "classe">("date");
   const [page, setPage] = useState(1);

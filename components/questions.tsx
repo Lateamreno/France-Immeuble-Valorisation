@@ -7,6 +7,7 @@
  * gestes sont donc sur la carte, pas cachés derrière une fiche. */
 
 import { useMemo, useState, useTransition } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import Link from "next/link";
 import type { QuestionCard } from "@/lib/bubble/server";
 import { cloturerQuestion, creerContactDepuisQuestion, rouvrirQuestion } from "@/lib/bo/actions";
@@ -15,6 +16,8 @@ import { Avatar } from "@/components/avatar";
 import { PuceImmeuble } from "@/components/puce-immeuble";
 
 const TAILLES = [10, 25, 50, 100];
+type VueQuestions = "en_cours" | "cloturees";
+const VUES_QUESTIONS: readonly VueQuestions[] = ["en_cours", "cloturees"];
 
 export function EcranQuestions({
   rows, agentId,
@@ -22,7 +25,10 @@ export function EcranQuestions({
   rows: QuestionCard[];
   agentId: string;
 }) {
-  const [vue, setVue] = useState<"en_cours" | "cloturees">("en_cours");
+  /* L'onglet vit dans l'adresse : le retour arrière le restitue (MAV, 29/09). */
+  const departVue = useDepartUrl<VueQuestions>("vue", "en_cours", VUES_QUESTIONS);
+  const [vue, setVue] = useState<VueQuestions>(departVue);
+  useMemoireUrl("vue", vue, "en_cours", { empiler: true, valides: VUES_QUESTIONS, sur: setVue });
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [taille, setTaille] = useState(10);

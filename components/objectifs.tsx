@@ -5,6 +5,10 @@
 // Agents, et une carte par objectif dépliable sur Réussis / Manqués / Tous.
 import { useMemo, useState } from "react";
 import type { Objectif, ObjectifsData } from "@/lib/bubble/server";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
+
+type Onglet = "en_cours" | "historique";
+const ONGLETS: readonly Onglet[] = ["en_cours", "historique"];
 
 const moisFr = (p: string) => {
   const [a, m] = p.split("-").map(Number);
@@ -14,7 +18,10 @@ const moisFr = (p: string) => {
 export function Objectifs({ d, periode }: { d: ObjectifsData; periode: string }) {
   const [priorite, setPriorite] = useState<"tous" | "prioritaire" | "secondaire">("tous");
   const [portee, setPortee] = useState<"fi" | "agents" | "tous">("tous");
-  const [onglet, setOnglet] = useState<"en_cours" | "historique">("en_cours");
+  /* L'onglet vit dans l'adresse : le retour arrière le restitue (MAV, 29/09). */
+  const departOnglet = useDepartUrl<Onglet>("onglet", "en_cours", ONGLETS);
+  const [onglet, setOnglet] = useState<Onglet>(departOnglet);
+  useMemoireUrl("onglet", onglet, "en_cours", { empiler: true, valides: ONGLETS, sur: setOnglet });
 
   const finPeriode = (o: Objectif) => new Date(o.fin).getTime() < Date.now();
 

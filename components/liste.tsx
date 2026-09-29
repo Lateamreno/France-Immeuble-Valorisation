@@ -82,11 +82,14 @@ export function ListeShell({
   const [f, setF] = useState<Filtres>(() => lireFiltres(departF));
 
   const filtresEcrits = useMemo(() => ecrireFiltres(f), [f]);
-  useMemoireUrl("vue", tab, defTab);
-  useMemoireUrl("q", q, "");
-  useMemoireUrl("p", String(page), "1");
-  useMemoireUrl("par", String(taille), "10");
-  useMemoireUrl("f", filtresEcrits, "");
+  /* L'onglet s'empile dans l'historique — le retour arrière du navigateur y
+     ramène (MAV, 29/09) ; recherche, page, taille et filtres suivent l'adresse
+     restaurée sans faire d'entrée à eux. */
+  useMemoireUrl("vue", tab, defTab, { empiler: true, valides: tabs.map((t) => t.key), sur: setTab });
+  useMemoireUrl("q", q, "", { sur: setQ });
+  useMemoireUrl("p", String(page), "1", { sur: (v) => setPage(Number(v) || 1) });
+  useMemoireUrl("par", String(taille), "10", { sur: (v) => setTaille(Number(v) || 10) });
+  useMemoireUrl("f", filtresEcrits, "", { sur: (v) => setF(lireFiltres(v)) });
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();

@@ -25,8 +25,8 @@ import { ModaleRechercheEdition } from "@/components/recherche-modale";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import type { VignetteData } from "@/components/vignette-contact";
 import {
-  BoutonScinde, CarteProposition, ModaleRelance, STATUTS_CLOS_PROP, VuesPropositions, categorieProposition,
-  messageVidePropositions, type ModeRelance, type VuePropositions,
+  BoutonScinde, CarteProposition, ModaleRelance, STATUTS_CLOS_PROP, VUES_PROPOSITIONS, VuesPropositions,
+  categorieProposition, messageVidePropositions, type ModeRelance, type VuePropositions,
 } from "@/components/propositions";
 import { archiverContact, retirerPieceContact, updateContact } from "@/lib/bo/actions";
 import { envoyerRelances } from "@/lib/bo/relances-actions";
@@ -227,7 +227,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
      « Propositions » et pas sur « Informations » (voir lib/etat-url.ts). */
   const departTab = useDepartUrl("onglet", "infos", ONGLETS);
   const [tab, setTab] = useState(departTab);
-  useMemoireUrl("onglet", tab, "infos");
+  useMemoireUrl("onglet", tab, "infos", { empiler: true, valides: ONGLETS, sur: setTab });
   const [pending, start] = useTransition();
   const [detail, setDetail] = useState<RechercheCard | null>(null);
   /* Retour #336 : les mêmes modales que la barre d'actions rapides, ouvertes
@@ -991,7 +991,9 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
   const [maintenant] = useState(() => Date.now());
   const [relance, setRelance] = useState<{ ids: string[] } | null>(null);
   const [rapport, setRapport] = useState<string | null>(null);
-  const [vue, setVue] = useState<VuePropositions>("en_cours");
+  const departVue = useDepartUrl<VuePropositions>("props", "en_cours", VUES_PROPOSITIONS);
+  const [vue, setVue] = useState<VuePropositions>(departVue);
+  useMemoireUrl("props", vue, "en_cours", { empiler: true, valides: VUES_PROPOSITIONS, sur: setVue });
   const [pending, start] = useTransition();
   const agent = d.agent ? { id: d.agent.id, nom: d.agent.nom, tel: d.agent.tel } : undefined;
   const chemins = [`/contact/${contactId}`];
