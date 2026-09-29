@@ -233,20 +233,26 @@ export async function envoyerEnMasse(m: {
   if (m.differeA && m.differeA > Math.floor(Date.now() / 1000)) smtpapi.send_at = Math.floor(m.differeA);
   entetes["X-SMTPAPI"] = JSON.stringify(smtpapi);
 
-  const info = await t.sendMail({
-    from: expediteur,
-    to: vers || m.to,
-    replyTo: m.replyTo || undefined,
-    subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
-    text: vers ? `— Envoi de recette. Destinataire réel : ${m.to} —\n\n${m.text}` : m.text,
-    attachments: m.pieces?.map((p) => ({
-      filename: p.nom,
-      content: p.contenu,
-      contentType: p.type,
-    })),
-    headers: Object.keys(entetes).length ? entetes : undefined,
-  });
-  return String(info.messageId ?? "");
+  /* MAV (29/09) : « quand il y a des erreurs je veux savoir si c'est MailingVox
+     ou SendGrid ». Chaque erreur de cette route dit d'où elle vient. */
+  try {
+    const info = await t.sendMail({
+      from: expediteur,
+      to: vers || m.to,
+      replyTo: m.replyTo || undefined,
+      subject: vers ? `[ESSAI → ${m.to}] ${m.subject}` : m.subject,
+      text: vers ? `— Envoi de recette. Destinataire réel : ${m.to} —\n\n${m.text}` : m.text,
+      attachments: m.pieces?.map((p) => ({
+        filename: p.nom,
+        content: p.contenu,
+        contentType: p.type,
+      })),
+      headers: Object.keys(entetes).length ? entetes : undefined,
+    });
+    return String(info.messageId ?? "");
+  } catch (e) {
+    throw new Error(`SendGrid (${c.host ?? "relais de masse"}) : ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /** Domaine d'envoi, pour fabriquer les identifiants de message. */
@@ -389,15 +395,22 @@ export async function envoyerPourAgent(
   if (b) {
     const { envoyerDepuis } = await import("@/lib/mails/client");
     const domaine = b.adresse.split("@")[1] ?? domaineEnvoi();
-    const r = await envoyerDepuis(b, {
-      to: m.to,
-      cc: m.cc,
-      cci: m.bcc,
-      objet: m.subject,
-      texte: m.text,
-      messageId: m.messageIdPour?.(domaine),
-      pieces: m.attachments,
-    });
+    /* Une erreur dit quelle boîte, chez qui : « Boîte x@y (ex5.mail.ovh.net) »
+       n'est pas « SendGrid », et ce n'est pas la même personne à appeler. */
+    let r;
+    try {
+      r = await envoyerDepuis(b, {
+        to: m.to,
+        cc: m.cc,
+        cci: m.bcc,
+        objet: m.subject,
+        texte: m.text,
+        messageId: m.messageIdPour?.(domaine),
+        pieces: m.attachments,
+      });
+    } catch (e) {
+      throw new Error(`Boîte ${b.adresse} (${b.smtp.host}) : ${e instanceof Error ? e.message : String(e)}`);
+    }
     return {
       messageId: r.messageId, expediteur: b.adresse, via: "boite",
       copieDansEnvoyes: r.copieDansEnvoyes,
@@ -410,16 +423,21 @@ export async function envoyerPourAgent(
       + "Branchez la boîte dans Mails → Ma boîte e-mail.",
     );
   }
-  const messageId = await envoyerMail({
-    to: m.to,
-    subject: m.subject,
-    text: m.text,
-    cc: m.cc,
-    bcc: [m.bcc, m.bccSiCommun].filter(Boolean).join(", ") || undefined,
-    from: m.from,
-    replyTo: m.replyTo,
-    attachments: m.attachments,
-    messageId: m.messageIdPour?.(domaineEnvoi()),
-  });
+  let messageId: string;
+  try {
+    messageId = await envoyerMail({
+      to: m.to,
+      subject: m.subject,
+      text: m.text,
+      cc: m.cc,
+      bcc: [m.bcc, m.bccSiCommun].filter(Boolean).join(", ") || undefined,
+      from: m.from,
+      replyTo: m.replyTo,
+      attachments: m.attachments,
+      messageId: m.messageIdPour?.(domaineEnvoi()),
+    });
+  } catch (e) {
+    throw new Error(`Route SMTP commune (${CONF().host ?? "?"}) : ${e instanceof Error ? e.message : String(e)}`);
+  }
   return { messageId, expediteur: CONF().from ?? "", via: "smtp" };
 }

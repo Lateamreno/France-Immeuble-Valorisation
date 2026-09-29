@@ -8203,3 +8203,9 @@ button { font-weight: 700; }
 .salve-journal ul { margin: 6px 0 0; padding-left: 18px; }
 /* Un bouton qui travaille le dit : la roue tourne dans le bouton. */
 .kgo .asst-spin, .fadd .asst-spin { display: inline-block; vertical-align: -1px; margin-right: 4px; }
+
+/* Les relancés de moins de 24 h dans la fenêtre « Relancer tous » : comptés,
+   exclus d'office, réintégrables d'un bouton (MAV, 29/09). */
+.rlz-24h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; background: #f6f6f4; font-size: 12.5px; }
+.rlz-24h b { font-family: var(--font-title); }
+.rlz-recent { color: var(--gold-bo); font-weight: 600; }

@@ -2133,6 +2133,12 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const [liste, setListe] = useState<Awaited<ReturnType<typeof propositionsARelancer>> | null>(null);
   const [retires, setRetires] = useState<Set<string>>(new Set());
   const [rapport, setRapport] = useState<string | null>(null);
+  /* MAV, 29/09 : « un bouton pour exclure ceux qui ont été relancés il y a
+     moins de 24 h, comme ça je peux enlever les e-mails qui sont partis ».
+     Ils sont exclus d'office et comptés à l'écran ; un bouton les réintègre —
+     pour envoyer le SMS à ceux qui n'ont eu que l'e-mail, par exemple. */
+  const [inclureRecents, setInclureRecents] = useState(false);
+  const [maintenant] = useState(() => Date.now());
   const immeubleId = String(b.im._id);
   const libelle = [b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble";
   const agentId = String(b.im.AGENT ?? "") || undefined;
@@ -2144,13 +2150,17 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
 
   useEffect(() => {
     let vivant = true;
-    propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES)
+    propositionsARelancer(immeubleId, 0)
       .then((l) => { if (vivant) setListe(l); })
       .catch(() => { if (vivant) setListe([]); });
     return () => { vivant = false; };
   }, [immeubleId]);
 
-  const retenus = (liste ?? []).filter((p) => !retires.has(p.id));
+  const recent = (p: { jours?: number }) => p.jours !== undefined && p.jours < JOURS_ENTRE_RELANCES;
+  const recents = (liste ?? []).filter(recent);
+  const visibles = (liste ?? []).filter((p) => inclureRecents || !recent(p));
+  const retenus = visibles.filter((p) => !retires.has(p.id));
+  const heuresDepuis = (iso?: string) => iso ? Math.max(0, Math.round((maintenant - new Date(iso).getTime()) / 3_600_000)) : undefined;
   /* Le lien transfer.it du dernier dossier, ou celui qu'on vient de poser ici
      même : sans lien valable, on le demande et rien ne part (MAV, 28/09). */
   const [lienLocal, setLienLocal] = useState<{ url: string; expireLe?: string } | null>(null);
@@ -2202,7 +2212,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const libelleEnvoi = [mail && nbMails ? pluriel(nbMails, "e-mail") : "", sms && nbSms ? pluriel(nbSms, "SMS").replace(/SMSs$/, "SMS") : ""].filter(Boolean).join(" + ");
   const rienAEnvoyer = (!mail && !sms) || (mail && !sms && nbMails === 0) || (sms && !mail && nbSms === 0) || (mail && sms && nbMails === 0 && nbSms === 0);
 
-  const recharger = async () => setListe(await propositionsARelancer(immeubleId, JOURS_ENTRE_RELANCES));
+  const recharger = async () => setListe(await propositionsARelancer(immeubleId, 0));
 
   return (
     <Modale
@@ -2252,10 +2262,25 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
         <div className="fempty">
           {progres?.termine
             ? "Tout le monde a été relancé : il n'y a plus personne en attente sur ce bien."
-            : "Personne à relancer sur ce bien : tout le monde a répondu, ou le dernier envoi date de moins de vingt-quatre heures."}
+            : "Personne à relancer sur ce bien : tout le monde a répondu."}
         </div>
       )}
-      {liste && liste.length > 0 && lienManque && (
+      {liste && recents.length > 0 && (
+        <div className="rlz-24h">
+          <span>
+            <b>{recents.length}</b> relancé{recents.length > 1 ? "s" : ""} il y a moins de 24 h
+            {" — "}{inclureRecents ? "inclus dans la liste" : "exclus de la liste"}
+          </span>
+          <span className="sp" style={{ flex: 1 }} />
+          <button type="button" className="fadd" disabled={envoiEnCours} onClick={() => setInclureRecents((v) => !v)}>
+            {inclureRecents ? "Les exclure" : "Les inclure quand même"}
+          </button>
+        </div>
+      )}
+      {liste && liste.length > 0 && visibles.length === 0 && (
+        <div className="fempty">Tout le monde a été relancé il y a moins de 24 h. Rien à envoyer, sauf à les inclure quand même.</div>
+      )}
+      {visibles.length > 0 && lienManque && (
         <div className="rlz-lien-bloc">
           <b>Le lien transfer.it est obligatoire</b> — {etatLienDossier?.perime
             ? `celui du dossier a expiré${etatLienDossier.expireLe ? ` le ${dateLien(etatLienDossier.expireLe)}` : ""}`
@@ -2269,7 +2294,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
           )}
         </div>
       )}
-      {liste && liste.length > 0 && (
+      {visibles.length > 0 && (
         <>
           <div className="asst-note">
             <b>{retenus.length}</b> personne{retenus.length > 1 ? "s" : ""} sans réponse
@@ -2279,14 +2304,17 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
           </div>
           <span className="mlab">Destinataires</span>
           <div className="rlz-lignes" style={{ padding: 0, maxHeight: 220, overflowY: "auto", marginBottom: 12 }}>
-            {liste.map((p) => {
+            {visibles.map((p) => {
               const off = retires.has(p.id);
+              const h = recent(p) ? heuresDepuis(p.depuis) : undefined;
               return (
                 <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
                   <span>{p.nom}</span>
                   <span className="rlz-prix">{p.email}</span>
                   <span className="rlz-j">{p.tel ? "e-mail + SMS" : "e-mail"}</span>
-                  <span className="rlz-j">{p.jours === undefined ? "date inconnue" : `${p.jours} j`}</span>
+                  <span className={`rlz-j${h !== undefined ? " rlz-recent" : ""}`}>
+                    {h !== undefined ? `relancé il y a ${h} h` : p.jours === undefined ? "date inconnue" : `${p.jours} j`}
+                  </span>
                   <span className="sp" style={{ flex: 1 }} />
                   <button type="button" className="rlz-x" onClick={() => setRetires((s) => {
                     const n = new Set(s);
