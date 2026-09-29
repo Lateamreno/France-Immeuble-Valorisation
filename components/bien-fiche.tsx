@@ -2213,8 +2213,15 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   }, [agentId, immeubleId, refresh]);
   const smsCorps = smsTexte ?? apercuSms?.texte ?? "";
 
-  const avecMail = retenus.filter((p) => p.email);
-  const avecTel = retenus.filter((p) => p.tel);
+  /* Canal par canal : l'e-mail ne repart pas à qui l'a eu depuis moins de
+     24 h, le SMS non plus. On peut donc inclure les relancés du matin et
+     n'envoyer que ce qui leur manque (MAV, 29/09 : « comment je fais pour
+     les SMS ? »). */
+  const recentDepuis = (iso?: string) => !!iso && maintenant - new Date(iso).getTime() < JOURS_ENTRE_RELANCES * 86_400_000;
+  const avecMail = retenus.filter((p) => p.email && !recentDepuis(p.mailLe));
+  const avecTel = retenus.filter((p) => p.tel && !recentDepuis(p.smsLe));
+  const dejaMail = retenus.filter((p) => p.email && recentDepuis(p.mailLe)).length;
+  const dejaSms = retenus.filter((p) => p.tel && recentDepuis(p.smsLe)).length;
   const nbMails = mail ? avecMail.length : 0;
   const nbSms = sms ? avecTel.length : 0;
   const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
@@ -2324,7 +2331,9 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
                   <span>{p.nom}</span>
                   <span className="rlz-prix">{p.email}</span>
-                  <span className="rlz-j">{p.tel ? "e-mail + SMS" : "e-mail"}</span>
+                  <span className="rlz-j">
+                    {recentDepuis(p.mailLe) ? "e-mail ✓" : "e-mail"}{p.tel ? ` + ${recentDepuis(p.smsLe) ? "SMS ✓" : "SMS"}` : ""}
+                  </span>
                   <span className={`rlz-j${h !== undefined ? " rlz-recent" : ""}`}>
                     {h !== undefined ? `relancé il y a ${h} h` : p.jours === undefined ? "date inconnue" : `${p.jours} j`}
                   </span>
@@ -2341,7 +2350,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
           <RedactionRelance
             pieces={[immeubleRelance]}
             mail={mail} onMail={() => setMail((v) => !v)} mailDispo={avecMail.length > 0}
-            mailLibelle={avecMail.length ? ` à ${pluriel(avecMail.length, "personne")}` : " — personne n'a d'adresse"}
+            mailLibelle={(avecMail.length ? ` à ${pluriel(avecMail.length, "personne")}` : " — personne à qui l'envoyer") + (dejaMail ? ` (${dejaMail} l'${dejaMail > 1 ? "ont" : "a"} déjà eu depuis moins de 24 h, pas de doublon)` : "")}
             objet={objet} onObjet={setObjetTexte}
             corps={corps} onCorps={setCorpsTexte}
             note={<>
@@ -2358,7 +2367,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
               )}
             </>}
             sms={sms} onSms={() => setSms((v) => !v)} smsDispo={avecTel.length > 0} smsConfigure={apercuSms?.configure}
-            smsLibelle={avecTel.length ? ` à ${pluriel(avecTel.length, "personne")} avec un portable` : " — personne n'a de portable"}
+            smsLibelle={(avecTel.length ? ` à ${pluriel(avecTel.length, "personne")} avec un portable` : " — personne à qui l'envoyer") + (dejaSms ? ` (${dejaSms} l'${dejaSms > 1 ? "ont" : "a"} déjà eu depuis moins de 24 h)` : "")}
             smsCorps={apercuSms ? smsCorps : null} onSmsCorps={setSmsTexte}
           />
         </>
