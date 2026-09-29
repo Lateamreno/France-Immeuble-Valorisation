@@ -4,6 +4,13 @@
   "buildCommand": "next build",
   "installCommand": "npm install",
   "crons": [
-    { "path": "/api/mails/releve", "schedule": "*/15 * * * *" }
+    {
+      "path": "/api/mails/releve",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/relances/tourner",
+      "schedule": "* * * * *"
+    }
   ]
 }

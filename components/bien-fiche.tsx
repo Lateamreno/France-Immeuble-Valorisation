@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
-import { ProgresSalveRelances, useSalveRelances } from "@/components/salve-relances";
+import { ProgresSalveRelances, useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -2146,6 +2146,9 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   /* La salve se conduit toute seule — paquets, plafond horaire, progression —
      et le dit à l'écran (MAV, 29/09). */
   const { salve, lancer, arreter } = useSalveRelances();
+  /* La fiche du bien laisse soixante secondes à ses actions : les tours de
+     l'automate y sont longs, la salve avance vite tant qu'on y reste. */
+  useBudgetSalveLong();
   const envoiEnCours = !!salve?.enCours;
   /* Cette fenêtre montre la salve qu'elle a lancée (ou celle qui tourne). */
   const progres = salve;
@@ -2243,19 +2246,21 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : envoiEnCours ? "Une relance est déjà en cours" : undefined}
                 onClick={() => {
                   setRapport(null);
-                  const ok = lancer({
-                    titre: `Relance ${b.ville || libelle}`,
-                    agent: { id: agentId, nom: b.agentNom }, immeubleId,
-                    mails: mail ? avecMail.map((p) => ({
-                      contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
-                      propositionIds: [p.id], immeubleIds: [immeubleId],
-                    })) : [],
-                    sms: sms ? avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })) : [],
-                    apres: recharger,
+                  start(async () => {
+                    const r = await lancer({
+                      titre: `Relance ${b.ville || libelle}`,
+                      agent: { id: agentId, nom: b.agentNom }, immeubleId,
+                      mails: mail ? avecMail.map((p) => ({
+                        contactId: p.contactId ?? p.id, email: p.email ?? "", objet, corps,
+                        propositionIds: [p.id], immeubleIds: [immeubleId],
+                      })) : [],
+                      sms: sms ? avecTel.map((p) => ({ contactId: p.contactId, tel: p.tel, immeubleId, libelle: p.nom, propositionIds: [p.id], texte: smsCorps })) : [],
+                      apres: recharger,
+                    });
+                    if (!r.ok) setRapport(r.message ?? "La relance n'a pas pu être lancée.");
                   });
-                  if (!ok) setRapport("Une relance est déjà en cours : attendez sa fin, ou arrêtez-la depuis la pastille en bas de l'écran.");
                 }}>
-                {envoiEnCours
+                {envoiEnCours || pending
                   ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
                   : <><span className="ch">›</span> Envoyer {libelleEnvoi || "la relance"}</>}
               </button>
