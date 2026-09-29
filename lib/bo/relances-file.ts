@@ -204,12 +204,18 @@ export async function arreter(id: string): Promise<EtatSalve | null> {
   return etat(id);
 }
 
-/* Douze e-mails par paquet sur le relais, six par la boîte ; vingt-cinq SMS.
-   Un tour s'arrête après `BUDGET_MS`, sous la coupure Vercel à soixante
-   secondes ; le tour suivant reprend au curseur. */
+/* Douze e-mails par paquet sur le relais, six par la boîte ; cent SMS (une
+   seule campagne MailingVox par paquet). Un tour s'arrête après `BUDGET_MS`,
+   sous la coupure Vercel à soixante secondes ; le tour suivant reprend au
+   curseur. Un paquet ne s'entame que s'il reste de quoi le finir : un paquet
+   de douze e-mails avec pièce jointe prend jusqu'à vingt secondes, et c'est
+   un paquet entamé à huit secondes de la fin qui faisait couper la page à
+   soixante (vu le 29/09 : « la page a buggé »). */
 const LOT_RELAIS = 12;
 const LOT_BOITE = 6;
-const LOT_SMS = 25;
+const LOT_SMS = 100;
+const MARGE_MAIL_MS = 22_000;
+const MARGE_SMS_MS = 12_000;
 const BUDGET_MS = 40_000;
 const VERROU_MS = 75_000;
 const HEURE = 3_600_000;
@@ -259,7 +265,7 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
       return etat(id);
     }
 
-    while (curseur < l.mails.length && tempsRestant() > 8_000) {
+    while (curseur < l.mails.length && tempsRestant() > MARGE_MAIL_MS) {
       if (!(await encoreEnCours())) break;
       const paquet = l.mails.slice(curseur, curseur + lot);
       if (!relais) {
@@ -283,7 +289,7 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
     let curseurSms = l.curseur_sms;
     let faitSms = l.fait_sms;
     let echecsSms = l.echecs_sms;
-    while (curseur >= l.mails.length && curseurSms < l.sms.length && tempsRestant() > 8_000) {
+    while (curseur >= l.mails.length && curseurSms < l.sms.length && tempsRestant() > MARGE_SMS_MS) {
       if (!(await encoreEnCours())) break;
       const paquet = l.sms.slice(curseurSms, curseurSms + LOT_SMS);
       const s = await relancerParSms(paquet, l.agent_nom ?? undefined, l.chemins ?? []);
@@ -292,6 +298,9 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
       echecsSms += s.echecs;
       journal.push(...s.journal);
       await poser({ curseur_sms: curseurSms, fait_sms: faitSms, echecs_sms: echecsSms });
+      /* Plus de crédit MailingVox : inutile d'enchaîner, la salve s'arrête en
+         erreur et le dit ; ce qui n'est pas parti n'est pas marqué. */
+      if (s.arret) throw new Error(s.arret);
     }
 
     const finie = curseur >= l.mails.length && curseurSms >= l.sms.length;
@@ -334,7 +343,7 @@ async function tournerCommercialisation(l: SalveLigne, o: {
   let echecs = l.echecs_mail;
   /* Un paquet avec ses pièces jointes prend dix secondes : on ne l'entame que
      s'il reste de quoi le finir. */
-  while (curseur < adresses.length && o.tempsRestant() > 14_000) {
+  while (curseur < adresses.length && o.tempsRestant() > MARGE_MAIL_MS) {
     if (!(await o.encoreEnCours())) break;
     const lot = adresses.slice(curseur, curseur + LOT_RELAIS);
     const r = await envoyerMailsCommercialisation({

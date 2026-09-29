@@ -121,8 +121,10 @@ export async function propositionDe(numero: string, campagne: string | null, sou
 
   const src = (source ?? "").trim();
   if (src) {
-    const props = (await lire<{ data: Doc }>(`bo_proposition?select=data&data->>sms_campagne=eq.${encodeURIComponent(src)}&limit=20`)).map((r) => r.data);
-    retenir(props.find((d) => contacts.length === 0 || contacts.includes(String(d.ACHETEUR ?? ""))) ?? null);
+    /* Une campagne groupée (une relance d'immeuble) porte jusqu'à deux cents
+       propositions : c'est le NUMÉRO qui répond qui départage. */
+    const props = (await lire<{ data: Doc }>(`bo_proposition?select=data&data->>sms_campagne=eq.${encodeURIComponent(src)}&limit=500`)).map((r) => r.data);
+    retenir(props.find((d) => contacts.includes(String(d.ACHETEUR ?? ""))) ?? (props.length === 1 && contacts.length === 0 ? props[0] : null));
     if (!propositionId) {
       const c = (await lire<{ id: string; data: Doc }>(`bo_commercialisation?select=id,data&data->>sms_campagne=eq.${encodeURIComponent(src)}&limit=1`))[0];
       if (c) {
@@ -136,7 +138,11 @@ export async function propositionDe(numero: string, campagne: string | null, sou
   const mRel = /^Relance\s+(\S+)$/.exec(nom);
   const mCom = /^Commercialisation\s+(\S+)$/.exec(nom);
   if (!propositionId && mRel) {
+    /* « Relance <id> » : l'id est une proposition (relance d'une personne) ou
+       un immeuble (relance groupée) — dans ce cas, la dernière proposition
+       du numéro sur cet immeuble. */
     retenir((await lire<{ data: Doc }>(`bo_proposition?select=data&id=eq.${encodeURIComponent(mRel[1])}&limit=1`))[0]?.data ?? null);
+    if (!propositionId) retenir(await derniereProposition(contacts, mRel[1]));
   } else if (!propositionId && mCom) {
     commercialisationId = mCom[1];
     const c = (await lire<{ data: Doc }>(`bo_commercialisation?select=data&id=eq.${encodeURIComponent(mCom[1])}&limit=1`))[0]?.data;
