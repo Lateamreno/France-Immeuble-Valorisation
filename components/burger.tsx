@@ -30,11 +30,44 @@ export function Burger() {
     return () => window.removeEventListener("resize", mesurer);
   }, []);
 
-  // Le sommaire de fiche n'existe que sur les écrans qui en ont un.
-  useEffect(() => {
-    setAFiche(!!document.querySelector(".brail"));
+  // Changer de page referme ce qui était ouvert. Ajusté pendant le rendu,
+  // la façon prévue de réagir à un changement d'adresse sans clignoter.
+  const [cheminVu, setCheminVu] = useState(chemin);
+  if (chemin !== cheminVu) {
+    setCheminVu(chemin);
     setOuvert(null);
-  }, [chemin]);
+  }
+
+  // Le sommaire de fiche n'existe que sur les écrans qui en ont un. On le
+  // lisait une fois, au changement d'adresse ; depuis l'écran d'attente de la
+  // fiche (#432) l'adresse change AVANT que le rail ne soit monté, et cette
+  // lecture unique le manquait : le bouton « Sommaire » n'apparaissait plus
+  // jamais sur téléphone (MAV : « sur portable je n'ai pas accès au menu
+  // sticky de droite de l'immeuble »). On observe donc le document, et on suit
+  // le rail à son arrivée comme à son départ — une seule lecture par image,
+  // quel que soit le nombre de changements.
+  useEffect(() => {
+    let prevu: number | null = null;
+    const lire = () => { prevu = null; setAFiche(!!document.querySelector(".brail")); };
+    const obs = new MutationObserver(() => { if (prevu === null) prevu = requestAnimationFrame(lire); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    prevu = requestAnimationFrame(lire);
+    return () => { obs.disconnect(); if (prevu !== null) cancelAnimationFrame(prevu); };
+  }, []);
+
+  // Sur un panneau qui couvre l'écran, choisir une rubrique doit montrer la
+  // rubrique : le sommaire se referme sur le choix. Les en-têtes de groupe
+  // (Documents, Acheteurs) ne font que déplier leurs entrées, ils le laissent
+  // ouvert.
+  useEffect(() => {
+    if (ouvert !== "fiche") return;
+    const clic = (e: MouseEvent) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (t?.closest(".brail button.srow2:not(.sgroupe), .brail .srow2-in")) setOuvert(null);
+    };
+    document.addEventListener("click", clic);
+    return () => document.removeEventListener("click", clic);
+  }, [ouvert]);
 
   // Les classes pilotent la mise en page : le CSS reste maître du rendu.
   useEffect(() => {

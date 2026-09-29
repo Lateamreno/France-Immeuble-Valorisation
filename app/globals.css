@@ -787,6 +787,15 @@ body.ecran-tel.nav-etroite .side,
 body.ecran-tel.nav-etroite .brail { width: 100%; max-width: 100vw; }
 body.ecran-tel.nav-etroite .side { top: 42px; bottom: var(--bottbar-h); inset-inline: 0 auto; }
 
+/* Trois rubriques de la fiche (Emplacement, État locatif, Description et prix)
+   sont encore plus larges qu'un téléphone. Quand la page déborde, Chrome
+   élargit le viewport de mise en page à la largeur du contenu — et la barre
+   du haut, fixée sur ce viewport, emmène « Sommaire » hors de l'écran. Le
+   débordement reste donc dans la fiche : elle se fait défiler de côté, la
+   page et sa barre gardent la largeur de l'écran. Prix à payer sur téléphone
+   seulement : les en-têtes collants à l'intérieur de la fiche ne collent plus. */
+body.ecran-tel .fiche-main { overflow-x: auto; }
+
 /* Édition inline du tableau des lots */
 .lcell {
   border: 1px solid transparent; border-radius: 3px;
