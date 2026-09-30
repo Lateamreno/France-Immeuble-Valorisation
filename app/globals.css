@@ -758,7 +758,46 @@ body.nav-etroite .brail {
 body.nav-etroite.fiche-ouverte .brail { transform: none; box-shadow: -2px 0 14px rgba(0, 0, 0, .25); }
 body.nav-etroite .fiche-main { --gout: 14px; }
 body.nav-etroite .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -14px; }
-body.nav-etroite .ltools.v2 { left: 0; }
+/* Sous 1 100 px les deux barres latérales sont hors champ : les barres du
+   bas vont d'un bord à l'autre. Elles gardaient leurs marges de bureau
+   (248 px de chaque côté) et sortaient de l'écran sur une tablette ou un
+   téléphone en paysage — « Enregistrer » y était hors de portée (MAV, 30/09). */
+body.nav-etroite .bottbar { left: 0; }
+body.nav-etroite .ltools.v2, body.nav-etroite .savebar { left: 0; right: 0; }
+
+/* Barre des lots compacte : Ajouter, Supprimer, Plus, Enregistrer. Les
+   options de bureau (Dupliquer, Matrice, Importer, Télécharger, DPE ADEME,
+   Annuler) passent dans le menu « Plus », rendu au-dessus de la barre. */
+.ltb.plus, .ltools-menu, .ltools-voile { display: none; }
+body.nav-etroite .ltools.v2 { padding: 7px 8px; gap: 6px; }
+body.nav-etroite .ltools.v2 .opt, body.nav-etroite .ltools.v2 .ltb.annul, body.nav-etroite .ltools.v2 .sp { display: none; }
+body.nav-etroite .ltools.v2 .ltb.lbl { padding: 0 10px; font-size: 12.5px; gap: 6px; }
+body.nav-etroite .ltools.v2 .ltb.plus { display: inline-flex; margin-left: auto; }
+body.nav-etroite .ltools.v2 .kgo { padding: 0 11px; font-size: 13px; }
+body.nav-etroite .ltools.v2 .kgo .ch { display: none; }
+body.nav-etroite .ltools-voile { display: block; position: fixed; inset: 0; z-index: 26; }
+body.nav-etroite .ltools-menu {
+  display: flex; flex-direction: column; gap: 2px;
+  position: fixed; right: 8px; bottom: calc(var(--bottbar-h) + 54px); z-index: 27;
+  min-width: 228px; padding: 6px;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+}
+.ltools-menu .ltb.lbl.ltm {
+  width: 100%; height: 42px; justify-content: flex-start; gap: 10px; padding: 0 12px;
+  border: 0; background: none; color: var(--slate); font-size: 13.5px;
+}
+.ltools-menu .ltb.lbl.ltm:hover:not(:disabled) { background: #f4f4f4; }
+.ltools-menu .ltb.lbl.ltm svg { width: 16px; height: 16px; }
+/* Téléphone : le bouton « Plus » n'est qu'une icône, pour que les trois
+   autres tiennent sur 390 px. */
+body.ecran-tel .ltools.v2 { gap: 5px; padding: 7px 6px; }
+body.ecran-tel .ltools.v2 .ltb.plus span { display: none; }
+body.ecran-tel .ltools.v2 .ltb.plus { padding: 0 8px; }
+body.ecran-tel .ltools.v2 .ltb.lbl { padding: 0 8px; font-size: 12px; gap: 5px; }
+body.ecran-tel .ltools.v2 .kgo { padding: 0 8px; font-size: 12px; }
+/* Menu ouvert : les pastilles s'effacent, elles couvraient sa dernière ligne. */
+body:has(.ltools-menu) .rv-fab { display: none; }
 
 /* Chaque burger du côté d'où sort son panneau : Menu à gauche, Sommaire à
    droite. Le geste devient prévisible — on tire le panneau du bord qu'on
@@ -1045,6 +1084,11 @@ body.rv-armed { outline: 3px solid var(--red); outline-offset: -3px; }
   position: fixed; right: 16px; bottom: calc(var(--bottbar-h) + 14px); z-index: 999;
   display: flex; align-items: center; gap: 6px;
 }
+/* Quand la barre des lots (ou la barre d'enregistrement) est là, les
+   pastilles montent au-dessus d'elle : elles recouvraient « Enregistrer »
+   (MAV, 30/09, sur téléphone comme sur tablette). */
+body:has(.ltools.v2) .rv-fab, body:has(.savebar) .rv-fab { bottom: calc(var(--bottbar-h) + 60px); }
+body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { bottom: calc(var(--bottbar-h) + 108px); }
 .rv-btn {
   border: 0; border-radius: 20px; padding: 9px 16px;
   background: var(--slate); color: #fff;
