@@ -7926,6 +7926,14 @@ button { font-family: var(--font-title); letter-spacing: .01em; }
 .stepper button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
 .stepper button:hover:not(:disabled) { background: #f6f6f6; }
 .stepper button:disabled { color: var(--gray-lt); cursor: default; }
+/* « Ajouter des lots » : surface et loyer côte à côte, l'unité dans la case. */
+.mlots-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mlots-duo label { display: block; min-width: 0; }
+.mlots-duo .mlab { margin-top: 12px; }
+.mlots-unite { position: relative; display: block; }
+.mlots-unite .min { padding-right: 58px; font-size: 16px; font-weight: 700; text-align: right; }
+.mlots-unite b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; color: var(--gray-txt); pointer-events: none; }
+@media (max-width: 360px) { .mlots-duo { grid-template-columns: 1fr; } }
 /* Vignette du secteur : plus de bouton, une invitation à ouvrir. */
 .sv-ouvrir { font-size: 11.5px; color: var(--gray-txt); font-weight: 600; }
 /* Le cadre rouge du refus, en ligne sous la date (25/09). */
