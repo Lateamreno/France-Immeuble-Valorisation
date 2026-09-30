@@ -1054,6 +1054,60 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   /** Ce que l'import vient de créer, à annoncer avant que l'agent enregistre. */
   const [importe, setImporte] = useState<{ lots: number; baux: number; locataires: number } | null>(null);
 
+  /* Le menu « Plus » de la barre compacte (téléphone, tablette). */
+  const [plus, setPlus] = useState(false);
+
+  /* Les options qui ne sont pas du geste de visite : en ligne sur bureau,
+     dans le menu « Plus » en dessous de 1 100 px. Une seule définition, deux
+     rendus — le menu se referme sur le choix. */
+  const optionsBarre: { cle: string; rendre: (classe: string) => React.ReactNode }[] = [
+    {
+      cle: "dupliquer",
+      rendre: (classe) => (
+        <button key="dupliquer" className={classe} type="button" disabled={sel.size === 0 || pending}
+          onClick={() => { setPlus(false); setFenetreLots("dupliquer"); }}>
+          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg> Dupliquer
+        </button>
+      ),
+    },
+    {
+      cle: "matrice",
+      rendre: (classe) => (
+        <button key="matrice" className={classe} type="button" onClick={() => { setPlus(false); matrice(); }}
+          title="Télécharger le tableau vierge à remplir (lots, baux et locataires)">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 9h16M9 9v11" /></svg> Matrice
+        </button>
+      ),
+    },
+    {
+      cle: "importer",
+      rendre: (classe) => (
+        <label key="importer" className={classe}>
+          <svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M4 20h16" /></svg> Importer
+          <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; setPlus(false); if (f) importer(f); e.target.value = ""; }} />
+        </label>
+      ),
+    },
+    {
+      cle: "telecharger",
+      rendre: (classe) => (
+        <button key="telecharger" className={classe} type="button" onClick={() => { setPlus(false); exporter(); }}>
+          <svg viewBox="0 0 24 24"><path d="M12 4v12M8 12l4 4 4-4M4 20h16" /></svg> Télécharger
+        </button>
+      ),
+    },
+    {
+      cle: "dpe",
+      rendre: (classe) => (
+        <button key="dpe" className={classe} type="button" onClick={() => { setPlus(false); setDpe(true); }}
+          title="Recenser les DPE publiés par l'ADEME à cette adresse">
+          <svg viewBox="0 0 24 24"><path d="M4 20h16M7 20V9l5-5 5 5v11M10 20v-5h4v5" /></svg> DPE ADEME
+        </button>
+      ),
+    },
+  ];
+
   const importer = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1476,53 +1530,57 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         </div>
       )}
 
-      {/* Barre d'outils sticky, libellés visibles, import/export */}
+      {/* Barre d'outils sticky, libellés visibles, import/export.
+
+          Sous 1 100 px (téléphone, tablette — la mise en page à burgers), la
+          barre ne garde que ce qu'on fait en visite : Ajouter, Supprimer,
+          Enregistrer, à portée de pouce. Le reste — Dupliquer, Matrice,
+          Importer, Télécharger, DPE ADEME, Annuler — se replie derrière un
+          bouton « Plus » (MAV, 30/09 : « sur mobile je n'ai pas la possibilité
+          d'enregistrer les lots que j'ai créés »). Les mêmes options sont
+          rendues une fois en ligne (bureau) et une fois dans le menu ; c'est le
+          CSS qui montre l'un ou l'autre. */}
       <div className="ltools v2">
         {/* Ajouter et Dupliquer demandent d'abord « combien ? » (#375). */}
         <button className="ltb lbl" type="button" onClick={() => setFenetreLots("ajouter")}>
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> Ajouter
         </button>
-        <button className="ltb lbl" type="button" onClick={() => setFenetreLots("dupliquer")} disabled={sel.size === 0 || pending}>
-          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg> Dupliquer
-        </button>
+        {optionsBarre[0].rendre("ltb lbl opt")}
         <button className="ltb lbl red" type="button" onClick={() => setASupprimer(true)} disabled={sel.size === 0 || pending}>
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg> Supprimer
         </button>
         <span className="sp" style={{ flex: 1 }} />
         {/* Import et export au centre, comme au BO : la place de droite est
-            celle d'Annuler et d'Enregistrer (#85). */}
-        {/* Retour #261 — la matrice se télécharge à côté d'Importer, parce que
-            c'est là qu'on la cherche : on vient pour importer, on découvre
-            qu'il faut un fichier au bon format. */}
-        <button className="ltb lbl gold" type="button" onClick={matrice}
-          title="Télécharger le tableau vierge à remplir (lots, baux et locataires)">
-          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 9h16M9 9v11" /></svg> Matrice
-        </button>
-        <label className="ltb lbl gold">
-          <svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M4 20h16" /></svg> Importer
-          <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) importer(f); e.target.value = ""; }} />
-        </label>
-        <button className="ltb lbl gold" type="button" onClick={exporter}>
-          <svg viewBox="0 0 24 24"><path d="M12 4v12M8 12l4 4 4-4M4 20h16" /></svg> Télécharger
-        </button>
-        {/* Le recensement des DPE publiés par l'ADEME à cette adresse. Il vit
-            ici, à côté du tableau des lots, parce que c'est là qu'on se pose la
-            question — et il n'écrit rien dans la colonne DPE : c'est une
-            fenêtre de consultation, l'agent rattache s'il veut. */}
-        <button className="ltb lbl gold" type="button" onClick={() => setDpe(true)}
-          title="Recenser les DPE publiés par l'ADEME à cette adresse">
-          <svg viewBox="0 0 24 24"><path d="M4 20h16M7 20V9l5-5 5 5v11M10 20v-5h4v5" /></svg> DPE ADEME
-        </button>
+            celle d'Annuler et d'Enregistrer (#85). Retour #261 — la matrice
+            se télécharge à côté d'Importer, parce que c'est là qu'on la
+            cherche. Le recensement DPE ADEME vit ici, à côté du tableau,
+            parce que c'est là qu'on se pose la question ; il n'écrit rien
+            dans la colonne DPE. */}
+        {optionsBarre.slice(1).map((o) => o.rendre("ltb lbl gold opt"))}
         <span className="sp" style={{ flex: 1 }} />
         <button className="ltb annul" type="button" onClick={annuler} disabled={dirty.size === 0 || pending}>
           Annuler
+        </button>
+        <button className="ltb lbl plus" type="button" aria-label="Autres actions" aria-expanded={plus}
+          onClick={() => setPlus((v) => !v)}>
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg><span>Plus</span>
         </button>
         <button className="kgo" type="button" onClick={save} disabled={dirty.size === 0 || pending}
           style={pending || dirty.size === 0 ? { opacity: 0.5 } : undefined}>
           <span className="ch">›</span> Enregistrer{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </button>
       </div>
+      {plus && (
+        <>
+          <div className="ltools-voile" onClick={() => setPlus(false)} />
+          <div className="ltools-menu" role="menu">
+            {optionsBarre.map((o) => o.rendre("ltb lbl ltm"))}
+            <button className="ltb lbl ltm" type="button" onClick={() => { setPlus(false); annuler(); }} disabled={dirty.size === 0 || pending}>
+              <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-4" /></svg> Annuler les modifications
+            </button>
+          </div>
+        </>
+      )}
 
       {fenetreLots && (
         <ModaleLots
