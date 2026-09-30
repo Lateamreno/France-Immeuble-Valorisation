@@ -211,18 +211,26 @@ function ModaleLots({ mode, nbSel, presentes, typologies, onFermer, onValider }:
   presentes: string[];
   typologies: { destination: string; label: string }[];
   onFermer: () => void;
-  onValider: (nombre: number, destination: string, type: string) => void;
+  /** Surface et loyer : facultatifs, posés sur chacun des lots ajoutés. */
+  onValider: (nombre: number, destination: string, type: string, surface?: string, loyer?: string) => void;
 }) {
   const [nombre, setNombre] = useState("1");
   const [dest, setDest] = useState(presentes[0] ?? "Logement");
   const [type, setType] = useState("");
+  /* MAV, 30/09 : « quand j'ajoute plusieurs lots, il faut pouvoir écrire la
+     surface et le loyer hors charges » — douze studios identiques se saisissent
+     en une fois, le tableau sert ensuite aux exceptions. */
+  const [surface, setSurface] = useState("");
+  const [loyer, setLoyer] = useState("");
   /* Deux cents lots d'un coup, c'est déjà une erreur de frappe. */
   const n = Math.max(0, Math.min(200, parseInt(nombre, 10) || 0));
   const total = mode === "dupliquer" ? n * nbSel : n;
   const types = typesFor(dest, undefined, typologies).filter((t) => t !== "Autre");
   const destinations = [...presentes, ...DESTINATIONS.filter((d) => !presentes.includes(d))];
-  const valider = () => { if (total > 0) onValider(n, dest, type); };
+  const valider = () => { if (total > 0) onValider(n, dest, type, surface.trim(), loyer.trim()); };
   const pluriel = total > 1 ? "s" : "";
+  /* Un nombre décimal, virgule ou point, rien d'autre. */
+  const decimal = (v: string) => v.replace(/[^\d.,]/g, "").replace(/[.,](?=.*[.,])/g, "").slice(0, 9);
 
   return (
     <Modale
@@ -270,10 +278,32 @@ function ModaleLots({ mode, nbSel, presentes, typologies, onFermer, onValider }:
         <button type="button" aria-label="Un de plus" disabled={(parseInt(nombre, 10) || 0) >= 200}
           onClick={() => setNombre(String(Math.min(200, (parseInt(nombre, 10) || 0) + 1)))}>+</button>
       </div>
+      {mode === "ajouter" && (
+        <div className="mlots-duo">
+          <label>
+            <span className="mlab">Surface Carrez</span>
+            <span className="mlots-unite">
+              <input className="min" inputMode="decimal" placeholder="—" value={surface}
+                onChange={(e) => setSurface(decimal(e.target.value))}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); valider(); } }} />
+              <b>m²</b>
+            </span>
+          </label>
+          <label>
+            <span className="mlab">Loyer hors charges</span>
+            <span className="mlots-unite">
+              <input className="min" inputMode="decimal" placeholder="—" value={loyer}
+                onChange={(e) => setLoyer(decimal(e.target.value))}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); valider(); } }} />
+              <b>€/mois</b>
+            </span>
+          </label>
+        </div>
+      )}
       <p className="mhint">
         {mode === "dupliquer"
           ? "Les copies reprennent le lot coché — sans son bail ni son locataire — et prennent les numéros suivants."
-          : "Les lots prennent les numéros suivants ; tout se règle ensuite dans le tableau."}
+          : `Les lots prennent les numéros suivants${surface.trim() || loyer.trim() ? ", avec la même surface et le même loyer" : ""} ; tout se règle ensuite dans le tableau.`}
         {" "}Rien n&apos;est écrit avant « Enregistrer ».
       </p>
     </Modale>
@@ -820,11 +850,11 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     rs.reduce((m, r) => Math.max(m, parseInt(r.numero, 10) || 0), 0) + 1;
 
   /** Une ligne neuve, prête à être remplie. */
-  const ligneNeuve = (id: string, ordre: number, numero: number, dest = "Logement", type = ""): Row => ({
+  const ligneNeuve = (id: string, ordre: number, numero: number, dest = "Logement", type = "", surface = "", loyer = ""): Row => ({
     id, isNew: true, ordre, travaux: "", travaux_objet: "", travaux_urgence: "",
     batiment: "", etage: "", numero: String(numero),
-    Destination: dest, Type_lot: type, surface_carrez: "", surface_sol: "",
-    Type_bail: "Vide", loyer: "", loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
+    Destination: dest, Type_lot: type, surface_carrez: surface, surface_sol: "",
+    Type_bail: "Vide", loyer, loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
     renov_year: "", commentaire: "",
     ...VIDE_BAIL_LOC,
   });
@@ -833,7 +863,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
    * Ajoute N lots d'une destination et d'un type (retour #375). Les
    * numéros suivent le plus grand numéro du tableau, saisie en cours comprise.
    */
-  const ajouterLots = (nombre: number, dest = "Logement", type = "") => {
+  const ajouterLots = (nombre: number, dest = "Logement", type = "", surface = "", loyer = "") => {
     const base = Date.now();
     const ids: string[] = [];
     setRows((rs) => {
@@ -842,7 +872,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       for (let k = 0; k < nombre; k++) {
         const id = `new_${base}_${k}`;
         ids.push(id);
-        neuves.push(ligneNeuve(id, rs.length + k, numero++, dest, type));
+        neuves.push(ligneNeuve(id, rs.length + k, numero++, dest, type, surface, loyer));
       }
       return [...rs, ...neuves];
     });
@@ -1589,9 +1619,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           presentes={destPresentes}
           typologies={b.typologies}
           onFermer={() => setFenetreLots(null)}
-          onValider={(n, dest, type) => {
+          onValider={(n, dest, type, surface, loyer) => {
             if (fenetreLots === "dupliquer") dupliquerLots(n);
-            else ajouterLots(n, dest, type);
+            else ajouterLots(n, dest, type, surface, loyer);
             setFenetreLots(null);
           }}
         />
