@@ -149,6 +149,60 @@ export function phraseRendement(b: BienMail): string | undefined {
 }
 
 /**
+ * Plusieurs immeubles dans une même proposition (retour #450 : « un bouton
+ * pour ajouter un autre immeuble à la proposition et du coup ça change l'objet
+ * et le texte »). L'objet compte et nomme ; le corps garde l'intro et la
+ * conclusion de l'e-mail à un bien, et met une ligne par immeuble.
+ */
+export function objetCommercialisationPlusieurs(biens: BienMail[]): string {
+  if (biens.length === 1) return objetCommercialisation(biens[0]);
+  const lieux = [...new Set(biens.map((b) => {
+    const dept = deptDeCp(b.codePostal);
+    return [villeNue(b.ville), dept ? `(${dept})` : ""].filter(Boolean).join(" ");
+  }).filter(Boolean))];
+  return `${biens.length} immeubles à vendre${lieux.length ? ` - ${lieux.join(", ")}` : ""}`;
+}
+
+export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?: string }[]): string {
+  if (biens.length === 1) return messageCommercialisation(biens[0].mail, biens[0].lien ?? "");
+  const premier = biens[0]?.mail ?? {};
+  const lignes = biens.flatMap(({ mail: b, lien }) => {
+    const surface = nb(b.surfaceCarrez);
+    const prix = nb(b.prixHai);
+    const cp = String(b.codePostal ?? "").trim();
+    const ou = `${villeNue(b.ville) || "adresse à préciser"}${/^\d{5}$/.test(cp) ? ` (${cp})` : ""}`;
+    const tete = [
+      `· ${groupeNominal(natureImmeuble(b.destinations)).replace(/^un /, "Un ")} à ${ou}`,
+      surface !== undefined ? `${fr(Math.round(surface), 0)} m²` : "",
+      prix !== undefined ? `${fr(Math.round(prix), 0)} € HAI` : "",
+      nb(b.renta) !== undefined ? `${fr(nb(b.renta)!)} % de rendement brut` : "",
+    ].filter(Boolean).join(", ");
+    return [tete, lien ? `  Dossier, photos et plans : ${lien}` : "", ""];
+  });
+  return [
+    "Bonjour,",
+    "",
+    `Vous trouverez ci-joint les dossiers de ${biens.length} immeubles :`,
+    "",
+    ...lignes,
+    "Si l'un d'eux vous intéresse et que vous avez la moindre question, n'hésitez pas à me contacter je me ferai un plaisir d'y répondre.",
+    "",
+    "Dans le cas contraire, pouvez-vous me le signaler et si possible m'en indiquer la raison ? Cela me permettra de mettre à jour ma base et d'affiner vos critères de recherche.",
+    "",
+    "Cordialement",
+    "",
+    premier.agentNom,
+    "France Immeuble",
+    premier.agentTel,
+  ]
+    .filter((l) => l !== undefined && l !== null)
+    .map((l) => String(l))
+    .filter((l, i, a) => !(l === "" && (i === 0 || a[i - 1] === "")))
+    .join("\n")
+    .trimEnd();
+}
+
+/**
  * Le corps de l'e-mail, au format que MAV envoie aujourd'hui à la main.
  *
  * La phrase « pouvez-vous me le signaler et m'en indiquer la raison » reste du

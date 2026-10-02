@@ -7,6 +7,7 @@
 // calcule rien, elle met en forme.
 import type { DossierVente } from "@/lib/bo/dossier-vente";
 import { IC_COMPOSANT } from "@/lib/pictos-composants";
+import { PICTOS_DEST } from "@/components/pictos-destination";
 import { group } from "@/lib/format";
 import { MENTIONS } from "@/lib/bo/textes-cible";
 import { PhotoDossier } from "@/components/photo-dossier";
@@ -75,11 +76,8 @@ const Ic = ({ d, cls = "dv-ic" }: { d: React.ReactNode; cls?: string }) => (
   <svg className={cls} viewBox="0 0 24 24" aria-hidden>{d}</svg>
 );
 
-/** Le picto de destination d'une ligne de lot. */
-const IC_DEST: Record<string, React.ReactNode> = {
-  Logement: I.maison, Commerce: I.boutique, Bureau: I.bureau,
-  Parking: I.parking, Cave: I.parking, Logistique: I.bureau, Annexe: I.parking,
-};
+/** Le picto de destination d'une ligne de lot : le jeu partagé du BO (#444). */
+const IC_DEST: Record<string, React.ReactNode> = PICTOS_DEST;
 
 /** Le picto de chaque point d'intérêt de la page Emplacement. */
 const IC_POI: Record<string, React.ReactNode> = {

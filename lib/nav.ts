@@ -56,11 +56,11 @@ export const NAV: NavItem[] = [
    ON/OFF, Dim_max et Debug. C'étaient des outils de développement du BO
    Bubble ; ils encombraient une colonne qui a mieux à faire. */
 
-/** Barre de création du bas (ordre du BO). */
+/** Barre de création du bas (ordre du BO). Plus de « Mandat » (MAV, 02/10 :
+   « on n'ajoute pas un mandat sans passer par la fiche du bien »). */
 export const QUICK_CREATE = [
   "Contact",
   "Immeuble",
-  "Mandat",
   "Recherche",
   "Proposition",
   "Visite",

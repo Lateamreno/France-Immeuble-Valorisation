@@ -904,7 +904,7 @@ const jjmmaaOuDmy = (v: unknown) => {
 const rangLot = (l: Record<string, unknown>) =>
   typeof l.ordre === "number" ? (l.ordre as number) : Number(l.numero ?? 0);
 
-const photoProxy = (u?: unknown) =>
+export const photoProxy = (u?: unknown) =>
   typeof u === "string" && u
     ? u.startsWith("storage:")
       ? `/api/photo?s=${encodeURIComponent(u.slice("storage:".length))}`
@@ -3200,7 +3200,34 @@ export async function listRecherchesBO(
  * qui s'ouvre sur une liste vide oblige à taper avant de comprendre ce qu'on
  * attend d'elle.
  */
-export async function chercherImmeublesBO(q: string) {
+/**
+ * Les immeubles qui ont au moins une proposition encore vivante (ni refusée,
+ * ni archivée) : ceux qu'on a vraiment distribués à des acquéreurs.
+ */
+async function immeublesAvecPropositionsVivantes(ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!USE_SB || ids.length === 0) return out;
+  /* Un compte par immeuble, dix à la fois : l'API plafonne à mille lignes par
+     réponse, et les propositions se comptent en dizaines de milliers — lister
+     ne marche pas, compter si. */
+  const compter = async (id: string) => {
+    const p = new URLSearchParams({ select: "id", limit: "1" });
+    p.append("data->>IMMEUBLE", `eq.${id}`);
+    p.append("data->>Statut", "not.ilike.Refus*");
+    p.append("data->>Statut", "not.ilike.Archiv*");
+    const res = await fetch(`${SB_URL}/rest/v1/bo_proposition?${p}`, {
+      headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}`, Prefer: "count=exact" },
+      cache: "no-store",
+    }).catch(() => null);
+    if (!res?.ok) return;
+    const total = Number((res.headers.get("content-range") ?? "").split("/")[1] ?? 0);
+    if (total > 0) out.add(id);
+  };
+  for (let i = 0; i < ids.length; i += 10) await Promise.all(ids.slice(i, i + 10).map(compter));
+  return out;
+}
+
+export async function chercherImmeublesBO(q: string, opts: { sousMandat?: boolean } = {}) {
   await loadInitials();
   const mots = motsRecherche(q);
   const carte = (im: Record<string, unknown>) => ({
@@ -3210,6 +3237,18 @@ export async function chercherImmeublesBO(q: string) {
     prix: euros(im.prix_hai) ?? undefined,
     photoUrl: photoProxy(im.photo_main_compressed),
   });
+  /* En commercialisation ou sous offre : les seuls qu'on propose vraiment. */
+  const enVente = (im: Record<string, unknown>) => { const r = statutOf(im); return r >= 5 && r <= 7; };
+  /* Retour #445 (MAV, 02/10) : « quand on reçoit une offre pour un immeuble
+     c'est forcément pour un immeuble qu'on a actuellement sous mandat et
+     qu'on a distribué à nos clients ». Sous mandat ET au moins une proposition
+     vivante — tous les immeubles, « ça sert à rien ». */
+  const retenir = async (liste: Record<string, unknown>[]) => {
+    if (!opts.sousMandat) return liste;
+    const candidats = liste.filter(enVente);
+    const vivants = await immeublesAvecPropositionsVivantes(candidats.map((im) => String(im._id)));
+    return candidats.filter((im) => vivants.has(String(im._id)));
+  };
 
   if (mots.length === 0) {
     const ims = await fetchAll(
@@ -3218,14 +3257,11 @@ export async function chercherImmeublesBO(q: string) {
       600,
       { field: "Modified Date", desc: true },
     ).catch(() => [] as Record<string, unknown>[]);
-    return ims
-      .filter((im) => { const r = statutOf(im); return r >= 5 && r <= 7; })
-      .slice(0, 25)
-      .map(carte);
+    return (await retenir(ims.filter(enVente).slice(0, 40))).slice(0, 25).map(carte);
   }
 
   if (!USE_SB) return [];
-  const p = new URLSearchParams({ select: "data", limit: "25" });
+  const p = new URLSearchParams({ select: "data", limit: opts.sousMandat ? "80" : "25" });
   const f = filtreMots(["searchfield"], mots);
   if (f) p.append(f[0], f[1]);
   const res = await fetch(`${SB_URL}/rest/v1/bo_immeuble?${p}`, {
@@ -3233,8 +3269,8 @@ export async function chercherImmeublesBO(q: string) {
     cache: "no-store",
   }).catch(() => null);
   if (!res?.ok) return [];
-  return ((await res.json()) as { data: Record<string, unknown> }[])
-    .map((r) => r.data).filter(Boolean).map(carte);
+  const trouves = ((await res.json()) as { data: Record<string, unknown> }[]).map((r) => r.data).filter(Boolean);
+  return (await retenir(trouves)).slice(0, 25).map(carte);
 }
 
 /* ------------------- Les biens à proposer à une recherche ------------------
