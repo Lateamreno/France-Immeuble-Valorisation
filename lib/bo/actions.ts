@@ -14,6 +14,7 @@ import { netVendeurDepuisHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
 import { jourIso } from "@/lib/format";
 import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, type Societe } from "@/lib/mandat";
+import type { BienMail } from "@/lib/bo/mail-commercialisation";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -2785,6 +2786,14 @@ export async function addOffre(
     acheteurIds?: string[];
     prix_nv: number;
     honos_ht?: number;
+    /** Retour #446 : les honoraires TTC et le HAI tels que l'écran les a
+     *  liés (net vendeur + honoraires = HAI). Absents : déduits du HT. */
+    honos_ttc?: number;
+    prix_hai?: number;
+    /** Retour #447 : la date de l'offre (défaut : aujourd'hui) et son délai
+     *  de validité en jours, quand l'offre le dit. */
+    date?: string;
+    validite_jours?: number;
     date_expiration?: string;
     commentaire?: string;
     source?: string;
@@ -2794,21 +2803,27 @@ export async function addOffre(
 ) {
   const id = newId();
   const now = new Date().toISOString();
-  const honosTtc = input.honos_ht !== undefined ? Math.round(input.honos_ht * 1.2) : undefined;
+  const honosTtc = input.honos_ttc !== undefined ? Math.round(input.honos_ttc)
+    : input.honos_ht !== undefined ? Math.round(input.honos_ht * 1.2) : undefined;
+  const honosHt = input.honos_ht !== undefined ? Math.round(input.honos_ht)
+    : honosTtc !== undefined ? Math.round(honosTtc / 1.2) : undefined;
+  const dateOffre = input.date ? new Date(input.date) : new Date();
+  const dateIso = Number.isNaN(dateOffre.getTime()) ? now : dateOffre.toISOString();
   await rpc("bo_insert_doc", {
     p_table: "bo_offre",
     p_id: id,
     p_doc: cleanPatch({
       IMMEUBLEs: [immeubleId],
       Statut: "En cours",
-      date: now,
+      date: dateIso,
       acheteur_nom: input.acheteur,
       ACHETEURs: input.acheteurIds?.length ? input.acheteurIds : undefined,
       pdf: input.pdfUrl,
       prix_nv: input.prix_nv,
-      honos_ht: input.honos_ht,
+      honos_ht: honosHt,
       honos_ttc: honosTtc,
-      prix_hai: input.prix_nv + (honosTtc ?? 0),
+      prix_hai: input.prix_hai ?? input.prix_nv + (honosTtc ?? 0),
+      validite_jours: input.validite_jours,
       date_expiration: input.date_expiration ? new Date(input.date_expiration).toISOString() : undefined,
       commentaire: input.commentaire,
       source: input.source,
@@ -4109,7 +4124,12 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
   }).catch(() => null);
   if (!res?.ok) return [];
   const rows = (await res.json()) as { data: Record<string, unknown> }[];
-  return rows.map(({ data: c }) => ({
+  return rows.map(({ data: c }) => contactTrouve(c));
+}
+
+/** Un document contact du miroir, sous la forme que les écrans attendent. */
+function contactTrouve(c: Record<string, unknown>): ContactTrouve {
+  return {
     id: String(c._id),
     nom: `${c["prénom"] ?? ""} ${c.nom ?? ""}`.trim() || String(c.email ?? "Sans nom"),
     type: Array.isArray(c.Types) ? String(c.Types[0] ?? "") : undefined,
@@ -4120,7 +4140,7 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
     nomFamille: typeof c.nom === "string" ? c.nom : undefined,
     civilite: typeof c["Civilité"] === "string" ? c["Civilité"] : undefined,
     societe: typeof c.entreprise_nom === "string" ? c.entreprise_nom : undefined,
-  }));
+  };
 }
 
 /**
@@ -5127,6 +5147,146 @@ export async function deposerOffrePdf(immeubleId: string, fd: FormData): Promise
   return `storage:${path}`;
 }
 
+/**
+ * Une pièce jointe de plus sur une proposition (retour #450 : « la possibilité
+ * d'en mettre une autre ») : déposée dans le coffre du bien, rendue sous la
+ * forme que les envois attendent.
+ */
+export async function deposerPieceJointe(immeubleId: string, fd: FormData): Promise<{ nom: string; path: string }> {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Aucun fichier");
+  if (file.size > 20 * 1024 * 1024) throw new Error("Fichier trop lourd (20 Mo max)");
+  const path = `documents/${immeubleId}/pj-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  return { nom: file.name, path };
+}
+
+/* ---------- La proposition depuis la barre d'actions (retour #450) ---------- */
+
+export type BienProposition = {
+  id: string;
+  libelle: string;
+  photoUrl?: string;
+  /** Ce que l'e-mail de commercialisation a besoin de savoir du bien. */
+  mail: BienMail;
+  /** Le lien transfer.it du dernier dossier, s'il est valable. */
+  lien?: string;
+  /** Le PDF du dernier dossier : la pièce jointe. */
+  piece?: { nom: string; path?: string; url?: string };
+};
+
+/**
+ * Les biens d'une proposition, avec de quoi écrire l'e-mail « comme
+ * d'habitude » (MAV, 02/10 : « les mêmes e-mails qu'on envoie d'habitude pour
+ * les propositions, avec les mêmes objet, le lien et la PJ ») : les champs du
+ * bien, le lien du dossier et son PDF. Les lots donnent la nature de
+ * l'immeuble (logement, mixte…) et le rendement potentiel.
+ */
+export async function biensPourProposition(immeubleIds: string[]): Promise<BienProposition[]> {
+  const ids = [...new Set(immeubleIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  const [{ fetchAll, getAgents, photoProxy }, { derniersDossiers, nomPieceDossier, sourcePdfDossier }, { lienDuDossier }] =
+    await Promise.all([
+      import("@/lib/bubble/server"),
+      import("@/lib/bo/piece-dossier"),
+      import("@/lib/bo/lien-dossier"),
+    ]);
+  const [ims, agents, dossiers] = await Promise.all([
+    bqIn("bo_immeuble", ids),
+    getAgents().catch(() => []),
+    derniersDossiers(ids),
+  ]);
+  const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const out: BienProposition[] = [];
+  for (const id of ids) {
+    const im = ims.find((x) => String(x._id) === id);
+    if (!im) continue;
+    const lots = await fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 250).catch(() => []);
+    const somme = (cle: string, secours?: string) => lots.reduce((t, l) => {
+      const v = n(l[cle]) ?? (secours ? n(l[secours]) : undefined) ?? 0;
+      return t + v;
+    }, 0);
+    const loyers = somme("loyer");
+    const loyersMax = somme("loyer_max", "loyer");
+    const renta = n(im.fin_renta_ba);
+    const prixHai = n(im.prix_hai);
+    const agent = agents.find((a) => a.id === s(im.AGENT));
+    const d = dossiers.get(id);
+    const lien = lienDuDossier(d);
+    const src = d ? sourcePdfDossier(d) : null;
+    out.push({
+      id,
+      libelle: `${s(im.adresse_ville)}${s(im.adresse_zipcode) ? ` (${s(im.adresse_zipcode)})` : ""} - ${[s(im.adresse_numero_rue), s(im.adresse_rue)].filter(Boolean).join(" ")}`.trim(),
+      photoUrl: photoProxy(im.photo_main_compressed),
+      mail: {
+        ville: s(im.adresse_ville) || undefined,
+        codePostal: im.adresse_zipcode,
+        surfaceCarrez: im.surface_carrez,
+        prixHai,
+        prixM2: n(im.prix_hai_m2) ?? (prixHai && n(im.surface_carrez) ? prixHai / n(im.surface_carrez)! : undefined),
+        occupation: im.occupation_lots,
+        renta,
+        rentaPotentielle: renta !== undefined && loyers > 0 ? Math.round((renta * loyersMax / loyers) * 10) / 10 : undefined,
+        destinations: lots.map((l) => s(l.Destination)).filter(Boolean),
+        agentNom: agent?.name,
+        agentTel: agent?.tel,
+      },
+      lien: lien && !lien.aRemplacer ? lien.url : undefined,
+      piece: d && src ? { nom: nomPieceDossier(s(im.adresse_ville) || undefined, d.version), ...src } : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Crée la proposition de chaque acquéreur et lui envoie l'e-mail, pièces
+ * jointes comprises — depuis la boîte de l'agent, c'est du un-à-un (§7.1).
+ * L'agent a relu l'objet, le message et les pièces à l'écran : c'est son clic
+ * qui envoie, rien ne part tout seul.
+ */
+export async function creerEtEnvoyerProposition(input: {
+  immeubleIds: string[];
+  personnes: { id: string; email?: string }[];
+  objet: string;
+  message: string;
+  pieces: { nom: string; path?: string; url?: string }[];
+  agentId?: string;
+}): Promise<{ crees: number; envoyes: number; echecs: string[] }> {
+  if (!input.objet.trim()) throw new Error("L'objet est vide.");
+  if (!input.message.trim()) throw new Error("Le message est vide.");
+  const [{ envoyerPourAgent }, { lirePiece }, { contexteRedaction }] = await Promise.all([
+    import("@/lib/bo/mail"), import("@/lib/bo/piece-dossier"), import("@/lib/bo/mails-actions"),
+  ]);
+  const agentId = input.agentId || (await contexteRedaction()).agent.id || undefined;
+  /* Les pièces se lisent une fois pour tous les destinataires. */
+  const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
+  for (const p of input.pieces) {
+    const r = await lirePiece(p);
+    if (!r.ok) throw new Error(r.message);
+    attachments.push({ filename: r.piece.nom, content: r.piece.contenu, contentType: r.piece.type });
+  }
+  let crees = 0;
+  let envoyes = 0;
+  const echecs: string[] = [];
+  for (const p of input.personnes) {
+    const r = await traiterAProposer("", input.immeubleIds,
+      { mode: "envoyer", objet: input.objet, message: input.message, email: p.email }, agentId, p.id);
+    crees += r.crees;
+    if (!p.email) { echecs.push("Une fiche sans adresse e-mail : proposition créée, rien d'envoyé."); continue; }
+    try {
+      await envoyerPourAgent(agentId, {
+        to: p.email, subject: input.objet, text: input.message,
+        attachments: attachments.length ? attachments : undefined,
+      });
+      envoyes++;
+    } catch (e) {
+      echecs.push(`E-mail ${p.email} : ${e instanceof Error ? e.message : "échec d'envoi"}`);
+    }
+  }
+  return { crees, envoyes, echecs };
+}
+
 /* ---------- Sélecteur d'immeuble pour les actions rapides (#333-#336) ------ */
 
 export type ImmeubleTrouve = {
@@ -5145,9 +5305,48 @@ export type ImmeubleTrouve = {
  * on rend les immeubles en commercialisation, les seuls qu'on propose vraiment
  * — c'est le cas courant, et il évite une page blanche.
  */
-export async function chercherImmeubles(q: string): Promise<ImmeubleTrouve[]> {
+export async function chercherImmeubles(q: string, pour?: "offre"): Promise<ImmeubleTrouve[]> {
   const { chercherImmeublesBO } = await import("@/lib/bubble/server");
-  return chercherImmeublesBO(q);
+  /* Pour une offre (#445) : sous mandat et déjà distribué, rien d'autre. */
+  return chercherImmeublesBO(q, { sousMandat: pour === "offre" });
+}
+
+/**
+ * Qui prévenir d'une offre reçue (retour #448) : le propriétaire de la fiche,
+ * puis les mandants du mandat en vigueur qui ont une autre adresse. Rendus
+ * sous la forme que la fenêtre de rédaction attend pour ses champs de fusion.
+ */
+export async function proprietairesPourOffre(immeubleId: string): Promise<{
+  libelle: string; agentId?: string; destinataires: ContactTrouve[];
+}> {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  const libelle = im
+    ? `${s(im.adresse_ville)}${s(im.adresse_zipcode) ? ` (${s(im.adresse_zipcode)})` : ""} - ${[s(im.adresse_numero_rue), s(im.adresse_rue)].filter(Boolean).join(" ")}`.trim()
+    : "";
+  const destinataires: ContactTrouve[] = [];
+  const vus = new Set<string>();
+  const proprioId = s(im?.PROPRIETAIRE);
+  if (proprioId) {
+    const c = await bqOne("bo_contact", proprioId).catch(() => null);
+    if (c) {
+      destinataires.push(contactTrouve(c));
+      if (s(c.email)) vus.add(s(c.email).toLowerCase());
+    }
+  }
+  const prec = await mandatPrecedent(immeubleId, proprioId || undefined).catch(() => null);
+  for (const m of prec?.memeImmeuble ? prec.mandants : []) {
+    const email = (m.email ?? "").trim().toLowerCase();
+    if (!email || vus.has(email)) continue;
+    vus.add(email);
+    destinataires.push({
+      id: m.contactId ?? m.uid, nom: [m.prenom, m.nom].filter(Boolean).join(" ") || email,
+      email, prenom: m.prenom, nomFamille: m.nom,
+      civilite: m.qualite === "Madame" || m.qualite === "Monsieur" ? m.qualite : undefined,
+      societe: m.personne === "morale" ? m.nom : undefined,
+    });
+  }
+  return { libelle, agentId: s(im?.AGENT) || undefined, destinataires };
 }
 
 /* --------- Créer et modifier une recherche acquéreur (retours #330, #332) -- */

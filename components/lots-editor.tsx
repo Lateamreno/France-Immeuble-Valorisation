@@ -22,6 +22,7 @@ import { dateMatrice, lireMatrice, matriceCsv, rempli } from "@/lib/bo/matrice";
 import { ChampDate } from "@/components/champ-date";
 import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
+import { PICTOS_DEST } from "@/components/pictos-destination";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
   compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, INDICES_BAIL, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
@@ -40,19 +41,9 @@ const IC = {
   travaux: <><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></>,
 };
 
-/* Pictogramme de destination affiché dans la colonne « Dest. » du BO. */
-const IC_DEST: Record<string, React.ReactNode> = {
-  Logement: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
-  Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
-  Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
-  Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
-  /* Une voûte, pas un toit : la cave et l'entrepôt portaient le même dessin à
-     un détail près (retour #249). L'arc en berceau ne ressemble à rien
-     d'autre dans la colonne. */
-  Cave: <><path d="M4 20.5V12a8 8 0 0 1 16 0v8.5" /><path d="M8.5 20.5V12a3.5 3.5 0 0 1 7 0v8.5" /><path d="M2.5 20.5h19" /></>,
-  Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
-  Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
-};
+/* Pictogramme de destination affiché dans la colonne « Dest. » : le jeu
+   partagé de tout le BO (retour #444). */
+const IC_DEST = PICTOS_DEST;
 
 /** Les statuts d'un bail, dans l'ordre de la liste (ex-onglet Baux). */
 const STATUTS_BAIL = [

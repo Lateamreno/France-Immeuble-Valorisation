@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group, S } from "@/lib/format";
+import { PICTOS_DEST } from "@/components/pictos-destination";
 import { RATTACHE } from "@/lib/referentiels";
 import { Copier } from "@/components/copier";
 import { useQuestion } from "@/components/modale";
@@ -40,19 +41,8 @@ const dmyfr = (v: unknown) => (typeof v === "string" ? v.slice(0, 10).split("-")
 const heure = (v: string) =>
   new Date(v).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
 
-/* Pictos de destination du BO, repris dans l'état locatif et le secteur. */
-const IC_DEST: Record<string, React.ReactNode> = {
-  Logement: <><path d="M4 11 12 4l8 7" /><path d="M6 10v10h12V10" /></>,
-  Commerce: <><path d="M4 8h16l-1 12H5z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
-  Bureau: <><rect x="3" y="7" width="18" height="12" rx="1.5" /><path d="M9 7V5h6v2" /></>,
-  Logistique: <><path d="M3 20V9l9-5 9 5v11z" /><path d="M9 20v-6h6v6" /></>,
-  /* Une voûte, pas un toit : la cave et l'entrepôt portaient le même dessin à
-     un détail près (retour #249). L'arc en berceau ne ressemble à rien
-     d'autre dans la colonne. */
-  Cave: <><path d="M4 20.5V12a8 8 0 0 1 16 0v8.5" /><path d="M8.5 20.5V12a3.5 3.5 0 0 1 7 0v8.5" /><path d="M2.5 20.5h19" /></>,
-  Parking: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 16V9h3a2.5 2.5 0 0 1 0 5h-3" /></>,
-  Annexe: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 12h6" /></>,
-};
+/* Pictos de destination du BO, les mêmes partout (#444). */
+const IC_DEST = PICTOS_DEST;
 
 
 /* Fondamentaux : la note se choisit en étoiles, le libellé suit (comme le BO). */

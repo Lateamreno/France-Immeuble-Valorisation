@@ -246,6 +246,9 @@ export async function envoyerUnMessage(m: {
   /** L'agent expéditeur : on part de SA boîte quand elle est branchée. */
   agentId?: string;
   brouillonId?: string;
+  /** Pièces du coffre (`path`) ou déjà en ligne (`url`) — l'offre en PDF
+   *  qu'on transmet au propriétaire (retour #448). */
+  pieces?: { nom: string; path?: string; url?: string }[];
 }) {
   if (!m.to.trim()) throw new Error("Aucun destinataire.");
   /* Cette fenêtre sert la correspondance du quotidien — une réponse, quelques
@@ -258,8 +261,18 @@ export async function envoyerUnMessage(m: {
       + `boîte personnelle, elle n'est pas faite pour l'envoi groupé.`,
     );
   }
+  const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
+  if (m.pieces?.length) {
+    const { lirePiece } = await import("./piece-dossier");
+    for (const p of m.pieces) {
+      const r = await lirePiece(p);
+      if (!r.ok) throw new Error(r.message);
+      attachments.push({ filename: r.piece.nom, content: r.piece.contenu, contentType: r.piece.type });
+    }
+  }
   const r = await envoyerPourAgent(m.agentId, {
     to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA,
+    attachments: attachments.length ? attachments : undefined,
   });
   if (m.brouillonId) {
     await ecrire("fi_brouillon", "PATCH",

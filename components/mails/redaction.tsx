@@ -40,8 +40,11 @@ export type Reponse = {
 };
 
 export function FenetreRedaction({
-  agent, modeles, brouillon, modele, reponse, amorce, flottante, destinataire, immeuble, onClose, onEnvoye,
+  agent, modeles, brouillon, modele, reponse, amorce, flottante, destinataire, immeuble, pieces, onClose, onEnvoye,
 }: {
+  /** Pièces jointes déjà dans le coffre (l'offre en PDF, #448) : montrées,
+   *  et jointes à l'envoi. */
+  pieces?: { nom: string; path?: string; url?: string }[];
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
   brouillon?: Brouillon;
@@ -132,6 +135,7 @@ export function FenetreRedaction({
           const r = await envoyerUnMessage({
             to: a, objet, corps, repondreA: agent.email, agentId: agent.id,
             brouillonId: brouillon?.id || undefined,
+            pieces: pieces?.length ? pieces : undefined,
           });
           copie = r?.copieDansEnvoyes;
         }
@@ -184,6 +188,19 @@ export function FenetreRedaction({
             valeursApercu={valeurs}
             nomApercu={qui ? [qui.prenom, nomFamille].filter(Boolean).join(" ") || qui.email || "" : "un destinataire type"}
           />
+
+          {pieces && pieces.length > 0 && (
+            <div className="mred-pj">
+              <span>Pièce{pieces.length > 1 ? "s" : ""} jointe{pieces.length > 1 ? "s" : ""}</span>
+              {pieces.map((p) => (
+                <a key={p.path ?? p.url ?? p.nom} className="fchip"
+                  href={p.path ? `/api/photo?s=${encodeURIComponent(p.path)}` : p.url} target="_blank" rel="noreferrer">
+                  <svg viewBox="0 0 24 24"><path d="m16.5 6.5-7.8 7.8a2.2 2.2 0 0 0 3.1 3.1l8.2-8.2a4 4 0 0 0-5.7-5.7L5.9 12a5.8 5.8 0 0 0 8.2 8.2l7-7" /></svg>
+                  {p.nom}
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* Le moment où on sait que le texte est bon, c'est maintenant. */}
           <label className="mred-garder">
