@@ -19,7 +19,13 @@ function requireAppUrl() {
       "BUBBLE_APP_URL manquant. Ex: export BUBBLE_APP_URL='https://ton-app.bubbleapps.io'",
     );
   }
-  return url.replace(/\/+$/, "");
+  // Tolère une URL contenant déjà le chemin API et/ou /version-test
+  // (ex. réglage d'environnement collé depuis la doc Bubble) : on ramène
+  // toujours à la racine du site — l'environnement est piloté par BUBBLE_ENV.
+  return url
+    .replace(/\/+$/, "")
+    .replace(/\/api\/1\.1\/obj$/, "")
+    .replace(/\/version-test$/, "");
 }
 
 // Racine de l'API selon l'environnement (live vs version-test).
