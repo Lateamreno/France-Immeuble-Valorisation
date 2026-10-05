@@ -10,10 +10,23 @@
 // poste et sert de valeur par défaut partout. Le jour où l'authentification
 // arrive, seule cette fonction change.
 import { useEffect, useState } from "react";
+import { AGENT_DEFAUT_INITIALES as DEFAUT } from "./agent-defaut";
 
 const CLE = "fi.agent-courant";
-/** Tant qu'aucun choix n'a été fait, c'est l'admin qui saisit. */
-const DEFAUT = "MAV";
+
+/**
+ * Le slug retenu sur ce poste, ou `null` s'il n'y en a pas : c'est ce que les
+ * écrans envoient au serveur pour dire QUI clique (la salve d'un agent est à
+ * lui, pas à celui qui suit le bien). Le serveur applique le même défaut que
+ * le crochet ci-dessous.
+ */
+export function agentCourantSlug(): string | null {
+  try {
+    return window.localStorage.getItem(CLE);
+  } catch {
+    return null;
+  }
+}
 
 type Agent = { slug: string; name: string; initials?: string; id?: string };
 

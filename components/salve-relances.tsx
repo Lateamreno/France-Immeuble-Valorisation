@@ -19,7 +19,12 @@
  *   • la pastille en bas de l'écran lit l'état au montage — elle réapparaît
  *     donc après un rechargement ou un retour depuis une autre application —
  *     et un tap l'ouvre sur le détail et « Arrêter ».
- * Une seule salve à la fois.
+ *
+ * MAV, 05/10 : « on doit pouvoir travailler sans attendre qui que ce soit
+ * quand on aura une dizaine d'agents, voire une centaine ». Chaque agent a
+ * donc SA salve : la pastille montre la sienne (l'agent retenu sur le poste),
+ * « Arrêter » n'agit que sur la sienne, et les salves des autres avancent en
+ * parallèle — la pastille les cite, sans plus.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { EtatSalve } from "@/lib/bo/relances-file";
@@ -28,6 +33,7 @@ import {
 } from "@/lib/bo/relances-actions";
 import type { ChargeCommercialisation } from "@/lib/bo/relances-file";
 import { PLAFOND_RELANCES } from "@/lib/bo/relances";
+import { agentCourantSlug } from "@/lib/bo/agent-courant";
 
 export type EnvoiRelance = {
   contactId: string; email: string; objet: string; corps: string; propositionIds: string[]; immeubleIds?: string[];
@@ -68,6 +74,8 @@ const Ctx = createContext<Contexte | null>(null);
    secondes montent le budget. */
 const BUDGET_COURT = 8_000;
 const RELECTURE_MS = 4_000;
+const RELECTURE_AUTRES_MS = 15_000;
+const RELECTURE_VEILLE_MS = 60_000;
 
 export function SalveRelancesProvider({ children }: { children: React.ReactNode }) {
   const [salve, setSalve] = useState<ProgresSalve | null>(null);
@@ -84,7 +92,9 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     enTour.current = true;
     try {
       const e = await tournerSalveRelances(id, budgetRef.current);
-      if (e) setSalve(e);
+      /* Un tour ne parle que de MA salve : les autres restent celles de la
+         dernière relecture. */
+      if (e) setSalve((s) => ({ ...e, autres: s?.autres }));
       if (e && !e.enCours) {
         idRef.current = null;
         const f = apresRef.current; apresRef.current = undefined;
@@ -97,21 +107,38 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  /* Relire la pastille de CET agent : sa salve, et celles des autres. Une
+     salve finie qu'il a effacée ne revient pas ; seules celles des autres
+     restent visibles. */
+  const effaceeRef = useRef<string | null>(null);
+  const relire = useCallback(async () => {
+    const e = await derniereSalveRelances(agentCourantSlug()).catch(() => null);
+    if (!e) return null;
+    const effacee = !!e.id && !e.enCours && e.id === effaceeRef.current;
+    const v: ProgresSalve | null = !effacee ? e
+      : e.autres?.length ? { ...e, id: "", titre: "", message: undefined } : null;
+    setSalve((s) => (s && v && s.id === v.id ? { ...s, ...v } : v));
+    return e;
+  }, []);
+
   /* Au montage : y a-t-il une salve en cours (ou finie à l'instant) ? C'est
      ce qui fait réapparaître la pastille après un rechargement. */
   useEffect(() => {
     let vivant = true;
-    derniereSalveRelances().then((e) => {
+    derniereSalveRelances(agentCourantSlug()).then((e) => {
       if (!vivant || !e) return;
       setSalve(e);
-      if (e.enCours) { idRef.current = e.id; void tour(); }
+      if (e.enCours && e.id) { idRef.current = e.id; void tour(); }
     }).catch(() => undefined);
     return () => { vivant = false; };
   }, [tour]);
 
-  /* Tant qu'une salve est en cours : un tour dès que le précédent finit, et
-     une relecture régulière (si c'est le cron qui travaille). */
+  /* Tant que SA salve est en cours : un tour dès que le précédent finit, et
+     une relecture régulière (si c'est le cron qui travaille). Tant qu'une
+     salve tourne, la sienne ou celle d'un autre : une relecture, moins
+     souvent, pour voir les autres démarrer et finir. */
   const enCours = !!salve?.enCours;
+  const quelqueChoseTourne = enCours || (salve?.autres?.length ?? 0) > 0;
   useEffect(() => {
     if (!enCours) return;
     const t = setInterval(() => {
@@ -120,13 +147,20 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
     }, RELECTURE_MS);
     return () => clearInterval(t);
   }, [enCours, tour]);
+  /* Et quand rien ne tourne : une veille lente, pour qu'une salve lancée par
+     un collègue apparaisse sans recharger la page. */
+  const periode = quelqueChoseTourne ? RELECTURE_AUTRES_MS : RELECTURE_VEILLE_MS;
+  useEffect(() => {
+    const t = setInterval(() => { void relire(); }, periode);
+    return () => clearInterval(t);
+  }, [periode, relire]);
 
   const lancer = async (l: Lancement) => {
     const r = await lancerSalveRelances({
       titre: l.titre, agentId: l.agent?.id, agentNom: l.agent?.nom, immeubleId: l.immeubleId,
-      mails: l.mails, sms: l.sms, chemins: l.chemins,
+      mails: l.mails, sms: l.sms, chemins: l.chemins, lanceParSlug: agentCourantSlug(),
     });
-    if (!r.ok) { if (r.etat) { setSalve(r.etat); idRef.current = r.etat.id; } return { ok: false, message: r.message }; }
+    if (!r.ok) return { ok: false, message: "La salve n'a pas pu être inscrite." };
     apresRef.current = l.apres;
     idRef.current = r.etat.id;
     setSalve(r.etat);
@@ -135,8 +169,8 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
   };
 
   const lancerCommercialisation: Contexte["lancerCommercialisation"] = async (l) => {
-    const r = await lancerSalveCommercialisation({ titre: l.titre, agentNom: l.agentNom, charge: l.charge });
-    if (!r.ok) { if (r.etat) { setSalve(r.etat); idRef.current = r.etat.id; } return { ok: false, message: r.message }; }
+    const r = await lancerSalveCommercialisation({ titre: l.titre, agentNom: l.agentNom, charge: l.charge, lanceParSlug: agentCourantSlug() });
+    if (!r.ok) return { ok: false, message: "La salve n'a pas pu être inscrite." };
     apresRef.current = l.apres;
     idRef.current = r.etat.id;
     setSalve(r.etat);
@@ -147,9 +181,19 @@ export function SalveRelancesProvider({ children }: { children: React.ReactNode 
   const arreter = () => {
     const id = idRef.current ?? salve?.id;
     if (!id) return;
-    void arreterSalveRelances(id).then((e) => { if (e) setSalve(e); if (e && !e.enCours) idRef.current = null; }).catch(() => undefined);
+    void arreterSalveRelances(id, agentCourantSlug())
+      .then((e) => { if (e) setSalve((s) => ({ ...e, autres: s?.autres })); if (e && !e.enCours) idRef.current = null; })
+      .catch((err: unknown) => { setSalve((s) => (s ? { ...s, message: err instanceof Error ? err.message : String(err) } : s)); });
   };
-  const effacer = () => { if (!salve?.enCours) setSalve(null); };
+  /* Effacer SA salve finie ; celles des autres restent affichées tant qu'elles
+     tournent. */
+  const effacer = () => {
+    setSalve((s) => {
+      if (!s || s.enCours || !s.id) return s;
+      effaceeRef.current = s.id;
+      return s.autres?.length ? { ...s, id: "", titre: "", message: undefined } : null;
+    });
+  };
   const budget = useCallback((ms: number) => { budgetRef.current = ms; }, []);
 
   return <Ctx.Provider value={{ salve, lancer, lancerCommercialisation, arreter, effacer, budget }}>{children}</Ctx.Provider>;
@@ -242,33 +286,55 @@ export function ProgresSalveRelances({ p, onArreter, compact }: { p: ProgresSalv
 export function PastilleSalve() {
   const { salve, arreter, effacer } = useSalveRelances();
   const [ouverte, setOuverte] = useState(false);
-  /* La pastille d'une salve finie s'efface seule, sauf si on l'a ouverte. */
-  const finie = !!salve && !salve.enCours;
+  /* La pastille de SA salve finie s'efface seule, sauf si on l'a ouverte.
+     Celle des autres reste tant qu'ils envoient. */
+  const finie = !!salve && !!salve.id && !salve.enCours;
   useEffect(() => {
     if (!finie || ouverte) return;
     const t = setTimeout(effacer, 90_000);
     return () => clearTimeout(t);
   }, [finie, ouverte, effacer]);
   if (!salve) return null;
+  const autres = salve.autres ?? [];
+  const sansMienne = !salve.id;
   const total = salve.mails.total + salve.sms.total;
   const fait = salve.mails.fait + salve.mails.echecs + salve.sms.fait + salve.sms.echecs;
-  const rate = !salve.enCours && (salve.message || (salve.mails.fait + salve.sms.fait === 0 && salve.mails.echecs + salve.sms.echecs > 0));
+  const rate = !sansMienne && !salve.enCours && (salve.message || (salve.mails.fait + salve.sms.fait === 0 && salve.mails.echecs + salve.sms.echecs > 0));
+  const listeAutres = autres.length > 0 && (
+    <ul className="salve-autres">
+      {autres.map((a, i) => (
+        <li key={i}><i className="asst-spin" aria-hidden /> <b>{a.agentNom ?? "Un autre agent"}</b> — {a.titre} · {a.fait} / {a.total}</li>
+      ))}
+    </ul>
+  );
   return (
     <>
-      <button type="button" className={`salve-pastille${salve.enCours ? " encours" : rate ? " rouge" : ""}`}
+      <button type="button" className={`salve-pastille${salve.enCours ? " encours" : rate ? " rouge" : sansMienne ? " autres" : ""}`}
         onClick={() => setOuverte((o) => !o)} aria-expanded={ouverte}
         title={ouverte ? "Replier" : "Voir l'avancement"}>
-        {salve.enCours ? <i className="asst-spin" aria-hidden /> : null}
-        <span className="salve-pastille-t">{salve.titre}</span>
-        <b>{fait} / {total}</b>
-        <span className="salve-barre mini"><i style={{ width: `${pct(fait, total)}%` }} /></span>
+        {salve.enCours || sansMienne ? <i className="asst-spin" aria-hidden /> : null}
+        {sansMienne ? (
+          <span className="salve-pastille-t">{autres.length > 1 ? `${autres.length} salves en cours` : `Salve de ${autres[0]?.agentNom ?? "un autre agent"} en cours`}</span>
+        ) : (
+          <>
+            <span className="salve-pastille-t">{salve.titre}</span>
+            <b>{fait} / {total}</b>
+            <span className="salve-barre mini"><i style={{ width: `${pct(fait, total)}%` }} /></span>
+          </>
+        )}
       </button>
       {ouverte && (
         <div className="salve-panneau">
-          <ProgresSalveRelances p={salve} onArreter={arreter} />
+          {!sansMienne && <ProgresSalveRelances p={salve} onArreter={arreter} />}
+          {autres.length > 0 && (
+            <div className="salve-autres-bloc">
+              <span>{sansMienne ? "En cours chez les autres agents — chacun conduit la sienne, elles avancent en parallèle." : "Aussi en cours, en parallèle :"}</span>
+              {listeAutres}
+            </div>
+          )}
           <div className="salve-panneau-pied">
             <button type="button" className="fadd" onClick={() => setOuverte(false)}>Replier</button>
-            {!salve.enCours && <button type="button" className="fadd" onClick={() => { setOuverte(false); effacer(); }}>Effacer</button>}
+            {!salve.enCours && !sansMienne && <button type="button" className="fadd" onClick={() => { setOuverte(false); effacer(); }}>Effacer</button>}
           </div>
         </div>
       )}
