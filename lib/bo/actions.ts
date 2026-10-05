@@ -4694,7 +4694,9 @@ export async function createCommercialisation(input: CommercialisationInput) {
  *     part jamais d'une boîte personnelle.
  */
 /** Adresses servies par appel : quelques secondes, loin des 60 s de Vercel. */
-const LOT_MAILS = 12;
+/* Vingt-quatre par appel, quatre à la fois (05/10) — la file (relances-file.ts)
+   demande des paquets de cette taille, les deux doivent rester égaux. */
+const LOT_MAILS = 24;
 
 /** Où en est l'envoi des e-mails d'une commercialisation (reprise, compteur). */
 export async function etatMailsCommercialisation(commId: string) {
@@ -4770,31 +4772,18 @@ export async function envoyerMailsCommercialisation(input: {
     /* Les pièces jointes, tirées du coffre une seule fois pour toute la salve :
        les retélécharger par destinataire multiplierait le trafic par deux cents
        pour un contenu identique. */
+    /* MAV (25/09, premier envoi) : « dans les e-mails envoyés il n'y avait
+       pas la PJ ». Le dossier choisi n'était jamais joint — seule la seconde
+       pièce l'était. Il l'est maintenant, qu'il vive dans notre coffre
+       (`path`) ou chez Bubble (`url`). `lirePiece` garde le fichier en
+       mémoire d'un paquet à l'autre (05/10). */
+    const { lirePiece } = await import("./piece-dossier");
     const pieces: { nom: string; contenu: Buffer; type?: string }[] = [];
     for (const p of input.pieces ?? []) {
       if (!SB_KEY) break;
-      /* MAV (25/09, premier envoi) : « dans les e-mails envoyés il n'y avait
-         pas la PJ ». Le dossier choisi n'était jamais joint — seule la seconde
-         pièce l'était. Il l'est maintenant, qu'il vive dans notre coffre
-         (`path`) ou chez Bubble (`url`, un PDF « fileupload » du site). */
-      const source = p.path
-        ? `${SB_URL}/storage/v1/object/bo-files/${p.path}`
-        : p.url && /^https:\/\/(vente\.france-immeuble\.fr|[a-z0-9-]+\.supabase\.co)\//i.test(p.url) ? p.url : "";
-      if (!source) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}.` };
-      /* Bubble sert ses `fileupload` en 401 à toute requête anonyme (voir
-         diffusion.ts) : le jeton d'API ouvre la porte, et il ne sort pas d'ici. */
-      const jetonBubble = process.env.BUBBLE_API_TOKEN;
-      const res = await fetch(source, {
-        headers: p.path
-          ? { Authorization: `Bearer ${SB_KEY}` }
-          : jetonBubble && /^https:\/\/vente\.france-immeuble\.fr\//i.test(source) ? { Authorization: `Bearer ${jetonBubble}` } : undefined,
-        redirect: "follow",
-        cache: "no-store",
-      }).catch(() => null);
-      if (!res?.ok) return { ok: false as const, message: `Pièce jointe introuvable : ${p.nom}${res ? ` (réponse ${res.status})` : ""}.` };
-      const type = /\.csv$/i.test(p.nom) ? "text/csv" : /\.xlsx$/i.test(p.nom)
-        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
-      pieces.push({ nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type });
+      const r = await lirePiece(p);
+      if (!r.ok) return { ok: false as const, message: r.message };
+      pieces.push(r.piece);
     }
     const pesee = peserPiecesJointes(pieces.map((p) => p.contenu.length));
     if (pesee.depasse) {
@@ -4848,7 +4837,11 @@ export async function envoyerMailsCommercialisation(input: {
     let envoyes = 0;
     const faitsIci: string[] = [];
     const echecs: { email: string; raison: string }[] = [];
-    for (const to of adresses) {
+    /* Quatre à la fois, sur les quatre connexions du relais (MAV, 05/10) :
+       la cadence reste tenue à quatre messages par seconde par le transport
+       lui-même, ce n'est pas une rafale de connexions. */
+    const { parGroupes } = await import("./piece-dossier");
+    await parGroupes(adresses, 4, async (to) => {
       try {
         await envoyerEnMasse({
           to, subject: input.objet, text: input.message,
@@ -4859,10 +4852,7 @@ export async function envoyerMailsCommercialisation(input: {
       } catch (e) {
         echecs.push({ email: to, raison: e instanceof Error ? e.message : String(e) });
       }
-      /* Séquentiel et espacé : une rafale de connexions se fait limiter aussi
-         sûrement qu'un volume excessif (§7.1). */
-      await new Promise((r) => setTimeout(r, 150));
-    }
+    });
 
     /* L'avancement, sur la commercialisation elle-même : la liste des adresses
        servies (la reprise l'utilise), le compte, le total attendu. */

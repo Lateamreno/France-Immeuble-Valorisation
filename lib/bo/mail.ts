@@ -144,8 +144,12 @@ function transportMasse() {
     secure: c.port === 465,
     requireTLS: c.port !== 465,
     auth: { user: c.user!, pass: c.pass! },
+    /* Quatre connexions, pas une (MAV, 05/10 : 2,5 s par message avec une
+       seule) : c'est la pièce jointe de plusieurs Mo qui prend le temps, et
+       quatre messages peuvent la pousser en même temps. La cadence reste
+       tenue à 4 par seconde, tous canaux confondus. */
     pool: true,
-    maxConnections: 1,
+    maxConnections: 4,
     maxMessages: 50,
     rateDelta: 1000,
     rateLimit: 4,

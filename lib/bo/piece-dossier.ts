@@ -34,6 +34,15 @@ export function sourcePdfDossier(d: Record<string, unknown>): { path?: string; u
  * fichiers en 401 à toute requête anonyme : le jeton d'API ouvre la porte, et
  * il ne sort pas d'ici.
  */
+/* Le cache des pièces lues (MAV, 05/10 : « pourquoi c'est aussi lent »). Une
+   salve lit le même PDF à chaque paquet, et une fonction Vercel qui reste
+   chaude le garde en mémoire quelques minutes : un dossier de plusieurs Mo
+   n'est plus retéléchargé douze fois. Borné en nombre et en durée — une
+   fonction froide repart à vide, ce n'est pas grave. */
+const CACHE_PIECES = new Map<string, { quand: number; piece: { nom: string; contenu: Buffer; type: string } }>();
+const CACHE_PIECES_MS = 10 * 60_000;
+const CACHE_PIECES_MAX = 12;
+
 export async function lirePiece(p: { nom: string; path?: string; url?: string }): Promise<
   { ok: true; piece: { nom: string; contenu: Buffer; type: string } } | { ok: false; message: string }
 > {
@@ -42,6 +51,9 @@ export async function lirePiece(p: { nom: string; path?: string; url?: string })
     ? `${SB_URL}/storage/v1/object/bo-files/${p.path}`
     : p.url && /^https:\/\/(vente\.france-immeuble\.fr|[a-z0-9-]+\.supabase\.co)\//i.test(p.url) ? p.url : "";
   if (!source) return { ok: false, message: `Pièce jointe introuvable : ${p.nom}.` };
+  const cle = `${source}|${p.nom}`;
+  const deja = CACHE_PIECES.get(cle);
+  if (deja && Date.now() - deja.quand < CACHE_PIECES_MS) return { ok: true, piece: deja.piece };
   const jetonBubble = process.env.BUBBLE_API_TOKEN;
   const res = await fetch(source, {
     headers: p.path
@@ -53,7 +65,28 @@ export async function lirePiece(p: { nom: string; path?: string; url?: string })
   if (!res?.ok) return { ok: false, message: `Pièce jointe introuvable : ${p.nom}${res ? ` (réponse ${res.status})` : ""}.` };
   const type = /\.csv$/i.test(p.nom) ? "text/csv" : /\.xlsx$/i.test(p.nom)
     ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
-  return { ok: true, piece: { nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type } };
+  const piece = { nom: p.nom, contenu: Buffer.from(await res.arrayBuffer()), type };
+  if (CACHE_PIECES.size >= CACHE_PIECES_MAX) {
+    const plusVieille = [...CACHE_PIECES.entries()].sort((a, b) => a[1].quand - b[1].quand)[0]?.[0];
+    if (plusVieille) CACHE_PIECES.delete(plusVieille);
+  }
+  CACHE_PIECES.set(cle, { quand: Date.now(), piece });
+  return { ok: true, piece };
+}
+
+/**
+ * Envoie en parallèle, par groupes de `largeur`, en gardant l'ordre des
+ * résultats. C'est ce qui fait passer une salve de 2,5 s par message à
+ * quelques dixièmes : SendGrid accepte plusieurs connexions, et c'est la
+ * pièce jointe à pousser qui prend le temps, pas le relais.
+ */
+export async function parGroupes<T, R>(liste: T[], largeur: number, f: (x: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < liste.length; i += largeur) {
+    const tranche = liste.slice(i, i + largeur);
+    out.push(...(await Promise.all(tranche.map((x, k) => f(x, i + k)))));
+  }
+  return out;
 }
 
 /**
