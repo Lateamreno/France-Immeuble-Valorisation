@@ -52,8 +52,11 @@ export type SalveLigne = {
   genre: "relances" | "commercialisation";
   charge: Partial<ChargeCommercialisation>;
   titre: string;
+  /** L'agent qui signe : celui du bien. */
   agent_id: string | null;
   agent_nom: string | null;
+  /** L'agent qui a cliqué : la pastille est la sienne, « Arrêter » aussi. */
+  lance_par: string | null;
   immeuble_id: string | null;
   voie: "boite" | "masse";
   expediteur: string | null;
@@ -99,6 +102,13 @@ export type EtatSalve = {
   recap?: string;
   finieA?: number;
   creeA: number;
+  /** Qui signe, et qui a cliqué. */
+  agentNom?: string;
+  lancePar?: string;
+  /** Les salves des AUTRES agents en cours en même temps (MAV, 05/10 : « on
+   *  doit pouvoir travailler sans attendre qui que ce soit ») : juste de quoi
+   *  savoir que le relais sert aussi quelqu'un d'autre. */
+  autres?: { titre: string; agentNom?: string; fait: number; total: number }[];
 };
 
 const H = () => ({ apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" });
@@ -138,13 +148,26 @@ export function versEtat(l: SalveLigne): EtatSalve {
     recap: l.recap ?? undefined,
     finieA: l.finie_at ? new Date(l.finie_at).getTime() : undefined,
     creeA: new Date(l.created_at).getTime(),
+    agentNom: l.agent_nom ?? undefined,
+    lancePar: l.lance_par ?? undefined,
   };
 }
+
+/** Le résumé d'une salve d'un autre agent : son titre, qui, où elle en est. */
+const resumeAutre = (l: SalveLigne) => {
+  const e = versEtat(l);
+  return {
+    titre: l.titre, agentNom: l.agent_nom ?? undefined,
+    fait: e.mails.fait + e.mails.echecs + e.sms.fait + e.sms.echecs, total: e.mails.total + e.sms.total,
+  };
+};
 
 /** Inscrit une salve validée à l'écran. Elle est aussitôt « en cours ». */
 export async function inscrire(s: {
   titre: string; agentId?: string; agentNom?: string; immeubleId?: string;
   mails: EnvoiMail[]; sms: EnvoiSms[]; chemins?: string[];
+  /** L'agent qui clique (identifiant), pour que la salve soit la sienne. */
+  lancePar?: string;
 }): Promise<EtatSalve> {
   const mail = await import("./mail");
   const voie: "boite" | "masse" = s.mails.length && mail.masseConfiguree() ? "masse" : "boite";
@@ -160,7 +183,8 @@ export async function inscrire(s: {
     })) || null;
   }
   const [l] = await ecrire("POST", {
-    titre: s.titre, agent_id: s.agentId ?? null, agent_nom: s.agentNom ?? null, immeuble_id: s.immeubleId ?? null,
+    titre: s.titre, agent_id: s.agentId ?? null, agent_nom: s.agentNom ?? null, lance_par: s.lancePar ?? s.agentId ?? null,
+    immeuble_id: s.immeubleId ?? null,
     voie, expediteur, objet: s.mails[0]?.objet ?? null, corps: s.mails[0]?.corps ?? null, sms_texte: s.sms[0]?.texte ?? null,
     mails: s.mails, sms: s.sms, chemins: s.chemins ?? [], salve_id: salveId, statut: "en_cours",
   });
@@ -170,17 +194,18 @@ export async function inscrire(s: {
 /** Inscrit les e-mails d'une commercialisation (MAV, 29/09 : « mets aussi
  *  les e-mails de commercialisation sur la file »). Même file, même
  *  automate : l'assistant se ferme, l'envoi continue. */
-export async function inscrireCommercialisation(titre: string, ch: ChargeCommercialisation, agentNom?: string): Promise<EtatSalve> {
+export async function inscrireCommercialisation(titre: string, ch: ChargeCommercialisation, agentNom?: string, lancePar?: string): Promise<EtatSalve> {
   const [l] = await ecrire("POST", {
     genre: "commercialisation", charge: ch,
-    titre, agent_id: ch.agentId ?? null, agent_nom: agentNom ?? null, immeuble_id: ch.immeubleId,
+    titre, agent_id: ch.agentId ?? null, agent_nom: agentNom ?? null, lance_par: lancePar ?? ch.agentId ?? null,
+    immeuble_id: ch.immeubleId,
     voie: "masse", expediteur: null, objet: ch.objet, corps: ch.message, sms_texte: null,
     mails: [], sms: [], chemins: [`/bien/${ch.immeubleId}`], salve_id: null, statut: "en_cours",
   });
   return versEtat(l);
 }
 
-/** L'état d'une salve, ou de la salve active la plus récente. */
+/** L'état d'une salve, ou de la salve active la plus ancienne. */
 export async function etat(id?: string): Promise<EtatSalve | null> {
   const lignes = id
     ? await lire(`id=eq.${encodeURIComponent(id)}&limit=1`)
@@ -188,15 +213,38 @@ export async function etat(id?: string): Promise<EtatSalve | null> {
   return lignes[0] ? versEtat(lignes[0]) : null;
 }
 
-/** La dernière salve, en cours ou finie depuis peu : ce que la pastille montre. */
-export async function derniere(): Promise<EtatSalve | null> {
+/**
+ * Ce que la pastille d'UN agent montre : sa dernière salve (en cours, ou
+ * finie depuis moins de dix minutes), et la liste des salves des autres qui
+ * tournent en même temps. Sans agent connu, la dernière de tous.
+ */
+export async function derniere(lancePar?: string): Promise<EtatSalve | null> {
   const depuis = new Date(Date.now() - 10 * 60_000).toISOString();
-  const lignes = await lire(`or=(statut.eq.en_cours,finie_at.gte.${encodeURIComponent(depuis)})&order=created_at.desc&limit=1`);
-  return lignes[0] ? versEtat(lignes[0]) : null;
+  const filtre = `or=(statut.eq.en_cours,finie_at.gte.${encodeURIComponent(depuis)})`;
+  const [miennes, enCours] = await Promise.all([
+    lire(`${filtre}${lancePar ? `&lance_par=eq.${encodeURIComponent(lancePar)}` : ""}&order=created_at.desc&limit=1`),
+    lire("statut=eq.en_cours&order=created_at.asc&limit=20"),
+  ]);
+  const mienne = miennes[0];
+  const autres = enCours.filter((l) => l.id !== mienne?.id && (!lancePar || l.lance_par !== lancePar)).map(resumeAutre);
+  if (!mienne) {
+    /* Rien à soi, mais d'autres salves tournent : la pastille le dit, sans
+       bouton Arrêter. On rend un état « vide » porteur des autres. */
+    return autres.length ? { ...versEtat(enCours[0]), id: "", titre: "", mails: { fait: 0, total: 0, echecs: 0 }, sms: { fait: 0, total: 0, echecs: 0 }, journal: [], enCours: false, termine: false, arrete: false, message: undefined, recap: undefined, repriseA: undefined, lancePar: undefined, agentNom: undefined, autres } : null;
+  }
+  return { ...versEtat(mienne), autres };
 }
 
-/** Arrête une salve : ce qui est parti reste marqué, le reste attend. */
-export async function arreter(id: string): Promise<EtatSalve | null> {
+/**
+ * Arrête une salve : ce qui est parti reste marqué, le reste attend. Seul
+ * celui qui l'a lancée peut l'arrêter (MAV, 05/10) ; sans agent connu de
+ * part ou d'autre, on laisse faire — le BO n'a pas encore de connexion.
+ */
+export async function arreter(id: string, lancePar?: string): Promise<EtatSalve | null> {
+  const [actuelle] = await lire(`id=eq.${encodeURIComponent(id)}&limit=1`);
+  if (actuelle?.lance_par && lancePar && actuelle.lance_par !== lancePar) {
+    throw new Error(`Cette salve est celle de ${actuelle.agent_nom ?? "un autre agent"} : seul lui peut l'arrêter.`);
+  }
   const [l] = await ecrire("PATCH", { statut: "arretee", finie_at: new Date().toISOString() },
     `id=eq.${encodeURIComponent(id)}&statut=eq.en_cours`);
   if (!l) return etat(id);
@@ -275,7 +323,9 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
       if (!(await encoreEnCours())) break;
       const paquet = l.mails.slice(curseur, curseur + lot);
       if (!relais) {
-        const f = await relancesDerniereHeure();
+        /* Le plafond horaire de la boîte est celui de CETTE boîte : chaque
+           agent a la sienne (05/10). */
+        const f = await relancesDerniereHeure(l.agent_id ?? undefined);
         if (f.n + paquet.length > PLAFOND_RELANCES && f.premiere) {
           const reprise = new Date(new Date(f.premiere).getTime() + HEURE + 15_000).toISOString();
           await poser({ reprise_a: reprise, curseur_mail: curseur, fait_mail: fait, echecs_mail: echecs, verrou_jusqua: null });
@@ -379,11 +429,24 @@ async function tournerCommercialisation(l: SalveLigne, o: {
   }
 }
 
-/** Un tour sur la salve active la plus ancienne : ce que le cron appelle. */
+/**
+ * Un tour sur CHAQUE salve active dont personne ne s'occupe (verrou libre),
+ * jusqu'à `SALVES_PAR_CRON` à la fois : ce que le cron appelle. Les salves
+ * des différents agents avancent donc en parallèle, qu'une page soit ouverte
+ * ou non (MAV, 05/10 : « sans attendre qui que ce soit, une dizaine d'agents
+ * voire une centaine »). Chaque page ouverte fait de toute façon tourner la
+ * salve de son agent ; le cron n'est que le filet.
+ */
+const SALVES_PAR_CRON = 4;
 export async function tournerLaFile(budgetMs = BUDGET_MS): Promise<EtatSalve | null> {
-  const [l] = await lire(`statut=eq.en_cours&order=created_at.asc&limit=1`);
-  if (!l) return null;
-  return tourner(l.id, budgetMs);
+  const maintenant = new Date().toISOString();
+  const libres = await lire(
+    `statut=eq.en_cours&or=(verrou_jusqua.is.null,verrou_jusqua.lt.${encodeURIComponent(maintenant)})`
+    + `&or=(reprise_a.is.null,reprise_a.lt.${encodeURIComponent(maintenant)})&order=created_at.asc&limit=${SALVES_PAR_CRON}`,
+  );
+  if (libres.length === 0) return null;
+  const etats = await Promise.all(libres.map((l) => tourner(l.id, budgetMs).catch(() => null)));
+  return etats[0] ?? null;
 }
 
 /** Le récapitulatif dans la boîte de l'agent, une fois, à la fin. */

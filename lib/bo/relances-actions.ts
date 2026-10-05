@@ -572,10 +572,13 @@ export async function ouvrirSalveRelances(s: {
  * s'en sert pour tenir le plafond horaire toute seule, y compris après une
  * page fermée et rouverte.
  */
-export async function relancesDerniereHeure(): Promise<{ n: number; premiere: string | null }> {
+export async function relancesDerniereHeure(agentId?: string): Promise<{ n: number; premiere: string | null }> {
   const depuis = new Date(Date.now() - 3_600_000).toISOString();
+  /* Par agent quand on le connaît (05/10) : la boîte OVH est la sienne, le
+     plafond aussi. Les propositions portent l'agent qui les a créées. */
+  const parAgent = agentId ? `&data->AGENTs=cs.${encodeURIComponent(`["${agentId.replace(/"/g, "")}"]`)}` : "";
   const rows = await pgBrut(
-    `bo_proposition?select=d:data->>date_last_relance&data->>date_last_relance=gte.${encodeURIComponent(depuis)}&order=data->>date_last_relance.asc`,
+    `bo_proposition?select=d:data->>date_last_relance&data->>date_last_relance=gte.${encodeURIComponent(depuis)}${parAgent}&order=data->>date_last_relance.asc`,
     1000,
   );
   const dates = rows.map((r) => S(r.d) ?? "").filter(Boolean);
@@ -792,13 +795,28 @@ export async function lancerSalveRelances(s: {
   mails: { contactId: string; email: string; objet: string; corps: string; propositionIds: string[]; immeubleIds?: string[] }[];
   sms: { contactId?: string; tel?: string; immeubleId: string; libelle: string; propositionIds: string[]; texte?: string }[];
   chemins?: string[];
+  /** Le slug de l'agent aux commandes sur ce poste : la salve est la sienne. */
+  lanceParSlug?: string | null;
 }) {
   const file = await import("./relances-file");
-  /* Une seule salve à la fois : la file est courte et lisible. */
-  const active = await file.etat();
-  if (active) return { ok: false as const, message: `Une relance est déjà en cours (${active.titre}) : attendez sa fin, ou arrêtez-la depuis la pastille.`, etat: active };
-  const etat = await file.inscrire(s);
+  /* Plus de « une seule salve à la fois » (05/10) : chaque agent a la sienne,
+     elles avancent en parallèle, chacune sous son verrou. */
+  const lancePar = (await agentParSlug(s.lanceParSlug))?.id;
+  const etat = await file.inscrire({ ...s, lancePar });
   return { ok: true as const, etat };
+}
+
+/**
+ * L'agent derrière un slug retenu sur le poste — avec le même défaut que
+ * l'écran (l'admin) quand rien n'est retenu. Le BO n'a pas d'authentification :
+ * c'est ce qui dit « qui clique », et c'est assumé comme tel.
+ */
+async function agentParSlug(slug?: string | null): Promise<{ id: string; name: string } | undefined> {
+  const [{ getAgents }, { AGENT_DEFAUT_INITIALES }] = await Promise.all([
+    import("@/lib/bubble/server"), import("./agent-defaut"),
+  ]);
+  const agents = await getAgents().catch(() => []);
+  return agents.find((a) => slug && a.slug === slug) ?? agents.find((a) => a.initials === AGENT_DEFAUT_INITIALES) ?? agents[0];
 }
 
 /** Fait avancer une salve pendant `budgetMs` au plus (plafonné à 45 s). */
@@ -812,15 +830,16 @@ export async function etatSalveRelances(id?: string) {
   return file.etat(id);
 }
 
-/** La salve à montrer dans la pastille : en cours, ou finie depuis peu. */
-export async function derniereSalveRelances() {
+/** La salve à montrer dans la pastille de CET agent : la sienne, en cours ou
+ *  finie depuis peu, et celles des autres qui tournent. */
+export async function derniereSalveRelances(lanceParSlug?: string | null) {
   const file = await import("./relances-file");
-  return file.derniere();
+  return file.derniere((await agentParSlug(lanceParSlug))?.id);
 }
 
-export async function arreterSalveRelances(id: string) {
+export async function arreterSalveRelances(id: string, lanceParSlug?: string | null) {
   const file = await import("./relances-file");
-  return file.arreter(id);
+  return file.arreter(id, (await agentParSlug(lanceParSlug))?.id);
 }
 
 /** Les e-mails d'une commercialisation sur la file : même automate que les
@@ -828,10 +847,10 @@ export async function arreterSalveRelances(id: string) {
 export async function lancerSalveCommercialisation(s: {
   titre: string; agentNom?: string;
   charge: import("./relances-file").ChargeCommercialisation;
+  lanceParSlug?: string | null;
 }) {
   const file = await import("./relances-file");
-  const active = await file.etat();
-  if (active) return { ok: false as const, message: `Une salve est déjà en cours (${active.titre}) : attendez sa fin, ou arrêtez-la depuis la pastille.`, etat: active };
-  const etat = await file.inscrireCommercialisation(s.titre, s.charge, s.agentNom);
+  const lancePar = (await agentParSlug(s.lanceParSlug))?.id;
+  const etat = await file.inscrireCommercialisation(s.titre, s.charge, s.agentNom, lancePar);
   return { ok: true as const, etat };
 }

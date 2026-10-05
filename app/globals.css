@@ -8302,3 +8302,10 @@ button { font-weight: 700; }
 }
 .salve-panneau .salve-prog { margin: 0 0 8px; }
 .salve-panneau-pied { display: flex; gap: 8px; justify-content: flex-end; }
+/* Les salves des autres agents, en parallèle (05/10) : une ligne chacune. */
+.salve-pastille.autres { background: var(--slate-2); }
+.salve-autres-bloc { margin: 0 0 10px; font-size: 12.5px; color: var(--gray-txt); }
+.salve-autres { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.salve-autres li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate); }
+.salve-autres li b { font-weight: 700; }
+.salve-autres .asst-spin { width: 10px; height: 10px; }
