@@ -204,18 +204,23 @@ export async function arreter(id: string): Promise<EtatSalve | null> {
   return etat(id);
 }
 
-/* Douze e-mails par paquet sur le relais, six par la boîte ; cent SMS (une
-   seule campagne MailingVox par paquet). Un tour s'arrête après `BUDGET_MS`,
-   sous la coupure Vercel à soixante secondes ; le tour suivant reprend au
-   curseur. Un paquet ne s'entame que s'il reste de quoi le finir : un paquet
-   de douze e-mails avec pièce jointe prend jusqu'à vingt secondes, et c'est
+/* Vingt-quatre e-mails par paquet sur le relais (quatre à la fois), six par
+   la boîte ; cent SMS (une seule campagne MailingVox par paquet). Un tour
+   s'arrête après `BUDGET_MS`, sous la coupure Vercel à soixante secondes ; le
+   tour suivant reprend au curseur. Un paquet ne s'entame que s'il reste de
+   quoi le finir : la marge est MESURÉE sur le paquet précédent du tour (une
+   fois et demie sa durée), avec une marge de départ pour le premier — c'est
    un paquet entamé à huit secondes de la fin qui faisait couper la page à
-   soixante (vu le 29/09 : « la page a buggé »). */
-const LOT_RELAIS = 12;
+   soixante (vu le 29/09 : « la page a buggé »), et c'est une marge fixe de
+   vingt-deux secondes qui laissait un tour sur deux à moitié vide (MAV,
+   05/10 : « pourquoi c'est aussi lent »). */
+const LOT_RELAIS = 24;
 const LOT_BOITE = 6;
 const LOT_SMS = 100;
 const MARGE_MAIL_MS = 22_000;
 const MARGE_SMS_MS = 12_000;
+/** La marge pour le paquet suivant, d'après la durée du précédent. */
+const margeMesuree = (dureeMs: number) => Math.max(6_000, Math.round(dureeMs * 1.5));
 const BUDGET_MS = 40_000;
 const VERROU_MS = 75_000;
 const HEURE = 3_600_000;
@@ -265,7 +270,8 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
       return etat(id);
     }
 
-    while (curseur < l.mails.length && tempsRestant() > MARGE_MAIL_MS) {
+    let margeMail = MARGE_MAIL_MS;
+    while (curseur < l.mails.length && tempsRestant() > margeMail) {
       if (!(await encoreEnCours())) break;
       const paquet = l.mails.slice(curseur, curseur + lot);
       if (!relais) {
@@ -276,6 +282,7 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
           return etat(id);
         }
       }
+      const top = Date.now();
       const r = await envoyerRelances(paquet, l.agent_id ?? undefined, undefined, l.chemins ?? [], {
         voie: relais ? "masse" : "boite", salveId: l.salve_id ?? undefined, avant: { envoyes: fait, echecs },
       });
@@ -284,6 +291,9 @@ export async function tourner(id: string, budgetMs = BUDGET_MS): Promise<EtatSal
       echecs += r.echecs;
       journal.push(...r.journal);
       await poser({ curseur_mail: curseur, fait_mail: fait, echecs_mail: echecs, reprise_a: null });
+      /* Un paquet entier mesure le suivant ; un paquet de queue, plus court,
+         ne dit rien de la taille normale. */
+      if (paquet.length === lot) margeMail = margeMesuree(Date.now() - top);
     }
 
     let curseurSms = l.curseur_sms;
@@ -341,11 +351,13 @@ async function tournerCommercialisation(l: SalveLigne, o: {
   let curseur = l.curseur_mail;
   let fait = l.fait_mail;
   let echecs = l.echecs_mail;
-  /* Un paquet avec ses pièces jointes prend dix secondes : on ne l'entame que
-     s'il reste de quoi le finir. */
-  while (curseur < adresses.length && o.tempsRestant() > MARGE_MAIL_MS) {
+  /* Un paquet ne s'entame que s'il reste de quoi le finir : la marge se
+     mesure sur le paquet précédent. */
+  let marge = MARGE_MAIL_MS;
+  while (curseur < adresses.length && o.tempsRestant() > marge) {
     if (!(await o.encoreEnCours())) break;
     const lot = adresses.slice(curseur, curseur + LOT_RELAIS);
+    const top = Date.now();
     const r = await envoyerMailsCommercialisation({
       immeubleId: ch.immeubleId, commId: ch.commId, objet: ch.objet, message: ch.message,
       destinataires: lot, pieces: ch.pieces, quand: ch.quand, agentId: ch.agentId, total: ch.total,
@@ -356,6 +368,7 @@ async function tournerCommercialisation(l: SalveLigne, o: {
     echecs += r.echecs.length;
     o.journal.push(...r.echecs.map((e) => `E-mail ${e.email} : ${e.raison}`));
     await o.poser({ curseur_mail: curseur, fait_mail: fait, echecs_mail: echecs });
+    if (lot.length === LOT_RELAIS) marge = margeMesuree(Date.now() - top);
   }
   if (curseur >= adresses.length && (await o.encoreEnCours())) {
     await o.poser({ statut: "terminee", finie_at: new Date().toISOString(), verrou_jusqua: null });

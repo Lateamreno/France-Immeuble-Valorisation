@@ -364,12 +364,13 @@ export async function envoyerRelances(
   const { lienDuDossier } = await import("./lien-dossier");
   const sansLien = new Set(tousImmeubles.filter((id) => { const l = lienDuDossier(dossiers.get(id)); return !l || l.aRemplacer; }));
 
-  for (const e of lot) {
+  /* Un envoi : le message, puis le marquage de ses propositions (en
+     parallèle, une écriture par ligne). Rend la ligne de journal s'il a
+     échoué — rien n'est marqué relancé dans ce cas. */
+  const unEnvoi = async (e: (typeof lot)[number]): Promise<string | null> => {
     const bloques = (e.immeubleIds ?? []).filter((id) => sansLien.has(id));
     if (bloques.length) {
-      echecs++;
-      journal.push(`${e.email} : pas de lien transfer.it valable sur ${bloques.length > 1 ? "des dossiers" : "le dossier"} — à poser sur la fiche (Dossiers).`);
-      continue;
+      return `${e.email} : pas de lien transfer.it valable sur ${bloques.length > 1 ? "des dossiers" : "le dossier"} — à poser sur la fiche (Dossiers).`;
     }
     try {
       const attachments = (e.immeubleIds ?? [])
@@ -388,19 +389,31 @@ export async function envoyerRelances(
           attachments: attachments.length ? attachments : undefined,
         });
       }
-      envoyes++;
-      for (const id of e.propositionIds) {
-        await rpc("bo_patch_doc", {
-          p_table: "bo_proposition",
-          p_id: id,
-          p_patch: { date_last_relance: now, mail_relance_le: now, date_modif: now, "Modified Date": now },
-        }).catch(() => {});
-      }
+      await Promise.all(e.propositionIds.map((id) => rpc("bo_patch_doc", {
+        p_table: "bo_proposition",
+        p_id: id,
+        p_patch: { date_last_relance: now, mail_relance_le: now, date_modif: now, "Modified Date": now },
+      }).catch(() => {})));
+      return null;
     } catch (err) {
-      echecs++;
-      journal.push(`E-mail ${e.email} : ${err instanceof Error ? err.message : "échec d'envoi"}`);
+      return `E-mail ${e.email} : ${err instanceof Error ? err.message : "échec d'envoi"}`;
     }
-    await new Promise((r) => setTimeout(r, parRelais ? 150 : 400));
+  };
+
+  /* Par le relais : quatre à la fois, sur les quatre connexions du relais
+     (MAV, 05/10 : une seule, et 2,5 s par message). Par la boîte de l'agent :
+     un par un, espacés — c'est une boîte OVH, pas un relais. */
+  const { parGroupes } = await import("./piece-dossier");
+  const resultats = parRelais
+    ? await parGroupes(lot, 4, unEnvoi)
+    : await (async () => {
+      const out: (string | null)[] = [];
+      for (const e of lot) { out.push(await unEnvoi(e)); await new Promise((r) => setTimeout(r, 400)); }
+      return out;
+    })();
+  for (const r of resultats) {
+    if (r === null) envoyes++;
+    else { echecs++; journal.push(r); }
   }
 
   /* Le compte de la salve, sur sa ligne : c'est elle que lit le journal des
