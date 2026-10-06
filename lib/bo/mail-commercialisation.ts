@@ -187,7 +187,7 @@ export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?
     ...lignes,
     "Si l'un d'eux vous intéresse et que vous avez la moindre question, n'hésitez pas à me contacter je me ferai un plaisir d'y répondre.",
     "",
-    "Dans le cas contraire, pouvez-vous me le signaler et si possible m'en indiquer la raison ? Cela me permettra de mettre à jour ma base et d'affiner vos critères de recherche.",
+    PAS_INTERESSE,
     "",
     "Cordialement",
     "",
@@ -205,10 +205,17 @@ export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?
 /**
  * Le corps de l'e-mail, au format que MAV envoie aujourd'hui à la main.
  *
- * La phrase « pouvez-vous me le signaler et m'en indiquer la raison » reste du
- * texte : les boutons OUI / NON qu'il envisage supposent des liens publics
- * vers le BO, ce qui ne se décide pas dans un modèle d'e-mail.
+ * Retour #358 : la phrase « Dans le cas contraire, pouvez-vous me le signaler
+ * et si possible m'en indiquer la raison ? Cela me permettra de mettre à jour
+ * ma base et d'affiner vos critères de recherche. » était lourde. MAV a
+ * tranché le 06/10 pour une phrase courte, en texte, sans bouton : les
+ * boutons OUI / NON supposent des liens publics vers l'espace client, et
+ * viendront avec lui (§10 bis). Les réponses arrivent par e-mail, le relevé
+ * les rattache à la proposition.
  */
+const PAS_INTERESSE =
+  "Pas intéressé ? Un mot en réponse, avec la raison si possible, m'aidera à affiner vos critères.";
+
 export function messageCommercialisation(b: BienMail, lien: string): string {
   const surface = nb(b.surfaceCarrez);
   const prix = nb(b.prixHai);
@@ -235,7 +242,7 @@ export function messageCommercialisation(b: BienMail, lien: string): string {
     "",
     "Si ce dernier vous intéresse et que vous avez la moindre question, n'hésitez pas à me contacter je me ferai un plaisir d'y répondre.",
     "",
-    "Dans le cas contraire, pouvez-vous me le signaler et si possible m'en indiquer la raison ? Cela me permettra de mettre à jour ma base et d'affiner vos critères de recherche.",
+    PAS_INTERESSE,
     "",
     "Cordialement",
     "",
