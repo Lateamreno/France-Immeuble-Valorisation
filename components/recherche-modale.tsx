@@ -22,15 +22,16 @@
  */
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ContactPicker } from "@/components/contact-picker";
-import { DESTINATIONS } from "@/components/carte-recherche";
-import { Modale } from "@/components/modale";
+import { DESTINATIONS, ModaleAttenteRecherche } from "@/components/carte-recherche";
+import { Modale, useQuestion } from "@/components/modale";
 import { Champ } from "@/components/champ";
 import { Copier } from "@/components/copier";
 import { CIBLES } from "@/lib/referentiels";
 import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
 import {
-  chargerExclusions, enregistrerRecherche, type SaisieRecherche,
+  chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
 } from "@/lib/bo/actions";
 
 const num = (s: string) => {
@@ -276,6 +277,16 @@ export type DepartRecherche = {
     occupMin?: number; occupMax?: number;
     renta?: number;
   };
+  /** Où elle en est (#453) : c'est ce qui choisit entre « Mettre en attente »
+   *  et « Réactiver » au pied de la modale. Absent : en cours. */
+  group?: "en_cours" | "en_attente" | "archivees";
+  attente?: { fin?: string; motif?: string };
+};
+
+const IC_PIED = {
+  corbeille: <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
+  sablier: <><path d="M6 3h12M6 21h12M8 3v4l4 5 4-5V3M8 21v-4l4-5 4 5v4" /></>,
+  relance: <><path d="M4 12a8 8 0 1 0 2.3-5.7" /><path d="M4 4v5h5" /></>,
 };
 
 export function ModaleRechercheEdition({
@@ -292,6 +303,41 @@ export function ModaleRechercheEdition({
   const creation = !depart;
   const [pending, start] = useTransition();
   const [picker, setPicker] = useState(false);
+  /* Retour #453 — « reprends les mêmes boutons en bas que le BO Bubble avec
+     le même code couleur » : Supprimer en rouge, Mettre en attente en vert
+     cerclé, Enregistrer la recherche en vert plein. */
+  const router = useRouter();
+  const { confirmer, question } = useQuestion();
+  const [attente, setAttente] = useState(false);
+  const [pendingEtat, startEtat] = useTransition();
+  const contactId = contactImpose?.id ?? depart?.contact?.id;
+
+  const supprimer = async () => {
+    if (!depart) return;
+    const ok = await confirmer(
+      <>
+        La recherche sera <b>archivée</b> : elle sort des recherches en cours, du matching et des
+        envois. Les propositions encore en attente passeront <b>refusées</b>, motif « N&apos;est plus en
+        recherche ».
+      </>,
+      { titre: "Supprimer cette recherche ?", oui: "Supprimer", danger: true },
+    );
+    if (!ok) return;
+    startEtat(async () => {
+      await supprimerRecherche(depart.id, contactId);
+      router.refresh();
+      onFermer();
+    });
+  };
+
+  const reactiver = () => {
+    if (!depart) return;
+    startEtat(async () => {
+      await reactiverRecherche(depart.id, contactId);
+      router.refresh();
+      onFermer();
+    });
+  };
   const [contact, setContact] = useState<{ id: string; nom: string } | undefined>(
     contactImpose ?? (depart?.contact ? { id: depart.contact.id, nom: depart.contact.nom } : undefined),
   );
@@ -405,11 +451,28 @@ export function ModaleRechercheEdition({
         brut
         pied={
           <>
-            <span style={{ flex: 1 }} />
             <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
-            <button className="kgo" type="button" disabled={pending} onClick={enregistrer}>
+            <span style={{ flex: 1 }} />
+            {depart && (
+              <button className="kgo danger rmod-pied-ic" type="button" disabled={pendingEtat} onClick={supprimer}>
+                <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.corbeille}</svg>Supprimer
+              </button>
+            )}
+            {depart && depart.group !== "archivees" && (
+              depart.group === "en_attente" ? (
+                <button className="kgo green rmod-pied-ic" type="button" disabled={pendingEtat} onClick={reactiver}>
+                  <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.relance}</svg>
+                  {pendingEtat ? "Réactivation…" : "Réactiver la recherche"}
+                </button>
+              ) : (
+                <button className="kgo green rmod-pied-ic" type="button" disabled={pendingEtat} onClick={() => setAttente(true)}>
+                  <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.sablier}</svg>Mettre en attente
+                </button>
+              )
+            )}
+            <button className="savebar-go" type="button" disabled={pending} onClick={enregistrer}>
               <span className="ch">›</span>{" "}
-              {pending ? "Enregistrement…" : creation ? "Créer la recherche" : "Enregistrer"}
+              {pending ? "Enregistrement…" : creation ? "Créer la recherche" : "Enregistrer la recherche"}
             </button>
           </>
         }
@@ -554,6 +617,15 @@ export function ModaleRechercheEdition({
           </div>
         </div>
       </Modale>
+
+      {question}
+      {attente && depart && (
+        <ModaleAttenteRecherche
+          r={{ id: depart.id, contact: contactId ? { id: contactId, nom: contactImpose?.nom ?? depart.contact?.nom ?? "" } : undefined }}
+          onFermer={() => setAttente(false)}
+          onFait={() => { setAttente(false); router.refresh(); onFermer(); }}
+        />
+      )}
 
       {picker && (
         <ContactPicker

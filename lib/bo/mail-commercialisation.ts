@@ -63,14 +63,19 @@ export type BienMail = {
  * Chaque élément manquant disparaît plutôt que de laisser un « n.c. » : un
  * objet d'e-mail est le seul endroit du BO où la place est comptée, et une
  * mention vide y coûte plus qu'elle ne rapporte.
+ *
+ * Retour #452 : « dans l'objet du mail, la renta que tu affiches, il faut que
+ * ce soit tout le temps la renta potentielle, pas l'actuelle ». L'objet vend
+ * l'immeuble loué en entier ; le corps, lui, détaille l'actuel et le potentiel.
  */
 export function objetCommercialisation(b: BienMail): string {
   const dept = deptDeCp(b.codePostal);
   const ou = [villeNue(b.ville) || "vendre", dept ? `(${dept})` : ""].filter(Boolean).join(" ");
+  const renta = nb(b.rentaPotentielle) ?? nb(b.renta);
   const bouts = [
     `Immeuble à vendre à ${ou}`,
     prixCourt(nb(b.prixHai)),
-    nb(b.renta) !== undefined ? `${fr(nb(b.renta)!)} %` : undefined,
+    renta !== undefined ? `${fr(renta)} %` : undefined,
     nb(b.prixM2) !== undefined ? `${fr(Math.round(nb(b.prixM2)!), 0)} €/m²` : undefined,
   ].filter(Boolean);
   /* Retour #430 : « à la place des virgules, un espace et un tiret ». */
