@@ -316,6 +316,18 @@ function AdresseTab({ b }: { b: BienData }) {
   if (!enBase.current) enBase.current = courant;
   const modifie = courant !== enBase.current;
 
+  /* Retour #454 — « si on a fait un accident on peut revenir à l'état
+     d'origine avant modification ». Les chiffres officiels (INSEE) ne sont
+     pas une saisie : quand ils sont verrouillés, ils restent. */
+  const annuler = () => {
+    const v = JSON.parse(enBase.current) as { poi: Record<string, string>; pts: PointLibre[]; pop: string; rev: string; zt: boolean; tension: string };
+    setPoi(v.poi); setPts(v.pts); setTension(v.tension);
+    if (!verrou.pop) setPop(v.pop);
+    if (!verrou.rev) setRev(v.rev);
+    if (!verrou.zt) setZt(v.zt);
+    setTensionProposee(false);
+  };
+
   const save = () =>
     start(async () => {
       const patch: Record<string, unknown> = {
@@ -594,7 +606,7 @@ function AdresseTab({ b }: { b: BienData }) {
         )}
       </div>
 
-      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} />
+      <BarreEnregistrer modifie={modifie} pending={pending} onEnregistrer={save} onAnnuler={annuler} />
       {question}
     </>
   );
@@ -736,6 +748,11 @@ function ParcellesTab({ b }: { b: BienData }) {
   ]);
   const pluCourant = JSON.stringify([zone, typeZone, hauteur, emprise]);
   const pluModifie = pluCourant !== pluServi;
+  /* Retour #454 : Annuler remet ce que la fiche porte. */
+  const annulerPlu = () => {
+    setZone(S(im.plu_zone)); setTypeZone(S(im.plu_Type_zone));
+    setHauteur(S(num(im.plu_hauteur))); setEmprise(S(num(im.plu_emprise)));
+  };
 
   const savePlu = () =>
     start(async () => {
@@ -1026,7 +1043,7 @@ function ParcellesTab({ b }: { b: BienData }) {
           <i>%</i>
         </label>
       </div>
-      <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} />
+      <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} onAnnuler={annulerPlu} />
     </>
   );
 }

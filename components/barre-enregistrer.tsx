@@ -15,6 +15,12 @@
 //
 // `onAnnuler` rétablit les valeurs enregistrées : c'est le filet de l'agent
 // qui s'est trompé de champ et ne sait plus ce qu'il y avait avant.
+//
+// Retour #454 : « quand il y a le bouton Enregistrer, où qu'il soit, je veux
+// également le bouton Annuler — avant c'était juste le texte Annuler
+// souligné ». Tous les écrans qui montent cette barre lui donnent donc un
+// `onAnnuler`, et le bouton se dessine comme dans le BO Bubble : un texte
+// souligné, pas un cadre.
 
 export function BarreEnregistrer({
   modifie, pending, onEnregistrer, onAnnuler, libelle = "Enregistrer", plein, children,
