@@ -299,6 +299,21 @@ export function ContactFiche({ d, echanges = [], compte }: {
   const [notifSms, setNotifSms] = useState(c.notif_sms === true);
   const [notifMail, setNotifMail] = useState(c.notif_email === true);
 
+  /* Retour #454 — « si on a fait un accident on peut revenir à l'état
+     d'origine avant modification » : tout revient à ce que la fiche porte. */
+  const annuler = () => {
+    setPrenom(S(c["prénom"])); setNom(S(c.nom)); setCiv(S(c["Civilité"]));
+    setEmail(S(c.email)); setPortable(S(c.portable)); setFixe(S(c.fixe));
+    setAcheteur(c.acheteur === true); setVendeur(c.vendeur === true); setInteragence(c.interagence === true);
+    setTypes(Array.isArray(c.Types) ? (c.Types as string[]) : []); setNote(S(c.Note));
+    setNaissance(jourIso(c.date_naissance) ?? ""); setLieuNaissance(geo(c.lieu_naissance_geo)); setAdresse(geo(c.adresse_geo));
+    setEntreprise(S(c.entreprise_nom)); setPoste(S(c.poste)); setCapital(S(c.entreprise_capital));
+    setSiren(S(c.entreprise_siren)); setRcs(S(c.entreprise_rcs)); setSiege(geo(c.entreprise_siege_geo));
+    setSocietes(Array.isArray(c.societes) ? (c.societes as Soc[]) : []);
+    setRemarques(S(c.remarques)); setSource(S(c.Source));
+    setNotifSms(c.notif_sms === true); setNotifMail(c.notif_email === true);
+  };
+
   const civCourt = civ === "Monsieur" ? "M." : civ === "Madame" ? "Mme" : civ;
   const nomComplet = [civCourt, prenom, nom.toUpperCase()].filter(Boolean).join(" ")
     || entreprise || "Contact";
@@ -799,6 +814,7 @@ export function ContactFiche({ d, echanges = [], compte }: {
           <span className="savebar-t">Fiche contact</span>
           <span className="sp" />
           <Link className="fadd" href="/contacts">✕ Retour aux contacts</Link>
+          <button className="savebar-x" type="button" disabled={pending} onClick={annuler}>Annuler</button>
           <button className="savebar-go" type="button" disabled={pending} onClick={save}>
             <span className="ch">›</span> Enregistrer
           </button>

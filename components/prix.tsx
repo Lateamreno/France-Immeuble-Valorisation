@@ -741,6 +741,11 @@ export function PrixEcran({ b, espace }: {
             enBase.current = courant;
           })
         }
+        /* Retour #454 : Annuler rend l'état d'avant modification. */
+        onAnnuler={() => {
+          const v = JSON.parse(enBase.current) as { nvMin: string; financement: boolean; permis: boolean };
+          setNvMin(v.nvMin); setFinancement(v.financement); setPermis(v.permis);
+        }}
       />
 
       <div className="fsub" style={{ marginTop: 18 }}>Historique des prix</div>

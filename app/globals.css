@@ -3031,11 +3031,14 @@ body.nav-etroite .savebar { left: 0; right: 0; }
   font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--orange);
 }
 .savebar-t svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+/* Retour #454 : « Annuler » comme dans le BO Bubble, un texte souligné à
+   côté du bouton vert, pas un second cadre. */
 .savebar-x {
-  border: 1px solid var(--line); background: #fff; color: var(--slate-2);
-  border-radius: 4px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 0; background: none; color: var(--slate-2);
+  padding: 8px 10px; font-family: var(--font-title); font-size: 13px; font-weight: 600; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
 }
-.savebar-x:hover:not(:disabled) { background: var(--chip); }
+.savebar-x:hover:not(:disabled) { color: var(--slate); }
 .savebar-go {
   border: 0; background: var(--green); color: #fff;
   border-radius: 4px; padding: 9px 20px;
