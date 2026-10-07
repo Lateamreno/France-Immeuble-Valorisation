@@ -6226,23 +6226,30 @@ export async function autresRecherchesEnCours(rechercheId: string): Promise<{ id
     });
 }
 
-/** Met une ou plusieurs recherches en attente jusqu'à une date (yyyy-mm-dd). */
-export async function mettreRecherchesEnAttente(input: { ids: string[]; fin: string; motif?: string; contactId?: string }) {
-  const fin = new Date(input.fin);
-  if (Number.isNaN(fin.getTime())) return { ok: false as const, message: "La date n'est pas lisible." };
+/**
+ * Met une ou plusieurs recherches en attente, jusqu'à une date (yyyy-mm-dd)
+ * ou sans date — la pause indéterminée du retour #453 : « si on met en pause
+ * on doit avoir un choix genre pause indéterminée ou date de fin de pause ».
+ * Sans date, `standby_fin` est effacé : la recherche attend qu'on la réactive.
+ */
+export async function mettreRecherchesEnAttente(input: { ids: string[]; fin?: string | null; motif?: string; contactId?: string }) {
+  const fin = input.fin ? new Date(input.fin) : null;
+  if (fin && Number.isNaN(fin.getTime())) return { ok: false as const, message: "La date n'est pas lisible." };
   const now = new Date().toISOString();
   const ids = [...new Set(input.ids.filter(Boolean))];
   for (const id of ids) {
     await rpc("bo_patch_doc", {
       p_table: "bo_recherche",
       p_id: id,
-      p_patch: cleanPatch({
-        standby: true,
-        standby_start: now,
-        standby_fin: fin.toISOString(),
-        standby_motif: input.motif?.trim() || undefined,
-        "Modified Date": now,
-      }),
+      p_patch: {
+        ...cleanPatch({
+          standby: true,
+          standby_start: now,
+          standby_motif: input.motif?.trim() || undefined,
+          "Modified Date": now,
+        }),
+        standby_fin: fin ? fin.toISOString() : null,
+      },
     });
   }
   revalidatePath("/recherches");
@@ -6259,4 +6266,45 @@ export async function reactiverRecherche(id: string, contactId?: string) {
   });
   revalidatePath("/recherches");
   if (contactId) revalidatePath(`/contact/${contactId}`);
+}
+
+/**
+ * Supprime une recherche (retour #453). Elle est ARCHIVÉE, pas effacée : elle
+ * sort de tous les écrans « en cours », du matching et des salves, et reste
+ * lisible dans l'onglet Archivées — une recherche supprimée par erreur se
+ * retrouve, une ligne effacée ne se retrouve pas.
+ *
+ * MAV : « s'il y a encore des propositions en attente il faut qu'elles soient
+ * toutes marquées comme refusées car plus en recherche ». Une proposition en
+ * attente est une proposition « Envoyée » sans suite ; elle passe « Refusée
+ * (sans offre) » avec le motif que le BO connaît déjà, « N'est plus en
+ * recherche », et ses relances s'arrêtent. Les visites programmées et les
+ * offres obtenues ne sont pas touchées : ce sont des dossiers vivants, pas des
+ * attentes.
+ */
+export async function supprimerRecherche(id: string, contactId?: string) {
+  const now = new Date().toISOString();
+  const { fetchAll } = await import("@/lib/bubble/server");
+  const propositions = await fetchAll(
+    "proposition", [{ key: "RECHERCHEs", constraint_type: "contains", value: id }], 1000, undefined, ["Statut"],
+  ).catch(() => []);
+  const enAttente = propositions.filter((p) => String(p.Statut ?? "") === "Envoyée");
+  await Promise.all(enAttente.map((p) =>
+    rpc("bo_patch_doc", {
+      p_table: "bo_proposition",
+      p_id: String(p._id),
+      p_patch: {
+        Statut: "Refusée (sans offre)", motif_refus: "N'est plus en recherche", date_fin: now,
+        stop_relances_yn: true, date_modif: now, "Modified Date": now,
+      },
+    })));
+  await rpc("bo_patch_doc", {
+    p_table: "bo_recherche",
+    p_id: id,
+    p_patch: { archived: true, standby: false, "Modified Date": now },
+  });
+  revalidatePath("/recherches");
+  revalidatePath("/propositions");
+  if (contactId) revalidatePath(`/contact/${contactId}`);
+  return { ok: true as const, propositionsRefusees: enAttente.length };
 }

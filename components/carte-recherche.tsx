@@ -39,7 +39,7 @@ export function Puce({ label, valeur, euro }: { label: string; valeur?: string; 
 }
 
 export function CarteRecherche({
-  r, choisi, onCocher, onDetail, onAProposer, onModifier,
+  r, choisi, onCocher, onDetail, onAProposer, onModifier, clicCarte,
   /** Sur la fiche contact, le nom de l'acquéreur est déjà dans l'en-tête. */
   sansContact = false,
   /** Mention posée à droite des destinations (« Mandat de recherche actif »). */
@@ -53,12 +53,22 @@ export function CarteRecherche({
   onAProposer?: (r: RechercheCard) => void;
   /** Retour #330 : cliquer la recherche ouvre la modale qui la modifie. */
   onModifier?: (r: RechercheCard) => void;
+  /** Retour #453 : toute la carte ouvre la modification, pas seulement son
+   *  titre — sauf les boutons et liens qu'elle porte, qui gardent leur geste. */
+  clicCarte?: boolean;
   sansContact?: boolean;
   mention?: string;
 }) {
+  const clicSurCarte = clicCarte && onModifier
+    ? (e: React.MouseEvent<HTMLDivElement>) => {
+        if ((e.target as HTMLElement).closest("button, a, input, label")) return;
+        onModifier(r);
+      }
+    : undefined;
 
   return (
-    <div className="rc">
+    <div className={`rc${clicSurCarte ? " rc-clic" : ""}`} onClick={clicSurCarte}
+      title={clicSurCarte ? "Modifier cette recherche" : undefined}>
       {onCocher && (
         <label className="rc-cocher">
           <input type="checkbox" checked={!!choisi} onChange={() => onCocher(r.id)} />
@@ -260,9 +270,12 @@ const dateFr = (iso: string) => {
  * partent décochées : c'est un choix, pas un réflexe.
  */
 export function ModaleAttenteRecherche({ r, onFermer, onFait }: {
-  r: RechercheCard; onFermer: () => void; onFait: () => void;
+  r: { id: string; contact?: { id: string; nom: string } }; onFermer: () => void; onFait: () => void;
 }) {
-  const [fin, setFin] = useState(dansTroisMois);
+  /* Retour #453 : « pause indéterminée ou date de fin de pause ». */
+  const [sansDate, setSansDate] = useState(false);
+  const [dateFin, setFin] = useState(dansTroisMois);
+  const fin = sansDate ? null : dateFin;
   const [motif, setMotif] = useState("");
   const [etape, setEtape] = useState<"date" | "autres">("date");
   const [autres, setAutres] = useState<{ id: string; libelle: string }[] | null>(null);
@@ -304,8 +317,8 @@ export function ModaleAttenteRecherche({ r, onFermer, onFait }: {
       pied={etape === "date" ? (
         <>
           <button type="button" className="fchip" onClick={onFermer}>Annuler</button>
-          <button type="button" className="savebar-go" disabled={pending || !fin} onClick={valider}>
-            {pending ? "Enregistrement…" : `Mettre en attente jusqu'au ${dateFr(fin)}`}
+          <button type="button" className="savebar-go" disabled={pending || (!sansDate && !dateFin)} onClick={valider}>
+            {pending ? "Enregistrement…" : fin ? `Mettre en attente jusqu'au ${dateFr(fin)}` : "Mettre en attente sans date"}
           </button>
         </>
       ) : (
@@ -320,12 +333,24 @@ export function ModaleAttenteRecherche({ r, onFermer, onFait }: {
       {etape === "date" ? (
         <>
           <p className="rgl-aide">
-            La recherche sort du « en cours » sans être archivée : elle reviendra à la date choisie.
-            Aucun e-mail ne part.
+            La recherche sort du « en cours » sans être archivée : elle reviendra à la date choisie,
+            ou quand vous la réactiverez. Aucun e-mail ne part.
           </p>
-          <Champ libelle="Jusqu'au" capitales htmlFor="att-fin">
-            <input id="att-fin" className="mi" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
-          </Champ>
+          <div className="att-choix" role="radiogroup" aria-label="Durée de la pause">
+            <label className={!sansDate ? "on" : undefined}>
+              <input type="radio" name="att-duree" checked={!sansDate} onChange={() => setSansDate(false)} />
+              Jusqu&apos;à une date
+            </label>
+            <label className={sansDate ? "on" : undefined}>
+              <input type="radio" name="att-duree" checked={sansDate} onChange={() => setSansDate(true)} />
+              Pause indéterminée
+            </label>
+          </div>
+          {!sansDate && (
+            <Champ libelle="Jusqu'au" capitales htmlFor="att-fin">
+              <input id="att-fin" className="mi" type="date" value={dateFin} onChange={(e) => setFin(e.target.value)} />
+            </Champ>
+          )}
           <Champ libelle="Motif" capitales htmlFor="att-motif" aide="Facultatif — ce que la personne a dit">
             <input id="att-motif" className="mi" value={motif} placeholder="Budget bloqué jusqu'à la vente de…"
               onChange={(e) => setMotif(e.target.value)} />
@@ -334,16 +359,16 @@ export function ModaleAttenteRecherche({ r, onFermer, onFait }: {
           {autres && autres.length > 0 && (
             <p className="rgl-aide">
               {qui} a {autres.length} autre{autres.length > 1 ? "s" : ""} recherche{autres.length > 1 ? "s" : ""} en cours :
-              on vous proposera de les mettre en attente à la même date.
+              on vous proposera de les mettre en attente {fin ? "à la même date" : "de la même façon"}.
             </p>
           )}
         </>
       ) : (
         <>
           <p>
-            <b>C&apos;est fait</b> : la recherche est en attente jusqu&apos;au <b>{dateFr(fin)}</b>.
+            <b>C&apos;est fait</b> : la recherche est en attente{fin ? <> jusqu&apos;au <b>{dateFr(fin)}</b></> : <> <b>sans date</b></>}.
             {" "}{qui} a {autres!.length} autre{autres!.length > 1 ? "s" : ""} recherche{autres!.length > 1 ? "s" : ""} en cours.
-            Cochez celles à mettre en attente à la même date.
+            Cochez celles à mettre en attente {fin ? "à la même date" : "de la même façon"}.
           </p>
           <ul className="att-liste">
             {autres!.map((a) => (

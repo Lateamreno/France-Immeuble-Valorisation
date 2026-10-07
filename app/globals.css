@@ -8309,3 +8309,14 @@ button { font-weight: 700; }
 .salve-autres li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate); }
 .salve-autres li b { font-weight: 700; }
 .salve-autres .asst-spin { width: 10px; height: 10px; }
+
+/* Retour #453 — la carte d'une recherche s'ouvre en modification d'un clic
+   (fiche contact) ; le pied de la modale reprend les boutons du BO Bubble. */
+.rc.rc-clic { cursor: pointer; }
+.rc.rc-clic:hover { box-shadow: 0 0 0 2px #e8e2cc; }
+.rmod-pied-ic { display: inline-flex; align-items: center; gap: 6px; }
+.rmod-pied-ic svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.att-choix { display: flex; gap: 8px; margin: 6px 0 12px; }
+.att-choix label { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.att-choix label.on { border-color: var(--green); color: var(--green); font-weight: 600; }
+.att-choix input { margin: 0; accent-color: var(--green); }
