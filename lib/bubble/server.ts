@@ -2941,6 +2941,10 @@ export async function listDiffusion(): Promise<{
   empreintePubliee?: string;
   aResynchroniser: boolean;
   erreur?: string;
+  /** Retour #456 : la photo, la renta et le prix au m² sur la liste. */
+  photo?: string;
+  renta?: number;
+  prixM2?: number;
 }[]> {
   /* Le parc diffusé se compte en dizaines. On ne ramène donc QUE les fiches
      qui portent une annonce : le tri se fait dans la base. Le filtre était
@@ -2964,6 +2968,13 @@ export async function listDiffusion(): Promise<{
       empreintePubliee: typeof im.pb_empreinte === "string" ? (im.pb_empreinte as string) : undefined,
       aResynchroniser: im.pb_a_resynchroniser === true,
       erreur: typeof im.pb_erreur === "string" ? (im.pb_erreur as string) : undefined,
+      photo: photoProxy(im.photo_main_compressed),
+      renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+      prixM2: typeof im.prix_hai_m2 === "number"
+        ? (im.prix_hai_m2 as number)
+        : typeof im.prix_hai === "number" && typeof im.surface_carrez === "number" && im.surface_carrez > 0
+          ? (im.prix_hai as number) / (im.surface_carrez as number)
+          : undefined,
     }))
     .sort((a, b) => (b.publieLe ?? "").localeCompare(a.publieLe ?? ""));
 }

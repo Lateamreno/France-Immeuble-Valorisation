@@ -128,6 +128,9 @@ const libelleLot = (r: { numero: string; Type_lot: string; Destination: string }
  * pour dire à quel lot c'est rattaché. Dès qu'on change de type de bail ça
  * détache le bien du lot. »
  */
+/** La valeur de `lot_rattache` quand on ne sait pas à quel lot (retour #465). */
+const LOT_INCONNU = "inconnu";
+
 function CelluleBail({ r, lots, onBail, onLot }: {
   r: Row; lots: Row[];
   onBail: (v: string) => void;
@@ -136,6 +139,10 @@ function CelluleBail({ r, lots, onBail, onLot }: {
   const [choix, setChoix] = useState(false);
   const rattache = r.Type_bail === RATTACHE;
   const cible = lots.find((x) => x.id === r.lot_rattache);
+  /* Retour #465 : « ajouter une option rattaché à un lot inconnu » — la cave
+     suit un appartement qu'on ne sait pas nommer ; elle compte quand même
+     comme occupée. */
+  const inconnu = r.lot_rattache === LOT_INCONNU;
 
   return (
     <>
@@ -155,7 +162,7 @@ function CelluleBail({ r, lots, onBail, onLot }: {
       {rattache && (
         <button type="button" className="lot-ratt" onClick={() => setChoix(true)}
           title="Changer le lot de rattachement">
-          {cible ? libelleLot(cible) : "à quel lot ?"}
+          {inconnu ? "lot inconnu" : cible ? libelleLot(cible) : "à quel lot ?"}
         </button>
       )}
       {choix && (
@@ -165,6 +172,14 @@ function CelluleBail({ r, lots, onBail, onLot }: {
             compte pas une deuxième fois dans les revenus.
           </p>
           <div className="ratt-liste">
+            <button
+              type="button"
+              className={`ratt-l${inconnu ? " on" : ""}`}
+              onClick={() => { onLot(LOT_INCONNU); setChoix(false); }}
+            >
+              <b>Lot inconnu</b>
+              <span>Rattaché, sans savoir à quel lot — compte comme occupé</span>
+            </button>
             {lots.filter((x) => x.id !== r.id).map((x) => (
               <button
                 key={x.id} type="button"
@@ -1277,7 +1292,18 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const act = m2(r.loyer, r.surface_carrez);
         return <td key={c} className={cls(c, "na", "pc")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
       }
-      case "hcmax": return nombre(c, r, "loyer_max", "€");
+      case "hcmax": {
+        /* Retour #466 : « quand un loyer potentiel est supérieur au loyer
+           actuel, mets-le-moi en vert comme sur le BO actuel ». */
+        const n = (s: string) => parseFloat(String(s ?? "").replace(/\s/g, "").replace(",", "."));
+        const up = Number.isFinite(n(r.loyer_max)) && n(r.loyer_max) > (Number.isFinite(n(r.loyer)) ? n(r.loyer) : 0);
+        return (
+          <td key={c} className={cls(c, "na", up && "up")}>
+            <input className="lcell num" value={r.loyer_max} onChange={(e) => edit(r.id, "loyer_max", e.target.value)} />
+            <i>€</i>
+          </td>
+        );
+      }
       case "hcmaxm2": {
         const max = m2(r.loyer_max || r.loyer, r.surface_carrez);
         return <td key={c} className={cls(c, "na", "pc")}>{max ? ecart(max) ?? `${max.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;

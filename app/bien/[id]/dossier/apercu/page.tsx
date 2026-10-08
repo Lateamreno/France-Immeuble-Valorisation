@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { getAgentFiche, getBien } from "@/lib/bubble/server";
 import { construireDossierVente } from "@/lib/bo/dossier-vente";
+import { retirerPhotosCassees } from "@/lib/bo/photos-verif";
 import { DossierVente } from "@/components/dossier-vente";
 import { BarreImpression } from "@/components/barre-impression";
 import "../../../../dossier-vente.css";
@@ -51,8 +52,13 @@ export default async function ApercuDossier({
     date: new Date().toISOString(),
   };
 
-  const a = await getAgentFiche(S(b.im.AGENT)).catch(() => null);
-  const d = construireDossierVente(b, doc, a && {
+  /* Retours #460 et #463 : une photo dont Bubble n'a plus le fichier ne
+     s'imprime pas cassée, elle ne s'imprime pas. */
+  const [a, photos] = await Promise.all([
+    getAgentFiche(S(b.im.AGENT)).catch(() => null),
+    retirerPhotosCassees(b.photos),
+  ]);
+  const d = construireDossierVente({ ...b, photos }, doc, a && {
     nom: `${S(a["prénom"])} ${S(a.nom)}`.trim(),
     email: S(a.email),
     tel: S(a["portable (TXT)"]) || S(a.portable),

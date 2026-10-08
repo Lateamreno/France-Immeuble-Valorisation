@@ -545,6 +545,11 @@ export type LigneDiffusion = {
   ecart: boolean;
   erreur?: string;
   retombees?: { vues?: number; contacts: number; telephones: number; favoris: number; offres: number };
+  /** Retour #456 : « je veux les photos de chaque bien, les renta et prix au
+   *  m² affichés, et un lien vers l'annonce ». */
+  photo?: string;
+  renta?: number;
+  prixM2?: number;
 };
 
 export function ParcDiffusion({
@@ -615,6 +620,12 @@ export function ParcDiffusion({
         <div className="dif-liste">
           {lignes.map((l) => (
             <div key={l.immeubleId} className="dif-l">
+              <Link href={`/bien/${l.immeubleId}`} className="dif-ph" aria-hidden tabIndex={-1}>
+                {l.photo
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={l.photo} alt="" />
+                  : <span className="vide" />}
+              </Link>
               <div className="id">
                 <Link href={`/bien/${l.immeubleId}`}>{l.ville}</Link>
                 <span>{l.adresse}</span>
@@ -622,7 +633,14 @@ export function ParcDiffusion({
               <span className={`dif-pastille ${l.statut ?? "hors"}`}>
                 {LIBELLE_STATUT[(l.statut ?? "suspended") as keyof typeof LIBELLE_STATUT] ?? l.statut}
               </span>
-              <span className="px">{euros(l.prix) ?? "—"}</span>
+              <span className="px">
+                {euros(l.prix) ?? "—"}
+                <small>
+                  {l.prixM2 !== undefined ? `${Math.round(l.prixM2).toLocaleString("fr-FR")} €/m²` : "— €/m²"}
+                  {" · "}
+                  {l.renta !== undefined ? `${l.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "— %"}
+                </small>
+              </span>
               <span className="rt">
                 {l.retombees ? (
                   <>
@@ -637,7 +655,7 @@ export function ParcDiffusion({
               </span>
               {l.ecart && <span className="dif-att" title="La fiche a changé depuis la publication">à republier</span>}
               {l.erreur && <span className="dif-err" title={l.erreur}>erreur</span>}
-              {l.url && <a className="dif-lien" href={l.url} target="_blank" rel="noreferrer">↗</a>}
+              {l.url && <a className="dif-lien" href={l.url} target="_blank" rel="noreferrer">Voir l&apos;annonce ↗</a>}
             </div>
           ))}
         </div>

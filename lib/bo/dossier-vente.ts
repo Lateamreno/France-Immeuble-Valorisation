@@ -24,6 +24,27 @@ import { estFacadeRue } from "./facade";
 import { descriptifRetenu } from "./descriptif";
 import { selectionDossier } from "./photos-dossier";
 import { etagesDepuisLots } from "./etages";
+import { situationLot } from "@/lib/referentiels";
+
+/* Retours #461 et #465 : les destinations PRINCIPALES font la nature du bien ;
+   parkings, caves et annexes sont des accessoires — ils complètent la
+   couverture quand il reste de la place, et se regroupent sur une seule ligne
+   de revenus. */
+const PRINCIPALES = ["Logement", "Commerce", "Bureau", "Logistique"];
+const SECONDAIRES = ["Parking", "Cave", "Annexe"];
+
+/** « caves / parkings », « parkings », « annexes » : le libellé de la ligne
+ *  qui regroupe les accessoires. */
+function libelleAnnexes(dests: string[]): string {
+  const p = dests.includes("Parking"), c = dests.includes("Cave");
+  if (p && c) return "caves / parkings";
+  if (dests.length === 1) return PLURIEL[dests[0]]?.[1] ?? dests[0].toLowerCase();
+  return "annexes";
+}
+
+/** Retour #464 : les lots d'un état locatif, par pages de 24 lignes — c'est
+ *  ce qui tient entre le bandeau et la note de bas de page, total compris. */
+export const LOTS_PAR_PAGE = 24;
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -74,7 +95,11 @@ export function construireDossierVente(
   /* --- L'état locatif d'aujourd'hui --- */
   const surface = lots.reduce((s, l) => s + (N(l.surface_carrez) ?? 0), 0);
   const surfaceSol = lots.reduce((s, l) => s + (N(l.surface_sol) ?? 0), 0);
-  const loues = lots.filter((l) => (N(l.loyer) ?? 0) > 0);
+  /* Retour #465 : un lot « rattaché à un lot » (cave ou parking qui suit un
+     appartement) est occupé, même sans loyer propre. */
+  const estLoue = (l: Record<string, unknown>) =>
+    (N(l.loyer) ?? 0) > 0 || situationLot(l.Type_bail) === "rattache";
+  const loues = lots.filter(estLoue);
   const surfaceOcc = loues.reduce((s, l) => s + (N(l.surface_carrez) ?? 0), 0);
   const loyers = lots.reduce((s, l) => s + (N(l.loyer) ?? 0), 0) * 12;
   const loyersMax = lots.reduce((s, l) => s + (N(l.loyer_max) ?? N(l.loyer) ?? 0), 0) * 12;
@@ -101,14 +126,15 @@ export function construireDossierVente(
 
   /* --- Revenus par destination, avec leur taux d'occupation --- */
   const dests = ORDRE_DEST.filter((x) => lots.some((l) => S(l.Destination) === x));
-  const revenus = dests.map((dest) => {
-    const ls = lots.filter((l) => S(l.Destination) === dest);
-    const oc = ls.filter((l) => (N(l.loyer) ?? 0) > 0);
+  const principales = dests.filter((x) => PRINCIPALES.includes(x));
+  const secondaires = dests.filter((x) => SECONDAIRES.includes(x));
+  const ligneRevenus = (dest: string, label: string, ls: Record<string, unknown>[]) => {
+    const oc = ls.filter(estLoue);
     const surf = ls.reduce((s, l) => s + (N(l.surface_carrez) ?? 0), 0);
     const surfOc = oc.reduce((s, l) => s + (N(l.surface_carrez) ?? 0), 0);
     return {
       dest,
-      label: PLURIEL[dest]?.[1] ?? dest,
+      label,
       actuel: ls.reduce((s, l) => s + (N(l.loyer) ?? 0), 0) * 12,
       potentiel: ls.reduce((s, l) => s + (N(l.loyer_max) ?? N(l.loyer) ?? 0), 0) * 12,
       /* Sur les lots vendus au lot (parkings, caves), l'occupation se compte
@@ -117,7 +143,20 @@ export function construireDossierVente(
         ? Math.round((surfOc / surf) * 100)
         : ls.length > 0 ? Math.round((oc.length / ls.length) * 100) : 0,
     };
-  });
+  };
+  /* Retour #465 : « on garde toujours les lots principaux séparés et on met
+     une cinquième ligne annexes s'il y a parking et cave ». Cinq lignes au
+     plus, la page ne déborde pas. */
+  const revenus = [
+    ...principales.map((dest) => ligneRevenus(dest, PLURIEL[dest]?.[1] ?? dest, lots.filter((l) => S(l.Destination) === dest))),
+    ...(secondaires.length > 0
+      ? [ligneRevenus(
+          secondaires.length === 1 ? secondaires[0] : "Annexe",
+          libelleAnnexes(secondaires),
+          lots.filter((l) => secondaires.includes(S(l.Destination))),
+        )]
+      : []),
+  ];
 
   const r = rendements(hai, {
     loyers, loyersMax, charges: chargesTot.nonRecup, travaux,
@@ -188,8 +227,14 @@ export function construireDossierVente(
        qui n'ont pas leur place ici. » Les caves, parkings et annexes se
        comptent dans l'état locatif, pas en couverture : c'est la nature du bien
        qu'on y annonce, pas son inventaire. */
-    compo: dests
-      .filter((dest) => !["Parking", "Cave", "Annexe"].includes(dest))
+    /* Retour #461 : « s'il n'y a que deux destinations principales, on pourra
+       mettre aussi les deux secondaires, parking et caves ; s'il y en a trois
+       et qu'il y a aussi des caves et des parkings, on met juste parking, de
+       telle sorte qu'il n'y ait toujours que 4 types au maximum ». Les
+       principales d'abord, les accessoires comblent les places restantes dans
+       l'ordre parking, cave, annexe. */
+    compo: [...principales.slice(0, 4), ...secondaires]
+      .slice(0, 4)
       .map((dest) => {
         const n = lots.filter((l) => S(l.Destination) === dest).length;
         const [un, plusieurs] = PLURIEL[dest] ?? [dest.toLowerCase(), `${dest.toLowerCase()}s`];
@@ -302,12 +347,19 @@ export function construireDossierVente(
       bail: (N(l.loyer) ?? 0) > 0 && ["", "Vide"].includes(S(l.Type_bail)) ? "n.c." : S(l.Type_bail),
       entree: bailDebut(b, String(l._id)),
       loyer: N(l.loyer),
-      potentiel: (N(l.loyer_max) ?? N(l.loyer) ?? 0) * 12,
+      /* Retour #464 — MAV : « potentiel = loyer actuel si loué, ou loyer du
+         marché si le lot est vide ». La colonne s'appelle « HC/an* » et la
+         note de bas de page dit cette règle. Un lot rattaché n'a pas de loyer
+         propre : zéro, il est compté sur l'appartement. */
+      potentiel: (N(l.loyer) ?? 0) > 0
+        ? N(l.loyer)! * 12
+        : situationLot(l.Type_bail) === "rattache" ? 0 : (N(l.loyer_max) ?? 0) * 12,
     })),
     total: {
       carrez: surface, sol: surfaceSol,
       loyerMois: Math.round(loyers / 12),
-      potentiel: loyersMax,
+      potentiel: lots.reduce((s, l) =>
+        s + ((N(l.loyer) ?? 0) > 0 ? N(l.loyer)! * 12 : situationLot(l.Type_bail) === "rattache" ? 0 : (N(l.loyer_max) ?? 0) * 12), 0),
     },
 
     /* Page 6 — état financier */
