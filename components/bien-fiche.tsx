@@ -1854,51 +1854,45 @@ function NotesRail({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
   const [ouvert, setOuvert] = useState(false);
   const [notes, setNotes] = useState(String(b.im.notes ?? ""));
-  const [etat, setEtat] = useState<"ok" | "attente" | "envoi" | "erreur">("ok");
-  /* Ce qui est en base, ce qui est à l'écran, et la frappe en attente. */
+  const [erreur, setErreur] = useState(false);
+  /* Ce qui est en base, ce qui est à l'écran, et l'envoi en cours. */
   const enBase = useRef(String(b.im.notes ?? ""));
   const courant = useRef(notes);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enCours = useRef(false);
 
+  /* Comme l'ancien BO (MAV, 08/10) : chaque frappe part en base AUSSITÔT,
+     sans délai ni témoin. Un seul envoi à la fois ; s'il y a eu d'autres
+     frappes pendant l'envoi, la boucle repart avec la dernière valeur et
+     s'arrête quand la base a rattrapé l'écran. Seul un échec s'affiche. */
   const enregistrer = useCallback(async () => {
-    if (courant.current === enBase.current) { setEtat("ok"); return; }
-    setEtat("envoi");
+    if (enCours.current) return;
+    enCours.current = true;
     try {
-      /* Si on a continué d'écrire pendant l'envoi, on repart aussitôt :
-         la boucle s'arrête quand la base a rattrapé l'écran. */
       while (courant.current !== enBase.current) {
         const v = courant.current;
         await updateBien(immeubleId, { notes: v });
         enBase.current = v;
       }
-      setEtat("ok");
+      setErreur(false);
     } catch {
-      setEtat("erreur");
+      setErreur(true);
+    } finally {
+      enCours.current = false;
     }
   }, [immeubleId]);
 
   const changer = (v: string) => {
     setNotes(v);
     courant.current = v;
-    setEtat(v === enBase.current ? "ok" : "attente");
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { timer.current = null; void enregistrer(); }, 1200);
-  };
-  const auBlur = () => {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     void enregistrer();
   };
-  /* Trier remet les blocs dans l'ordre des dates, et part aussitôt. */
-  const trier = () => { changer(trierBlocsNote(notes)); auBlur(); };
-  /* En quittant la fiche avec une frappe en attente, elle part quand même. */
+  /* Trier remet les blocs dans l'ordre des dates. */
+  const trier = () => changer(trierBlocsNote(notes));
+  /* En quittant la fiche pendant un envoi, la dernière valeur part quand même. */
   useEffect(() => () => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      if (courant.current !== enBase.current) void updateBien(immeubleId, { notes: courant.current });
-    }
+    if (courant.current !== enBase.current) void updateBien(immeubleId, { notes: courant.current });
   }, [immeubleId]);
 
-  const temoin = etat === "ok" ? "Enregistré" : etat === "attente" ? "À enregistrer…" : etat === "envoi" ? "Enregistrement…" : "Non enregistré — réessayez";
   return (
     <>
       <button type="button" className={`srow2 sgroupe${ouvert ? " ouvert" : ""}`} aria-expanded={ouvert}
@@ -1917,15 +1911,17 @@ function NotesRail({ b }: { b: BienData }) {
             rows={14}
             autoFocus
             onChange={(e) => changer(saisieDatee(e))}
-            onBlur={auBlur}
+            onBlur={() => void enregistrer()}
             placeholder={"Mémos internes : contacts, historique, références comparables…"}
           />
-          <div className="brail-notes-b">
-            {triPossible(notes) && (
-              <button type="button" className="notes-trier" onClick={trier} title="Remettre les blocs dans l'ordre des dates">Trier par date</button>
-            )}
-            <span className={`brail-notes-t ${etat}`}>{temoin}</span>
-          </div>
+          {(triPossible(notes) || erreur) && (
+            <div className="brail-notes-b">
+              {triPossible(notes) && (
+                <button type="button" className="notes-trier" onClick={trier} title="Remettre les blocs dans l'ordre des dates">Trier par date</button>
+              )}
+              {erreur && <span className="brail-notes-t erreur">Non enregistré — réessayez</span>}
+            </div>
+          )}
         </div>
       )}
     </>
