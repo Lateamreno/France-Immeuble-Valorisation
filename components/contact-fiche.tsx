@@ -314,6 +314,16 @@ export function ContactFiche({ d, echanges = [], compte }: {
     setNotifSms(c.notif_sms === true); setNotifMail(c.notif_email === true);
   };
 
+  /* MAV, 08/10 : « dès qu'on fait une nouvelle saisie, les boutons Enregistrer
+     et Annuler apparaissent ». Tant que rien ne diffère de la fiche, ils
+     restent gris, comme sur la barre partagée. */
+  const courant = JSON.stringify({
+    prenom, nom, civ, email, portable, fixe, acheteur, vendeur, interagence, types, note, naissance,
+    lieuNaissance, adresse, entreprise, poste, capital, siren, rcs, siege, societes, remarques, source, notifSms, notifMail,
+  });
+  const [enBase, setEnBase] = useState(courant);
+  const modifie = courant !== enBase;
+
   const civCourt = civ === "Monsieur" ? "M." : civ === "Madame" ? "Mme" : civ;
   const nomComplet = [civCourt, prenom, nom.toUpperCase()].filter(Boolean).join(" ")
     || entreprise || "Contact";
@@ -321,8 +331,9 @@ export function ContactFiche({ d, echanges = [], compte }: {
   const telAffiche = S(c.portable_formatted) || portable || S(c.fixe_formatted) || fixe;
 
   const save = () =>
-    start(() =>
-      updateContact(id, {
+    start(async () => {
+      setEnBase(courant);
+      await updateContact(id, {
         "Civilité": civ || undefined, "prénom": prenom || undefined, nom: nom || undefined,
         email: email || undefined, portable: portable || undefined, fixe: fixe || undefined,
         acheteur, vendeur, interagence, Types: types, Note: note || undefined,
@@ -341,8 +352,8 @@ export function ContactFiche({ d, echanges = [], compte }: {
         remarques: remarques || undefined,
         Source: source || undefined,
         notif_sms: notifSms, notif_email: notifMail,
-      }),
-    );
+      });
+    });
 
   const onglets = [
     { key: "infos", label: "Informations" },
@@ -814,8 +825,8 @@ export function ContactFiche({ d, echanges = [], compte }: {
           <span className="savebar-t">Fiche contact</span>
           <span className="sp" />
           <Link className="fadd" href="/contacts">✕ Retour aux contacts</Link>
-          <button className="savebar-x" type="button" disabled={pending} onClick={annuler}>Annuler</button>
-          <button className="savebar-go" type="button" disabled={pending} onClick={save}>
+          <button className="savebar-x" type="button" disabled={pending || !modifie} onClick={annuler}>Annuler</button>
+          <button className="savebar-go" type="button" disabled={pending || !modifie} onClick={save}>
             <span className="ch">›</span> Enregistrer
           </button>
         </div>
