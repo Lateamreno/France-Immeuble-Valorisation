@@ -30,6 +30,23 @@ export function agentCourantSlug(): string | null {
 
 type Agent = { slug: string; name: string; initials?: string; id?: string };
 
+/* Les agents connus du poste, déposés par la barre de création (présente sur
+   chaque page) : c'est ce qui permet de passer du slug retenu aux initiales,
+   sans refaire voyager la liste dans chaque fiche. */
+let CONNUS: Agent[] = [];
+
+/** À appeler une fois les agents chargés (la barre de création le fait). */
+export function enregistrerAgents(agents: Agent[]) {
+  CONNUS = agents;
+}
+
+/** Les initiales de l'agent aux commandes — celles qui signent une note. */
+export function initialesAgentCourant(): string {
+  const slug = agentCourantSlug();
+  const a = slug ? CONNUS.find((x) => x.slug === slug) : undefined;
+  return a?.initials || DEFAUT;
+}
+
 /** Le slug de l'agent aux commandes, et de quoi en changer. */
 export function useAgentCourant(agents: Agent[]) {
   const parDefaut =

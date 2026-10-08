@@ -45,6 +45,8 @@ import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { manquesDossier } from "@/lib/bo/completude";
+import { initialesAgentCourant } from "@/lib/bo/agent-courant";
+import { blocsNote, daterNouveauBloc, enTeteNote, triPossible, trierBlocsNote } from "@/lib/bo/notes-datees";
 import { Facade } from "@/components/facade";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
@@ -1886,6 +1888,8 @@ function NotesRail({ b }: { b: BienData }) {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     void enregistrer();
   };
+  /* Trier remet les blocs dans l'ordre des dates, et part aussitôt. */
+  const trier = () => { changer(trierBlocsNote(notes)); auBlur(); };
   /* En quittant la fiche avec une frappe en attente, elle part quand même. */
   useEffect(() => () => {
     if (timer.current) {
@@ -1902,7 +1906,7 @@ function NotesRail({ b }: { b: BienData }) {
         <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
         Notes
         <span className="right">
-          {!ouvert && notes.trim() && <span className="ncount">{notes.trim().split(/\n+/).length}</span>}
+          {!ouvert && notes.trim() && <span className="ncount">{blocsNote(notes).length}</span>}
           <span className="chev">{ouvert ? "˄" : "˅"}</span>
         </span>
       </button>
@@ -1912,15 +1916,34 @@ function NotesRail({ b }: { b: BienData }) {
             value={notes}
             rows={14}
             autoFocus
-            onChange={(e) => changer(e.target.value)}
+            onChange={(e) => changer(saisieDatee(e))}
             onBlur={auBlur}
             placeholder={"Mémos internes : contacts, historique, références comparables…"}
           />
-          <span className={`brail-notes-t ${etat}`}>{temoin}</span>
+          <div className="brail-notes-b">
+            {triPossible(notes) && (
+              <button type="button" className="notes-trier" onClick={trier} title="Remettre les blocs dans l'ordre des dates">Trier par date</button>
+            )}
+            <span className={`brail-notes-t ${etat}`}>{temoin}</span>
+          </div>
         </div>
       )}
     </>
   );
+}
+
+/* La frappe qui ouvre un nouveau bloc reçoit sa date (notes-datees.ts). On
+   écrit directement dans le champ, curseur compris, AVANT de passer la valeur
+   à React : le champ contrôlé la retrouve égale à son état et laisse le
+   curseur où on l'a mis, juste après l'en-tête. */
+function saisieDatee(e: React.ChangeEvent<HTMLTextAreaElement>): string {
+  const el = e.target;
+  const tape = (e.nativeEvent as InputEvent).inputType === "insertText" ? (e.nativeEvent as InputEvent).data : null;
+  const r = daterNouveauBloc(el.value, el.selectionStart, tape, enTeteNote(initialesAgentCourant()));
+  if (!r) return el.value;
+  el.value = r.valeur;
+  el.setSelectionRange(r.curseur, r.curseur);
+  return r.valeur;
 }
 
 function NotesSection({ b }: { b: BienData }) {
@@ -1937,11 +1960,15 @@ function NotesSection({ b }: { b: BienData }) {
         className="min"
         rows={16}
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e) => setNotes(saisieDatee(e))}
         placeholder={"ex.\nVente\n880 000 €\n24/06/2019\n253 m²\nsoit 3 478 €/m²\n7 Avenue DE PARIS 94800 VILLEJUIF"}
         style={{ fontFamily: "var(--font-body)", lineHeight: 1.55 }}
       />
-      <div style={{ display: "flex", marginTop: 10 }}>
+      <div style={{ display: "flex", marginTop: 10, alignItems: "center" }}>
+        {triPossible(notes) && (
+          <button type="button" className="notes-trier" onClick={() => setNotes(trierBlocsNote(notes))}
+            title="Remettre les blocs dans l'ordre des dates">Trier par date</button>
+        )}
         <span style={{ flex: 1 }} />
         <button
           className="kgo"

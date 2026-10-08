@@ -8337,6 +8337,14 @@ button { font-weight: 700; }
 }
 .brail-notes textarea:focus { outline: none; border-color: var(--gold, #b6a359); }
 .brail-notes-t { display: block; margin-top: 5px; font-size: 11px; color: var(--gray-lt); text-align: right; }
+/* Notes datées (MAV, 08/10) : le tri par date à gauche du témoin. */
+.brail-notes-b { display: flex; align-items: baseline; gap: 8px; }
+.brail-notes-b .brail-notes-t { flex: 1; }
+.notes-trier {
+  border: 0; background: none; padding: 0; margin-top: 5px; cursor: pointer;
+  font-family: var(--font-body); font-size: 11px; color: var(--gray-txt); text-decoration: underline;
+}
+.notes-trier:hover { color: var(--gold-bo); }
 .brail-notes-t.attente, .brail-notes-t.envoi { color: var(--orange); }
 .brail-notes-t.erreur { color: var(--red); }
 

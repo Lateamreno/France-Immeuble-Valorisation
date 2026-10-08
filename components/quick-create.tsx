@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useAgentCourant } from "@/lib/bo/agent-courant";
+import { enregistrerAgents, useAgentCourant } from "@/lib/bo/agent-courant";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
 import { contactParEmail, createContact, createImmeuble, type ContactTrouve } from "@/lib/bo/actions";
@@ -33,6 +33,9 @@ type Ouverte = "Contact" | "Immeuble" | "Recherche" | "Proposition" | "Visite" |
 export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
   const [modal, setModal] = useState<Ouverte>(null);
   const fermer = () => setModal(null);
+  /* La barre est sur toutes les pages : elle fait connaître les agents au
+     poste, pour que les notes se signent des bonnes initiales. */
+  useEffect(() => { enregistrerAgents(agents); }, [agents]);
   return (
     <>
       <div className="bottbar">
