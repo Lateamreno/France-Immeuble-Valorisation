@@ -8345,7 +8345,6 @@ button { font-weight: 700; }
   font-family: var(--font-body); font-size: 11px; color: var(--gray-txt); text-decoration: underline;
 }
 .notes-trier:hover { color: var(--gold-bo); }
-.brail-notes-t.attente, .brail-notes-t.envoi { color: var(--orange); }
 .brail-notes-t.erreur { color: var(--red); }
 
 /* Retour #456 — la liste de diffusion : photo, prix au m² et renta. */
