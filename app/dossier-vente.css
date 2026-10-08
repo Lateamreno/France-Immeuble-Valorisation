@@ -74,8 +74,10 @@
    La couverture gardait les 30 mm d'origine : deux largeurs de tranche dans un
    même document, ça se voit au feuilletage. */
 
+/* Retour #462 : « le France Immeuble sur chaque page devrait se trouver
+   beaucoup plus bas, quasi à la toute fin de la page ». 18 → 6 mm. */
 .dv-pied {
-  position: absolute; left: 8mm; right: 8mm; bottom: 18mm;
+  position: absolute; left: 8mm; right: 8mm; bottom: 6mm;
   display: flex; align-items: center; justify-content: space-between;
   font-size: 7.5pt; font-style: italic; color: var(--dv-gris);
 }
@@ -316,9 +318,13 @@
 }
 /* L'état locatif : dix colonnes, mais lisibles. La place vient de la tranche
    amincie et du bandeau de titre supprimé (#222). */
+/* Retour #464 : la tranche de lots en tête de chaque page d'état locatif. */
+.dv-lots-sub { margin: 0 8mm 2.5mm; font-size: 10pt; color: var(--dv-gris); }
 .dv-tab.lots { font-size: 10.5pt; }
 .dv-tab.lots th { font-size: 10.5pt; padding: 2.4mm 2mm; }
-.dv-tab.lots td { padding: 2.3mm 2mm; }
+/* Retour #464 : des lignes un peu plus serrées (2,3 → 1,9 mm), pour que
+   vingt-quatre lots et le total tiennent au-dessus de la note. */
+.dv-tab.lots td { padding: 1.9mm 2mm; }
 /* Retours #417 et #418 : une seule couleur, pas de séparateur entre les lignes. */
 .dv-tab.cond td { color: var(--dv-texte); border-bottom: 0; }
 .dv-tab.cond tbody tr:nth-child(even) td { background: var(--dv-carte); }
@@ -406,7 +412,7 @@
   border-top: .5mm solid #9a9ba4;
 }
 .dv-prix-bar i { font-style: normal; font-size: 12pt; color: var(--dv-gris); }
-.dv-page .dv-note:last-of-type { position: absolute; left: 8mm; right: 8mm; bottom: 26mm; }
+.dv-page .dv-note:last-of-type { position: absolute; left: 8mm; right: 8mm; bottom: 16mm; }
 
 /* ------------------------------------------------------------- Dos */
 

@@ -5,7 +5,7 @@
 // Fond sombre, tranche dorée à droite, silhouette de ville en pied : c'est la
 // tenue de la maison. Tout vient de `lib/bo/dossier-vente.ts` ; cette page ne
 // calcule rien, elle met en forme.
-import type { DossierVente } from "@/lib/bo/dossier-vente";
+import { LOTS_PAR_PAGE, type DossierVente } from "@/lib/bo/dossier-vente";
 import { IC_COMPOSANT } from "@/lib/pictos-composants";
 import { PICTOS_DEST } from "@/components/pictos-destination";
 import { group } from "@/lib/format";
@@ -379,18 +379,37 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
       </>} />
 
       {/* ---------------------------------------------- 5. État locatif */}
-      <Page titre="Etat locatif" picto={I.cle} pied={pied} enfants={<>
-        {/* Retour #318 — « quand on n'a pas les dates d'entrée ni le type de
+      {/* Retour #464 — « s'il y a plus de lots qu'il ne peut en tenir sur une
+          page, on fait une page 2 de l'état locatif (puis 3, 4, 5). Il faut
+          que le tableau s'arrête avant la note. Je ne veux pas les sous-totaux
+          sous chaque page, seulement sur la dernière. » Vingt-huit lignes par
+          page, « Lots x à y » en tête quand il y en a plusieurs, le total sur
+          la dernière seulement. */}
+      {(() => {
+        /* Retour #318 — « quand on n'a pas les dates d'entrée ni le type de
             bail, le mieux c'est de ne pas mettre la ou les colonnes. »
             Une colonne de « n.c. » sur toute sa hauteur ne dit rien du bien :
             elle dit que le dossier est incomplet, et elle prend la place que
             les colonnes chiffrées réclament. Chacune ne s'imprime donc que si
-            au moins un lot la renseigne. */}
-        {(() => {
-          const colBail = d.lots.some((l) => nc(l.bail) !== "n.c.");
-          const colEntree = d.lots.some((l) => !!l.entree);
-          const nbCols = 8 + (colBail ? 1 : 0) + (colEntree ? 1 : 0);
+            au moins un lot la renseigne. */
+        const colBail = d.lots.some((l) => nc(l.bail) !== "n.c.");
+        const colEntree = d.lots.some((l) => !!l.entree);
+        const nbCols = 8 + (colBail ? 1 : 0) + (colEntree ? 1 : 0);
+        /* Autant de pages qu'il faut, et des pages équilibrées : 73 lots font
+           quatre pages de 19, 18, 18 et 18 — pas trois pleines et une
+           quatrième avec un seul lot et le total. */
+        const nbPages = Math.max(1, Math.ceil(d.lots.length / LOTS_PAR_PAGE));
+        const parPage = Math.max(1, Math.ceil(d.lots.length / nbPages));
+        const pages: typeof d.lots[] = [];
+        for (let i = 0; i < d.lots.length; i += parPage) pages.push(d.lots.slice(i, i + parPage));
+        if (pages.length === 0) pages.push([]);
+        return pages.map((tranche, pi) => {
+          const derniere = pi === pages.length - 1;
+          const debut = pi * parPage + 1;
+          const fin = pi * parPage + tranche.length;
           return (
+      <Page key={pi} titre="Etat locatif" picto={I.cle} pied={pied} enfants={<>
+        {pages.length > 1 && <div className="dv-lots-sub">Lots {debut} à {fin}{derniere ? "" : " · suite page suivante"}</div>}
         <table className="dv-tab lots">
           <thead>
             <tr>
@@ -398,11 +417,11 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               <th className="c">DPE</th><th className="c">Etat</th>
               {colBail && <th className="c">Bail</th>}
               {colEntree && <th className="c">Entrée</th>}
-              <th className="r">HC/mois</th><th className="r">Potentiel*</th>
+              <th className="r">HC/mois</th><th className="r">HC/an*</th>
             </tr>
           </thead>
           <tbody>
-            {d.lots.map((l, i) => (
+            {tranche.map((l, i) => (
               <tr key={i}>
                 <td className="gris">{l.n}</td>
                 {/* Retour #240 : le picto reste sur la ligne du type de lot.
@@ -430,6 +449,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               <tr><td colSpan={nbCols} className="gris">L&apos;état locatif est vide.</td></tr>
             )}
           </tbody>
+          {derniere && (
           <tfoot>
             {/* Retour #412 : le total se nomme, en or, dans la case qui
                 précède les chiffres — avant Carrez, et avant HC/mois. */}
@@ -443,14 +463,16 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               <td className="r or">{group(d.total.potentiel)} <i>€/an</i></td>
             </tr>
           </tfoot>
+          )}
         </table>
-          );
-        })()}
+        {/* Retour #464 : la règle du chiffre, dans les mots de MAV. */}
         <p className="dv-note">
-          * Potentiel calculé à partir des loyers du secteur, de l&apos;encadrement des loyers et
-          des indices de révision.
+          * Loyer actuel si le lot est loué, loyer du marché s&apos;il est vide.
         </p>
       </>} />
+          );
+        });
+      })()}
 
       {/* -------------------------------------------- 6. État financier */}
       <Page titre="Etat financier" picto={I.euro} pied={pied} compact enfants={<>

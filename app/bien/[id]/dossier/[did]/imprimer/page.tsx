@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { getAgentFiche, getBien } from "@/lib/bubble/server";
 import { construireDossierVente } from "@/lib/bo/dossier-vente";
+import { retirerPhotosCassees } from "@/lib/bo/photos-verif";
 import { DossierVente } from "@/components/dossier-vente";
 import { BarreImpression } from "@/components/barre-impression";
 import "../../../../../dossier-vente.css";
@@ -39,8 +40,12 @@ export default async function ImprimerDossier({
   /* Le contact dédié imprimé en couverture : celui qui a créé le dossier, à
      défaut celui qui suit l'immeuble. */
   const agentId = S(doc.AGENT_CREATOR) || S(doc.AGENT_SUIVI) || S(b.im.AGENT);
-  const a = await getAgentFiche(agentId).catch(() => null);
-  const d = construireDossierVente(b, doc, a && {
+  /* Retours #460 et #463 : les photos que Bubble n'a plus sont écartées. */
+  const [a, photos] = await Promise.all([
+    getAgentFiche(agentId).catch(() => null),
+    retirerPhotosCassees(b.photos),
+  ]);
+  const d = construireDossierVente({ ...b, photos }, doc, a && {
     nom: `${S(a["prénom"])} ${S(a.nom)}`.trim(),
     email: S(a.email),
     tel: S(a["portable (TXT)"]) || S(a.portable),

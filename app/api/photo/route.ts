@@ -131,14 +131,28 @@ export async function GET(req: NextRequest) {
   }
 
   const token = process.env.BUBBLE_API_TOKEN;
+  /* Retours #459, #460 et #463. Deux pièges, vus sur Argenteuil :
+     — un fichier que Bubble n'a plus répond 200 avec une PAGE HTML ; servie
+       telle quelle sous un type d'image, elle fait une photo cassée dans le
+       dossier. Ce qui n'est pas une image devient le pixel transparent, comme
+       une réponse en erreur ;
+     — une réponse en erreur passait par le cache de données de Next pour un
+       jour entier : une panne de cinq minutes chez Bubble grisait toutes les
+       photos jusqu'au lendemain. On ne garde plus rien côté serveur ; le
+       navigateur et le CDN gardent les succès un jour, les échecs cinq
+       minutes, par les en-têtes de réponse. */
   const upstream = await fetch(url, {
     headers: token && url.hostname === "vente.france-immeuble.fr" ? { Authorization: `Bearer ${token}` } : {},
     redirect: "follow",
-    next: { revalidate: 86400 },
-  });
-  if (!upstream.ok) return pixel();
+    cache: "no-store",
+    /* Un Bubble qui ne répond pas rend le pixel après quinze secondes,
+       plutôt qu'une page qui n'en finit pas de charger. */
+    signal: AbortSignal.timeout(15000),
+  }).catch(() => null);
+  if (!upstream || !upstream.ok) return pixel();
 
   const type = upstream.headers.get("Content-Type") ?? "image/jpeg";
+  if (!/^image\//i.test(type)) return pixel();
   if (req.nextUrl.searchParams.get("trim") === "1") {
     return rogner(await upstream.arrayBuffer(), type);
   }

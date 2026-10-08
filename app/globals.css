@@ -1281,8 +1281,11 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
 }
 .ltb.lbl:hover:not(:disabled) { background: #f4f4f4; }
 .ltb.lbl.red { background: var(--red); border-color: var(--red); color: #fff; }
-.ltools.v2 .kgo { background: #d9d9d9; color: #fff; border: 0; }
-.ltools.v2 .kgo:not(:disabled) { background: var(--slate); }
+/* Retour #457 : « toujours en vert le bouton Enregistrer, sur toutes les
+   pages où il se trouve ». Gris clair tant qu'il n'y a rien à enregistrer
+   serait un autre bouton : il reste vert, simplement éteint. */
+.ltools.v2 .kgo { background: var(--green); color: #fff; border: 0; opacity: .45; }
+.ltools.v2 .kgo:not(:disabled) { background: var(--green); opacity: 1; }
 .ltb.lbl svg { width: 15px; height: 15px; }
 .ltb.lbl.gold { background: #e8b21f; border-color: #e8b21f; color: #3a2f05; }
 .ltb.lbl.gold:hover { background: #f0bd35; }
@@ -8336,3 +8339,24 @@ button { font-weight: 700; }
 .brail-notes-t { display: block; margin-top: 5px; font-size: 11px; color: var(--gray-lt); text-align: right; }
 .brail-notes-t.attente, .brail-notes-t.envoi { color: var(--orange); }
 .brail-notes-t.erreur { color: var(--red); }
+
+/* Retour #456 — la liste de diffusion : photo, prix au m² et renta. */
+.dif-ph { width: 64px; height: 48px; flex: none; border-radius: 4px; overflow: hidden; background: #eee; display: block; }
+.dif-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dif-ph .vide { display: block; width: 100%; height: 100%; }
+.dif-l .px { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.dif-l .px small { font-family: var(--font-body); font-size: 11.5px; color: var(--gray-txt); font-weight: 400; }
+.dif-l .dif-lien { font-size: 12px; white-space: nowrap; }
+
+/* Retour #466 : un loyer potentiel au-dessus du loyer actuel se lit en vert,
+   comme dans le BO Bubble. */
+.ltable td.up .lcell.num { color: var(--green); font-weight: 700; }
+
+/* Retours #459 et #460 : une photo dont Bubble n'a plus le fichier. */
+.gph.cassee { outline: 2px solid var(--red); outline-offset: -2px; }
+.gph.cassee img { opacity: .15; }
+.gph-cassee {
+  position: absolute; left: 6px; right: 6px; top: 50%; transform: translateY(-50%);
+  text-align: center; font-size: 11.5px; font-weight: 700; color: var(--red);
+  background: rgba(255,255,255,.92); border-radius: 4px; padding: 6px 8px; pointer-events: none;
+}

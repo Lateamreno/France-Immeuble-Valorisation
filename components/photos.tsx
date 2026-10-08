@@ -97,7 +97,15 @@ export function PhotosEcran({ b }: { b: BienData }) {
   /* Retour #407 — les photos en portrait, mesurées une fois chargées : rien,
      côté serveur, ne connaît l'orientation des photos venues de Bubble. */
   const [portraits, setPortraits] = useState<Set<string>>(() => new Set());
+  /* Retours #459 et #460 : le relais sert un pixel transparent quand Bubble
+     n'a plus le fichier. Une image d'un pixel, c'est une photo cassée : on le
+     dit sur la vignette, au lieu d'un carré gris muet. */
+  const [cassees, setCassees] = useState<Set<string>>(() => new Set());
   const noterOrientation = (id: string, img: HTMLImageElement) => {
+    if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
+      setCassees((s) => (s.has(id) ? s : new Set(s).add(id)));
+      return;
+    }
     if (img.naturalHeight > img.naturalWidth) setPortraits((s) => (s.has(id) ? s : new Set(s).add(id)));
   };
   const [, start] = useTransition();
@@ -334,7 +342,7 @@ export function PhotosEcran({ b }: { b: BienData }) {
         {visibles.map((p) => (
           <figure
             key={p.id}
-            className={`gph${glisse === p.id ? " glisse" : ""}`}
+            className={`gph${glisse === p.id ? " glisse" : ""}${cassees.has(p.id) ? " cassee" : ""}`}
             draggable
             onDragStart={(e) => { setGlisse(p.id); e.dataTransfer.effectAllowed = "move"; }}
             onDragEnd={() => setGlisse(null)}
@@ -348,6 +356,9 @@ export function PhotosEcran({ b }: { b: BienData }) {
                 onLoad={(e) => noterOrientation(p.id, e.currentTarget)} />
             )}
             <span className="gph-type">{p.type === "Lot" ? lotLabel(p.lotId) : LIBELLE[p.type ?? ""] ?? "À classer"}</span>
+            {cassees.has(p.id) && (
+              <span className="gph-cassee">Fichier introuvable chez Bubble — supprimez cette photo ou redéposez-la</span>
+            )}
             <button type="button" className="gph-x" title="Supprimer la photo" onClick={() => setSupprime(p)}>✕</button>
             <figcaption>
               <button

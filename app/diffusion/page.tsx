@@ -39,6 +39,9 @@ export default async function DiffusionPage() {
       publieLe: p.publieLe,
       ecart: p.aResynchroniser,
       erreur: p.erreur,
+      photo: p.photo,
+      renta: p.renta,
+      prixM2: p.prixM2,
       retombees: r
         ? { vues: r.vues, contacts: r.contacts, telephones: r.telephones, favoris: r.favoris, offres: r.offres }
         : undefined,

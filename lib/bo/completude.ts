@@ -370,12 +370,17 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
        Une lettre vide laisse un trou dans le tableau du dossier ; « n.c. » est
        une réponse, et elle suffit. On bloque donc sur le vide, jamais sur
        « n.c. ». Le tableau des lots est le seul endroit où ça se saisit. */
-    const sansDpe = b.lots.filter((l) => !S(l.Type_dpe).trim()).length;
+    /* Retour #458 : « il faut me le demander que sur les lots d'habitation
+       (les commerces et annexes n'ont en général pas de DPE), et seulement
+       si je n'ai pas mis Vierge ou n.c. ». Un commerce, un parking ou une cave
+       sans lettre ne bloque donc plus le dossier ; « Vierge » et « n.c. »
+       restent des réponses. */
+    const sansDpe = b.lots.filter((l) => S(l.Destination) === "Logement" && !S(l.Type_dpe).trim()).length;
     if (sansDpe > 0) {
       out.push({
-        cle: "dpe", titre: "Des lots n'ont pas de DPE", bloquant: true,
+        cle: "dpe", titre: "Des logements n'ont pas de DPE", bloquant: true,
         section: "locatif", champs: [], lien: lienDpe(im),
-        detail: `${sansDpe} lot${sansDpe > 1 ? "s" : ""} sans lettre. Si le diagnostic n'existe pas, choisissez « n.c. » : c'est une réponse, le vide n'en est pas une.`,
+        detail: `${sansDpe} logement${sansDpe > 1 ? "s" : ""} sans lettre. Si le diagnostic n'existe pas, choisissez « n.c. » ou « Vierge » : c'est une réponse, le vide n'en est pas une.`,
       });
     }
   }

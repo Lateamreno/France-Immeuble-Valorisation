@@ -96,7 +96,7 @@ export function LienDossier({ immeubleId, dossier, ouvert = false, compact = fal
             </a>
             <span className="sp" style={{ flex: 1 }} />
             <button type="button" className="fadd" onClick={() => { setEdite(false); setMsg(null); }}>Annuler</button>
-            <button type="button" className="kgo" disabled={pending || (!!url.trim() && !lienValide(url))} onClick={enregistrer}>
+            <button type="button" className="savebar-go" disabled={pending || (!!url.trim() && !lienValide(url))} onClick={enregistrer}>
               <span className="ch">›</span> Enregistrer
             </button>
           </div>
