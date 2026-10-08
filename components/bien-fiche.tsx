@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
@@ -664,13 +664,30 @@ export function BienFiche({
               <span className="right">{s.indicator}</span>
             </button>
           ))}
-          {/* Diffusion : le bien vu de l'extérieur. Placée juste avant les
-              acheteurs, parce que c'est elle qui les amène. */}
+          {/* Retour #327 — « dans le menu Acheteurs on a de nombreux sous-menus.
+              Je te mets les captures correspondantes et tu reproduis trait pour
+              trait. » Le BO en a cinq, rangés sous un intitulé qui ne s'ouvre
+              pas lui-même — exactement comme Documents juste au-dessus. Le
+              premier, « Acheteurs », porte le matching ; les quatre autres sont
+              les étapes qui en découlent. Les « + » ouvrent les mêmes modales
+              que la barre du bas (#333 à #335) : on programme une visite d'ici
+              sans quitter le bien.
+              MAV, 08/10 : le groupe s'appelle « Commercialisation » et passe
+              avant la diffusion en ligne. */}
+          <button type="button" className={`srow2 sgroupe${groupeAch ? " ouvert" : ""}`}
+            aria-expanded={groupeAch}
+            onClick={() => setSect(groupeAch ? "suivi" : "acheteurs")}>
+            <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
+            Commercialisation
+            <span className="right"><span className="chev">{groupeAch ? "˄" : "˅"}</span></span>
+          </button>
+          {groupeAch && <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />}
+          {/* Diffusion : le bien vu de l'extérieur, sur la marketplace. */}
           <button type="button" className={`srow2${sect === "diffusion" ? " on" : ""}`} onClick={() => setSect("diffusion")}>
             <span className="sic2"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
             {/* Retour #340 — « écris Diffusion en ligne, ce sera plus parlant » :
                 la diffusion marketplace ne se confond plus avec la
-                commercialisation off-market du menu Acheteurs. */}
+                commercialisation off-market du menu au-dessus. */}
             Diffusion en ligne
             <span className="right">
               {typeof im.pb_listing_id === "string" && im.pb_listing_id ? (
@@ -682,26 +699,11 @@ export function BienFiche({
               )}
             </span>
           </button>
-          {/* Retour #327 — « dans le menu Acheteurs on a de nombreux sous-menus.
-              Je te mets les captures correspondantes et tu reproduis trait pour
-              trait. » Le BO en a cinq, rangés sous un intitulé qui ne s'ouvre
-              pas lui-même — exactement comme Documents juste au-dessus. Le
-              premier, « Acheteurs », porte le matching ; les quatre autres sont
-              les étapes qui en découlent. Les « + » ouvrent les mêmes modales
-              que la barre du bas (#333 à #335) : on programme une visite d'ici
-              sans quitter le bien. */}
-          <button type="button" className={`srow2 sgroupe${groupeAch ? " ouvert" : ""}`}
-            aria-expanded={groupeAch}
-            onClick={() => setSect(groupeAch ? "suivi" : "acheteurs")}>
-            <span className="sic2"><svg viewBox="0 0 24 24">{I.users}</svg></span>
-            Acheteurs
-            <span className="right"><span className="chev">{groupeAch ? "˄" : "˅"}</span></span>
-          </button>
-          {groupeAch && <SousMenuAcheteurs b={b} sect={sect} setSect={setSect} />}
-          <button type="button" className={`srow2${sect === "notes" ? " on" : ""}`} onClick={() => setSect("notes")}>
-            <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
-            Notes
-          </button>
+          {/* Retour #455 — « quand on déplie les notes, c'est directement le
+              bandeau qui se déplie et qui permet d'écrire des notes à la
+              volée ; elles sont directement enregistrées ». Les notes ne sont
+              plus un écran : elles vivent dans le rail, et s'écrivent seules. */}
+          <NotesRail b={b} />
           {/* Tant qu'aucune opération n'est ouverte, l'entrée « Découpe »
               n'existe pas : c'est ce bouton qui la fait naître. */}
           {!operation && (
@@ -1835,6 +1837,88 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
         );
       })}
       {b.dossiers.length === 0 && <div className="fempty">Aucun dossier.</div>}
+    </>
+  );
+}
+
+/**
+ * Les notes dans le rail (retour #455). Un clic sur « Notes » déplie la zone
+ * de texte sous l'entrée ; ce qu'on y tape part tout seul, un peu après la
+ * dernière frappe et quand on quitte la case — c'est le seul endroit du BO
+ * qui s'enregistre sans bouton, comme dans le BO Bubble. Un témoin dit où
+ * on en est : à enregistrer, en cours, enregistré, ou en erreur.
+ */
+function NotesRail({ b }: { b: BienData }) {
+  const immeubleId = String(b.im._id);
+  const [ouvert, setOuvert] = useState(false);
+  const [notes, setNotes] = useState(String(b.im.notes ?? ""));
+  const [etat, setEtat] = useState<"ok" | "attente" | "envoi" | "erreur">("ok");
+  /* Ce qui est en base, ce qui est à l'écran, et la frappe en attente. */
+  const enBase = useRef(String(b.im.notes ?? ""));
+  const courant = useRef(notes);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const enregistrer = useCallback(async () => {
+    if (courant.current === enBase.current) { setEtat("ok"); return; }
+    setEtat("envoi");
+    try {
+      /* Si on a continué d'écrire pendant l'envoi, on repart aussitôt :
+         la boucle s'arrête quand la base a rattrapé l'écran. */
+      while (courant.current !== enBase.current) {
+        const v = courant.current;
+        await updateBien(immeubleId, { notes: v });
+        enBase.current = v;
+      }
+      setEtat("ok");
+    } catch {
+      setEtat("erreur");
+    }
+  }, [immeubleId]);
+
+  const changer = (v: string) => {
+    setNotes(v);
+    courant.current = v;
+    setEtat(v === enBase.current ? "ok" : "attente");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { timer.current = null; void enregistrer(); }, 1200);
+  };
+  const auBlur = () => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    void enregistrer();
+  };
+  /* En quittant la fiche avec une frappe en attente, elle part quand même. */
+  useEffect(() => () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      if (courant.current !== enBase.current) void updateBien(immeubleId, { notes: courant.current });
+    }
+  }, [immeubleId]);
+
+  const temoin = etat === "ok" ? "Enregistré" : etat === "attente" ? "À enregistrer…" : etat === "envoi" ? "Enregistrement…" : "Non enregistré — réessayez";
+  return (
+    <>
+      <button type="button" className={`srow2 sgroupe${ouvert ? " ouvert" : ""}`} aria-expanded={ouvert}
+        onClick={() => setOuvert((o) => !o)}>
+        <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
+        Notes
+        <span className="right">
+          {!ouvert && notes.trim() && <span className="ncount">{notes.trim().split(/\n+/).length}</span>}
+          <span className="chev">{ouvert ? "˄" : "˅"}</span>
+        </span>
+      </button>
+      {ouvert && (
+        <div className="brail-notes">
+          <textarea
+            value={notes}
+            rows={14}
+            autoFocus
+            onChange={(e) => changer(e.target.value)}
+            onBlur={auBlur}
+            placeholder={"Mémos internes : contacts, historique, références comparables…"}
+          />
+          <span className={`brail-notes-t ${etat}`}>{temoin}</span>
+        </div>
+      )}
     </>
   );
 }

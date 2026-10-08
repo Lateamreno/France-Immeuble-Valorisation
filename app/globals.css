@@ -8323,3 +8323,16 @@ button { font-weight: 700; }
 .att-choix label { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
 .att-choix label.on { border-color: var(--green); color: var(--green); font-weight: 600; }
 .att-choix input { margin: 0; accent-color: var(--green); }
+
+/* Retour #455 — les notes dépliées dans le rail de la fiche bien, écrites à
+   la volée et enregistrées toutes seules. */
+.brail-notes { padding: 10px 13px 8px; border-bottom: 1px solid var(--line-lt); background: #fbfaf6; }
+.brail-notes textarea {
+  width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 4px;
+  padding: 8px 9px; font-family: var(--font-body); font-size: 12.5px; line-height: 1.5; color: var(--ink, #2b2f36);
+  background: #fff;
+}
+.brail-notes textarea:focus { outline: none; border-color: var(--gold, #b6a359); }
+.brail-notes-t { display: block; margin-top: 5px; font-size: 11px; color: var(--gray-lt); text-align: right; }
+.brail-notes-t.attente, .brail-notes-t.envoi { color: var(--orange); }
+.brail-notes-t.erreur { color: var(--red); }
