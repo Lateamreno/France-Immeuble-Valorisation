@@ -2259,7 +2259,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
   const envoiEnCours = !!salve?.enCours;
   /* Cette fenêtre montre la salve qu'elle a lancée (ou celle qui tourne). */
   const progres = salve;
-  const [voie, setVoie] = useState<{ voie: "masse" | "boite"; expediteur: string } | null>(null);
+  const [voie, setVoie] = useState<{ voie: "masse" | "boite"; expediteur: string; alerte?: string } | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -2465,7 +2465,8 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
                 <>Le même message part à chaque destinataire par le relais SendGrid, sous votre adresse
                   agence{voie.expediteur ? <> (<b>{voie.expediteur}</b>)</> : null}, réponse vers vous, avec le PDF du
                   dernier dossier en pièce jointe. Quelques minutes pour tout le monde ; vous pouvez fermer cette
-                  fenêtre pendant l&apos;envoi, la pastille en bas de l&apos;écran le suit.</>
+                  fenêtre pendant l&apos;envoi, la pastille en bas de l&apos;écran le suit.
+                  {voie.alerte && <span className="sv-alerte">{voie.alerte}</span>}</>
               ) : (
                 <>Le même message part de la boîte de {b.agentNom ?? "l'agent"} à chaque destinataire,
                   avec le PDF du dernier dossier en pièce jointe. Au-delà de {PLAFOND_RELANCES}&nbsp;e-mails dans

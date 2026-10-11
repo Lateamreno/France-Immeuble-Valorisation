@@ -12,7 +12,11 @@ import { useState, useTransition } from "react";
 import { brancherRetoursSms, relireRetoursSms } from "@/lib/bo/actions";
 
 export type EtatEnvois = {
-  masse: { configure: boolean; expediteur: string; plafondJour: number };
+  masse: {
+    configure: boolean; expediteur: string; plafondJour: number;
+    /** Le sous-domaine d'envoi reçoit-il une réponse ? `null` : pas de sous-domaine, ou DNS muet. */
+    reception: { domaine: string; recoit: boolean | null; alerte?: string } | null;
+  };
   sms: {
     configure: boolean;
     message: string;
@@ -56,6 +60,20 @@ export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
             ? `expéditeur ${etat.masse.expediteur}, ${etat.masse.plafondJour.toLocaleString("fr-FR")} messages par jour au plus`
             : "relais non configuré : les salves seront refusées, les e-mails un-à-un ne sont pas concernés"}
         />
+        {/* MAV (11/10) : « un client m'a dit que ça faisait mail erroné ». Le
+            sous-domaine signait bien, mais ne recevait rien. On le vérifie ici,
+            avant qu'un client ne le fasse. */}
+        {etat.masse.reception && (
+          <Ligne
+            ok={etat.masse.reception.recoit === false ? false : etat.masse.reception.recoit ? true : "info"}
+            libelle={`Réponses à ${etat.masse.expediteur}`}
+            detail={etat.masse.reception.recoit === false
+              ? etat.masse.reception.alerte
+              : etat.masse.reception.recoit
+                ? `${etat.masse.reception.domaine} a un serveur de réception : une réponse à l'adresse d'expédition arrive quelque part — vérifiez que chaque adresse d'agent est bien renvoyée vers sa boîte`
+                : "impossible d'interroger le DNS pour l'instant"}
+          />
+        )}
         <Ligne
           ok={etat.sms.configure}
           libelle="SMS (MailingVox)"

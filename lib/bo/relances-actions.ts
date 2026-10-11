@@ -532,11 +532,16 @@ export async function recapSalveRelances(r: {
  */
 export async function voieRelancesGroupees(agentId?: string): Promise<{
   voie: "masse" | "boite"; expediteur: string; repondreA?: string;
+  /** Pourquoi une réponse à l'expéditeur affiché rebondirait (MAV, 11/10). */
+  alerte?: string;
 }> {
-  const { masseConfiguree, expediteurDe } = await import("@/lib/bo/mail");
+  const { masseConfiguree, expediteurDe, receptionSousDomaine, alerteReception } = await import("@/lib/bo/mail");
   if (!masseConfiguree()) return { voie: "boite", expediteur: "" };
-  const a = await agentExpediteur(agentId);
-  return { voie: "masse", expediteur: expediteurDe(a), repondreA: a.email };
+  const [a, reception] = await Promise.all([agentExpediteur(agentId), receptionSousDomaine()]);
+  return {
+    voie: "masse", expediteur: expediteurDe(a), repondreA: a.email,
+    alerte: reception.recoit === false ? alerteReception(reception.domaine, a) : undefined,
+  };
 }
 
 /**

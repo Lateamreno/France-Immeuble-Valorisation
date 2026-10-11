@@ -162,6 +162,73 @@ export function expediteurMasse(agent?: { nom?: string; email?: string }) {
   return expediteurDe(agent);
 }
 
+/* ---------------- Le sous-domaine reçoit-il le courrier ? ----------------
+ *
+ * MAV (11/10) : « j'ai un client qui m'a dit que ça faisait mail erroné ».
+ * Trouvé : `agence.france-immeuble.fr` portait bien les clés SendGrid (DKIM)
+ * mais AUCUN serveur de réception — ni MX, ni A. Le `Reply-To` est juste (la
+ * vraie boîte de l'agent), et la plupart des réponses reviennent bien. Mais
+ * dès qu'un client fait « Répondre à tous » (Gmail y ajoute l'expéditeur
+ * affiché), que sa messagerie ignore le `Reply-To`, ou qu'il recopie l'adresse
+ * qu'il voit, le message part vers `ma.voci@agence.france-immeuble.fr` et
+ * revient en « adresse erronée ».
+ *
+ * Le code ne peut pas poser un MX : c'est une ligne chez OVH, et des renvois
+ * vers les vraies boîtes (§7.1 le disait déjà). Ce qu'il peut faire, c'est
+ * regarder avant chaque salve et le dire, pour qu'on ne découvre plus ça par
+ * un client. Verdict gardé dix minutes.
+ *
+ * La question est posée en DNS-sur-HTTPS (résolveur public de Google) plutôt
+ * qu'au résolveur du système : la fonction tourne sur Vercel comme sur un poste
+ * de recette, et doit répondre pareil partout. Si personne ne répond, on ne
+ * tranche pas (`null`) : pas d'alerte sur un doute. */
+let verdictReception: { domaine: string; recoit: boolean | null; a: number } | null = null;
+
+/** Vrai si le domaine a au moins un serveur de courrier entrant (MX, sinon A). */
+async function domaineRecoit(domaine: string): Promise<boolean | null> {
+  const demander = async (type: "MX" | "A") => {
+    const r = await fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(domaine)}&type=${type}`,
+      { headers: { Accept: "application/dns-json" }, cache: "no-store", signal: AbortSignal.timeout(4000) },
+    );
+    if (!r.ok) throw new Error(`DNS ${r.status}`);
+    const j = (await r.json()) as { Status?: number; Answer?: { type: number; data: string }[] };
+    if (j.Status !== 0 && j.Status !== 3) throw new Error(`DNS statut ${j.Status}`);
+    const code = type === "MX" ? 15 : 1;
+    return (j.Answer ?? []).some((a) => a.type === code && a.data);
+  };
+  try {
+    if (await demander("MX")) return true;
+    /* Sans MX, le courrier va à l'adresse A du domaine : ça compte aussi. */
+    return await demander("A");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Le sous-domaine d'envoi des salves, et s'il sait recevoir une réponse.
+ * `domaine` vide quand les salves partent d'une adresse de service (`MASSE_FROM`).
+ */
+export async function receptionSousDomaine(): Promise<{ domaine: string; recoit: boolean | null }> {
+  const domaine = MASSE().domaine ?? "";
+  if (!domaine) return { domaine: "", recoit: null };
+  if (verdictReception && verdictReception.domaine === domaine && Date.now() - verdictReception.a < 10 * 60_000) {
+    return { domaine, recoit: verdictReception.recoit };
+  }
+  const recoit = await domaineRecoit(domaine);
+  verdictReception = { domaine, recoit, a: Date.now() };
+  return { domaine, recoit };
+}
+
+/** La phrase d'alerte, la même partout où une salve s'annonce. */
+export function alerteReception(domaine: string, agent?: { email?: string }): string {
+  const local = (agent?.email ?? "").split("@")[0].trim().toLowerCase() || "<agent>";
+  return `Le sous-domaine ${domaine} ne reçoit pas le courrier (pas de serveur MX) : une réponse adressée à `
+    + `${local}@${domaine} — « Répondre à tous », ou une messagerie qui ignore le « Répondre à » — revient en `
+    + "« adresse erronée ». À poser chez OVH : un MX sur ce sous-domaine et un renvoi de chaque adresse d'agent vers sa vraie boîte.";
+}
+
 /**
  * Un message de salve, par le relais dédié.
  *

@@ -13,7 +13,8 @@
 
 import { revalidateTag, updateTag } from "next/cache";
 import {
-  envoiPossible, envoyerEnMasse, envoyerPourAgent, expediteurMasse, masseConfiguree,
+  alerteReception, envoiPossible, envoyerEnMasse, envoyerPourAgent, expediteurMasse, masseConfiguree,
+  receptionSousDomaine,
 } from "@/lib/bo/mail";
 
 /**
@@ -75,12 +76,17 @@ export async function routeDeSalve(agent?: { nom?: string; email?: string }): Pr
   plafondBoitePerso: number;
   /** Le compteur du jour, pour l'afficher avant d'appuyer (plafond quotidien). */
   quota: { envoyes: number; reste: number; plafond: number };
+  /** Vide si tout va bien ; sinon pourquoi une réponse à l'expéditeur rebondit (MAV, 11/10). */
+  alerte?: string;
 }> {
+  const relais = masseConfiguree();
+  const [quota, reception] = await Promise.all([quotaDuJour(), relais ? receptionSousDomaine() : null]);
   return {
-    relais: masseConfiguree(),
+    relais,
     expediteur: expediteurMasse(agent),
     plafondBoitePerso: PLAFOND_BOITE_PERSO,
-    quota: await quotaDuJour(),
+    quota,
+    alerte: reception?.recoit === false ? alerteReception(reception.domaine, agent) : undefined,
   };
 }
 import { fusionner, valeursDe, type Expediteur, type RefPrenoms } from "@/lib/mails/fusion";
