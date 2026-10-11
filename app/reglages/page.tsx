@@ -10,16 +10,21 @@ export const dynamic = "force-dynamic";
  * le navigateur ne reçoit que « présent / absent » et les adresses affichées.
  */
 async function etatEnvois(): Promise<EtatEnvois> {
-  const [{ masseConfiguree, expediteurDe }, { etatSms, PLAFOND_SMS, NUMERO_STOP }] = await Promise.all([
+  const [{ masseConfiguree, expediteurDe, receptionSousDomaine, alerteReception }, { etatSms, PLAFOND_SMS, NUMERO_STOP }] = await Promise.all([
     import("@/lib/bo/mail"),
     import("@/lib/bo/sms"),
   ]);
   const domaine = process.env.MASSE_DOMAINE?.trim().replace(/^@/, "");
+  /* Le sous-domaine sait-il recevoir une réponse ? (MAV, 11/10 : « mail erroné ») */
+  const reception = masseConfiguree() && domaine ? await receptionSousDomaine() : null;
   return {
     masse: {
       configure: masseConfiguree(),
       expediteur: domaine ? `<agent>@${domaine}` : expediteurDe() || "non défini",
       plafondJour: Math.max(1, Number(process.env.PLAFOND_JOUR ?? 4000)),
+      reception: reception
+        ? { domaine: reception.domaine, recoit: reception.recoit, alerte: reception.recoit === false ? alerteReception(reception.domaine) : undefined }
+        : null,
     },
     sms: {
       ...etatSms(),

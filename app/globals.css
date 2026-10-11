@@ -6525,6 +6525,9 @@ a.cfc-doc:hover { border-color: var(--slate); }
 .sv-route > b { display: block; margin-bottom: 3px; font-size: 12.5px; color: #2c7d1c; }
 .sv-route > span { font-size: 12px; line-height: 1.5; color: var(--gray-txt); }
 .sv-route span b { color: var(--slate-2); }
+/* MAV (11/10) : le sous-domaine d'envoi ne reçoit pas le courrier — à dire
+   AVANT la salve, en rouge, là où l'expéditeur s'annonce. */
+.sv-alerte { display: block; margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--red); font-weight: 600; }
 
 /* Le compteur du jour, avant d'appuyer : discret tant qu'on a de la marge,
    rouge quand la salve ferait franchir le plafond. */

@@ -55,6 +55,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
   const [route, setRoute] = useState<{
     relais: boolean; expediteur: string; plafondBoitePerso: number;
     quota: { envoyes: number; reste: number; plafond: number };
+    alerte?: string;
   } | null>(null);
   const [assume, setAssume] = useState(false);
 
@@ -304,6 +305,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
                     <b>{agent.email ?? "vous"}</b>. Rien n&apos;est ajouté à vos « Envoyés » — le
                     détail reste dans « Salves envoyées ».
                   </span>
+                  {route.alerte && <span className="sv-alerte">{route.alerte}</span>}
                 </div>
               ) : (
                 <div className="dif-avis" style={{ marginTop: 12 }}>
