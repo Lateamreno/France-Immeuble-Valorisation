@@ -315,6 +315,16 @@ d'acquéreurs, projets annexes.
     clients de messagerie, l'adresse ne venant qu'après.
 - SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
   sert à rien.
+  - **État au 12/10/26, en pause par MAV** : le sous-domaine porte les clés DKIM
+    SendGrid et le DMARC, mais **ni MX, ni SPF**. Une réponse adressée à
+    `ma.voci@agence.france-immeuble.fr` rebondit en « adresse erronée » (cas
+    « Répondre à tous », messagerie qui ignore le `Reply-To`, adresse recopiée).
+    Le BO le détecte et l'affiche en rouge (Réglages › Envois, fenêtre de salve,
+    relance groupée). Chez OVH, le sous-domaine est déclaré dans Email Pro
+    (0 compte) alors que ma.voci est sur Exchange ; le minimum pour clore :
+    ajouter le domaine dans Exchange en « configuration recommandée », alias
+    `ma.voci`, puis TXT `agence` = `v=spf1 include:mx.ovh.com include:sendgrid.net ~all`.
+    Ne pas relancer MAV dessus sans qu'il le demande.
 - `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit
   l'expéditeur affiché. C'est ce qui permet à la route de masse de rester
   compatible avec « le commercial gère les retours ».
