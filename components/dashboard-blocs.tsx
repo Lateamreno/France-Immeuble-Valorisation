@@ -35,6 +35,9 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
   flag: <><path d="M4 21V4" /><path d="M4 5c3-2 6 1 9 0s5-1 7 0v9c-2-1-4-1-7 0s-6 2-9 0" /></>,
 };
 
+/** « 9,6 % » — la précision des pastilles de rendement. */
+const pct = (v: number) => `${v.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+
 function Card({
   c, mock, agents = [], peutTransferer = true,
 }: {
@@ -182,22 +185,39 @@ function Card({
                   AU-DESSUS du secteur est vert. Pas de référence utilisable,
                   pas de couleur — la pastille reste neutre plutôt que de
                   mentir. */}
-              {c.perf?.renta !== undefined && (
+              {/* MAV (12/10) : la renta POTENTIELLE, pas l'actuelle, et un
+                  picto devant chaque chiffre pour qu'on sache ce qu'on lit —
+                  le survol le dit en toutes lettres. L'actuelle reste au
+                  survol, avec le secteur. */}
+              {(c.perf?.rentaPot ?? c.perf?.renta) !== undefined && (
                 <span
                   className={`kperf ${
-                    c.perf.rentaEcart === undefined || c.perf.rentaEcart === 0 ? ""
-                      : c.perf.rentaEcart > 0 ? "kdec" : "ksur"
+                    c.perf!.rentaEcart === undefined || c.perf!.rentaEcart === 0 ? ""
+                      : c.perf!.rentaEcart > 0 ? "kdec" : "ksur"
                   }`}
                   title={
-                    "Rendement brut actuel"
-                    + (c.perf.rentaRef !== undefined
-                      ? ` — secteur ${c.perf.rentaRef.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`
-                        + (c.perf.rentaEcart
-                          ? ` (${c.perf.rentaEcart > 0 ? "+" : ""}${c.perf.rentaEcart.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt)`
+                    (c.perf!.rentaPot !== undefined
+                      ? `Renta potentielle ${pct(c.perf!.rentaPot)}`
+                        + (c.perf!.renta !== undefined ? ` — actuelle ${pct(c.perf!.renta)}` : "")
+                      : `Renta actuelle ${pct(c.perf!.renta!)} (potentielle inconnue)`)
+                    + (c.perf!.rentaRef !== undefined
+                      ? ` — secteur ${pct(c.perf!.rentaRef)}`
+                        + (c.perf!.rentaEcart
+                          ? ` (${c.perf!.rentaEcart > 0 ? "+" : ""}${c.perf!.rentaEcart.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt)`
                           : " (au niveau du secteur)")
                       : "")
                   }>
-                  {c.perf.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %
+                  <svg viewBox="0 0 24 24" aria-hidden><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></svg>
+                  {pct(c.perf!.rentaPot ?? c.perf!.renta!)}
+                </span>
+              )}
+              {/* L'occupation, en % des lots loués (MAV, 12/10). Neutre : un
+                  immeuble vide est une opportunité pour l'un, un risque pour
+                  l'autre. */}
+              {c.perf?.occupation !== undefined && (
+                <span className="kperf" title={`Occupation : ${c.perf.occupation} % des lots loués`}>
+                  <svg viewBox="0 0 24 24" aria-hidden><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M15 8l2 2M18 5l2 2" /></svg>
+                  {c.perf.occupation} %
                 </span>
               )}
               {/* L'écart du prix du jour au prix du SECTEUR, au m². Signé
@@ -208,10 +228,12 @@ function Card({
                 <span
                   className={`kperf ${c.perf.ecartM2 > 0 ? "ksur" : c.perf.ecartM2 < 0 ? "kdec" : ""}`}
                   title={
-                    (c.perf.prixM2 ? `Prix au m² : ${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €` : "Prix au m²")
-                    + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €` : " face au secteur")
+                    "Écart prix secteur : "
+                    + (c.perf.prixM2 ? `${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €/m²` : "prix au m²")
+                    + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €/m²` : " face au secteur")
                     + (c.perf.prixM2RefLe ? ` (relevé du ${c.perf.prixM2RefLe})` : "")
                   }>
+                  <svg viewBox="0 0 24 24" aria-hidden><path d="M20 13l-7 7-9-9V4h7z" /><circle cx="7.5" cy="7.5" r="1.3" /></svg>
                   {c.perf.ecartM2 > 0 ? "+" : ""}{c.perf.ecartM2} %
                 </span>
               )}

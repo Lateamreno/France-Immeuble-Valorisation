@@ -438,7 +438,8 @@ export async function getDashboardLive(
     fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, [
       "AGENT", "PROPRIETAIRE", "Modified Date", "Created Date", "Statut", "prix_hai_estim", "date_last_est",
       "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
-      "adresse_zipcode", "fin_renta_ba", "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
+      "adresse_zipcode", "fin_renta_ba", "fin_renta_bm", "fin_loyers_an", "fin_loyers_an_max", "occupation_lots",
+      "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
       "date_contact_form",
     ]),
     // Tous les suivis : en n'en chargeant que 600, les immeubles au suivi
@@ -707,6 +708,17 @@ export async function getDashboardLive(
        une case vide se lirait comme un zéro. */
     const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
     const renta = nb(im.fin_renta_ba);
+    /* MAV (12/10) : « je veux que ce soit la potentielle qui soit affichée ».
+       Le BO la calcule déjà (`fin_renta_bm`, rendement brut aux loyers de
+       marché) ; à défaut on la refait depuis les loyers annuels, actuels et
+       potentiels. Un bien entièrement loué au prix du marché a les deux égales. */
+    const loyersAn = nb(im.fin_loyers_an);
+    const loyersAnMax = nb(im.fin_loyers_an_max);
+    const rentaPot = nb(im.fin_renta_bm)
+      ?? (renta !== undefined && loyersAn && loyersAnMax ? Math.round((renta * loyersAnMax / loyersAn) * 10) / 10 : undefined);
+    /* L'occupation en % des lots : zéro est une vraie valeur (immeuble vide). */
+    const occupation = typeof im.occupation_lots === "number" && Number.isFinite(im.occupation_lots) && im.occupation_lots >= 0
+      ? Math.round(im.occupation_lots as number) : undefined;
     const ref = refByIm.get(id);
 
     /* Le prix au m² DU JOUR : celui de la fiche, qui suit le dernier prix
@@ -723,14 +735,18 @@ export async function getDashboardLive(
        au dixième de point — la précision réellement affichée sur la pastille —
        pour qu'un bien annoncé « 6,5 % » contre un secteur à « 6,5 % » ne se
        colore pas sur une différence qu'on ne voit pas. */
-    const rentaEcart = renta !== undefined && ref?.renta !== undefined
-      ? Math.round((renta - ref.renta) * 10) / 10
+    /* La couleur suit le chiffre AFFICHÉ, donc la potentielle quand on l'a. */
+    const rentaAffichee = rentaPot ?? renta;
+    const rentaEcart = rentaAffichee !== undefined && ref?.renta !== undefined
+      ? Math.round((rentaAffichee - ref.renta) * 10) / 10
       : undefined;
 
-    if (renta !== undefined || ecartM2 !== undefined) {
+    if (renta !== undefined || rentaPot !== undefined || occupation !== undefined || ecartM2 !== undefined) {
       card.perf = {
         renta,
-        rentaRef: renta !== undefined ? ref?.renta : undefined,
+        rentaPot,
+        occupation,
+        rentaRef: rentaAffichee !== undefined ? ref?.renta : undefined,
         rentaEcart,
         prixM2,
         prixM2Ref: ref?.prixM2,
