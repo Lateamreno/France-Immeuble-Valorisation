@@ -1295,7 +1295,10 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
 
 
 /* --- Modale « Suivi » (réplique de la capture du BO) --- */
-.modal.sv { width: min(880px, 95vw); padding: 0; }
+/* `max-width: 880px` : la fenêtre était dessinée pour 880 px mais restait
+   bornée par les 560 px de `.modal`. À 560, ni les modes de contact ni la
+   ligne de mise en attente ne tiennent (retours #468, #471). */
+.modal.sv { width: min(880px, 95vw); max-width: 880px; padding: 0; }
 .sv-head {
   display: flex; align-items: center; justify-content: center; gap: 9px;
   background: #414750; color: #fff; border-radius: 7px 7px 0 0;
@@ -1324,12 +1327,20 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
   width: 30px; height: 30px; color: var(--slate-2); font-size: 14px;
 }
 .sv-swap:hover { border-color: var(--slate-2); }
-.sv-canaux { justify-content: flex-end; }
+/* Retour #468 : les quatre modes de contact en cases de même largeur et de
+   même hauteur, picto et texte alignés à gauche. Sur une ligne, « Message
+   téléphonique » ne tient pas sans rapetisser le texte : MAV a tranché pour
+   deux colonnes et deux lignes dans ce cas. */
+.sv-canaux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .sv-canal {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px;
   border: 1px solid var(--red); border-radius: 4px; background: #fff;
-  padding: 5px 11px; font-size: 13px; color: var(--slate); font-family: var(--font-body);
+  padding: 6px 11px; font-size: 13px; color: var(--slate); font-family: var(--font-body);
+  white-space: nowrap; min-height: 32px;
 }
+/* Retour #471 : « jusqu'au … car … » sur la ligne de la mise en attente. */
+.sv-attente .sv-lab { min-width: 0; }
+.sv-dim { font-weight: 400; color: var(--gray-txt); font-size: 12.5px; }
 .sv-canal svg { width: 15px; height: 15px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; }
 .sv-canal.on { background: var(--slate); border-color: var(--slate); color: #fff; }
 .sv-canal.on svg { stroke: #fff; }
