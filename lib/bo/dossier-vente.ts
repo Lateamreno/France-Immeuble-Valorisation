@@ -42,9 +42,11 @@ function libelleAnnexes(dests: string[]): string {
   return "annexes";
 }
 
-/** Retour #464 : les lots d'un état locatif, par pages de 24 lignes — c'est
- *  ce qui tient entre le bandeau et la note de bas de page, total compris. */
-export const LOTS_PAR_PAGE = 24;
+/** Retour #464 : les lots d'un état locatif, par pages de 23 lignes — ce qui
+ *  tient entre le bandeau et la note de bas de page, total compris. MAV
+ *  (12/10) : « il faut que ça passe à 23 lignes par page, je pense qu'il y a
+ *  la place » — les pages se remplissent, le reste va sur la dernière. */
+export const LOTS_PAR_PAGE = 23;
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
