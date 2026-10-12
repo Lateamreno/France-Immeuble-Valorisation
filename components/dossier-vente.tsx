@@ -395,11 +395,11 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         const colBail = d.lots.some((l) => nc(l.bail) !== "n.c.");
         const colEntree = d.lots.some((l) => !!l.entree);
         const nbCols = 8 + (colBail ? 1 : 0) + (colEntree ? 1 : 0);
-        /* Autant de pages qu'il faut, et des pages équilibrées : 73 lots font
-           quatre pages de 19, 18, 18 et 18 — pas trois pleines et une
-           quatrième avec un seul lot et le total. */
-        const nbPages = Math.max(1, Math.ceil(d.lots.length / LOTS_PAR_PAGE));
-        const parPage = Math.max(1, Math.ceil(d.lots.length / nbPages));
+        /* Autant de pages qu'il faut, pleines : 73 lots font trois pages de 23
+           et une quatrième de 4 avec le total. Les pages équilibrées (19, 18,
+           18, 18) laissaient un tiers de page vide partout — MAV (12/10) les
+           veut remplies. */
+        const parPage = LOTS_PAR_PAGE;
         const pages: typeof d.lots[] = [];
         for (let i = 0; i < d.lots.length; i += parPage) pages.push(d.lots.slice(i, i + parPage));
         if (pages.length === 0) pages.push([]);
