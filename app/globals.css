@@ -1324,12 +1324,20 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
   width: 30px; height: 30px; color: var(--slate-2); font-size: 14px;
 }
 .sv-swap:hover { border-color: var(--slate-2); }
-.sv-canaux { justify-content: flex-end; }
+/* Retour #468 : les quatre modes de contact sur UNE ligne, en cases de même
+   largeur et de même hauteur, picto et texte alignés à gauche. En dessous de
+   900 px de fenêtre, deux colonnes et deux lignes, mêmes cases. */
+.sv-canaux { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 900px) { .sv-canaux { grid-template-columns: repeat(2, 1fr); } }
 .sv-canal {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px;
   border: 1px solid var(--red); border-radius: 4px; background: #fff;
-  padding: 5px 11px; font-size: 13px; color: var(--slate); font-family: var(--font-body);
+  padding: 6px 11px; font-size: 13px; color: var(--slate); font-family: var(--font-body);
+  white-space: nowrap; min-height: 32px;
 }
+/* Retour #471 : « jusqu'au … car … » sur la ligne de la mise en attente. */
+.sv-attente .sv-lab { min-width: 0; }
+.sv-dim { font-weight: 400; color: var(--gray-txt); font-size: 12.5px; }
 .sv-canal svg { width: 15px; height: 15px; stroke: var(--slate-2); fill: none; stroke-width: 1.9; }
 .sv-canal.on { background: var(--slate); border-color: var(--slate); color: #fff; }
 .sv-canal.on svg { stroke: #fff; }

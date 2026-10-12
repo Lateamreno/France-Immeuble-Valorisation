@@ -114,7 +114,8 @@ export function SuiviModal({
 
       <div className="sv-row">
         <span className="sv-lab">
-          <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 3 9v2H9v-2a5 5 0 0 1 3-9zM10 18h4" /></svg>
+          {/* Retour #467 : une vraie ampoule, bulbe et culot. */}
+          <svg viewBox="0 0 24 24"><path d="M12 2.5a6.5 6.5 0 0 0-3.8 11.8c.9.7 1.4 1.5 1.6 2.4h4.4c.2-.9.7-1.7 1.6-2.4A6.5 6.5 0 0 0 12 2.5z" /><path d="M9.5 18.5h5M9.8 20.5h4.4M11 22.3h2" /></svg>
           Objet de l&apos;échange
           <button className="sv-mini" type="button" title="Ajouter un autre objet" disabled>+</button>
         </span>
@@ -146,7 +147,8 @@ export function SuiviModal({
 
       <div className="sv-row col">
         <span className="sv-lab">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.2" /></svg>
+          {/* Retour #469 : un « i » dans un cercle, avec son point visible. */}
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v6" /><circle cx="12" cy="7.6" r="1.15" fill="currentColor" stroke="none" /></svg>
           Notes
         </span>
         <textarea className="sv-notes" rows={2} autoFocus
@@ -155,34 +157,34 @@ export function SuiviModal({
       </div>
 
       {/* Replié par défaut sur « Non » : la date et le motif n'apparaissent
-          qu'une fois « Oui » choisi, comme dans le BO (retour #33). */}
-      <div className="sv-row">
+          qu'une fois « Oui » choisi, comme dans le BO (retour #33). Et tout
+          tient sur UNE ligne, comme dans le BO : « Mettre en attente jusqu'au
+          [date] car [motif] … Oui / Non » (retour #471). */}
+      <div className="sv-row sv-attente">
         <span className="sv-lab">
-          <svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 8 5 8 9s-8 5-8 9" /></svg>
-          Mettre en attente
+          {/* Retour #470 : un vrai sablier. */}
+          <svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12" /><path d="M8 3v3.2a4 4 0 0 0 1.6 3.2L12 12l2.4-2.6A4 4 0 0 0 16 6.2V3" /><path d="M8 21v-3.2a4 4 0 0 1 1.6-3.2L12 12l2.4 2.6a4 4 0 0 1 1.6 3.2V21" /><path d="M10.5 19.5h3" fill="currentColor" /></svg>
+          Mettre en attente{attente && <span className="sv-dim"> jusqu&apos;au</span>}
         </span>
         <span className="sv-val">
+          {attente && (
+            <>
+              <input className="min" type="date" style={{ width: 140 }} value={date}
+                onChange={(e) => setDate(e.target.value)} />
+              <span className="sv-dim">car</span>
+              <select className="min" style={{ width: 220 }} value={motif}
+                onChange={(e) => setMotif(e.target.value)}>
+                <option value="">Sélectionnez un motif</option>
+                {MOTIFS_STANDBY.map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </>
+          )}
           <span className="sv-yn">
             <button type="button" className={attente ? "on" : ""} onClick={() => setAttente(true)}>Oui</button>
             <button type="button" className={!attente ? "on non" : "non"} onClick={() => setAttente(false)}>Non</button>
           </span>
         </span>
       </div>
-      {attente && (
-        <div className="sv-row">
-          <span className="sv-lab dim">jusqu&apos;au</span>
-          <span className="sv-val">
-            <input className="min" type="date" style={{ width: 140 }} value={date}
-              onChange={(e) => setDate(e.target.value)} />
-            <span style={{ fontSize: 12.5, color: "var(--gray-txt)" }}>car</span>
-            <select className="min" style={{ width: 220 }} value={motif}
-              onChange={(e) => setMotif(e.target.value)}>
-              <option value="">Sélectionnez un motif</option>
-              {MOTIFS_STANDBY.map((m) => <option key={m}>{m}</option>)}
-            </select>
-          </span>
-        </div>
-      )}
 
       {err && <div className="warnbox" style={{ margin: "0 18px", color: "var(--red)", borderColor: "var(--red)" }}>{err}</div>}
 
@@ -194,7 +196,7 @@ export function SuiviModal({
           title={complet ? undefined : "Renseignez le mode de contact et une note" }
           onClick={valider}>
           {attente ? (
-            <><svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 8 5 8 9s-8 5-8 9" /></svg> Mettre en attente</>
+            <><svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12" /><path d="M8 3v3.2a4 4 0 0 0 1.6 3.2L12 12l2.4-2.6A4 4 0 0 0 16 6.2V3" /><path d="M8 21v-3.2a4 4 0 0 1 1.6-3.2L12 12l2.4 2.6a4 4 0 0 1 1.6 3.2V21" /></svg> Mettre en attente</>
           ) : (
             <><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7" /></svg> Enregistrer le suivi</>
           )}
