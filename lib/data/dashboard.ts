@@ -72,7 +72,15 @@ export type KCard = {
    * pas de tiret, pas de case vide.
    */
   perf?: {
+    /** Rendement brut actuel (loyers en place). */
     renta?: number;
+    /**
+     * Rendement brut potentiel (loyers de marché sur tous les lots). MAV
+     * (12/10) : c'est LUI que la carte affiche, l'actuel reste au survol.
+     */
+    rentaPot?: number;
+    /** Lots loués, en % du nombre de lots (12/10). Zéro = immeuble vide. */
+    occupation?: number;
     /**
      * Rendement du secteur (`ref_renta_all` de la dernière estimation) et
      * écart du bien à ce rendement, en points, arrondi au dixième.

@@ -348,11 +348,14 @@ button { font-family: inherit; cursor: pointer; }
 
 .kperf {
   flex: none;
+  display: inline-flex; align-items: center; gap: 4px;
   font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .1px;
-  padding: 2px 7px; border-radius: 3px;
+  padding: 2px 7px 2px 5px; border-radius: 3px;
   background: var(--puce-fond, #eef1f4); color: #35506b;
   white-space: nowrap;
 }
+/* Le picto de chaque pastille (MAV, 12/10) : renta, occupation, prix secteur. */
+.kperf svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
 /* Décote en vert, surcote en rouge — même code que le bilan de l'avis de
    valeur, où un prix au m² au-dessus du secteur s'affiche déjà en rouge.
 
