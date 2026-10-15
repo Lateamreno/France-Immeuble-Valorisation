@@ -505,7 +505,9 @@ export function BienFiche({
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
               {sect === "prix" && (
                 <PrixSection b={b} espace={espace}
-                  tab={sous.prix} onTab={majSous("prix")} />
+                  tab={sous.prix} onTab={majSous("prix")}
+                  ouverte={est ? LIBELLE_EST[est.mode] : contenu ? contenuLabel ?? "Estimation en cours" : undefined}
+                  onReprendre={() => setSect("encours")} />
               )}
               {sect === "photos" && <PhotosSection b={b} />}
               {sect === "estimations" && (
@@ -515,6 +517,8 @@ export function BienFiche({
                   onOuvrir={ouvrirEst}
                   enCours={chargement}
                   erreur={erreurEst}
+                  ouverte={est ? LIBELLE_EST[est.mode] : contenu ? contenuLabel ?? "Estimation en cours" : undefined}
+                  onReprendre={() => setSect("encours")}
                 />
               )}
               {sect === "mandats" && (
@@ -820,52 +824,19 @@ function CopieAdresse({ b }: { b: BienData }) {
   );
 }
 
+/* Retour #472 — « ici je veux juste le lien qui redirige vers la page Google
+   Maps ». Le picto ouvrait une fenêtre avec le plan incrusté, un bouton Plan /
+   Street View et deux liens ; il ne fait plus qu'une chose : ouvrir l'immeuble
+   dans Google Maps, dans un nouvel onglet. Le lien enregistré sur l'adresse
+   d'abord, sinon une recherche sur l'adresse complète. */
 function MapsBtn({ b }: { b: BienData }) {
-  const [ouvert, setOuvert] = useState(false);
-  const geo = b.adr?.geo as { lat?: number; lng?: number } | undefined;
   const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`.trim();
-  const q = geo?.lat !== undefined && geo?.lng !== undefined ? `${geo.lat},${geo.lng}` : adresse;
   const lien = String(b.adr?.maps_url ?? "") || `https://www.google.com/maps/search/${encodeURIComponent(adresse)}`;
-  const [mode, setMode] = useState<"plan" | "rue">("plan");
-  // Avec une clé Google, on utilise l'API Embed officielle, qui sait afficher
-  // la façade en Street View ; sans clé, l'embed public affiche le plan.
-  const cle = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  const src = cle
-    ? mode === "rue"
-      ? `https://www.google.com/maps/embed/v1/streetview?key=${cle}&location=${encodeURIComponent(q)}&fov=80`
-      : `https://www.google.com/maps/embed/v1/place?key=${cle}&q=${encodeURIComponent(q)}&zoom=18`
-    : `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=18&output=embed`;
-
   return (
-    <>
-      <span className="smaps" title="Voir l'immeuble sur Google Maps" role="button" tabIndex={0}
-        onClick={(e) => { e.stopPropagation(); setOuvert(true); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setOuvert(true); } }}>
-        <svg viewBox="0 0 24 24">{I.maps}</svg>
-      </span>
-      {/* La même copie, là où l'adresse est sous les yeux (#274) : après le titre. */}
-      {ouvert && (
-        <Modale
-          titre={adresse || b.ville}
-          apresTitre={<Copier cls="cop" titre="Copier l'adresse" valeur={adresse || b.ville} />}
-          onFermer={() => setOuvert(false)} fermeDehors={false} className="lg" brut
-          pied={
-            <>
-              {cle && (
-                <span className="mrow" style={{ marginRight: 8 }}>
-                  <button type="button" className={`mopt${mode === "plan" ? " on" : ""}`} onClick={() => setMode("plan")}>Plan</button>
-                  <button type="button" className={`mopt${mode === "rue" ? " on" : ""}`} onClick={() => setMode("rue")}>Street View</button>
-                </span>
-              )}
-              <a className="mopt" href={lien} target="_blank" rel="noreferrer">Ouvrir dans Google Maps ↗</a>
-              <a className="mopt" href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">Street View ↗</a>
-            </>
-          }
-        >
-          <iframe className="mapsframe" title="Google Maps" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={src} />
-        </Modale>
-      )}
-    </>
+    <a className="smaps" href={lien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps"
+      onClick={(e) => e.stopPropagation()}>
+      <svg viewBox="0 0 24 24">{I.maps}</svg>
+    </a>
   );
 }
 
@@ -1278,9 +1249,11 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
  * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
  * sous-entrées, comme pour l'emplacement ou l'état locatif.
  */
-function PrixSection({ b, espace, tab, onTab }: {
+function PrixSection({ b, espace, tab, onTab, ouverte, onReprendre }: {
   b: BienData; espace?: Espace | null;
   tab?: string; onTab?: (t: string) => void;
+  /** L'estimation déjà ouverte dans la fiche, rappelée ici aussi (#473). */
+  ouverte?: string; onReprendre?: () => void;
 }) {
   const courant = tab ?? ONGLETS_PRIX[0].key;
   return (
@@ -1290,6 +1263,11 @@ function PrixSection({ b, espace, tab, onTab }: {
           chiffres de l'immeuble, eux, descendent dans le résumé de la page. */}
       <SectTitle icon={courant === "descriptif" ? I.info : I.euro}
         title={courant === "descriptif" ? "Descriptif" : "Prix"} />
+      {/* Retour #473 — « mets-la directement dans le menu prix » : tant
+          qu'une estimation est ouverte, elle se retrouve d'ici aussi. */}
+      {courant !== "descriptif" && ouverte && onReprendre && (
+        <BandeauEstimationOuverte libelle={ouverte} onReprendre={onReprendre} />
+      )}
       <div className="fsub-nav">
         {ONGLETS_PRIX.map((o) => (
           <button key={o.key} type="button" className={courant === o.key ? "on" : undefined}
@@ -1567,7 +1545,7 @@ function PhotosSection({ b }: { b: BienData }) {
   );
 }
 
-function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur }: {
+function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur, ouverte, onReprendre }: {
   b: BienData;
   onNeuve: () => void;
   onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
@@ -1575,13 +1553,20 @@ function EstimationsSection({ b, onNeuve, onOuvrir, enCours, erreur }: {
   enCours: string | null;
   /** Ce qui a empêché la dernière ouverture, s'il y a lieu. */
   erreur: string | null;
+  /** Le libellé de l'estimation déjà ouverte dans la fiche, s'il y en a une (#473). */
+  ouverte?: string;
+  onReprendre?: () => void;
 }) {
   const immeubleId = String(b.im._id);
   const [aSupprimer, setASupprimer] = useState<Record<string, unknown> | null>(null);
   return (
     <>
       <SectTitle icon={I.calc} title="Estimations" chips={<span className="fchip gold">{euros(b.im.prix_hai_estim) ?? euros(b.im.prix_hai)} HAI</span>} />
-      <MenuEstimer b={b} onNeuve={onNeuve} onOuvrir={onOuvrir} />
+      <MenuEstimer b={b} onNeuve={onNeuve} onOuvrir={onOuvrir} ouverte={ouverte} onReprendre={onReprendre} />
+      {/* Retour #473 — « quand l'estimation est en cours, mets-la là où on la
+          cherche d'habitude ». Elle reste en tête du rail, et elle est aussi
+          ici, au-dessus de la liste, tant qu'elle est ouverte. */}
+      {ouverte && onReprendre && <BandeauEstimationOuverte libelle={ouverte} onReprendre={onReprendre} />}
       {erreur && <div className="dif-avis"><b>Ouverture impossible.</b>{erreur}</div>}
       {b.estimations.map((e) => {
         const st = String(e.Statut ?? "").replace(/^\d+ - /, "");
@@ -1700,10 +1685,24 @@ function SupprimerEstimation({ immeubleId, e, onFermer }: {
  * (retour #99) : neuf fois sur dix ce qu'on veut, c'est renvoyer celle qui
  * existe déjà, pas en refaire une.
  */
-function MenuEstimer({ b, onNeuve, onOuvrir }: {
+/** L'estimation ouverte, rappelée là où on la cherche (#473). */
+function BandeauEstimationOuverte({ libelle, onReprendre }: { libelle: string; onReprendre: () => void }) {
+  return (
+    <button type="button" className="est-ouverte" onClick={onReprendre}>
+      <span className="pastille" />
+      <b>{libelle}</b>
+      <span>Vous l&apos;avez laissée ouverte : rien n&apos;est perdu, elle est en tête du menu de droite.</span>
+      <span className="est-ouverte-go">Reprendre ›</span>
+    </button>
+  );
+}
+
+function MenuEstimer({ b, onNeuve, onOuvrir, ouverte, onReprendre }: {
   b: BienData;
   onNeuve: () => void;
   onOuvrir: (mode: "reprise" | "lecture", eid: string) => void;
+  ouverte?: string;
+  onReprendre?: () => void;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const recentes = b.estimations.slice(0, 5);
@@ -1717,9 +1716,18 @@ function MenuEstimer({ b, onNeuve, onOuvrir }: {
         <>
           <button type="button" className="estm-fond" aria-label="Fermer" onClick={() => setOuvert(false)} />
           <div className="estm-menu">
+            {/* L'estimation déjà ouverte passe en premier (#473) : c'est elle
+                qu'on cherche quand on revient par le bouton habituel. */}
+            {ouverte && onReprendre && (
+              <button type="button" className="estm-it neuf"
+                onClick={() => { setOuvert(false); onReprendre(); }}>
+                <b><span className="pastille" /> Reprendre : {ouverte}</b>
+                <span>Elle est ouverte dans la fiche, la saisie est intacte.</span>
+              </button>
+            )}
             {/* Boutons et non liens : l'estimation s'ouvre DANS la page, on ne
                 quitte pas la fiche (retour #125). */}
-            <button type="button" className="estm-it neuf"
+            <button type="button" className={`estm-it${ouverte ? "" : " neuf"}`}
               onClick={() => { setOuvert(false); onNeuve(); }}>
               <b>Nouvelle estimation</b>
               <span>Repartir des données de la fiche et refaire le calcul.</span>
