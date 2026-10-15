@@ -97,9 +97,11 @@ export function fusionner(texte: string, v: Valeurs): { texte: string; manquants
     return champ.repli;
   });
   /* Un champ vide en début de phrase laisse une espace en trop et parfois une
-     virgule orpheline : « Bonjour , » se voit tout de suite. */
+     virgule orpheline : « Bonjour , » se voit tout de suite. Seulement la
+     virgule et le point : en français, « ? », « ! », « : » et « ; » PRENNENT
+     une espace avant — « c'est bien LANSKI ? » doit la garder (15/10). */
   return {
-    texte: sorti.replace(/[ \t]{2,}/g, " ").replace(/ +([,.;:!?])/g, "$1").replace(/^[ \t]+$/gm, ""),
+    texte: sorti.replace(/[ \t]{2,}/g, " ").replace(/ +([,.])(?!\.)/g, "$1").replace(/^[ \t]+$/gm, ""),
     manquants: [...manquants],
   };
 }
