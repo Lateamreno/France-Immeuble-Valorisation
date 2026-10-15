@@ -72,6 +72,16 @@ async function connecter(b: Boite) {
     socketTimeout: 20000,
     greetingTimeout: 10000,
   });
+  /* Une connexion gardée qui meurt en silence — serveur qui coupe, fonction
+     gelée puis reprise sur Vercel — émet « error » sans que personne n'écoute,
+     et Node arrête alors TOUT le processus. C'est ce qui a tué l'envoi de MAV
+     le 15/10 à 12 h 30 (« Socket timeout », processus sorti en 129) : le
+     message partait, la copie dans « Envoyés » non. On écoute, on jette la
+     connexion, la demande suivante en ouvre une neuve. */
+  client.on("error", (e: unknown) => {
+    for (const [k, c] of CLIENTS) if (c === client) CLIENTS.delete(k);
+    console.error(`[mails] connexion IMAP perdue pour ${b.adresse} : ${messageClair(e)}`);
+  });
   await client.connect();
   return client;
 }
@@ -123,6 +133,14 @@ function armerFermeture(k: string) {
   MINUTEURS.set(k, t);
 }
 
+/** La connexion répond-elle encore ? Trois secondes, pas plus. */
+function vivante(c: ImapFlow): Promise<boolean> {
+  return Promise.race([
+    c.noop().then(() => true, () => false),
+    new Promise<boolean>((r) => { const t = setTimeout(() => r(false), 3000); (t as unknown as { unref?: () => void }).unref?.(); }),
+  ]);
+}
+
 /** Fait le travail sur la connexion de la boîte, en la tenant ouverte. */
 async function avec<T>(b: Boite, travail: (c: ImapFlow) => Promise<T>): Promise<T> {
   const k = cleBoite(b);
@@ -134,6 +152,15 @@ async function avec<T>(b: Boite, travail: (c: ImapFlow) => Promise<T>): Promise<
        serveur a coupé, ou la fonction a été gelée puis reprise. Si le geste
        échoue sur une connexion gardée, on en refait une et on réessaie UNE
        fois — l'agent ne doit pas voir une erreur pour ça. */
+    /* Sur Vercel, une fonction reprise après un gel garde la connexion en
+       mémoire mais plus le tuyau derrière : `usable` dit vrai, et la première
+       commande attend vingt secondes avant d'échouer. Un NOOP borné à trois
+       secondes tranche tout de suite. */
+    if (c?.usable && !(await vivante(c))) {
+      CLIENTS.delete(k);
+      await c.logout().catch(() => undefined);
+      c = undefined;
+    }
     const reutilisee = !!c?.usable;
     if (!c || !c.usable) {
       if (c) await c.logout().catch(() => undefined);
