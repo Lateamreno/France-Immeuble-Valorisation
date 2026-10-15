@@ -4947,6 +4947,17 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .estm-it:hover { background: var(--cols); }
 .estm-it b { display: block; font-family: var(--font-title); font-size: 13.5px; color: var(--slate); }
 .estm-it span { display: block; font-size: 11.5px; color: var(--gray-txt); margin-top: 2px; }
+/* Retour #473 — l'estimation ouverte, rappelée dans Prix et dans Estimations :
+   un bandeau or, cliquable d'un bout à l'autre, qui ramène à l'écran en cours. */
+.est-ouverte {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin: 0 0 12px;
+  padding: 10px 14px; border: 1px solid var(--gold-bo); border-radius: 6px; background: #fcfbf7;
+  font-family: var(--font-body); font-size: 13px; color: var(--slate); text-align: left; cursor: pointer;
+}
+.est-ouverte:hover { background: #f7f3e6; }
+.est-ouverte b { font-family: var(--font-title); font-weight: 600; color: var(--gold-bo); white-space: nowrap; }
+.est-ouverte > span:not(.pastille) { color: var(--gray-txt); }
+.est-ouverte .est-ouverte-go { margin-left: auto; color: var(--slate); font-weight: 700; white-space: nowrap; }
 .estm-it.neuf { background: #fcfbf7; }
 .estm-it.neuf b { color: var(--gold-bo); }
 .estm-sep {
