@@ -15,7 +15,8 @@ import {
 } from "@/lib/bo/mails-actions";
 import { repondre } from "@/lib/bo/boite-actions";
 import { ChampDestinataires } from "@/components/mails/destinataires";
-import type { ContactTrouve } from "@/lib/bo/actions";
+import { contactParEmail, type ContactTrouve } from "@/lib/bo/actions";
+import { champParCle, fusionner, type Valeurs } from "@/lib/mails/fusion";
 
 /** Aperçu : on ne connaît pas encore le destinataire réel dans une fenêtre
  *  d'envoi unitaire, on montre donc l'exemple de chaque champ. */
@@ -89,63 +90,98 @@ export function FenetreRedaction({
     setCorps(m.corps);
   };
 
-  const civilite = qui?.civilite === "Madame" || qui?.civilite === "Monsieur" ? qui.civilite : undefined;
-  const nomFamille = (qui?.nomFamille ?? "").toUpperCase();
-  const valeurs = qui
-    ? {
+  /* Ce qui ne dépend pas du destinataire. */
+  const communes: Valeurs = {
+    immeuble: immeuble ?? "",
+    agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
+    agent_email: agent.email, agent_tel: agent.telephone,
+    agence: "France Immeuble", site: "france-immeuble.fr",
+  };
+  /* Les valeurs de fusion d'une fiche : les mêmes pour l'aperçu et pour
+     l'envoi, sinon l'aperçu ment. */
+  const valeursPour = (c: ContactTrouve): Valeurs => {
+    const civilite = c.civilite === "Madame" || c.civilite === "Monsieur" ? c.civilite : undefined;
+    const nomFamille = (c.nomFamille ?? "").toUpperCase();
+    return {
       civilite: civilite ?? "",
-      prenom: qui.prenom ?? "",
+      prenom: c.prenom ?? "",
       nom: nomFamille,
-      nom_complet: [civilite === "Madame" ? "Mme" : civilite === "Monsieur" ? "M." : "", qui.prenom, nomFamille]
+      nom_complet: [civilite === "Madame" ? "Mme" : civilite === "Monsieur" ? "M." : "", c.prenom, nomFamille]
         .filter(Boolean).join(" "),
       politesse: civilite ? `Bonjour ${civilite} ${nomFamille}` : "Bonjour",
-      societe: qui.societe ?? "",
-      email: qui.email ?? a.split(",")[0]?.trim(),
-      telephone: qui.tel ?? "",
-      immeuble: immeuble ?? "",
-      agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
-      agent_email: agent.email, agent_tel: agent.telephone,
-      agence: "France Immeuble", site: "france-immeuble.fr",
-    }
-    : {
-      ...APERCU_UNITAIRE,
-      email: a.split(",")[0]?.trim(),
-      immeuble: immeuble ?? "",
-      agent: agent.nom, agent_prenom: agent.nom.split(" ")[0],
-      agent_email: agent.email, agent_tel: agent.telephone,
-      agence: "France Immeuble", site: "france-immeuble.fr",
+      societe: c.societe ?? "",
+      email: c.email ?? a.split(",")[0]?.trim(),
+      telephone: c.tel ?? "",
+      ...communes,
     };
+  };
+  const nomFamille = (qui?.nomFamille ?? "").toUpperCase();
+  const valeurs: Valeurs = qui
+    ? valeursPour(qui)
+    : { ...APERCU_UNITAIRE, email: a.split(",")[0]?.trim(), ...communes };
 
   const envoyer = () =>
     start(async () => {
       setErreur(null);
       try {
+        /* Les champs de fusion se remplissent ICI, au départ — l'aperçu les
+           montrait remplis, le message partait avec « {{prenom}} » en toutes
+           lettres (MAV, 15/10). La fiche du premier destinataire fait foi ; si
+           le champ « À » n'a pas encore été vérifié, on la cherche maintenant
+           plutôt que d'envoyer un exemple inventé. */
+        const premiere = a.split(",")[0]?.trim() ?? "";
+        const fiche = qui ?? (premiere ? await contactParEmail(premiere).catch(() => null) : null);
+        const pourEnvoi: Valeurs = fiche
+          ? valeursPour(fiche)
+          : { email: premiere, ...communes };
+        const o = fusionner(objet, pourEnvoi);
+        const c = fusionner(corps, pourEnvoi);
+        /* Un trou qui n'a pas de repli (prénom, nom, civilité…) ne part pas :
+           « Salut , » est pire qu'un message retardé. */
+        const trous = [...new Set([...o.manquants, ...c.manquants])]
+          .filter((m) => !champParCle.get(m)?.repli);
+        if (trous.length) {
+          const liste = trous.map((m) => `{{${m}}}`).join(", ");
+          setErreur(fiche
+            ? `Impossible de remplir ${liste} : la fiche de ${fiche.nom} ne renseigne pas ${trous.map((m) => (champParCle.get(m)?.label ?? m).toLowerCase()).join(", ")}. Complétez la fiche ou retirez ce${trous.length > 1 ? "s" : ""} champ${trous.length > 1 ? "s" : ""}.`
+            : `Impossible de remplir ${liste} : « ${premiere} » n'est dans aucune fiche. Créez le contact (sous le champ « À ») ou retirez ce${trous.length > 1 ? "s" : ""} champ${trous.length > 1 ? "s" : ""}.`);
+          return;
+        }
+
         /* Une réponse passe par la boîte de l'agent avec le fil : c'est ce qui
            allume le chevron « répondu » et garde la conversation groupée. */
         let copie: boolean | undefined;
+        let copieErreur: string | undefined;
         if (reponse) {
           const r = await repondre(agent.id, {
-            to: a, objet, texte: corps,
+            to: a, objet: o.texte, texte: c.texte,
             inReplyTo: reponse.messageId,
             references: [...reponse.references, reponse.messageId].filter(Boolean) as string[],
             role: reponse.role, uid: reponse.uid,
           });
           copie = r.copieDansEnvoyes;
+          copieErreur = r.copieErreur;
         } else {
           const r = await envoyerUnMessage({
-            to: a, objet, corps, repondreA: agent.email, agentId: agent.id,
+            to: a, objet: o.texte, corps: c.texte, repondreA: agent.email, agentId: agent.id,
             brouillonId: brouillon?.id || undefined,
             pieces: pieces?.length ? pieces : undefined,
           });
           copie = r?.copieDansEnvoyes;
+          copieErreur = r?.copieErreur;
         }
+        /* Le message type garde les champs, pas leurs valeurs. */
         if (enregistrerType && libelleType.trim()) {
           await creerMessageType({ libelle: libelleType, objet, corps, agentId: agent.id });
         }
-        setFait(copie === false
-          ? "Message envoyé — mais impossible de le copier dans « Envoyés » : il est parti, il n'apparaîtra pas dans cette boîte."
-          : "Message envoyé.");
         onEnvoye?.();
+        if (copie === false) {
+          /* Parti, mais absent des « Envoyés » : ça se lit, la fenêtre reste
+             ouverte jusqu'à la croix (#475). */
+          setFait(`Message envoyé — mais impossible de le copier dans « Envoyés »${copieErreur ? ` (${copieErreur})` : ""} : il est parti, il n'apparaîtra pas dans votre boîte.`);
+          return;
+        }
+        setFait("Message envoyé.");
         setTimeout(onClose, 900);
       } catch (e) {
         setErreur(e instanceof Error ? e.message : String(e));
@@ -230,11 +266,14 @@ export function FenetreRedaction({
     </>
   );
 
-  if (flottante) {
+  /* Réduite, la fenêtre — flottante ou non — devient une barre en bas à
+     droite, comme dans Gmail (#474). Ce qui est écrit reste écrit. */
+  const titreReduit = flottante?.titre ?? (objet.trim() || a.split(",")[0]?.trim() || "Nouveau message");
+  if (flottante || reduit) {
     return (
-      <div className={`mail-flot${reduit ? " reduit" : ""}`} role="dialog" aria-label={`Message à ${flottante.titre}`}>
+      <div className={`mail-flot${reduit ? " reduit" : ""}`} role="dialog" aria-label={`Message à ${titreReduit}`}>
         <div className="mf-h" onClick={() => reduit && setReduit(false)}>
-          <b>{flottante.titre}</b>
+          <b>{titreReduit}</b>
           <span style={{ flex: 1 }} />
           <button type="button" title={reduit ? "Agrandir" : "Réduire"} onClick={(e) => { e.stopPropagation(); setReduit((r) => !r); }}>
             {reduit ? "▢" : "—"}
@@ -246,12 +285,16 @@ export function FenetreRedaction({
     );
   }
 
+  /* Un clic à côté ne ferme plus rien : seule la croix ferme (#474). */
   return (
-    <div className="modal-ov" onClick={onClose}>
+    <div className="modal-ov">
       <div className="modal mail-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
           <b>Nouveau message</b>
-          <button type="button" onClick={onClose}>✕</button>
+          <span className="modal-h-b">
+            <button type="button" title="Réduire" onClick={() => setReduit(true)}>—</button>
+            <button type="button" title="Fermer" onClick={onClose}>✕</button>
+          </span>
         </div>
         {corpsFenetre}
       </div>

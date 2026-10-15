@@ -286,7 +286,10 @@ export async function envoyerUnMessage(m: {
   }
   /* Le message est parti ; reste à dire s'il figure bien dans « Envoyés ». Un
      message introuvable après coup, c'est un message qu'on croit non envoyé. */
-  return { copieDansEnvoyes: r.via === "smtp" ? undefined : r.copieDansEnvoyes };
+  return {
+    copieDansEnvoyes: r.via === "smtp" ? undefined : r.copieDansEnvoyes,
+    copieErreur: r.via === "smtp" ? undefined : r.copieErreur,
+  };
 }
 
 /** Charge le vivier à la demande : contacts + immeubles + recherches, c'est
