@@ -146,7 +146,10 @@ export function FenetreSalve({ agent, modeles, onClose }: {
     });
 
   return (
-    <div className="modal-ov" onClick={onClose}>
+    /* Retour #474 : un clic à côté ne ferme plus une fenêtre de rédaction —
+       seule la croix le fait. Une salve en cours de préparation ne se perd pas
+       sur un clic de travers. */
+    <div className="modal-ov">
       <div className="modal salve-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
           <b>Envoyer une salve</b>

@@ -570,7 +570,7 @@ export async function envoyerDepuis(b: Boite, m: {
   });
 
   const de = b.nomAffiche ? `${b.nomAffiche} <${b.adresse}>` : b.adresse;
-  const info = await t.sendMail({
+  const options = {
     from: de,
     to: redirection || m.to,
     cc: redirection ? undefined : m.cc || undefined,
@@ -582,36 +582,50 @@ export async function envoyerDepuis(b: Boite, m: {
     references: m.references?.length ? m.references.join(" ") : undefined,
     messageId: m.messageId,
     attachments: m.pieces?.length ? m.pieces : undefined,
-  });
+  };
+  const info = await t.sendMail(options);
 
   /* La copie dans « Envoyés » se fait au mieux : si elle échoue, le message
-     est parti quand même et on ne va pas le renvoyer pour autant. */
+     est parti quand même et on ne va pas le renvoyer pour autant.
+
+     Retour #475 : la copie est LE message, tel qu'il est parti — même
+     identifiant, pièces jointes comprises, lignes terminées en CRLF. L'ancienne
+     copie était refabriquée à la main, texte seul, avec les sauts de ligne
+     bruts de la zone de saisie ; Exchange refuse un APPEND mal formé, et la
+     fenêtre n'affichait le refus qu'une fraction de seconde. */
   let copie = false;
+  let copieErreur: string | undefined;
   try {
+    const brut = await composerMessage({ ...options, messageId: String(info.messageId ?? m.messageId ?? "") });
     await avec(b, async (c) => {
       const ch = await chemin(c, "envoyes", b.dossiers);
-      if (!ch) return;
-      const brut = [
-        `From: ${de}`,
-        `To: ${m.to}`,
-        m.cc ? `Cc: ${m.cc}` : "",
-        `Subject: ${m.objet}`,
-        `Date: ${new Date().toUTCString()}`,
-        `Message-ID: ${String(info.messageId ?? "")}`,
-        m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : "",
-        "MIME-Version: 1.0",
-        'Content-Type: text/plain; charset="utf-8"',
-        "",
-        m.texte,
-      ].filter(Boolean).join("\r\n");
-      await c.append(ch, Buffer.from(brut, "utf8"), ["\\Seen"]);
+      if (!ch) throw new Error("aucun dossier « Envoyés » chez ce fournisseur");
+      try {
+        await c.append(ch, brut, ["\\Seen"]);
+      } catch (e) {
+        /* Le nom mémorisé peut être périmé (dossier renommé, boîte migrée) :
+           on redemande la liste au serveur et on retente une fois sur le
+           dossier qu'il marque lui-même \Sent. */
+        const liste = await c.list();
+        const vrai = liste.find((d) => roleDe(d) === "envoyes")?.path;
+        if (!vrai || vrai === ch) throw e;
+        await c.append(vrai, brut, ["\\Seen"]);
+      }
       copie = true;
     });
-  } catch {
-    /* Rien à faire de plus : le bilan le dira. */
+  } catch (e) {
+    copieErreur = messageClair(e);
+    console.error(`[mails] copie dans « Envoyés » impossible pour ${b.adresse} :`, copieErreur);
   }
 
-  return { messageId: String(info.messageId ?? ""), copieDansEnvoyes: copie };
+  return { messageId: String(info.messageId ?? ""), copieDansEnvoyes: copie, copieErreur };
+}
+
+/** Le message complet au format RFC 822, prêt à être déposé tel quel. */
+async function composerMessage(options: nodemailer.SendMailOptions): Promise<Buffer> {
+  const { default: MailComposer } = await import("nodemailer/lib/mail-composer");
+  /* `newline` est lu par le composeur mais absent de ses types. */
+  return new MailComposer({ ...options, newline: "\r\n" } as nodemailer.SendMailOptions).compile().build();
 }
 
 /** Marque un message comme répondu — le petit chevron des clients mail. */

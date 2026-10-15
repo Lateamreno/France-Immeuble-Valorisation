@@ -891,6 +891,10 @@ body.ecran-tel .fiche-main { overflow-x: auto; }
 /* Retour #274 — la copie de l'adresse posée dans l'en-tête d'une fenêtre :
    elle se range juste après le titre, pas à l'autre bout à côté de la croix. */
 .modal-h .cop { margin-left: 8px; }
+/* Réduire + fermer côte à côte dans l'en-tête d'une fenêtre de rédaction (#474). */
+.modal-h-b { display: inline-flex; gap: 2px; }
+.modal-h-b button { width: 28px; height: 26px; border-radius: 4px; cursor: pointer; }
+.modal-h-b button:hover { background: var(--bg-soft, #f2f2f2); color: var(--slate); }
 /* La copie d'adresse du rail confirme d'une coche verte (#274). */
 .smaps.ok { color: var(--green, #3aa72a); }
 .modal-b { padding: 16px 18px; }

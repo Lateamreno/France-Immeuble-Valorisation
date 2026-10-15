@@ -461,6 +461,8 @@ export async function envoyerPourAgent(
    *  « Envoyés » : c'est exactement le cas où l'agent ne le retrouve nulle
    *  part et croit que l'envoi a échoué. */
   copieDansEnvoyes?: boolean;
+  /** Pourquoi la copie a échoué, en clair (#475). */
+  copieErreur?: string;
 }> {
   const b = await boiteAgent(agentId);
   if (b) {
@@ -485,6 +487,7 @@ export async function envoyerPourAgent(
     return {
       messageId: r.messageId, expediteur: b.adresse, via: "boite",
       copieDansEnvoyes: r.copieDansEnvoyes,
+      copieErreur: r.copieErreur,
     };
   }
 
