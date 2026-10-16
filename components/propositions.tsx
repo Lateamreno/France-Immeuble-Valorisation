@@ -1,0 +1,812 @@
+"use client";
+
+/**
+ * La proposition — un seul objet, partout (fiche contact, fiche immeuble).
+ *
+ * Retours #365, #366, #373 et #374, et la demande du 23/09 sur le bouton
+ * scindé. La carte est celle du BO : l'avion et l'agent qui a envoyé, la date
+ * d'envoi et la dernière relance, la ou les recherches matchées (un clic ouvre
+ * la recherche), le client et sa classe (un clic ouvre sa vignette), la note
+ * de suivi qui s'écrit directement, le dossier envoyé (V1, V2… et une pastille
+ * rouge quand une version plus récente existe), la cloche verte ou rouge des
+ * relances, Refuser en barre de texte, et Relancer en bouton scindé :
+ * e-mail au clic, e-mail + SMS ou SMS seul sous la flèche.
+ *
+ * Doctrine §7.1 : le clic de l'agent est l'envoi. Rien n'est marqué relancé
+ * si le message n'est pas parti. Entre deux relances, vingt-quatre heures au
+ * moins (#374) — plus de blocage à sept jours sur la fiche immeuble.
+ */
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
+import type { PropositionLigne } from "@/lib/bubble/server";
+import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
+import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
+import { Modale } from "@/components/modale";
+import { Pastille, PastilleStatut } from "@/components/pastille";
+import { Avatar } from "@/components/avatar";
+import { PuceImmeuble } from "@/components/puce-immeuble";
+import { noterProposition, setPropositionStatut } from "@/lib/bo/actions";
+import {
+  couperRelances, departRecherche, departRechercheDeProposition, envoyerRelances, marquerRelances,
+  relanceEnvoiPossible,
+} from "@/lib/bo/relances-actions";
+import { apercuRelanceSms, chargerPropositionsDuBien, relancerParSms } from "@/lib/bo/propositions-actions";
+import { joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance } from "@/lib/bo/relances";
+import { dateLien, etatLien } from "@/lib/bo/lien-dossier";
+import { segments } from "@/lib/bo/sms-compte";
+import { LienDossier } from "@/components/lien-dossier";
+
+export const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
+
+/** Vingt-quatre heures entre deux relances (#374). */
+export const JOURS_ENTRE_RELANCES = 1;
+
+export type ModeRelance = "email" | "email_sms" | "sms";
+
+const IC_AVION = <path d="M3 11.5 21 3l-8.5 18-2.5-7.5L3 11.5z" />;
+
+/* ------------------------------------------------------- Bouton scindé */
+
+/**
+ * Un bouton en deux parties : l'action habituelle à gauche, la flèche à
+ * droite ouvre les variantes (le dessin envoyé par MAV le 23/09). Avec un
+ * `menu`, la flèche déroule ; sans, elle appelle `onFleche`.
+ */
+export function BoutonScinde({ children, onPrincipal, onFleche, menu, pending, rouge, titre, desactive }: {
+  children: React.ReactNode;
+  onPrincipal: () => void;
+  onFleche?: () => void;
+  menu?: { label: string; aide?: string; onClick: () => void }[];
+  pending?: boolean; rouge?: boolean; titre?: string; desactive?: boolean;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const boite = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!ouvert) return;
+    const dehors = (e: MouseEvent) => { if (!boite.current?.contains(e.target as Node)) setOuvert(false); };
+    document.addEventListener("mousedown", dehors);
+    return () => document.removeEventListener("mousedown", dehors);
+  }, [ouvert]);
+  return (
+    <span className={`bsc${rouge ? " rouge" : ""}`} ref={boite}>
+      <button type="button" className="bsc-m" disabled={pending || desactive} title={titre} onClick={onPrincipal}>
+        {pending ? "…" : children}
+      </button>
+      <button type="button" className="bsc-c" disabled={pending} title="Autres façons de relancer"
+        aria-label="Autres options" aria-expanded={ouvert}
+        onClick={() => (menu ? setOuvert((o) => !o) : onFleche?.())}>
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {menu && ouvert && (
+        <span className="bsc-menu">
+          {menu.map((m) => (
+            <button key={m.label} type="button" onClick={() => { setOuvert(false); m.onClick(); }}>
+              {m.label}{m.aide && <i>{m.aide}</i>}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------- Pagination */
+
+export const TAILLES_PAGE = [10, 25, 50, 100];
+
+/** La barre de pages du BO : résultats, pages, éléments par page. Collée en bas quand `collee`. */
+export function Pagination({ total, page, taille, onPage, onTaille, collee, quoi = "résultat" }: {
+  total: number; page: number; taille: number;
+  onPage: (p: number) => void; onTaille: (t: number) => void;
+  collee?: boolean; quoi?: string;
+}) {
+  const pages = Math.max(1, Math.ceil(total / taille));
+  const cur = Math.min(page, pages);
+  return (
+    <div className={`lst-pager${collee ? " collee" : ""}`}>
+      <span className="lst-res">{total} {quoi}{total > 1 ? "s" : ""}</span>
+      <span className="sp" style={{ flex: 1 }} />
+      <button className="pgb" type="button" disabled={cur <= 1} onClick={() => onPage(1)}>«</button>
+      <button className="pgb" type="button" disabled={cur <= 1} onClick={() => onPage(cur - 1)}>‹</button>
+      <span className="pgn">Page {cur} / {pages}</span>
+      <button className="pgb" type="button" disabled={cur >= pages} onClick={() => onPage(cur + 1)}>›</button>
+      <button className="pgb" type="button" disabled={cur >= pages} onClick={() => onPage(pages)}>»</button>
+      <span className="sp" style={{ flex: 1 }} />
+      <select className="pgs" value={taille} onChange={(e) => onTaille(Number(e.target.value))}>
+        {TAILLES_PAGE.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <span className="pgl">éléments par page</span>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------- Note de suivi */
+
+/** La note de suivi, écrite directement sur la carte : on tape, on sort du champ, c'est enregistré. */
+export function NoteProposition({ propositionId, contactId, valeur }: {
+  propositionId: string; contactId: string; valeur: string;
+}) {
+  const [texte, setTexte] = useState(valeur);
+  const [pending, start] = useTransition();
+  return (
+    <textarea
+      className={`cfc-saisie${pending ? " occupe" : ""}`}
+      rows={texte ? 2 : 1}
+      value={texte}
+      placeholder="Écrivez une note de suivi…"
+      onChange={(e) => setTexte(e.target.value)}
+      onBlur={() => { if (texte !== valeur) start(() => noterProposition(propositionId, contactId, texte)); }}
+    />
+  );
+}
+
+/* ------------------------------------------------------------- La carte */
+
+export function CarteProposition({
+  p, contexte, vignette, note, jours, montrerImmeuble, onRelancer, onRelancerModale, onRafraichir,
+}: {
+  p: PropositionLigne;
+  /** D'où l'on regarde : la fiche du contact, ou celle de l'immeuble. */
+  contexte: { contactId?: string; immeubleId?: string };
+  /** Le contact, quand la ligne ne le porte pas (fiche contact). */
+  vignette?: VignetteData; note?: string;
+  jours?: number;
+  /** Sur la fiche contact, l'immeuble se lit ; sur la fiche immeuble, non. */
+  montrerImmeuble?: boolean;
+  onRelancer: (mode: ModeRelance) => void;
+  onRelancerModale: () => void;
+  onRafraichir: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [refus, setRefus] = useState(false);
+  const [motif, setMotif] = useState("");
+  const [recherche, setRecherche] = useState<DepartRecherche | null>(null);
+  const [creerPour, setCreerPour] = useState<{ id: string; nom: string } | null>(null);
+  const immeubleId = contexte.immeubleId ?? p.immeuble?.id ?? "";
+  const contactId = contexte.contactId ?? p.contact?.id ?? "";
+  const qui: VignetteData | undefined = p.contact ?? vignette;
+  const classe = p.contact?.note ?? note;
+  const ouverte = !p.refusee && !p.archivee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
+  const tropTot = jours !== undefined && jours < JOURS_ENTRE_RELANCES;
+  const aRelancer = ouverte && !p.stop && !tropTot;
+
+  const ouvrirRecherche = (rid: string) =>
+    start(async () => {
+      const r = await departRecherche(rid);
+      if (r?.recherche) setRecherche(r.recherche);
+    });
+
+  return (
+    <div className={`cfc${ouverte ? "" : " pale"}`}>
+      <div className="cfc-g">
+        <span className="cfc-pic"><svg viewBox="0 0 24 24">{IC_AVION}</svg></span>
+        {p.agent && (
+          <Avatar initiales={p.agent.initiales} couleur={p.agent.couleur} titre="Agent qui a envoyé la proposition" />
+        )}
+      </div>
+      <div className="cfc-c">
+        <div className="cfc-l1">
+          <span className="cfc-t">{p.quand}</span>
+          {/* Retour #400 : une proposition refusée le dit EN DESSOUS, dans un
+              cadre rouge qui porte le motif — comme le BO. */}
+          {p.statut && !p.refusee && <PastilleStatut statut={p.statut} />}
+          <span style={{ flex: 1 }} />
+          {/* #366 — les recherches matchées : un clic ouvre la recherche. */}
+          {p.recherches.map((r) => (
+            <button key={r.id} type="button" className="cfc-rch" disabled={pending}
+              title="Ouvrir cette recherche pour la modifier" onClick={() => ouvrirRecherche(r.id)}>
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+              {r.libelle}
+            </button>
+          ))}
+          {/* #366 — le client, avec sa vignette et sa classe. */}
+          {qui && (
+            <span className="cfc-qui">
+              <VignetteContact v={qui} immeuble={p.immeuble?.libelle}
+                badge={classe ? <b className={`note n${classe}`}>{classe}</b> : undefined} />
+            </span>
+          )}
+        </div>
+        <div className="cfc-l2">
+          {/* MAV, 25/09 : un immeuble qui n'est plus à la vente (archivé, vendu,
+              retiré) ferme la proposition — elle se lit, elle ne se relance
+              plus, et la relance groupée la saute. */}
+          {p.archivee && <span className="cfc-arch">{p.archivee}</span>}
+          {/* MAV, 25/09 : « le refusé juste en dessous de la relance ou de la
+              date de proposition, avec la date dessus ». Une personne qui a
+              refusé n'est plus relancée (statut clos). */}
+          {p.refusee && (
+            <span className="cfc-refuse">
+              <b>{p.statut || "Refusée"}</b>{p.refusLe && <> le {p.refusLe}</>}{p.motif && <> — {p.motif}</>}
+            </span>
+          )}
+          {p.motif && !p.refusee && <span className="cfc-motif">✕ {p.motif}</span>}
+          {p.relanceLe
+            ? <span className="cfc-num">Relancé le {p.relanceLe}</span>
+            : ouverte && <span className="cfc-num off">Jamais relancé</span>}
+          {aRelancer && jours !== undefined && jours >= 7 && (
+            <span className="cfc-past">À relancer · {jours} j</span>
+          )}
+          {p.stop && ouverte && <span className="cfc-num rouge">Relances coupées</span>}
+          {/* La réponse SMS de la personne, remontée par MailingVox (MAV, 28/09) :
+              « Oui » en vert, « Non » en rouge, le reste tel quel. */}
+          {p.retourSms && (
+            <span className={`cfc-sms${/^\s*oui\b/i.test(p.retourSms.texte) ? " oui" : /^\s*non\b/i.test(p.retourSms.texte) ? " non" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
+              title={`Réponse SMS${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H8l-4 4V5z" /></svg>
+              Réponse SMS{p.retourSms.le ? ` le ${p.retourSms.le}` : ""} : « {p.retourSms.texte.slice(0, 80)}{p.retourSms.texte.length > 80 ? "…" : ""} »
+            </span>
+          )}
+        </div>
+        <NoteProposition propositionId={p.id} contactId={contactId} valeur={p.commentaire ?? ""} />
+        <div className="cfc-l3">
+          {montrerImmeuble && p.immeuble && (
+            <PuceImmeuble id={p.immeuble.id} libelle={p.immeuble.libelle} petit />
+          )}
+          {p.dossier && immeubleId && (
+            <Link className="cfc-doc" href={`/bien/${immeubleId}?ecran=dossiers`} title="Voir les dossiers de l'immeuble">
+              Dossier <b>{p.dossier.version}</b>
+            </Link>
+          )}
+          {p.dossier?.pdf && (
+            <a className="cfc-doc" href={p.dossier.pdf} target="_blank" rel="noreferrer">📎 PDF</a>
+          )}
+          {/* #373 — « une vignette rouge pour dire que le dossier précédemment
+              envoyé a changé quand on a refait une version ». */}
+          {p.dossier?.perime && ouverte && (
+            <span className="cfc-perime" title="Une version plus récente du dossier existe : la relance l'enverra">
+              Dossier changé depuis
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          {ouverte ? (
+            <span className="cfc-btns">
+              {/* #373 — la cloche : verte quand la personne reçoit les relances,
+                  rouge quand elle a demandé qu'on arrête. */}
+              <button type="button" className={`cfc-cloche${p.stop ? " off" : ""}`} disabled={pending}
+                title={p.stop ? "Relances coupées à sa demande — cliquer pour les rétablir" : "Reçoit les relances — cliquer pour les couper"}
+                onClick={() => start(async () => { await couperRelances(p.id, !p.stop, immeubleId || undefined); onRafraichir(); })}>
+                <svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 21h4" />{p.stop && <path d="M4 4l16 16" />}</svg>
+              </button>
+              <button className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+                onClick={() => setRefus((v) => !v)}>Refuser</button>
+              <BoutonScinde pending={pending} desactive={!aRelancer && !p.stop}
+                onPrincipal={() => onRelancer("email")}
+                titre={p.stop ? "Relances coupées pour cette personne"
+                  : tropTot ? "Relancé il y a moins de 24 h"
+                  : jours === undefined ? "Envoyer la relance habituelle par e-mail"
+                  : `Sans nouvelle depuis ${jours} jour${jours > 1 ? "s" : ""} — envoyer la relance habituelle par e-mail`}
+                menu={[
+                  { label: "Modifier le message…", aide: "relire avant d'envoyer", onClick: onRelancerModale },
+                  { label: "Relancer par e-mail + SMS", aide: "les deux en même temps", onClick: () => onRelancer("email_sms") },
+                  { label: "Relancer par SMS seul", aide: "MailingVox, horaires légaux", onClick: () => onRelancer("sms") },
+                ]}>
+                Relancer
+              </BoutonScinde>
+            </span>
+          ) : p.archivee ? (
+            /* L'immeuble n'est plus à la vente : rien à rouvrir ici, c'est
+               l'immeuble qu'il faudrait désarchiver. */
+            <span className="cfc-num off" title="L'immeuble n'est plus à la vente">Immeuble hors vente</span>
+          ) : (
+            <button className="fadd" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "reactiver", undefined, undefined, contactId || undefined);
+                onRafraichir();
+              })}>
+              ↻ Réactiver
+            </button>
+          )}
+        </div>
+        {refus && ouverte && (
+          <div className="cfc-refus">
+            <input className="min" value={motif} autoFocus placeholder="Pourquoi il refuse — ex. : pas de résidentiel, trop cher, secteur"
+              onChange={(e) => setMotif(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setRefus(false); }} />
+            <button type="button" className="cfc-refus-x" onClick={() => setRefus(false)}>Annuler</button>
+            {/* Retour #402 : plus de fenêtre à aller chercher après coup —
+                deux boutons, là où l'on a cliqué : enregistrer, ou enregistrer
+                ET corriger la recherche dans la foulée. */}
+            <button type="button" className="cfc-refus-go" disabled={pending || !motif.trim()}
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "refuser", motif.trim(), undefined, contactId || undefined);
+                setRefus(false);
+                onRafraichir();
+              })}>
+              <span className="ch">›</span> Enregistrer
+            </button>
+            <button type="button" className="cfc-refus-go second" disabled={pending || !motif.trim()}
+              title="Enregistre le refus, puis ouvre la recherche de la personne pour la corriger"
+              onClick={() => start(async () => {
+                await setPropositionStatut(immeubleId, p.id, "refuser", motif.trim(), undefined, contactId || undefined);
+                setRefus(false);
+                onRafraichir();
+                const r = await departRechercheDeProposition(p.id);
+                if (r?.recherche) setRecherche(r.recherche);
+                else if (r?.contact) setCreerPour({ id: r.contact.id, nom: r.contact.nom });
+              })}>
+              <span className="ch">›</span> Enregistrer et corriger la recherche
+            </button>
+          </div>
+        )}
+        {(recherche || creerPour) && (
+          <ModaleRechercheEdition
+            depart={recherche ?? undefined}
+            contactImpose={creerPour ?? undefined}
+            onFermer={() => { setRecherche(null); setCreerPour(null); }}
+            onEnregistre={() => { setRecherche(null); setCreerPour(null); onRafraichir(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------------------------- La fenêtre derrière la flèche */
+
+/**
+ * Le texte de la relance, modifiable, les dossiers qu'elle cite (retirables),
+ * et l'envoi — ou « ouvrir dans le client mail » quand aucune boîte n'est
+ * branchée. Avec, en option, le SMS qui part en plus.
+ */
+export function ModaleRelance({ lignes, ids, client, agent, email, tel, chemins, onFermer, onFait }: {
+  lignes: { p: PropositionLigne; libelle: string; jours?: number }[];
+  ids: string[];
+  client: (ids: string[]) => ClientRelance;
+  agent?: { id?: string; nom?: string; tel?: string };
+  email: string;
+  tel?: string;
+  chemins: string[];
+  onFermer: () => void;
+  onFait: (message: string) => void;
+}) {
+  const [pending, start] = useTransition();
+  const [retenus, setRetenus] = useState<string[]>(ids);
+  const [texte, setTexte] = useState<string | null>(null);
+  const [possible, setPossible] = useState<boolean | null>(null);
+  const [sms, setSms] = useState(false);
+  const [apercuSms, setApercuSms] = useState<{ texte: string; configure: boolean } | null>(null);
+  /* Le SMS se relit et se retouche comme l'e-mail (MAV, 28/09). Null tant que
+     l'agent n'y a pas touché : le modèle suit alors le dossier. */
+  const [smsTexte, setSmsTexte] = useState<string | null>(null);
+  const smsCorps = smsTexte ?? apercuSms?.texte ?? "";
+  /* MAV (28/09) : « quand on modifie le message il faut pouvoir dire si on
+     veut envoyer le SMS OU l'e-mail ». Deux cases, l'e-mail cochée d'office. */
+  const [mail, setMail] = useState(!!email);
+  /* Les liens posés depuis cette fenêtre, par immeuble : le message se
+     recompose avec, sans recharger la page. */
+  const [liens, setLiens] = useState<Record<string, { url: string; expireLe?: string }>>({});
+  const [refresh, setRefresh] = useState(0);
+  const c0 = client(retenus);
+  const c: ClientRelance = {
+    ...c0,
+    immeubles: c0.immeubles.map((i) => liens[i.immeubleId]
+      ? { ...i, lien: liens[i.immeubleId].url, lienExpireLe: liens[i.immeubleId].expireLe, lienPerime: false }
+      : i),
+  };
+  /* Le lien transfer.it est obligatoire : sans lien valable, on le demande
+     ici même, et rien ne part avant (MAV, 28/09). */
+  const manquants = c.immeubles.filter(lienManquant);
+  const lienOk = manquants.length === 0;
+  const corps = texte ?? messageRelance(c, agent);
+  /* L'objet aussi se retouche (MAV, 29/09 : « modifier le texte des relances
+     par e-mail et SMS, et même l'objet »). */
+  const [objetTexte, setObjetTexte] = useState<string | null>(null);
+  const objet = objetTexte ?? objetRelance(c);
+  const agentId = agent?.id;
+  const agentNom = agent?.nom;
+  const premierLibelle = c.immeubles[0]?.libelle ?? "";
+  const premierImmeuble = c.immeubles[0]?.immeubleId ?? "";
+  useEffect(() => {
+    let vivant = true;
+    relanceEnvoiPossible(agentId)
+      .then((p) => { if (vivant) setPossible(p); })
+      .catch(() => { if (vivant) setPossible(false); });
+    apercuRelanceSms(premierImmeuble)
+      .then((a) => { if (vivant) setApercuSms(a); })
+      .catch(() => undefined);
+    return () => { vivant = false; };
+  }, [agentId, premierImmeuble, refresh]);
+
+  const basculer = (id: string) =>
+    setRetenus((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  return (
+    <Modale
+      titre={`Relancer ${c.nom}`}
+      onFermer={onFermer}
+      largeur={640}
+      pied={
+        <>
+          <button className="fadd" type="button" onClick={onFermer}>Fermer</button>
+          <span className="sp" style={{ flex: 1 }} />
+          <a className="fadd" href={`mailto:${email}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`}
+            onClick={() => start(async () => { await marquerRelances(retenus, chemins); })}>
+            Ouvrir dans le client mail
+          </a>
+          <button className="kgo" type="button"
+            disabled={pending || retenus.length === 0 || !lienOk || (!mail && !sms)
+              || (mail && (!email || possible === false)) || (sms && !tel)}
+            title={!lienOk ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
+            onClick={() => start(async () => {
+              const parts: string[] = [];
+              try {
+                if (mail) {
+                  const r = await envoyerRelances(
+                    [{ contactId: c.contactId, email, objet, corps, propositionIds: retenus, immeubleIds: c.immeubles.map((i) => i.immeubleId) }],
+                    agent?.id, undefined, chemins,
+                  );
+                  parts.push(r.envoyes ? `E-mail envoyé à ${email}.` : `E-mail non envoyé : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);
+                }
+                if (sms) {
+                  const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId: premierImmeuble, libelle: premierLibelle, propositionIds: retenus, texte: smsCorps }], agentNom, chemins);
+                  parts.push(s.envoyes ? `SMS envoyé au ${tel}.` : `SMS non envoyé : ${s.journal[0] ?? ""}`);
+                }
+                onFait(parts.join(" "));
+              } catch (e) {
+                onFait(`${parts.join(" ")} Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`.trim());
+              }
+            })}>
+            {pending
+              ? <><i className="asst-spin" aria-hidden /> Envoi en cours…</>
+              : <><span className="ch">›</span> Envoyer {mail && sms ? "l'e-mail + le SMS" : sms ? "le SMS" : "l'e-mail"}</>}
+          </button>
+        </>
+      }
+    >
+      <span className="mlab">Dossiers cités dans la relance</span>
+      <div className="rlz-lignes" style={{ padding: 0, marginBottom: 12 }}>
+        {lignes.map(({ p, libelle, jours }) => {
+          const off = !retenus.includes(p.id);
+          return (
+            <div key={p.id} className={`rlz-l${off ? " off" : ""}`}>
+              <span>{libelle}</span>
+              {p.dossier && <span className="rlz-prix">Dossier {p.dossier.version}</span>}
+              <span className="rlz-j">{jours === undefined ? "date inconnue" : `${jours} j`}</span>
+              <span className="sp" style={{ flex: 1 }} />
+              <button type="button" className="rlz-x" onClick={() => basculer(p.id)}>{off ? "ajouter" : "retirer"}</button>
+            </div>
+          );
+        })}
+      </div>
+      {!lienOk && (
+        <div className="rlz-lien-bloc">
+          <b>Le lien transfer.it est obligatoire</b> — {manquants.length > 1
+            ? "plusieurs dossiers n'en ont pas de valable"
+            : manquants[0].lienPerime
+              ? `celui de ce dossier a expiré${manquants[0].lienExpireLe ? ` le ${dateLien(manquants[0].lienExpireLe)}` : ""}`
+              : "ce dossier n'en a pas"}. Indiquez-le : il sera enregistré sur le dossier, et le message le citera.
+          {manquants.map((i) => i.dossierId ? (
+            <LienDossier key={i.immeubleId} immeubleId={i.immeubleId}
+              dossier={{ _id: i.dossierId, version: i.dossierVersion, lien_partage: i.lien, lien_expire_le: i.lienExpireLe }}
+              ouvert compact
+              onEnregistre={(l) => {
+                setLiens((m) => ({ ...m, [i.immeubleId]: l }));
+                setTexte(null); setSmsTexte(null); setRefresh((n) => n + 1);
+              }} />
+          ) : (
+            <div className="dif-simu" key={i.immeubleId}>Aucun dossier sur {i.libelle} : créez-le d&apos;abord (fiche du bien, Dossiers).</div>
+          ))}
+        </div>
+      )}
+      <RedactionRelance
+        pieces={c.immeubles}
+        mail={mail} onMail={() => setMail((v) => !v)} mailDispo={!!email}
+        mailLibelle={email ? ` à ${email}` : " — pas d'adresse sur la fiche"}
+        objet={objet} onObjet={setObjetTexte}
+        corps={corps} onCorps={setTexte}
+        note={<>
+          Part de la boîte de {agent?.nom ?? "l'agent"} vers <b>{email || "— aucune adresse sur la fiche —"}</b>.
+          Le PDF du dernier dossier est joint ; son lien transfer.it est cité s&apos;il est encore valable.
+          {possible === false && " Aucune boîte d'envoi n'est branchée : ouvrez le message dans votre client mail."}
+        </>}
+        sms={sms} onSms={() => setSms((v) => !v)} smsDispo={!!tel} smsConfigure={apercuSms?.configure}
+        smsLibelle={tel ? ` au ${tel}` : " — pas de portable sur la fiche"}
+        smsCorps={apercuSms ? smsCorps : null} onSmsCorps={setSmsTexte}
+      />
+    </Modale>
+  );
+}
+
+/**
+ * La rédaction d'une relance — le même bloc pour la relance d'une personne
+ * (fiche contact, carte) et pour la relance groupée d'un immeuble (MAV,
+ * 29/09 : « qu'on me propose de modifier le texte des relances par e-mail et
+ * SMS, et même l'objet »). Les pièces jointes à ouvrir avant l'envoi
+ * (#439), l'e-mail et son objet, le SMS et son compteur (#440).
+ */
+export function RedactionRelance({
+  pieces, mail, onMail, mailDispo, mailLibelle, objet, onObjet, corps, onCorps, note,
+  sms, onSms, smsDispo, smsConfigure, smsLibelle, smsCorps, onSmsCorps,
+}: {
+  pieces: { immeubleId: string; libelle: string; pdf?: string; pdfNom?: string }[];
+  mail: boolean; onMail: () => void; mailDispo: boolean; mailLibelle: string;
+  objet: string; onObjet: (v: string) => void;
+  corps: string; onCorps: (v: string) => void;
+  note: React.ReactNode;
+  sms: boolean; onSms: () => void; smsDispo: boolean; smsConfigure?: boolean; smsLibelle: string;
+  /** Null tant que le modèle n'est pas arrivé. */
+  smsCorps: string | null; onSmsCorps: (v: string) => void;
+}) {
+  const avecPdf = pieces.filter((i) => i.pdf);
+  const sansPdf = pieces.filter((i) => !i.pdf);
+  const s = smsCorps ?? "";
+  return (
+    <>
+      {/* Retour #439 — « une vraie PJ, et que je puisse l'ouvrir avant envoi ». */}
+      {avecPdf.length > 0 && (
+        <div className="rlz-pj">
+          <span className="mlab">Pièce{avecPdf.length > 1 ? "s" : ""} jointe{avecPdf.length > 1 ? "s" : ""} à l&apos;e-mail</span>
+          {avecPdf.map((i) => (
+            <a key={i.immeubleId} className="rlz-pj-a" href={i.pdf} target="_blank" rel="noreferrer" title="Ouvrir le PDF tel qu'il partira">
+              <svg viewBox="0 0 24 24"><path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.2 3.2 0 0 1 4.5 4.5L10 18.5a1.4 1.4 0 0 1-2-2L16 8.5" /></svg>
+              {i.pdfNom ?? "Dossier.pdf"} <span>ouvrir ↗</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {sansPdf.length > 0 && (
+        <div className="dif-simu">Aucun PDF sur {sansPdf.map((i) => i.libelle).join(", ")} : la relance partirait sans pièce jointe.</div>
+      )}
+      <label className={`prop-sms${!mailDispo ? " off" : ""}`}>
+        <input type="checkbox" checked={mail} disabled={!mailDispo} onChange={onMail} />
+        <span><b>Envoyer l&apos;e-mail</b>{mailLibelle}</span>
+      </label>
+      <span className="mlab">Objet — modifiable avant l&apos;envoi</span>
+      <input className="min" value={objet} onChange={(e) => onObjet(e.target.value)} />
+      <span className="mlab" style={{ marginTop: 10 }}>Message — modifiable avant l&apos;envoi</span>
+      <textarea className="min" rows={11} value={corps} onChange={(e) => onCorps(e.target.value)} />
+      <div className="asst-note">{note}</div>
+      {/* #373 — le SMS en plus, avec son texte tel qu'il partira. */}
+      <label className={`prop-sms${!smsDispo || smsConfigure === false ? " off" : ""}`}>
+        <input type="checkbox" checked={sms} disabled={!smsDispo || smsConfigure === false} onChange={onSms} />
+        <span>
+          <b>Envoyer le SMS</b>{smsLibelle}
+          {smsConfigure === false && " — l'envoi de SMS n'est pas branché sur cet environnement"}
+        </span>
+      </label>
+      {sms && smsCorps !== null && (
+        <>
+          <span className="mlab" style={{ marginTop: 8 }}>SMS — modifiable avant l&apos;envoi</span>
+          <textarea className="min" rows={4} value={s} onChange={(e) => onSmsCorps(e.target.value)} />
+          <div className={`asst-note${segments(s) > 2 ? " rouge" : ""}`}>
+            {/* Retour #440 : « afficher le nombre de caractères et prévenir quand
+                on dépasse ». Vos modèles font deux segments : c'est la norme ;
+                au-delà, on le dit en rouge. */}
+            {s.length}&nbsp;caractères · {segments(s)}&nbsp;segment{segments(s) > 1 ? "s" : ""} facturé{segments(s) > 1 ? "s" : ""}
+            {segments(s) > 2 && <b> — plus de deux segments : raccourcissez.</b>}
+            {!/\bstop\b/i.test(s) && <b> La mention « STOP » est obligatoire : sans elle, MailingVox refuse.</b>}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------ L'écran Propositions de la fiche immeuble */
+
+/**
+ * Retour #373 : toutes les propositions de l'immeuble (plus dix), en cours ou
+ * terminées, avec la recherche, le tri par classe, la barre de pages collée
+ * en bas, et la carte partagée.
+ */
+/* ------------------------------------------------------------------------
+   Le filtre des propositions — objet partagé de la fiche immeuble et de la
+   fiche contact (MAV, 25/09 : « qu'on puisse trier les propositions, même si
+   elles sont toutes affichées par défaut, avec la possibilité de faire
+   afficher les en cours, les refusées et les archivées »).
+   ------------------------------------------------------------------------ */
+
+export type VuePropositions = "toutes" | "en_cours" | "refusees" | "terminees" | "archivees";
+export const VUES_PROPOSITIONS: readonly VuePropositions[] = ["toutes", "en_cours", "refusees", "terminees", "archivees"];
+
+/** La catégorie d'une proposition, dans l'ordre de priorité : l'immeuble
+ *  hors vente d'abord, puis le refus, puis les statuts clos. */
+export function categorieProposition(p: PropositionLigne): Exclude<VuePropositions, "toutes"> {
+  if (p.archivee) return "archivees";
+  if (p.refusee) return "refusees";
+  if (STATUTS_CLOS_PROP.has(p.statut ?? "")) return "terminees";
+  return "en_cours";
+}
+
+const VUES_PROP: [VuePropositions, string, string][] = [
+  ["toutes", "Toutes", "gris"], ["en_cours", "En cours", "vert"], ["refusees", "Refusées", "rouge"],
+  ["terminees", "Terminées", "gris"], ["archivees", "Archivées", "gris"],
+];
+
+export function VuesPropositions({ lignes, vue, onVue }: {
+  lignes: PropositionLigne[]; vue: VuePropositions; onVue: (v: VuePropositions) => void;
+}) {
+  const nb = (v: VuePropositions) => (v === "toutes" ? lignes.length : lignes.filter((p) => categorieProposition(p) === v).length);
+  return (
+    <div className="lstx-sw" role="group" aria-label="Vue">
+      {VUES_PROP.filter(([k]) => k === "toutes" || k === "en_cours" || nb(k) > 0).map(([k, l, ton]) => (
+        <button key={k} type="button" className={vue === k ? "on" : undefined} onClick={() => onVue(k)}>
+          {k !== "toutes" && <i className={`prop-pt ${ton}`} />}
+          {l}{nb(k) > 0 && <span className="n">{nb(k)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const VIDE_PROP: Record<VuePropositions, string> = {
+  toutes: "Aucune proposition.", en_cours: "Aucune proposition en cours.", refusees: "Aucune proposition refusée.",
+  terminees: "Aucune proposition terminée.", archivees: "Aucune proposition sur un immeuble archivé.",
+};
+export const messageVidePropositions = (vue: VuePropositions) => VIDE_PROP[vue];
+
+export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court, lien, lienExpireLe, dossierId, dossierVersion, pdf, pdfNom, agent, titre, actions }: {
+  immeubleId: string;
+  /** « Ville (CP) — adresse », cité dans les relances. */
+  libelle: string;
+  prix?: string;
+  /** « Sens (89), 479 m², 9 %, 840 k€ HAI » et le lien transfer.it du dernier
+   *  dossier : ce que citent les relances (MAV, 28/09). */
+  resume?: string;
+  court?: string;
+  lien?: string;
+  lienExpireLe?: string;
+  dossierId?: string;
+  dossierVersion?: number;
+  pdf?: string;
+  pdfNom?: string;
+  agent?: { id?: string; nom?: string; tel?: string };
+  /** Le titre de la section, avec ses compteurs. */
+  titre: (badges: React.ReactNode) => React.ReactNode;
+  /** Les boutons sous le titre (créer, relancer tous). */
+  actions?: React.ReactNode;
+}) {
+  const [lignes, setLignes] = useState<PropositionLigne[] | null>(null);
+  const [version, setVersion] = useState(0);
+  /* La vue est un onglet : elle vit dans l'adresse et le retour arrière la
+     restitue (MAV, 29/09). */
+  const departVue = useDepartUrl<VuePropositions>("props", "en_cours", VUES_PROPOSITIONS);
+  const [vue, setVue] = useState<VuePropositions>(departVue);
+  useMemoireUrl("props", vue, "en_cours", { empiler: true, valides: VUES_PROPOSITIONS, sur: setVue });
+  const [q, setQ] = useState("");
+  const [tri, setTri] = useState<"date" | "classe">("date");
+  const [page, setPage] = useState(1);
+  const [taille, setTaille] = useState(10);
+  const [maintenant] = useState(() => Date.now());
+  const [relance, setRelance] = useState<{ ids: string[]; p: PropositionLigne } | null>(null);
+  const [rapport, setRapport] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const rafraichir = () => setVersion((v) => v + 1);
+
+  useEffect(() => {
+    let vivant = true;
+    chargerPropositionsDuBien(immeubleId)
+      .then((l) => { if (vivant) setLignes(l); })
+      .catch(() => { if (vivant) setLignes([]); });
+    return () => { vivant = false; };
+  }, [immeubleId, version]);
+
+  const nbEnCours = (lignes ?? []).filter((p) => categorieProposition(p) === "en_cours").length;
+  const nbTerminees = (lignes ?? []).length - nbEnCours;
+
+  const filtrees = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    const liste = (lignes ?? []).filter((p) => {
+      if (vue !== "toutes" && categorieProposition(p) !== vue) return false;
+      if (!qq) return true;
+      return [p.contact?.nom, p.contact?.email, p.contact?.tel, p.email, p.contact?.qualite, p.commentaire, p.motif]
+        .filter(Boolean).join(" ").toLowerCase().includes(qq);
+    });
+    if (tri === "classe") {
+      const rang = (n?: string) => ({ A: 0, B: 1, C: 2, D: 3 } as Record<string, number>)[n ?? ""] ?? 9;
+      liste.sort((a, b) => rang(a.contact?.note) - rang(b.contact?.note));
+    }
+    /* Retour #437 — « si je mets un retour écrit, je veux que la proposition
+       soit affichée en premier, et ainsi de suite à chaque retour écrit » :
+       le dernier retour noté passe en tête, les autres gardent leur ordre. */
+    return [...liste].sort((a, b) => (b.noteLe ?? "").localeCompare(a.noteLe ?? ""));
+  }, [lignes, vue, q, tri]);
+  const tranche = filtrees.slice((page - 1) * taille, page * taille);
+
+  /** La relance d'une personne, pour ce bien : un e-mail, et le SMS si demandé. */
+  const client = (p: PropositionLigne) => (ids: string[]): ClientRelance => {
+    const j = joursDepuis(p.depuis, maintenant);
+    const immeubles: ImmeubleRelance[] = ids.includes(p.id)
+      ? [(() => {
+          const l = etatLien(lien, lienExpireLe);
+          return { propositionId: p.id, immeubleId, libelle, prix, resume, court, jours: j, autresIds: [], lien: l?.url, lienPerime: l?.aRemplacer, lienExpireLe: l?.expireLe, dossierId, dossierVersion, pdf, pdfNom };
+        })()]
+      : [];
+    return { contactId: p.contact?.id ?? "", nom: p.contact?.nom ?? "", email: p.contact?.email ?? p.email ?? "", immeubles, joursMax: j ?? 999 };
+  };
+  const chemins = [`/bien/${immeubleId}`];
+
+  const relancer = (p: PropositionLigne, mode: ModeRelance) =>
+    start(async () => {
+      setRapport(null);
+      const email = p.contact?.email ?? p.email;
+      const tel = p.contact?.tel;
+      const c = client(p)([p.id]);
+      /* MAV (28/09) : « s'il n'y a pas de pièce jointe ni de lien, il me faut
+         un popup qui me demande de l'ajouter, et il n'envoie pas sinon ». La
+         fenêtre de relance demande le lien et retient l'envoi. */
+      if (c.immeubles.some(lienManquant)) {
+        setRelance({ ids: [p.id], p });
+        setRapport("Le dossier n'a pas de lien transfer.it valable : indiquez-le dans la fenêtre, puis envoyez.");
+        return;
+      }
+      const messages: string[] = [];
+      try {
+        if (mode !== "sms") {
+          if (!email) { messages.push("Pas d'adresse e-mail pour cette personne."); }
+          else {
+            const r = await envoyerRelances(
+              [{ contactId: c.contactId, email, objet: objetRelance(c), corps: messageRelance(c, agent), propositionIds: [p.id], immeubleIds: [immeubleId] }],
+              agent?.id, undefined, chemins,
+            );
+            messages.push(r.envoyes ? `E-mail envoyé à ${email}.` : `E-mail non envoyé : ${r.journal[0] ?? "l'envoi n'est pas parti."}`);
+          }
+        }
+        if (mode !== "email") {
+          const s = await relancerParSms([{ contactId: c.contactId, tel, immeubleId, libelle, propositionIds: [p.id] }], agent?.nom, chemins);
+          messages.push(s.envoyes ? `SMS envoyé au ${tel}.` : `SMS non envoyé : ${s.journal[0] ?? ""}`);
+        }
+      } catch (e) {
+        messages.push(`Échec : ${e instanceof Error ? e.message : "l'envoi a échoué."}`);
+      }
+      setRapport(messages.join(" "));
+      rafraichir();
+    });
+
+  return (
+    <>
+      {titre(
+        <>
+          <Pastille ton="rouge">{nbEnCours} à traiter</Pastille>
+          <Pastille ton="vert">{nbTerminees} traitée{nbTerminees > 1 ? "s" : ""}</Pastille>
+        </>,
+      )}
+      {actions}
+
+      <div className="prop-barre">
+        <div className="lst-search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
+          <input placeholder="Recherchez une proposition — nom, téléphone, e-mail…" value={q}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+        </div>
+        <VuesPropositions lignes={lignes ?? []} vue={vue} onVue={(v) => { setVue(v); setPage(1); }} />
+        <select className="pgs" value={tri} onChange={(e) => setTri(e.target.value as "date" | "classe")} title="Tri">
+          <option value="date">Tri : date d&apos;envoi</option>
+          <option value="classe">Tri : classe A → D</option>
+        </select>
+      </div>
+
+      {rapport && <div className={`cfx-rapport${/Échec|non envoyé|Pas d'/.test(rapport) ? " ko" : ""}`}>{rapport}</div>}
+      {lignes === null && <div className="fempty">Lecture des propositions…</div>}
+      {lignes !== null && tranche.length === 0 && (
+        <div className="fempty">{messageVidePropositions(vue)}</div>
+      )}
+      {tranche.map((p) => (
+        <CarteProposition
+          key={p.id} p={p} contexte={{ immeubleId }}
+          jours={joursDepuis(p.depuis, maintenant)}
+          onRelancer={(mode) => relancer(p, mode)}
+          onRelancerModale={() => setRelance({ ids: [p.id], p })}
+          onRafraichir={rafraichir}
+        />
+      ))}
+      {lignes !== null && filtrees.length > 0 && (
+        <Pagination total={filtrees.length} page={page} taille={taille} collee quoi="proposition"
+          onPage={setPage} onTaille={(t) => { setTaille(t); setPage(1); }} />
+      )}
+      {relance && (
+        <ModaleRelance
+          lignes={[{ p: relance.p, libelle, jours: joursDepuis(relance.p.depuis, maintenant) }]}
+          ids={relance.ids} client={client(relance.p)} agent={agent}
+          email={relance.p.contact?.email ?? relance.p.email ?? ""} tel={relance.p.contact?.tel}
+          chemins={chemins}
+          onFermer={() => setRelance(null)}
+          onFait={(msg) => { setRelance(null); setRapport(msg); rafraichir(); }}
+        />
+      )}
+      {pending && null}
+    </>
+  );
+}

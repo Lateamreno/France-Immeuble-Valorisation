@@ -30,5 +30,16 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+    "exclude": [
+    "node_modules",
+    // Scripts autonomes lancés par `node --experimental-strip-types` : ils
+    // importent avec l'extension .ts, ce que le bundler Next refuse.
+    "scripts",
+    // Même raison pour les tests, et une bonne nouvelle en passant : ils ne
+    // tournaient plus du tout. Node 22.22 ne résout plus « ./relances » vers
+    // « relances.ts » — chaque fichier de test échouait sur
+    // ERR_MODULE_NOT_FOUND avant d'exécuter le moindre cas. Les imports
+    // portent maintenant l'extension, et `npm run test` les relance tous.
+    "**/*.test.mts"
+  ]
 }
