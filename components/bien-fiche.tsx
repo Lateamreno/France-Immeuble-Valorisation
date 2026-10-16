@@ -41,6 +41,7 @@ import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
 import { dateLien, etatLien, lienDuDossier, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
+import { lienMaps } from "@/lib/bo/maps";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
@@ -830,8 +831,10 @@ function CopieAdresse({ b }: { b: BienData }) {
    dans Google Maps, dans un nouvel onglet. Le lien enregistré sur l'adresse
    d'abord, sinon une recherche sur l'adresse complète. */
 function MapsBtn({ b }: { b: BienData }) {
+  /* Retour #477 : l'adresse en clair, jamais l'identifiant de lieu Bubble
+     (voir lib/bo/maps.ts). */
   const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`.trim();
-  const lien = String(b.adr?.maps_url ?? "") || `https://www.google.com/maps/search/${encodeURIComponent(adresse)}`;
+  const lien = lienMaps(adresse, (b.adr?.geo ?? null) as { lat?: number; lng?: number } | null);
   return (
     <a className="smaps" href={lien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps"
       onClick={(e) => e.stopPropagation()}>

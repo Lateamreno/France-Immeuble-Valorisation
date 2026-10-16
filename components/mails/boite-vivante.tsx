@@ -16,9 +16,9 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
-  basculerLu, chargerDossier, deplacerMessages, ouvrirMessage,
+  basculerLu, chargerDossier, deplacerMessages, ouvrirMessage, pieceJointe,
 } from "@/lib/bo/boite-actions";
-import type { Entete, MessageComplet, RoleDossier } from "@/lib/mails/client";
+import type { Entete, MessageComplet, PieceJointe, RoleDossier } from "@/lib/mails/client";
 import type { Reponse } from "@/components/mails/redaction";
 import { estDuSite } from "@/lib/mails/tri-fi";
 import { CorpsMessage } from "@/components/mails/corps";
@@ -124,6 +124,28 @@ export function BoiteVivante({
   const [q, setQ] = useState("");
   const [choisis, setChoisis] = useState<Set<number>>(new Set());
   const [ouvert, setOuvert] = useState<MessageComplet | null>(null);
+  /* Retour #480 : pièces jointes. */
+  const [pjEnCours, setPjEnCours] = useState<string | null>(null);
+  const [pjErreur, setPjErreur] = useState<string | null>(null);
+  const ouvrirPiece = (uid: number, p: PieceJointe) => {
+    setPjEnCours(p.part); setPjErreur(null);
+    pieceJointe(agentId, role, uid, p.part)
+      .then((r) => {
+        if (!r) { setPjErreur("Pièce introuvable dans la boîte."); return; }
+        const octets = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([octets], { type: r.type }));
+        const lisible = /^(application\/pdf|image\/|text\/plain)/i.test(r.type);
+        if (lisible) {
+          window.open(url, "_blank", "noopener");
+        } else {
+          const a = document.createElement("a");
+          a.href = url; a.download = r.nom || p.nom; a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      })
+      .catch((e) => setPjErreur(e instanceof Error ? e.message : String(e)))
+      .finally(() => setPjEnCours(null));
+  };
   /** L'en-tête du message qu'on est en train d'ouvrir. */
   const [enAttente, setEnAttente] = useState<Entete | null>(null);
   const [chargement, setChargement] = useState(!dejaLu);
@@ -431,9 +453,17 @@ export function BoiteVivante({
               <div className="gm-lliens">
                 {ouvert.pieces.length > 0 && (
                   <span className="gm-pjs">
+                    {/* Retour #480 : une pièce jointe se lit et se télécharge.
+                        Un clic la descend de la boîte et l'ouvre dans un
+                        nouvel onglet (PDF, images) ou la télécharge. */}
                     {ouvert.pieces.map((p) => (
-                      <i key={p.nom}>📎 {p.nom} ({Math.max(1, Math.round(p.taille / 1024))} Ko)</i>
+                      <button key={p.part} type="button" className="gm-pj-b" disabled={pjEnCours === p.part}
+                        title={`Ouvrir ${p.nom}`}
+                        onClick={() => ouvrirPiece(ouvert.uid, p)}>
+                        📎 {p.nom} ({Math.max(1, Math.round(p.taille / 1024))} Ko){pjEnCours === p.part ? " …" : ""}
+                      </button>
                     ))}
+                    {pjErreur && <i className="gm-pj-err">{pjErreur}</i>}
                   </span>
                 )}
                 <span style={{ flex: 1 }} />

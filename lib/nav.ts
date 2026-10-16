@@ -65,6 +65,9 @@ export const QUICK_CREATE = [
   "Proposition",
   "Visite",
   "Offre",
+  /* Retour #476 : « rajoute un bouton pour écrire un e-mail » — la fenêtre
+     flottante de rédaction, depuis n'importe quelle page. */
+  "E-mail",
 ] as const;
 
 export const AGENTS = [

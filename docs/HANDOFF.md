@@ -167,6 +167,13 @@ App Next.js (App Router) + Tailwind v4 + Supabase (`@supabase/ssr`) déployée.
   - **Edge Function `bubble-sync`** (déployée sur france-immeuble-bo) : upsert
     idempotent par type/curseur ; incrémental via `since` (Modified Date >).
     Pilotée par `scripts/sync-bubble.mjs` (BUBBLE_API_TOKEN requis).
+    **Source versionnée dans `supabase/functions/bubble-sync/index.ts`**
+    (v5, 16/10/26) : un document que Bubble n'a pas modifié depuis la
+    dernière synchro n'est plus remplacé, et un document que le BO a écrit
+    plus récemment que Bubble garde sa version. Avant ça, le recouvrement
+    d'une heure de `bo_run_sync()` ré-écrasait toutes les heures les documents
+    les plus récents de chaque table avec leur version Bubble — la taxe
+    foncière saisie sur Deuil-la-Barre a disparu deux fois comme ça.
   - **Synchro AUTOMATIQUE (autonome, sans Claude ni machine locale)** :
     pg_cron `bo-sync-horaire` (toutes les heures à :12) → `bo_run_sync()` →
     pg_net POST vers l'Edge Function pour les 25 types, avec

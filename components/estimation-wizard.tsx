@@ -636,11 +636,17 @@ export function EstimationWizard({
           bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
         });
       }
-      const sansLoyer = b.lots.filter((l) => num0(l.loyer) === undefined && String(l.Type_bail ?? "") !== RATTACHE);
+      /* Retour #485 : un lot LIBRE (bail « Vide ») ou dont le bail n'est pas
+         communiqué n'a pas de loyer, et il n'y a rien à saisir : il compte
+         pour zéro, comme dans l'état locatif. Seul un lot qui se dit loué
+         sans dire combien bloque encore. */
+      const LIBRE = new Set(["Vide", "n.c."]);
+      const sansLoyer = b.lots.filter((l) => num0(l.loyer) === undefined
+        && String(l.Type_bail ?? "") !== RATTACHE && !LIBRE.has(String(l.Type_bail ?? "")));
       if (sansLoyer.length) {
         out.push({
           cle: "loyers",
-          libelle: `Loyer non renseigné sur ${sansLoyer.length} lot${sansLoyer.length > 1 ? "s" : ""} (${sansLoyer.slice(0, 4).map(nomLot).join(", ")}${sansLoyer.length > 4 ? "…" : ""}) — mettre 0 s'il est libre, ou « rattaché à un lot »`,
+          libelle: `Loyer non renseigné sur ${sansLoyer.length} lot${sansLoyer.length > 1 ? "s" : ""} (${sansLoyer.slice(0, 4).map(nomLot).join(", ")}${sansLoyer.length > 4 ? "…" : ""}) — le lot se dit loué : indiquer son loyer, ou passer son bail en « Vide » s'il est libre`,
           ou: "couverture et page 2 — les revenus seraient faux",
           bloquant: true, action: { section: "locatif", label: "Ouvrir l'état locatif" },
         });
@@ -894,7 +900,10 @@ export function EstimationWizard({
   const nvMail = reprise?.nv ?? nv;
   const baseMail = reprise?.hai ?? haiTravaux;
   const mailCorps = [
-    `Bonjour${b.proprietaire ? ` ${S(b.proprietaire["Civilité"]) === "Madame" ? "Madame" : "Monsieur"} ${S(b.proprietaire.nom).toUpperCase()}` : ""},`,
+    /* Retour #488 : sans civilité sur la fiche, « Bonjour, » — jamais un
+       « Monsieur » deviné. */
+    `Bonjour${b.proprietaire && ["Madame", "Monsieur"].includes(S(b.proprietaire["Civilité"]))
+      ? ` ${S(b.proprietaire["Civilité"])} ${S(b.proprietaire.nom).toUpperCase()}` : ""},`,
     "",
     `Comme convenu, vous trouverez ci-joint l'estimation de votre immeuble sis ${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")} à ${S(im.adresse_ville)}.`,
     "",
@@ -1556,7 +1565,9 @@ export function EstimationWizard({
               <Champ label="Objet" valeur={objet} editable onChange={setObjetSaisi} />
               <Copier valeur={objet} titre="Copier l'objet" petit>Copier</Copier>
             </div>
-            <label className="est-ch txt">
+            {/* Retour #488 : fond blanc et texte foncé — un fond grisé disait
+                « non modifiable » à un texte qui l'est. */}
+            <label className="est-ch txt edit">
               <span>Message</span>
               {/* Modifiable directement : le texte proposé n'est qu'un point
                   de départ, et sur un renvoi c'est le message d'origine qui

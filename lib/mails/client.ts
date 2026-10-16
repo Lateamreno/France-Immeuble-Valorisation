@@ -12,6 +12,7 @@
 
 import { ImapFlow, type ListResponse } from "imapflow";
 import nodemailer from "nodemailer";
+import iconv from "iconv-lite";
 import type { Boite } from "@/lib/mails/boites";
 
 /* ------------------------------------------------------- dossiers --- */
@@ -310,9 +311,9 @@ export async function listerMessages(
         uid: m.uid,
         messageId: env?.messageId,
         de: env?.from?.[0]?.address?.toLowerCase() ?? "",
-        deNom: env?.from?.[0]?.name || undefined,
+        deNom: demojibake(env?.from?.[0]?.name || "") || undefined,
         pour: (env?.to ?? []).map((x) => x.address?.toLowerCase() ?? "").filter(Boolean),
-        objet: env?.subject || "(sans objet)",
+        objet: demojibake(env?.subject || "") || "(sans objet)",
         date: env?.date ? new Date(env.date).toISOString() : undefined,
         extrait: extraitDe(m.bodyStructure, m.bodyParts),
         lu: flags.has("\\Seen"),
@@ -343,6 +344,8 @@ type Noeud = {
   type?: string;
   encoding?: string;
   disposition?: string;
+  /** Les paramètres du Content-Type — dont le `charset` du texte. */
+  parameters?: { charset?: string };
   childNodes?: Noeud[];
 };
 
@@ -356,16 +359,59 @@ function partiesTexte(s: unknown): Noeud[] {
   return [...moi, ...enfants].sort((a, b) => (a.type === "text/plain" ? -1 : 0) - (b.type === "text/plain" ? -1 : 0));
 }
 
-function decoder(brut: Buffer, encodage?: string): string {
+/* Retour #480 : « des caractères spéciaux qui ne passent pas comme les é ou
+   les € ». Le quoted-printable était décodé octet par octet en caractères —
+   un « é » en UTF-8 fait deux octets, il sortait « Ã© » ; et le jeu de
+   caractères annoncé par le message (ISO-8859-1, Windows-1252…) n'était pas
+   lu du tout. On décode donc l'encodage de transfert en OCTETS, puis les
+   octets dans le jeu annoncé. */
+function decoder(brut: Buffer, encodage?: string, charset?: string): string {
   const e = (encodage ?? "").toLowerCase();
-  if (e === "base64") return Buffer.from(brut.toString("ascii"), "base64").toString("utf8");
-  if (e === "quoted-printable") {
-    return brut.toString("utf8")
-      /* Un « = » en fin de ligne est une coupure, pas un caractère. */
-      .replace(/=\r?\n/g, "")
-      .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  const octets = e === "base64" ? Buffer.from(brut.toString("ascii"), "base64")
+    : e === "quoted-printable" ? decoderQP(brut)
+      : brut;
+  return versTexte(octets, charset);
+}
+
+/** Quoted-printable → octets. Un « = » en fin de ligne est une coupure, pas
+ *  un caractère. */
+function decoderQP(brut: Buffer): Buffer {
+  const s = brut.toString("latin1").replace(/=\r?\n/g, "");
+  const out: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "=" && /^[0-9A-Fa-f]{2}$/.test(s.slice(i + 1, i + 3))) {
+      out.push(parseInt(s.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      out.push(s.charCodeAt(i) & 0xff);
+    }
   }
-  return brut.toString("utf8");
+  return Buffer.from(out);
+}
+
+/** Octets → texte, dans le jeu de caractères annoncé ; UTF-8 sinon, et
+ *  Windows-1252 en dernier recours quand l'UTF-8 ne tient pas. */
+function versTexte(octets: Buffer, charset?: string): string {
+  const cs = (charset ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+  if (cs && cs !== "utf-8" && cs !== "utf8" && iconv.encodingExists(cs)) {
+    try { return iconv.decode(octets, cs); } catch { /* on retombe sur l'UTF-8 */ }
+  }
+  const t = octets.toString("utf8");
+  return t.includes("\ufffd") ? iconv.decode(octets, "windows-1252") : t;
+}
+
+/** Un texte déjà abîmé — « dâ€™Argenteuil », « mÂ² » — remis d'aplomb : il a
+ *  été lu en Latin-1 alors qu'il était en UTF-8. On ne touche qu'aux textes
+ *  qui portent la signature de cette erreur, jamais aux autres. */
+export function demojibake(s: string): string {
+  if (!/[ÃÂ][\u0080-\u00bf]|â€/.test(s)) return s;
+  /* Windows-1252, pas Latin-1 : le « € » de « â€™ » n'existe pas en Latin-1. */
+  try {
+    const r = iconv.decode(iconv.encode(s, "windows-1252"), "utf8");
+    return r.includes("\ufffd") ? s : r;
+  } catch {
+    return s;
+  }
 }
 
 const sansBalises = (h: string) =>
@@ -381,7 +427,7 @@ function extraitDe(structure: unknown, parties?: Map<string, Buffer>): string {
     /* Un message simple n'a pas de numéro de partie : son corps est « 1 ». */
     const brut = parties.get(n.part || "1");
     if (!brut) continue;
-    const texte = decoder(brut, n.encoding);
+    const texte = decoder(brut, n.encoding, n.parameters?.charset);
     const lisible = n.type === "text/html" ? sansBalises(texte) : texte;
     const propre = lisible.replace(/\s+/g, " ").trim();
     if (propre) return propre.slice(0, 160);
@@ -405,7 +451,7 @@ function compterPJ(s: unknown): number {
 export type MessageComplet = Entete & {
   corps: string;
   corpsHtml?: string;
-  pieces: { nom: string; type: string; taille: number }[];
+  pieces: PieceJointe[];
   enTetes: Record<string, string>;
   inReplyTo?: string;
   references: string[];
@@ -460,7 +506,7 @@ export async function lireMessage(
     const lire1 = (n?: Noeud) => {
       const p = n ? parties?.get(n.part || "1") : undefined;
       /* Un corps démesuré ne sert à rien à l'écran et fige le navigateur. */
-      return p ? decoder(p.subarray(0, 400_000), n?.encoding) : undefined;
+      return p ? decoder(p.subarray(0, 400_000), n?.encoding, n?.parameters?.charset) : undefined;
     };
     const texte = lire1(brute);
     const enHtml = lire1(html);
@@ -477,10 +523,10 @@ export async function lireMessage(
       uid,
       messageId: env?.messageId ?? enTetes["message-id"],
       de: env?.from?.[0]?.address?.toLowerCase() ?? "",
-      deNom: env?.from?.[0]?.name || undefined,
+      deNom: demojibake(env?.from?.[0]?.name || "") || undefined,
       pour: [...(env?.to ?? []), ...(env?.cc ?? [])]
         .map((x) => x.address?.toLowerCase() ?? "").filter(Boolean),
-      objet: env?.subject || "(sans objet)",
+      objet: demojibake(env?.subject || "") || "(sans objet)",
       date: env?.date ? new Date(env.date).toISOString() : new Date().toISOString(),
       extrait: corps.replace(/\s+/g, " ").slice(0, 160),
       lu: true,
@@ -513,12 +559,14 @@ function lireEnTetes(brut?: Buffer): Record<string, string> {
 }
 
 /** Les pièces jointes déclarées, lues dans la structure — sans les tirer. */
-function piecesDe(s: unknown): { nom: string; type: string; taille: number }[] {
+export type PieceJointe = { nom: string; type: string; taille: number; part: string };
+
+function piecesDe(s: unknown): PieceJointe[] {
   if (!s || typeof s !== "object") return [];
   const n = s as Noeud & {
     disposition?: string;
     dispositionParameters?: { filename?: string };
-    parameters?: { name?: string };
+    parameters?: { name?: string; charset?: string };
     size?: number;
   };
   const enfants = (n.childNodes ?? []).flatMap(piecesDe);
@@ -528,9 +576,33 @@ function piecesDe(s: unknown): { nom: string; type: string; taille: number }[] {
       nom: n.dispositionParameters?.filename || n.parameters?.name || "pièce jointe",
       type: n.type ?? "application/octet-stream",
       taille: n.size ?? 0,
+      part: n.part || "1",
     },
     ...enfants,
   ];
+}
+
+/**
+ * Une pièce jointe, telle quelle (retour #480 : « je ne peux pas télécharger
+ * ni lire les PJ »). On ne descend que la partie demandée, jamais le message
+ * entier, et on s'arrête à 25 Mo.
+ */
+export async function telechargerPiece(
+  b: Boite, role: RoleDossier, uid: number, part: string,
+): Promise<{ nom: string; type: string; contenu: Buffer } | null> {
+  return avec(b, async (c) => {
+    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    await c.mailboxOpen(ch, { readOnly: true });
+    const d = await c.download(String(uid), part, { uid: true, maxBytes: 25 * 1024 * 1024 });
+    if (!d?.content) return null;
+    const morceaux: Buffer[] = [];
+    for await (const m of d.content) morceaux.push(Buffer.isBuffer(m) ? m : Buffer.from(m));
+    return {
+      nom: d.meta?.filename || "pièce jointe",
+      type: d.meta?.contentType || "application/octet-stream",
+      contenu: Buffer.concat(morceaux),
+    };
+  });
 }
 
 /** Marque lu / non lu sur le serveur — donc aussi sur le téléphone. */
@@ -586,6 +658,9 @@ export async function envoyerDepuis(b: Boite, m: {
   messageId?: string;
   /** Pièces jointes (le dossier d'estimation, des pièces du coffre…). */
   pieces?: { filename: string; content: Buffer; contentType?: string }[];
+  /** Retour #479 : pas de copie dans « Envoyés » (commercialisation, relances,
+   *  salves) — seule la correspondance y a sa place. */
+  sansCopie?: boolean;
 }) {
   const redirection = process.env.MAIL_REDIRECT?.trim();
   const t = nodemailer.createTransport({
@@ -622,6 +697,7 @@ export async function envoyerDepuis(b: Boite, m: {
      fenêtre n'affichait le refus qu'une fraction de seconde. */
   let copie = false;
   let copieErreur: string | undefined;
+  if (m.sansCopie) return { messageId: String(info.messageId ?? ""), copieDansEnvoyes: undefined, copieErreur };
   try {
     const brut = await composerMessage({ ...options, messageId: String(info.messageId ?? m.messageId ?? "") });
     await avec(b, async (c) => {

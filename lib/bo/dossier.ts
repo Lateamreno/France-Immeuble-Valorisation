@@ -146,8 +146,15 @@ export function construireDossier(
   };
   parM2.m2 = carrez > 0 ? parM2.prix / carrez : 0;
   parM2.renta = parM2.prix > 0 ? (loyers / parM2.prix) * 100 : 0;
+  /* Retour #486 : « dans la définition du facteur limitant tu t'es basé sur
+     le loyer actuel et non le potentiel après travaux ». Même logique que la
+     méthode au m² : l'acquéreur qui paie le rendement du secteur l'obtient
+     une fois l'immeuble relouée et les travaux faits. Les loyers potentiels
+     valorisent donc, et les travaux se retranchent. Sans loyer potentiel
+     saisi, les loyers en place font foi. */
+  const loyersValo = loyersMax > 0 ? loyersMax : loyers;
   const parRenta = {
-    prix: refRenta > 0 ? Math.round(loyers / (refRenta / 100) / 1000) * 1000 : 0,
+    prix: refRenta > 0 ? Math.max(0, Math.round((loyersValo / (refRenta / 100) - travaux) / 1000) * 1000) : 0,
     renta: refRenta,
     m2: 0,
     m2Travaux: 0,

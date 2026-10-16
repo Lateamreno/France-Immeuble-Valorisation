@@ -5268,6 +5268,8 @@ export async function creerEtEnvoyerProposition(input: {
       await envoyerPourAgent(agentId, {
         to: p.email, subject: input.objet, text: input.message,
         attachments: attachments.length ? attachments : undefined,
+        /* Retour #479 : la commercialisation n'encombre pas les « Envoyés ». */
+        copieEnvoyes: false,
       });
       envoyes++;
     } catch (e) {
