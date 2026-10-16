@@ -405,8 +405,13 @@ function versTexte(octets: Buffer, charset?: string): string {
  *  qui portent la signature de cette erreur, jamais aux autres. */
 export function demojibake(s: string): string {
   if (!/[ÃÂ][\u0080-\u00bf]|â€/.test(s)) return s;
-  const r = Buffer.from(s, "latin1").toString("utf8");
-  return r.includes("\ufffd") ? s : r;
+  /* Windows-1252, pas Latin-1 : le « € » de « â€™ » n'existe pas en Latin-1. */
+  try {
+    const r = iconv.decode(iconv.encode(s, "windows-1252"), "utf8");
+    return r.includes("\ufffd") ? s : r;
+  } catch {
+    return s;
+  }
 }
 
 const sansBalises = (h: string) =>
