@@ -358,7 +358,9 @@ const differe = (avant: Row | undefined, r: Row, champs: readonly (keyof typeof 
   champs.some((c) => (avant?.[c] ?? VIDE_BAIL_LOC[c]) !== r[c]);
 
 const N = (s: string) => {
-  const v = parseFloat(s.replace(",", "."));
+  /* « 17 794 » collé depuis un avis : l'espace (fine ou insécable comprise)
+     coupait le nombre à 17 (retour #482). */
+  const v = parseFloat(s.replace(/[\s  ]/g, "").replace(",", "."));
   return Number.isFinite(v) ? v : undefined;
 };
 
@@ -1525,7 +1527,18 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           </colgroup>
           <thead>
             <tr>
-              <th className="grp brd" rowSpan={2} style={{ width: 26 }} />
+              {/* Retour #478 : une case pour tout sélectionner d'un coup — les
+                  lignes affichées, donc celles du filtre en cours. */}
+              <th className="grp brd" rowSpan={2} style={{ width: 26 }}>
+                <input type="checkbox" title={visibles.length > 0 && visibles.every((r) => sel.has(r.id)) ? "Tout désélectionner" : "Tout sélectionner"}
+                  checked={visibles.length > 0 && visibles.every((r) => sel.has(r.id))}
+                  onChange={() => setSel((s) => {
+                    const tous = visibles.every((r) => s.has(r.id));
+                    const n = new Set(s);
+                    for (const r of visibles) { if (tous) n.delete(r.id); else n.add(r.id); }
+                    return n;
+                  })} />
+              </th>
               {groupes.map((g) => (
                 <th key={g.label} className="grp brd" colSpan={g.cols.length}>{g.label}</th>
               ))}

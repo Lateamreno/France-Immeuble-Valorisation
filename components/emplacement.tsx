@@ -24,6 +24,7 @@ import { slugVille, urlUnemplacement, type ValeurUE } from "@/lib/unemplacement"
 import { chercherPoi } from "@/lib/overpass";
 import type { Reperes } from "@/lib/bo/reperes";
 import { itineraireGoogle as itineraireBrut } from "@/lib/bo/itineraire";
+import { lienMaps } from "@/lib/bo/maps";
 
 /* Retour #388 — la liste propose « en bus », que lib/bo/itineraire.ts ne
    connaît pas (il retomberait sur la marche). Pour Google, un bus est un
@@ -384,7 +385,9 @@ function AdresseTab({ b }: { b: BienData }) {
   };
 
   const adresseComplete = `${[S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ")}, ${S(im.adresse_zipcode)} ${S(im.adresse_ville)}`;
-  const mapsLien = S(b.adr?.maps_url) || `https://www.google.com/maps/search/${encodeURIComponent(adresseComplete)}`;
+  /* Retours #477, #483, #484 : le lien ouvre l'adresse, pas la carte nue
+     (voir lib/bo/maps.ts). */
+  const mapsLien = lienMaps(adresseComplete, (b.adr?.geo ?? null) as { lat?: number; lng?: number } | null);
 
   return (
     <>

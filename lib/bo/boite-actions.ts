@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { boiteDe, type Boite } from "@/lib/mails/boites";
 import { chiffrementDisponible, chiffrer } from "@/lib/mails/coffre";
 import {
-  deplacer, envoyerDepuis, lireMessage, listerMessages, marquerLus, marquerRepondu,
+  deplacer, envoyerDepuis, lireMessage, listerMessages, marquerLus, marquerRepondu, telechargerPiece,
   messageClair, verifier, type RoleDossier,
 } from "@/lib/mails/client";
 import { getAgents } from "@/lib/bubble/server";
@@ -183,6 +183,14 @@ export async function deplacerMessages(
   agentId: string, role: RoleDossier, uids: number[], vers: RoleDossier,
 ) {
   await deplacer(await boite(agentId), role, uids, vers);
+}
+
+/** Une pièce jointe d'un message reçu, en base64 pour traverser l'action
+ *  serveur (retour #480). Plafonnée à 25 Mo côté boîte. */
+export async function pieceJointe(agentId: string, role: RoleDossier, uid: number, part: string) {
+  const p = await telechargerPiece(await boite(agentId), role, uid, part);
+  if (!p) return null;
+  return { nom: p.nom, type: p.type, base64: p.contenu.toString("base64") };
 }
 
 export async function repondre(agentId: string, m: {

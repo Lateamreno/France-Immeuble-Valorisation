@@ -6247,6 +6247,14 @@ a.cfc-doc:hover { border-color: var(--slate); }
 .gm-rep { color: var(--gray-lt); font-size: 12px; }
 .gm-pjs { display: flex; flex-wrap: wrap; gap: 8px; }
 .gm-pjs i { font-style: normal; font-size: 11.5px; color: var(--gray-txt); }
+/* Retour #480 : une pièce jointe est un bouton — elle s'ouvre ou se télécharge. */
+.gm-pj-b {
+  border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 3px 9px;
+  font: inherit; font-size: 11.5px; color: var(--slate); cursor: pointer;
+}
+.gm-pj-b:hover { border-color: var(--gold-bo); color: var(--gold-bo); }
+.gm-pj-b:disabled { opacity: .6; cursor: progress; }
+.gm-pj-err { color: var(--red); }
 
 /* Le lien vers les réglages de boîte : même ligne que les dossiers. */
 .gm-lien {

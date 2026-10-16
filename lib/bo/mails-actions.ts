@@ -409,6 +409,8 @@ export async function lancerSalve(
       } else {
         await envoyerPourAgent(agentId, {
           to: c.email, subject: o.texte, text: b.texte, replyTo: agent.email,
+          /* Retour #479 : une salve, même de dépannage, ne se copie pas. */
+          copieEnvoyes: false,
         });
       }
       envoyes += 1;

@@ -21,7 +21,15 @@ import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { TAXES, TYPES_CHARGE } from "@/lib/referentiels";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
-const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
+const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(/[\s  ]/g, "").replace(",", ".")));
+/* Retour #482 : « 17 794 » collé depuis l'avis comptait 17. Une case de
+   montant n'accepte que des chiffres et un séparateur décimal : espaces,
+   lettres, « € » disparaissent à la frappe comme au collage. */
+const montant = (s: string) => {
+  const propre = s.replace(/[^\d.,]/g, "");
+  const i = propre.search(/[.,]/);
+  return i < 0 ? propre : propre.slice(0, i + 1) + propre.slice(i + 1).replace(/[.,]/g, "");
+};
 
 /* ---------- Charges ---------- */
 
@@ -106,11 +114,11 @@ function SaisieMontants({
 }) {
   return (
     <span className="chg-saisie">
-      <input className={`min${total ? "" : " requis"}`} placeholder="Total" value={total}
-        onChange={(e) => onTotal(e.target.value)} /> €/an
+      <input className={`min${total ? "" : " requis"}`} placeholder="Total" value={total} inputMode="decimal"
+        onChange={(e) => onTotal(montant(e.target.value))} /> €/an
       <span className="tiret">−</span>
-      <input className="min" placeholder="Récupérable" value={recup}
-        onChange={(e) => onRecup(e.target.value)} /> €/an récupérables
+      <input className="min" placeholder="Récupérable" value={recup} inputMode="decimal"
+        onChange={(e) => onRecup(montant(e.target.value))} /> €/an récupérables
     </span>
   );
 }
@@ -192,14 +200,14 @@ function ModaleCharge({ b, charge, onFermer }: {
         <label>
           <span>Montant total</span>
           <span className="u">
-            <input value={totalAn} inputMode="decimal" onChange={(e) => setTotalAn(e.target.value)} />
+            <input value={totalAn} inputMode="decimal" onChange={(e) => setTotalAn(montant(e.target.value))} />
             <i>€/an</i>
           </span>
         </label>
         <label>
           <span>Montant récupérable</span>
           <span className="u">
-            <input value={recup} inputMode="decimal" onChange={(e) => setRecup(e.target.value)} />
+            <input value={recup} inputMode="decimal" onChange={(e) => setRecup(montant(e.target.value))} />
             <i>€/an</i>
           </span>
         </label>

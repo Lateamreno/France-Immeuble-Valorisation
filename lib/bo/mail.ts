@@ -452,6 +452,10 @@ export async function envoyerPourAgent(
     /** Copie cachée à n'ajouter QUE sur la route commune : quand le message
      *  part de la boîte de l'agent, il l'a déjà dans ses « Envoyés ». */
     bccSiCommun?: string;
+    /** Retour #479 : `false` pour ce qui n'est pas de la correspondance —
+     *  commercialisation, relances, salves — qui ne doit pas encombrer les
+     *  « Envoyés » de l'agent. Par défaut, un message part avec sa copie. */
+    copieEnvoyes?: boolean;
   },
 ): Promise<{
   messageId: string;
@@ -480,6 +484,7 @@ export async function envoyerPourAgent(
         texte: m.text,
         messageId: m.messageIdPour?.(domaine),
         pieces: m.attachments,
+        sansCopie: m.copieEnvoyes === false,
       });
     } catch (e) {
       throw new Error(`Boîte ${b.adresse} (${b.smtp.host}) : ${e instanceof Error ? e.message : String(e)}`);

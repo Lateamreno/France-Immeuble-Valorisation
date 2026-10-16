@@ -396,6 +396,8 @@ export function DossierEstimation({ d, nu }: { d: Dossier; nu?: boolean }) {
           </table>
           <div className="dos-lim-c">
             Le {lim === "renta" ? "rendement" : "prix au m²"} est le facteur limitant sur cet immeuble
+            {/* Retour #486 : dire sur quoi la ligne Rendement se calcule. */}
+            <i> — rendement calculé sur les loyers potentiels après travaux et relocation, travaux déduits</i>
           </div>
         </div>
       </Page>

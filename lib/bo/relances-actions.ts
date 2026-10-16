@@ -387,6 +387,8 @@ export async function envoyerRelances(
         await envoyerPourAgent(agentId, {
           to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
           attachments: attachments.length ? attachments : undefined,
+          /* Retour #479 : une relance n'est pas de la correspondance. */
+          copieEnvoyes: false,
         });
       }
       await Promise.all(e.propositionIds.map((id) => rpc("bo_patch_doc", {
@@ -511,7 +513,7 @@ export async function recapSalveRelances(r: {
   ];
   const texte = lignes.join("\n");
   try {
-    await mail.envoyerPourAgent(r.agentId, { to: adresse, subject: sujet, text: texte });
+    await mail.envoyerPourAgent(r.agentId, { to: adresse, subject: sujet, text: texte, copieEnvoyes: false });
     return { ok: true, adresse };
   } catch (e1) {
     if (!mail.masseConfiguree()) return { ok: false, message: e1 instanceof Error ? e1.message : String(e1) };

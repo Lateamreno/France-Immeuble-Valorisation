@@ -588,6 +588,20 @@ export function ContactFiche({ d, echanges = [], compte }: {
                   <PieceJointe url={c.entreprise_kbis} contactId={id} cle="kbis"
                     depose={c.entreprise_kbis_depose_le} />
                 </Ligne>
+                {/* Retour #487 : un propriétaire peut avoir plusieurs
+                    sociétés. Le bouton range celle qui est affichée dans la
+                    liste et vide les cases pour la suivante ; un clic sur une
+                    société de la liste la remet au premier plan. */}
+                <Ligne label="">
+                  <button type="button" className="fadd" disabled={!entreprise.trim()}
+                    title={entreprise.trim() ? "Ranger cette société et en saisir une autre" : "Saisissez d'abord le nom de la société affichée"}
+                    onClick={() => {
+                      setSocietes(fusionnerSociete(societes, societeCourante()));
+                      setEntreprise(""); setSiren(""); setRcs(""); setCapital(""); setSiege("");
+                    }}>
+                    + Ajouter une autre société
+                  </button>
+                </Ligne>
                 {autresSocietes.length > 0 && (
                   <Ligne label="Autres sociétés">
                     <div className="cfx-socs">

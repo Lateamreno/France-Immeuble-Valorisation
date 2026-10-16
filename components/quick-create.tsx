@@ -12,6 +12,8 @@ import { ContactPicker } from "@/components/contact-picker";
 import { Modale } from "@/components/modale";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
+import { FenetreRedaction } from "@/components/mails/redaction";
+import { contexteRedaction } from "@/lib/bo/mails-actions";
 
 // Icônes des 7 entités (entité + petit « + », comme le BO).
 const IC: Record<string, React.ReactNode> = {
@@ -21,6 +23,7 @@ const IC: Record<string, React.ReactNode> = {
   Proposition: <><path d="M19 4 4 10l5.5 2.5 2.5 6z" /><path d="M17.5 15.5h4M19.5 13.5v4" /></>,
   Visite: <><path d="M4 14l1.7-4.5h9L16 14" /><rect x="3" y="13.6" width="14" height="3.6" rx="1.2" /><circle cx="6.6" cy="18.6" r="1.2" /><circle cx="13.6" cy="18.6" r="1.2" /><path d="M18.5 8.5h4M20.5 6.5v4" /></>,
   Offre: <><path d="M11 4 4 11l3 3 5.5-5.5M9.5 10.5l5.5 5.5M12.5 13.5l3.5 3.5" /><path d="M17.5 5.5h4M19.5 3.5v4" /></>,
+  "E-mail": <><rect x="3" y="6" width="14" height="12" rx="1.5" /><path d="m3 7.5 7 5 7-5" /><path d="M18.5 4.5h4M20.5 2.5v4" /></>,
 };
 
 /* Le mandat ne se crée que depuis la fiche du bien : il se numérote au
@@ -33,6 +36,15 @@ type Ouverte = "Contact" | "Immeuble" | "Recherche" | "Proposition" | "Visite" |
 export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
   const [modal, setModal] = useState<Ouverte>(null);
   const fermer = () => setModal(null);
+  /* Retour #476 : « E-mail » ouvre la fenêtre flottante de rédaction, avec
+     l'agent aux commandes et ses messages types. */
+  const { slug: agentSlug } = useAgentCourant(agents);
+  const [mail, setMail] = useState<Awaited<ReturnType<typeof contexteRedaction>> | "chargement" | null>(null);
+  const ecrire = () => {
+    if (mail) return;
+    setMail("chargement");
+    contexteRedaction(agentSlug || undefined).then(setMail).catch(() => setMail(null));
+  };
   /* La barre est sur toutes les pages : elle fait connaître les agents au
      poste, pour que les notes se signent des bonnes initiales. */
   useEffect(() => { enregistrerAgents(agents); }, [agents]);
@@ -43,8 +55,8 @@ export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
           <button
             key={label}
             type="button"
-            title={`Créer : ${label}`}
-            onClick={() => setModal(label as Ouverte)}
+            title={label === "E-mail" ? "Écrire un e-mail" : `Créer : ${label}`}
+            onClick={() => (label === "E-mail" ? ecrire() : setModal(label as Ouverte))}
           >
             <svg viewBox="0 0 24 24">{IC[label]}</svg>
             {label}
@@ -59,6 +71,10 @@ export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
       {modal === "Proposition" && <ModaleProposition onFermer={fermer} />}
       {modal === "Visite" && <ModaleVisite onFermer={fermer} />}
       {modal === "Offre" && <ModaleOffre onFermer={fermer} />}
+      {mail && mail !== "chargement" && (
+        <FenetreRedaction agent={mail.agent} modeles={mail.modeles}
+          flottante={{ titre: "Nouveau message" }} onClose={() => setMail(null)} />
+      )}
     </>
   );
 }
