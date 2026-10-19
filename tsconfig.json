@@ -32,6 +32,10 @@
   ],
     "exclude": [
     "node_modules",
+    // Les fonctions Supabase tournent sous Deno (`jsr:`, `Deno.serve`) : elles
+    // ne sont pas du code Next, et leur présence a fait tomber le build Vercel
+    // du 16/10 (TS2307, TS2304) — le lot #476–#488 n'est jamais parti en prod.
+    "supabase",
     // Scripts autonomes lancés par `node --experimental-strip-types` : ils
     // importent avec l'extension .ts, ce que le bundler Next refuse.
     "scripts",
