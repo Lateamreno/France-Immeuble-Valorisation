@@ -59,6 +59,13 @@ Règles non négociables :
 - Le document se **met à jour à la même adresse** quand un retour arrive après
   coup — jamais un second lien.
 
+**Après chaque fusion dans `main` : attendre que le déploiement Vercel soit
+« Ready » et le dire dans le récap.** Le 16/10, deux déploiements ont échoué
+sans que personne ne le voie (un fichier Deno versionné sous `supabase/`
+faisait tomber la vérification TypeScript de Next) : la prod est restée trois
+jours sur l'ancienne version alors que le lot était annoncé livré. Un lot n'est
+livré que quand le déploiement de `main` est passé.
+
 Recette éprouvée pour les captures (à reprendre telle quelle) : `git worktree add`
 sur le commit d'avant, `npm run build` puis `next start` sur deux ports distincts,
 puis puppeteer-core (`executablePath: "/opt/pw-browsers/chromium"`, `--no-sandbox`)
