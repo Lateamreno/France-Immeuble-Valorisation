@@ -357,6 +357,14 @@ Déjà en base (§4.3). Consommation directe, aucune API externe.
 ### 7.3 Ubiflow / marketplace
 Un `listing_lot` « prêt à vendre » → publication marketplace et/ou flux XML Ubiflow. Réutilise l'architecture flux unique déjà décidée.
 
+**Le numéro de l'annonce est celui de l'agent en charge, jamais le standard**
+(décision MAV 20/10/26). La charge utile envoie le contact du dossier
+(`b.im.AGENT` → nom, poste, e-mail, portable) ; côté Plein Bail,
+`reveler_telephone()` le révèle en priorité (migration `telephone_agent`) et
+ne retombe sur le téléphone du compte France Immeuble qu'à défaut. Un bien
+sans agent, ou dont l'agent n'a pas de portable, est **bloqué** à la
+publication (`blocages`, clés `agent` / `agent_tel`).
+
 ### 7.4 Docusign (V2)
 Mandats, contrats de mission, protocoles de départ locataire.
 
