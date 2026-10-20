@@ -130,6 +130,17 @@ export function blocages(b: BienData, mandat: Record<string, unknown> | null): B
   if (photos.length === 0) out.push({ cle: "photos", label: "Aucune photo retenue pour la diffusion", ou: "Photos" });
   if (b.lots.length === 0) out.push({ cle: "lots", label: "Aucun lot dans l'état locatif", ou: "Etat locatif" });
 
+  /* Le numéro affiché sur l'annonce est celui de l'agent en charge, jamais le
+     standard (décision MAV 20/10/26). Plein Bail révèle le contact envoyé
+     avec l'annonce et ne retombe sur le téléphone du compte France Immeuble
+     qu'à défaut : un dossier sans agent, ou dont l'agent n'a pas de portable
+     sur sa fiche, partirait donc avec le standard. On ne publie pas comme ça. */
+  if (!b.agentNom) {
+    out.push({ cle: "agent", label: "Aucun agent en charge du dossier : l'annonce afficherait le standard", ou: "Tableau de bord › Transférer" });
+  } else if (!b.agentTel) {
+    out.push({ cle: "agent_tel", label: `${b.agentNom} n'a pas de portable sur sa fiche agent : l'annonce afficherait le standard`, ou: "Fiche agent" });
+  }
+
   return out;
 }
 
