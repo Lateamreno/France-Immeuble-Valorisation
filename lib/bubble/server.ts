@@ -22,6 +22,8 @@ import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
+import { lireSociete, nommerSocietes, societesDeContact, societesDeContacts } from "@/lib/bo/societes-lecture";
+import type { SocieteNommee } from "@/lib/societes";
 import { cache } from "react";
 
 const TOKEN = process.env.BUBBLE_API_TOKEN;
@@ -943,6 +945,11 @@ export type BienData = {
   agentNom?: string;
   agentTel?: string;
   proprietaire?: Record<string, unknown>;
+  /** Tous les propriétaires (#489) : le principal en tête, puis les indivisaires. */
+  proprietaires: Record<string, unknown>[];
+  /** Les sociétés des propriétaires, et celle qui détient le bien. */
+  societesProprietaires: SocieteNommee[];
+  societeDetentrice?: SocieteNommee;
   autresBiens: { id: string; label: string; statut: string }[];
   suivis: {
     date?: string;
@@ -993,6 +1000,26 @@ export type BienData = {
   offres: Record<string, unknown>[];
 };
 
+/** Les propriétaires d'un immeuble (#489) : le principal `PROPRIETAIRE`, que
+ *  Bubble connaît, en tête, puis les indivisaires de `PROPRIETAIREs`. */
+export function proprietairesDe(im: Record<string, unknown>): string[] {
+  const autres = Array.isArray(im.PROPRIETAIREs) ? (im.PROPRIETAIREs as unknown[]).map(S2) : [];
+  return [...new Set([S2(im.PROPRIETAIRE), ...autres].filter((x): x is string => !!x))];
+}
+
+/** Les immeubles que possèdent ces contacts, comme principal ou indivisaire. */
+async function immeublesDesProprietaires(ids: string[]): Promise<Record<string, unknown>[]> {
+  const champs = ["adresse_ville", "adresse_numero_rue", "adresse_rue", "Statut", "Modified Date", "archived"];
+  const listes = await Promise.all([
+    fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "in", value: ids }], 60, undefined, champs).catch(() => []),
+    ...ids.map((pid) =>
+      fetchAll("immeuble", [{ key: "PROPRIETAIREs", constraint_type: "contains", value: pid }], 60, undefined, champs).catch(() => [])),
+  ]);
+  const vus = new Map<string, Record<string, unknown>>();
+  for (const l of listes) for (const im of l) vus.set(String(im._id), im);
+  return [...vus.values()];
+}
+
 export async function getBien(id: string): Promise<BienData | null> {
   if (!TOKEN && !USE_SB) return null;
 
@@ -1034,18 +1061,29 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   /* Perf n° 4 (24/09) : le propriétaire, ses autres biens et la liste des
      agents ne dépendent que de la fiche, déjà lue — ils partent ensemble. */
-  const [proprietaire, autresBruts, tousAgents] = await Promise.all([
-    im.PROPRIETAIRE
-      ? bq("contact", { constraints: [{ key: "_id", constraint_type: "equals", value: im.PROPRIETAIRE }], limit: 1 })
-          .then((r) => r.results[0]).catch(() => undefined)
-      : Promise.resolve(undefined),
-    im.PROPRIETAIRE
-      ? fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: im.PROPRIETAIRE }], 20,
-          undefined, ["adresse_ville", "adresse_numero_rue", "adresse_rue", "Statut"]).catch(() => [])
+  /* Retour #489 : un bien a un propriétaire principal (celui que Bubble
+     connaît) et, en indivision, d'autres — tous des personnes physiques. Il
+     peut en plus être détenu par une société, choisie parmi les leurs. */
+  const idsProprios = proprietairesDe(im);
+  const idSociete = S2(im.SOCIETE_PROPRIETAIRE);
+  const [fichesProprios, autresBruts, tousAgents, societesProprietaires, societeDetentrice] = await Promise.all([
+    idsProprios.length
+      ? fetchAll("contact", [{ key: "_id", constraint_type: "in", value: idsProprios }], 20).catch(() => [])
       : Promise.resolve([] as Record<string, unknown>[]),
+    idsProprios.length ? immeublesDesProprietaires(idsProprios) : Promise.resolve([] as Record<string, unknown>[]),
     loadInitials().then(() => agents()),
+    idsProprios.length
+      ? societesDeContacts(idsProprios).then(nommerSocietes).catch(() => [] as SocieteNommee[])
+      : Promise.resolve([] as SocieteNommee[]),
+    idSociete
+      ? lireSociete(idSociete).then((s) => (s ? nommerSocietes([s]) : [])).then((l) => l[0]).catch(() => undefined)
+      : Promise.resolve(undefined),
   ]);
-  const autres = proprietaire ? autresBruts : [];
+  const proprietaires = idsProprios
+    .map((pid) => fichesProprios.find((c) => String(c._id) === pid))
+    .filter((c): c is Record<string, unknown> => !!c);
+  const proprietaire = proprietaires.find((c) => String(c._id) === S2(im.PROPRIETAIRE)) ?? proprietaires[0];
+  const autres = proprietaires.length ? autresBruts : [];
   const agentEntry = tousAgents.find((a) => a.id === im.AGENT);
 
   return {
@@ -1061,6 +1099,9 @@ export async function getBien(id: string): Promise<BienData | null> {
     agentNom: agentEntry?.name || undefined,
     agentTel: agentEntry?.tel || undefined,
     proprietaire,
+    proprietaires,
+    societesProprietaires,
+    societeDetentrice,
     autresBiens: autres
       .filter((a) => a._id !== id)
       .map((a) => ({
@@ -1191,6 +1232,11 @@ export async function getMandat(id: string): Promise<{
   geo: { lat: number; lon: number } | null;
   /** Cartes de visite des contacts cités, par identifiant (retour #205). */
   vignettes: Record<string, Vignette>;
+  /** La société qui détient l'immeuble, s'il en désigne une (#489) : c'est
+   *  elle qui signe, représentée par l'un de ses associés. */
+  societeDetentrice: SocieteNommee | null;
+  /** Les propriétaires de l'immeuble, principal en tête. */
+  proprietaires: string[];
 } | null> {
   const r = await bq("mandat", {
     constraints: [{ key: "_id", constraint_type: "equals", value: id }],
@@ -1239,8 +1285,17 @@ export async function getMandat(id: string): Promise<{
     // Le propriétaire de l'immeuble : c'est lui, le contact de la fiche.
     S2(im?.PROPRIETAIRE),
   ].filter((x): x is string => !!x);
-  const vignettes = await getVignettes(idsMandants).catch(() => ({}));
-  return { m, im, lots: lotsTries, agent, parcelles, geo, vignettes };
+  const idSociete = S2(im?.SOCIETE_PROPRIETAIRE);
+  const [vignettes, societeDetentrice] = await Promise.all([
+    getVignettes(idsMandants).catch(() => ({})),
+    idSociete
+      ? lireSociete(idSociete).then((s) => (s ? nommerSocietes([s]) : [])).then((l) => l[0] ?? null).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  return {
+    m, im, lots: lotsTries, agent, parcelles, geo, vignettes, societeDetentrice,
+    proprietaires: im ? proprietairesDe(im) : [],
+  };
 }
 
 /* ---------- Vues listes (réplique des modules de la sidebar) ---------- */
@@ -2048,6 +2103,8 @@ export type ContactData = {
   anciennete?: string;
   immeubles: ImmeubleLigne[];
   recherches: RechercheCard[];
+  /** Les sociétés dont ce contact est associé (#489). */
+  societes: SocieteNommee[];
   mandats: MandatLigne[];
   propositions: PropositionLigne[];
   questions: QuestionCard[];
@@ -2102,8 +2159,18 @@ export async function getContact(id: string): Promise<ContactData | null> {
   if (!c) return null;
   await loadInitials();
 
-  const [immeubles, recherchesBO, propositions, questionsBO, visites, offres, suivis, mandats] = await Promise.all([
-    fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 200).catch(() => []),
+  const [immeubles, recherchesBO, propositions, questionsBO, visites, offres, suivis, mandats, societes] = await Promise.all([
+    /* Ses immeubles : ceux dont il est le propriétaire principal, et ceux où
+       il est indivisaire (#489 — « quand on cherche la liste des personnes
+       physiques on tombe sur les immeubles concernés dans leur bien »). */
+    Promise.all([
+      fetchAll("immeuble", [{ key: "PROPRIETAIRE", constraint_type: "equals", value: id }], 200).catch(() => []),
+      fetchAll("immeuble", [{ key: "PROPRIETAIREs", constraint_type: "contains", value: id }], 200).catch(() => []),
+    ]).then(([a, b]) => {
+      const vus = new Map<string, Record<string, unknown>>();
+      for (const im of [...a, ...b]) vus.set(String(im._id), im);
+      return [...vus.values()];
+    }),
     /* Les recherches passent par le moteur de l'écran Recherches : la carte de
        la fiche est exactement celle de l'écran, compteur « à proposer »
        compris. Les deux lectures sont mises en cache, l'appel est donc gratuit
@@ -2116,6 +2183,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
     fetchAll("offre", [{ key: "ACHETEURs", constraint_type: "contains", value: id }], 200).catch(() => []),
     fetchAll("suivi", [{ key: "CONTACT", constraint_type: "equals", value: id }], 300).catch(() => []),
     fetchAll("mandat", [{ key: "MANDANTs", constraint_type: "contains", value: id }], 200).catch(() => []),
+    societesDeContact(id).then(nommerSocietes).catch(() => [] as SocieteNommee[]),
   ]);
 
   /* Un seul aller-retour pour tous les immeubles cités par les autres onglets. */
@@ -2177,6 +2245,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
       } satisfies ImmeubleLigne)),
 
     recherches: recherchesBO.filter((r) => r.contact?.id === id),
+    societes,
 
     mandats: [...mandats]
       .sort((a, b) => String(b.date_effet ?? "").localeCompare(String(a.date_effet ?? "")))

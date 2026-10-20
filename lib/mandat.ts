@@ -50,6 +50,10 @@ export type Mandant = {
   /** Sa qualité dans CE mandat : gérant, indivisaire, usufruitier… */
   fonction?: string;
   societe?: Societe;
+  /** La fiche société du BO (`bo_societe`) que ce mandant représente — retour
+   *  #489 : la société est une entité, le mandat la cite plutôt que de la
+   *  recopier. `societe` reste rempli pour le document et pour Bubble. */
+  societeId?: string;
   /**
    * La société qui représente la société mandante (retour #292).
    *
@@ -118,6 +122,7 @@ export function lireMandants(m: Record<string, unknown>): Mandant[] {
       personne: x.personne === "morale" ? "morale" : "physique",
       fonction: S(x.fonction),
       societe: (x.societe as Societe | undefined) ?? undefined,
+      societeId: S(x.societeId),
       representante: (x.representante as Societe | undefined) ?? undefined,
       cni: S(x.cni),
       kbis: S(x.kbis),

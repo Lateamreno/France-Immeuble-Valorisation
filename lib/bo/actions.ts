@@ -3265,6 +3265,26 @@ export async function majMandants(
     return { ...x, cni: x.cni || a?.cni, kbis: x.kbis || a?.kbis };
   });
 
+  /* Retour #489 — la société est une ENTITÉ : un mandant personne morale
+     crée ou complète sa fiche société et y rattache son représentant avec sa
+     qualité. Le mandat garde l'identifiant (`societeId`) pour la retrouver. */
+  mandants = await Promise.all(mandants.map(async (x) => {
+    if (x.personne !== "morale" || !x.societe?.nom) return x;
+    try {
+      const { creerOuCompleterSociete } = await import("./societes-actions");
+      const societeId = await creerOuCompleterSociete(
+        {
+          nom: x.societe.nom, siren: x.societe.siren, rcs: x.societe.rcs, capital: x.societe.capital,
+          siege: x.societe.siege, kbis: x.kbis, representante: x.representante?.nom ? x.representante : undefined,
+        },
+        x.contactId ? { contactId: x.contactId, fonction: x.fonction } : undefined,
+      );
+      return { ...x, societeId };
+    } catch {
+      return x;
+    }
+  }));
+
   const plat: Record<string, unknown> = champsPlats(mandants);
   plat["Modified Date"] = new Date().toISOString();
 
@@ -3460,6 +3480,8 @@ export type MandantEnregistre = {
   personne: "physique" | "morale";
   fonction?: string;
   societe?: Societe;
+  /** La fiche société du BO que ce mandant représente (#489). */
+  societeId?: string;
   /** La société qui représente la société mandante — les holdings (#292). */
   representante?: Societe;
   cni?: string;

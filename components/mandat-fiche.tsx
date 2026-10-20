@@ -44,6 +44,8 @@ import {
   updateContact, updateMandat,
   type ContactPatch, type EntrepriseTrouvee, type MandantDepuisContact, type MandatPatch, type SocieteConnue,
 } from "@/lib/bo/actions";
+import { chargerSocietesNommeesDuContact, chercherSocietes, type SocieteTrouvee } from "@/lib/bo/societes-actions";
+import { representantDe, type SocieteNommee } from "@/lib/societes";
 
 /**
  * Ce que la fiche contact apporte à une ligne de mandant (retours #133, #287,
@@ -365,6 +367,7 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
                 .filter(Boolean).join(" ")
               : undefined}
             vignettes={vignettes} proprietaireId={proprietaireId}
+            societeDetentrice={d.societeDetentrice}
           />
         )}
         {tab === "Objet" && (
@@ -408,7 +411,7 @@ function useModifie(empreinte: string) {
 
 function OngletMandants({
   mandatId, immeubleId, mandants: init, locked, adresseImmeuble,
-  vignettes, proprietaireId, repris,
+  vignettes, proprietaireId, repris, societeDetentrice,
 }: {
   mandatId: string; immeubleId: string; mandants: Mandant[]; locked: boolean;
   /** D'où viennent les mandants d'un mandat neuf (21/09) : du mandat précédent
@@ -420,14 +423,40 @@ function OngletMandants({
   vignettes: Record<string, VignetteData>;
   /** Le propriétaire de la fiche : mandant par défaut, plutôt que « aucun ». */
   proprietaireId?: string;
+  /** La société qui détient le bien (#489) : sur un mandat neuf, c'est elle
+   *  qui signe, représentée par son gérant ou président. */
+  societeDetentrice?: SocieteNommee | null;
 }) {
   /* Retour #205 : « le contact c'est celui de la fiche du bien, c'est logique ».
      La première ligne adopte donc le propriétaire de la fiche quand elle n'a
      pas déjà le sien — pas seulement à l'affichage : le rattachement est réel,
      sans quoi les pièces déposées resteraient sur le mandat au lieu d'enrichir
      la fiche du client. Les lignes suivantes d'une indivision, elles, se
-     désignent à la main : rien ne dit qui elles sont. */
-  const depart = (init.length ? init : [mandantVide(0)]).map((x, i) =>
+     désignent à la main : rien ne dit qui elles sont.
+
+     Retour #489 : quand la fiche désigne une société détentrice, le mandat
+     neuf part en personne morale, société remplie, représentée par l'associé
+     dont la fonction engage la société. */
+  const premiereLigne = (): Mandant => {
+    const s = societeDetentrice;
+    if (!s) return mandantVide(0);
+    const rep = representantDe(s);
+    const nomRep = rep ? s.associesNommes.find((a) => a.contactId === rep.contactId)?.nom ?? "" : "";
+    const [p, ...r] = nomRep.split(" ");
+    return {
+      ...mandantVide(0),
+      personne: "morale",
+      societeId: s.id,
+      societe: { nom: s.nom, siren: s.siren, rcs: s.rcs, capital: s.capital, siege: s.siege },
+      representante: s.representante?.nom ? s.representante : undefined,
+      kbis: s.kbis,
+      contactId: rep?.contactId,
+      prenom: p || undefined,
+      nom: r.join(" ") || undefined,
+      fonction: rep?.fonction,
+    };
+  };
+  const depart = (init.length ? init : [premiereLigne()]).map((x, i) =>
     i === 0 && !x.contactId && proprietaireId ? { ...x, contactId: proprietaireId } : x);
   const memo = `${MEMO(mandatId)}:mandants`;
   const [rows, setRows] = useMemoire<Mandant[]>(memo, depart);
@@ -599,6 +628,13 @@ type EcartContact = {
   lignes: { champ: string; cle: "Civilité" | "prénom" | "nom"; avant: string; apres: string }[];
 };
 
+/** Une société proposée à la ligne de mandant : celle d'une fiche société
+ *  (#489, avec son identifiant et la fonction du contact), ou celle que
+ *  l'ancienne fiche contact portait. */
+type SocieteChoix = Societe & { entiteId?: string; fonctionAssocie?: string };
+const cleChoix = (s: { siren?: string; nom?: string }) =>
+  (s.siren ?? "").replace(/\D/g, "") || (s.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
 function CarteMandant({
   x, rang, seul, locked, mandatId, immeubleId, adresseImmeuble, vignettes, proprietaireId, onMaj, onSupprimer,
 }: {
@@ -622,7 +658,7 @@ function CarteMandant({
      déduit : sans ça, il aurait fallu le vider depuis l'effet, ce qui déclenche
      un rendu en cascade — et, le temps d'un affichage, les sociétés du contact
      précédent se seraient montrées sous le nom du nouveau. */
-  const [cache, setCache] = useState<{ id: string; liste: Societe[] } | null>(null);
+  const [cache, setCache] = useState<{ id: string; liste: SocieteChoix[] } | null>(null);
   const societesConnues =
     morale && x.contactId && cache?.id === x.contactId ? cache.liste : [];
 
@@ -648,10 +684,25 @@ function CarteMandant({
   useEffect(() => {
     if (!contactId) return;
     let vivant = true;
-    mandantDepuisContact(contactId)
-      .then((f) => {
+    /* Les sociétés du contact : ses FICHES société d'abord (#489, avec leur
+       identifiant et sa fonction d'associé), puis celles que l'ancienne fiche
+       portait et qui n'ont pas encore de fiche. */
+    Promise.all([
+      mandantDepuisContact(contactId),
+      chargerSocietesNommeesDuContact(contactId).catch(() => [] as SocieteTrouvee[]),
+    ])
+      .then(([f, entites]) => {
         if (!vivant || !f) return;
-        setCache({ id: contactId, liste: f.societes ?? [] });
+        const choix: SocieteChoix[] = entites.map((s) => ({
+          nom: s.nom, siren: s.siren, rcs: s.rcs, capital: s.capital, siege: s.siege,
+          representante: s.representante?.nom ? s.representante : undefined,
+          kbis: s.kbis, kbisLe: s.kbisLe,
+          entiteId: s.id,
+          fonctionAssocie: s.associes.find((a) => a.contactId === contactId)?.fonction,
+        }));
+        const cles = new Set(choix.map(cleChoix));
+        for (const s of f.societes ?? []) if (!cles.has(cleChoix(s))) choix.push(s);
+        setCache({ id: contactId, liste: choix });
         const p = completerDepuisContact(x, f, false);
         /* Ne rien appeler quand rien ne change : `onMaj` remonte dans l'état du
            parent, et une mise à jour inconditionnelle relancerait ce même effet
@@ -669,13 +720,35 @@ function CarteMandant({
 
   /* La société choisie dans la liste de la fiche : avec sa holding et son
      Kbis, qui lui appartiennent (retour du 21/09). */
-  const choisirSociete = (s: Societe) => {
-    const { representante, kbis, kbisLe: _le, ...soc } = s;
+  const choisirSociete = (s: SocieteChoix) => {
+    const { representante, kbis, kbisLe: _le, entiteId, fonctionAssocie, ...soc } = s;
     void _le;
     onMaj({
       societe: soc,
+      societeId: entiteId,
       representante: representante?.nom ? representante : x.representante,
       kbis: kbis || x.kbis,
+      /* La fonction que la fiche société connaît à ce contact devient sa
+         qualité au mandat, s'il n'en a pas déjà une. */
+      fonction: x.fonction ?? fonctionAssocie,
+    });
+  };
+  /* Une fiche société trouvée par la recherche (#489) : elle vient avec son
+     représentant quand la ligne n'a pas encore de contact. */
+  const choisirEntite = (s: SocieteTrouvee) => {
+    const rep = representantDe(s);
+    const nomRep = rep ? s.associesNommes.find((a) => a.contactId === rep.contactId)?.nom ?? "" : "";
+    const [p, ...r] = nomRep.split(" ");
+    onMaj({
+      societe: { nom: s.nom, siren: s.siren, rcs: s.rcs, capital: s.capital, siege: s.siege },
+      societeId: s.id,
+      representante: s.representante?.nom ? s.representante : x.representante,
+      kbis: s.kbis || x.kbis,
+      ...(x.contactId
+        ? { fonction: x.fonction ?? s.associes.find((a) => a.contactId === x.contactId)?.fonction }
+        : rep
+          ? { contactId: rep.contactId, prenom: p || undefined, nom: r.join(" ") || undefined, fonction: x.fonction ?? rep.fonction }
+          : {}),
     });
   };
   const demande = champsDuDocument(x);
@@ -741,7 +814,8 @@ function CarteMandant({
             start(async () => {
               const f = await mandantDepuisContact(c.id).catch(() => null);
               if (!f) return;
-              setCache({ id: c.id, liste: f.societes ?? [] });
+              /* La liste des sociétés se remplit par l'effet ci-dessus, qui
+                 relit aussi les fiches société du nouveau contact. */
               const p2 = completerDepuisContact({ ...x, contactId: c.id, email: c.email }, f, true);
               if (Object.keys(p2).length) onMaj(p2);
             });
@@ -859,18 +933,20 @@ function CarteMandant({
             <div className="mdt-socs">
               <span className="l">Sociétés de {[x.prenom, x.nom].filter(Boolean).join(" ") || "ce contact"}</span>
               {societesConnues.map((s) => {
-                const active = (s.siren && s.siren === x.societe?.siren)
+                const active = (!!s.entiteId && s.entiteId === x.societeId)
+                  || (s.siren && s.siren === x.societe?.siren)
                   || (!!s.nom && s.nom === x.societe?.nom);
                 return (
                   <button
-                    key={`${s.siren ?? ""}-${s.nom ?? ""}`} type="button"
+                    key={`${s.entiteId ?? ""}-${s.siren ?? ""}-${s.nom ?? ""}`} type="button"
                     className={`mdt-soc-choix${active ? " on" : ""}`}
                     title={active ? "Société retenue pour ce mandat" : "Retenir cette société pour ce mandat"}
                     onClick={() => choisirSociete(s)}
                   >
                     <b>{s.nom}</b>
                     <i>
-                      {[s.siren && `SIREN ${s.siren}`, s.representante?.nom && `via ${s.representante.nom}`, s.kbis && "Kbis au coffre"]
+                      {[s.siren && `SIREN ${s.siren}`, s.fonctionAssocie, s.representante?.nom && `via ${s.representante.nom}`,
+                        s.kbis && "Kbis au coffre", s.entiteId ? "fiche société" : "ancienne fiche"]
                         .filter(Boolean).join(" · ") || "à compléter"}
                     </i>
                   </button>
@@ -880,6 +956,7 @@ function CarteMandant({
           )}
           {!locked && (
             <ChercheSociete
+              onChoisirEntite={choisirEntite}
               onChoisirConnue={(k) => {
                 choisirSociete(k.societe);
                 /* Une société d'une autre fiche, sur une ligne sans contact :
@@ -1124,41 +1201,48 @@ function QuiPossede({ adresse, onRetenir }: {
  * la raison sociale, le SIREN et le siège se remplissent seuls. Restent le
  * capital et le RCS, qui viennent du registre du commerce.
  */
-function ChercheSociete({ onChoisir, onChoisirConnue }: {
+function ChercheSociete({ onChoisir, onChoisirConnue, onChoisirEntite }: {
   onChoisir: (e: EntrepriseTrouvee) => void;
   /** Une société déjà enregistrée dans le BO, sur une fiche contact (21/09). */
   onChoisirConnue?: (k: SocieteConnue) => void;
+  /** Une FICHE société du BO (#489), avec ses associés. */
+  onChoisirEntite?: (s: SocieteTrouvee) => void;
 }) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<EntrepriseTrouvee[]>([]);
   const [connues, setConnues] = useState<SocieteConnue[]>([]);
+  const [entites, setEntites] = useState<SocieteTrouvee[]>([]);
   const [cherche, setCherche] = useState(false);
   const [vide, setVide] = useState(false);
 
   useEffect(() => {
     const t = q.trim();
     const timer = setTimeout(() => {
-      if (t.length < 3) { setRes([]); setConnues([]); setVide(false); setCherche(false); return; }
+      if (t.length < 3) { setRes([]); setConnues([]); setEntites([]); setVide(false); setCherche(false); return; }
       setCherche(true);
-      /* Deux sources, la nôtre d'abord (retour du 21/09) : une société déjà
-         saisie sur une fiche contact arrive avec son capital, son RCS, sa
-         holding et son Kbis — l'annuaire public, lui, ne connaît ni les uns
-         ni les autres. */
+      /* Trois sources, les nôtres d'abord : les fiches société (#489), puis
+         les sociétés des anciennes fiches contact (21/09) — elles arrivent
+         avec leur capital, leur RCS, leur holding et leur Kbis —, et enfin
+         l'annuaire public, qui ne connaît ni les uns ni les autres. */
       Promise.all([
+        onChoisirEntite ? chercherSocietes(t).catch(() => [] as SocieteTrouvee[]) : Promise.resolve([] as SocieteTrouvee[]),
         onChoisirConnue ? societesDuBO(t).catch(() => [] as SocieteConnue[]) : Promise.resolve([] as SocieteConnue[]),
         chercherEntreprise(t).catch(() => [] as EntrepriseTrouvee[]),
       ])
-        .then(([k, r]) => {
-          const deja = new Set(k.map((x) => (x.societe.siren ?? "").replace(/\D/g, "")).filter(Boolean));
-          const reste = r.filter((e) => !deja.has(e.siren.replace(/\D/g, "")));
-          setConnues(k); setRes(reste); setVide(k.length === 0 && reste.length === 0);
+        .then(([e, k, r]) => {
+          const dejaE = new Set(e.map((x) => (x.siren ?? "").replace(/\D/g, "")).filter(Boolean));
+          const nomsE = new Set(e.map((x) => x.nom.toUpperCase().replace(/[^A-Z0-9]/g, "")));
+          const k2 = k.filter((x) => !dejaE.has((x.societe.siren ?? "").replace(/\D/g, "")) && !nomsE.has((x.societe.nom ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "")));
+          const deja = new Set([...dejaE, ...k2.map((x) => (x.societe.siren ?? "").replace(/\D/g, ""))].filter(Boolean));
+          const reste = r.filter((x) => !deja.has(x.siren.replace(/\D/g, "")));
+          setEntites(e); setConnues(k2); setRes(reste); setVide(e.length === 0 && k2.length === 0 && reste.length === 0);
         })
         .finally(() => setCherche(false));
     }, t.length < 3 ? 0 : 350);
     return () => clearTimeout(timer);
-  }, [q, onChoisirConnue]);
+  }, [q, onChoisirConnue, onChoisirEntite]);
 
-  const fermer = () => { setQ(""); setRes([]); setConnues([]); };
+  const fermer = () => { setQ(""); setRes([]); setConnues([]); setEntites([]); };
 
   return (
     <div className="mdt-soc">
@@ -1168,8 +1252,22 @@ function ChercheSociete({ onChoisir, onChoisirConnue }: {
           placeholder="Rechercher la société — raison sociale ou SIREN" />
         {cherche && <i>…</i>}
       </label>
-      {(connues.length > 0 || res.length > 0) && (
+      {(entites.length > 0 || connues.length > 0 || res.length > 0) && (
         <div className="mdt-soc-l">
+          {entites.length > 0 && <span className="src haut">Fiches société du BO</span>}
+          {entites.map((s) => (
+            <button key={`ent-${s.id}`} type="button"
+              onClick={() => { onChoisirEntite?.(s); fermer(); }}>
+              <b>{s.nom}</b>
+              <span>
+                {[s.siren && `SIREN ${s.siren}`, s.siege,
+                  s.associesNommes.length
+                    ? s.associesNommes.map((a) => `${a.nom}${a.fonction ? ` (${a.fonction.toLowerCase()})` : ""}`).join(", ")
+                    : "aucun associé rattaché",
+                  s.kbis && "Kbis au coffre"].filter(Boolean).join(" · ")}
+              </span>
+            </button>
+          ))}
           {connues.length > 0 && <span className="src haut">Déjà dans le BO — sur une fiche contact</span>}
           {connues.map((k) => (
             <button key={`bo-${k.contactId}-${k.societe.siren ?? k.societe.nom}`} type="button"

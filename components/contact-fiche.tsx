@@ -12,7 +12,10 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Copier } from "@/components/copier";
-import { Modale } from "@/components/modale";
+import { Modale, useQuestion } from "@/components/modale";
+import { SocietePicker } from "@/components/societe-picker";
+import { creerOuCompleterSociete, detacherAssocie, rattacherAssocie } from "@/lib/bo/societes-actions";
+import { FONCTIONS_ASSOCIE, cleSociete as cleEntite, sousTitreSociete, type SocieteNommee } from "@/lib/societes";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { PuceImmeuble } from "@/components/puce-immeuble";
 import { Champ } from "@/components/champ";
@@ -283,17 +286,6 @@ export function ContactFiche({ d, echanges = [], compte }: {
     capital: capital ? Number(capital.replace(/[^\d.]/g, "")) : undefined,
     siege: siege || undefined,
   });
-  const autresSocietes = societes.filter(
-    (s) => s.nom && cleSociete(s) && cleSociete(s) !== cleSociete(societeCourante()),
-  );
-  const mettreAuPremierPlan = (s: Soc) => {
-    setSocietes(fusionnerSociete(societes, societeCourante()));
-    setEntreprise(s.nom ?? "");
-    setSiren(s.siren ?? "");
-    setRcs(s.rcs ?? "");
-    setCapital(s.capital === undefined ? "" : String(s.capital));
-    setSiege(s.siege ?? "");
-  };
   const [remarques, setRemarques] = useState(S(c.remarques));
   const [source, setSource] = useState(S(c.Source));
   const [notifSms, setNotifSms] = useState(c.notif_sms === true);
@@ -561,67 +553,27 @@ export function ContactFiche({ d, echanges = [], compte }: {
                 </Ligne>
               </Bloc>
 
-              <Bloc titre="Société" picto="societe">
-                <Champ libelle="Raison sociale" gauche className={LIGNE}>
-                  <input value={entreprise} onChange={(e) => setEntreprise(e.target.value)} />
-                </Champ>
-                <div className="cfx-duo">
-                  <Champ libelle="Poste" gauche className={LIGNE}>
-                  <input value={poste} onChange={(e) => setPoste(e.target.value)} />
-                </Champ>
-                  <Champ libelle="Capital Social" gauche className={LIGNE}>
-                  <input className="droite" value={capital} onChange={(e) => setCapital(e.target.value)} />
-                </Champ>
-                </div>
-                <div className="cfx-duo">
-                  <Champ libelle="SIREN" gauche className={LIGNE}>
-                  <input value={siren} onChange={(e) => setSiren(e.target.value)} />
-                </Champ>
-                  <Champ libelle="RCS" gauche className={LIGNE}>
-                  <input value={rcs} onChange={(e) => setRcs(e.target.value)} />
-                </Champ>
-                </div>
-                <Champ libelle="Siège social" gauche className={LIGNE}>
-                  <input value={siege} onChange={(e) => setSiege(e.target.value)} />
-                </Champ>
-                <Ligne label="K-bis">
-                  <PieceJointe url={c.entreprise_kbis} contactId={id} cle="kbis"
-                    depose={c.entreprise_kbis_depose_le} />
-                </Ligne>
-                {/* Retour #487 : un propriétaire peut avoir plusieurs
-                    sociétés. Le bouton range celle qui est affichée dans la
-                    liste et vide les cases pour la suivante ; un clic sur une
-                    société de la liste la remet au premier plan. */}
-                <Ligne label="">
-                  <button type="button" className="fadd" disabled={!entreprise.trim()}
-                    title={entreprise.trim() ? "Ranger cette société et en saisir une autre" : "Saisissez d'abord le nom de la société affichée"}
-                    onClick={() => {
-                      setSocietes(fusionnerSociete(societes, societeCourante()));
-                      setEntreprise(""); setSiren(""); setRcs(""); setCapital(""); setSiege("");
-                    }}>
-                    + Ajouter une autre société
-                  </button>
-                </Ligne>
-                {autresSocietes.length > 0 && (
-                  <Ligne label="Autres sociétés">
-                    <div className="cfx-socs">
-                      {autresSocietes.map((s) => (
-                        <button key={cleSociete(s)} type="button" className="cfx-soc"
-                          title="Afficher cette société ci-dessus"
-                          onClick={() => mettreAuPremierPlan(s)}>
-                          <b>{s.nom}</b>
-                          {(s.siren || s.representante?.nom || s.kbis) && (
-                            <i>
-                              {[s.siren && `SIREN ${s.siren}`, s.representante?.nom && `via ${s.representante.nom}`,
-                                s.kbis && `Kbis${s.kbisLe ? ` du ${dmy(s.kbisLe) ?? s.kbisLe}` : ""}`]
-                                .filter(Boolean).join(" · ")}
-                            </i>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </Ligne>
-                )}
+              {/* Retour #489 — la société est une ENTITÉ, plus un bloc de cases
+                  sur la personne : une fiche à part, avec ses associés et leur
+                  fonction. Ici, la liste des sociétés dont ce contact est
+                  associé ; la fiche de chacune s'ouvre d'un clic. Ce que
+                  l'ancienne fiche portait dans « entreprise » reste lisible en
+                  dessous tant qu'il n'a pas de fiche société. */}
+              <Bloc titre="Sociétés" picto="societe">
+                <SocietesContact
+                  contactId={id}
+                  societes={d.societes}
+                  legacy={entreprise.trim() ? {
+                    nom: entreprise.trim(),
+                    siren: siren.trim() || undefined,
+                    rcs: rcs.trim() || undefined,
+                    capital: capital ? Number(capital.replace(/[^\d.]/g, "")) || undefined : undefined,
+                    siege: siege.trim() || undefined,
+                    poste: poste.trim() || undefined,
+                    kbis: S(c.entreprise_kbis) || undefined,
+                    kbisLe: S(c.entreprise_kbis_depose_le).slice(0, 10) || undefined,
+                  } : undefined}
+                />
               </Bloc>
             </div>
 
@@ -901,6 +853,102 @@ function Bloc({ titre, picto, children }: { titre: string; picto: string; childr
       <h2><span className="cfx-ic or"><svg viewBox="0 0 24 24">{PICTOS[picto]}</svg></span>{titre}</h2>
       {children}
     </section>
+  );
+}
+
+/* --- Les sociétés du contact, en entités (#489) --- */
+
+type SocieteLegacy = {
+  nom: string; siren?: string; rcs?: string; capital?: number; siege?: string;
+  poste?: string; kbis?: string; kbisLe?: string;
+};
+
+function SocietesContact({ contactId, societes, legacy }: {
+  contactId: string;
+  societes: SocieteNommee[];
+  /** Ce que l'ancienne fiche portait dans ses cases « entreprise ». */
+  legacy?: SocieteLegacy;
+}) {
+  const [picker, setPicker] = useState(false);
+  const [, start] = useTransition();
+  const { confirmer, question } = useQuestion();
+  const dejaEntite = legacy ? societes.some((s) => cleEntite(s) === cleEntite(legacy)) : true;
+  return (
+    <>
+      {societes.length === 0 && (!legacy || dejaEntite) && (
+        <div className="fempty">Aucune société rattachée à cette personne.</div>
+      )}
+      <div className="cfx-socl">
+        {societes.map((s) => (
+          <LigneSociete key={s.id} contactId={contactId} s={s}
+            onDetacher={() => confirmer(
+              `${s.nom} ne sera plus rattachée à cette personne. La société et ses autres associés restent en place.`,
+              { titre: "Détacher cette société ?", oui: "Détacher", danger: true },
+            ).then((oui) => { if (oui) start(() => detacherAssocie(s.id, contactId)); })}
+          />
+        ))}
+      </div>
+      {legacy && !dejaEntite && (
+        <div className="cfx-socl-anc">
+          <span>
+            Sur l&apos;ancienne fiche : <b>{legacy.nom}</b>
+            {legacy.siren ? ` · SIREN ${legacy.siren}` : ""}{legacy.poste ? ` · ${legacy.poste}` : ""}
+          </span>
+          <button type="button" className="mdt-lien"
+            onClick={() => start(async () => {
+              await creerOuCompleterSociete(
+                { nom: legacy.nom, siren: legacy.siren, rcs: legacy.rcs, capital: legacy.capital, siege: legacy.siege, kbis: legacy.kbis, kbisLe: legacy.kbisLe },
+                { contactId, fonction: legacy.poste },
+              );
+            })}>
+            Créer sa fiche société
+          </button>
+        </div>
+      )}
+      <button type="button" className="fadd" style={{ marginTop: 8 }} onClick={() => setPicker(true)}>
+        + Rattacher une société
+      </button>
+      {picker && (
+        <SocietePicker
+          titre="Rattacher une société à cette personne"
+          associe={{ contactId }}
+          demanderFonction
+          onAnnuler={() => setPicker(false)}
+          onValider={() => setPicker(false)}
+        />
+      )}
+      {question}
+    </>
+  );
+}
+
+function LigneSociete({ contactId, s, onDetacher }: {
+  contactId: string; s: SocieteNommee; onDetacher: () => void;
+}) {
+  const a = s.associes.find((x) => x.contactId === contactId);
+  const [fonction, setFonction] = useState(a?.fonction ?? "");
+  const [, start] = useTransition();
+  const autres = s.associesNommes.filter((x) => x.contactId !== contactId);
+  return (
+    <div className={`cfx-socl-l${fonction.trim() ? "" : " sans"}`}>
+      <Link className="nom" href={`/societe/${s.id}`} title="Ouvrir la fiche de la société">
+        {s.nom}
+        <i className="det">
+          {[sousTitreSociete(s), autres.length ? `avec ${autres.map((x) => x.nom).join(", ")}` : ""]
+            .filter(Boolean).join(" · ") || "immatriculation à renseigner"}
+        </i>
+      </Link>
+      <input list={`cfx-fonctions-${s.id}`} value={fonction} placeholder="Fonction — à préciser"
+        title="Sa fonction dans cette société : gérant, président, associé, actionnaire…"
+        onChange={(e) => setFonction(e.target.value)}
+        onBlur={() => {
+          if ((fonction.trim() || "") !== (a?.fonction ?? "")) start(() => rattacherAssocie(s.id, contactId, fonction.trim() || undefined));
+        }} />
+      <datalist id={`cfx-fonctions-${s.id}`}>
+        {FONCTIONS_ASSOCIE.map((f) => <option key={f} value={f} />)}
+      </datalist>
+      <button type="button" className="xdel" title="Détacher cette société" onClick={onDetacher}>✕</button>
+    </div>
   );
 }
 
