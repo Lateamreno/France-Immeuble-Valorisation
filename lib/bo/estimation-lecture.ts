@@ -7,7 +7,7 @@
  * rien changer à ce qu'on a envoyé au propriétaire.
  */
 
-import { SFX } from "@/lib/bo/dossier";
+import { construireDossier, SFX } from "@/lib/bo/dossier";
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const txt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -44,6 +44,22 @@ export type EstimationLecture = {
   scores: { emp?: number; bati?: number; lot?: number };
   cibles: string[];
   analyse?: string;
+  /** Retour #492 — le bilan du prix retenu, en deux colonnes : le bien tel
+   *  qu'il est (prix HAI, loyers en place) et tel qu'il sera travaux faits et
+   *  lots reloués (prix + travaux, loyers potentiels). Mêmes formules que le
+   *  dossier envoyé au propriétaire (`construireDossier`). */
+  bilan: {
+    actuel: { prix: number; prixM2: number; loyers: number; brut: number; net: number; aem: number };
+    potentiel: { prix: number; prixM2: number; loyers: number; brut: number; net: number; aem: number };
+    identiques: boolean;
+  };
+  /** Les trois chiffres qui font le prix : surfaces, loyers, travaux. */
+  cles: {
+    carrez: number; carrezOcc: number; occupation: number; lots: number;
+    loyers: number; loyersMax: number;
+    travaux: number; travauxBati: number; travauxLots: number;
+    charges: number;
+  };
 };
 
 const eur = (v?: number) => (v === undefined ? undefined : `${Math.round(v).toLocaleString("fr-FR")} €`);
@@ -88,6 +104,10 @@ export function lireEstimation(
     ?? (hai && honosPct ? Math.round(hai / (1 + honosPct / 100)) : undefined);
   const carrez = num(e.imm_carrez_tot_tot);
   const loyers = num(e.imm_loyer_hc_tot);
+  /* Le bilan actuel / potentiel et les chiffres clés viennent du même calcul
+     que le dossier PDF : un chiffre affiché ici est celui qui est parti au
+     propriétaire. */
+  const d = construireDossier(e, agent);
 
   const blocs: Bloc[] = [
     {
@@ -164,5 +184,16 @@ export function lireEstimation(
     },
     cibles: Array.isArray(e.Cibles) ? (e.Cibles as unknown[]).map(String) : [],
     analyse: txt(e.analyse),
+    bilan: {
+      actuel: { prix: d.prix.hai, loyers: d.loyers, ...d.bilan.actuel },
+      potentiel: { prix: d.prix.hai + d.travaux, loyers: d.loyersMax || d.loyers, ...d.bilan.potentiel },
+      identiques: d.bilan.identiques,
+    },
+    cles: {
+      carrez: d.carrez, carrezOcc: d.total.surfaceOcc, occupation: d.occupation, lots: d.total.lots,
+      loyers: d.loyers, loyersMax: d.loyersMax,
+      travaux: d.travaux, travauxBati: d.travauxBati, travauxLots: d.travauxLots,
+      charges: d.charges,
+    },
   };
 }

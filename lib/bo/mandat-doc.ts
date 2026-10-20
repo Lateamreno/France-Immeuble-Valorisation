@@ -181,6 +181,8 @@ export type DocMandat = {
   mandants: DocMandant[];
   contactNegociateur: string;
   emailNegociateur: string;
+  /** L'agent qui suit le dossier, nommé au cartouche du mandataire (#491). */
+  agentNom?: string;
 
   designation: string[];
   compo: LigneCompo[];
@@ -712,6 +714,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
       introMandants, mandants,
       contactNegociateur: [e.negociateur?.tel, e.negociateur?.email].filter(Boolean).join(" — ") || MANDATAIRE.contactDefaut,
       emailNegociateur: negoEmail,
+      agentNom: S(e.negociateur?.nom) || undefined,
       designation, compo, compoTotal, avecLoyer,
       prixParagraphe, prixVignettes, prixRegistre, prixNote,
       registre, dureeParagraphes, apparent, dureeFine, friseLead, frise,

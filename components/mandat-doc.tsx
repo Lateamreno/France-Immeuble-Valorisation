@@ -123,6 +123,9 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
               <dt>Carte professionnelle</dt><dd>{MANDATAIRE.carte}</dd>
               <dt>Garantie et assurance</dt><dd>{MANDATAIRE.garantie}</dd>
               <dt>Représenté par</dt><dd>{MANDATAIRE.representant}</dd>
+              {/* Retour #491 : l'agent qui suit le dossier, nommé sous le
+                  représentant légal — c'est lui que le mandant connaît. */}
+              {d.agentNom && <><dt>Agent</dt><dd>{d.agentNom}</dd></>}
               <dt>Contact</dt><dd>{d.contactNegociateur}</dd>
             </dl>
             <p className="pty-foot">Le Mandataire ne reçoit aucun fonds, effet ou valeur au titre des présentes.</p>

@@ -55,6 +55,10 @@ import { Avion, Corbeille, Picto } from "@/components/pictos";
 import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
+import { SocietePicker } from "@/components/societe-picker";
+import { useQuestion } from "@/components/modale";
+import { ajouterProprietaire, definirSocieteDetentrice, retirerProprietaire } from "@/lib/bo/societes-actions";
+import { sousTitreSociete } from "@/lib/societes";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { ModaleRechercheEdition, type DepartRecherche } from "@/components/recherche-modale";
 import {
@@ -965,6 +969,135 @@ function ApporteurCard({ b }: { b: BienData }) {
  * mois, distingue « vendu à » d'une correction de saisie, et c'est la seule
  * chose que l'historique gardera de ce clic.
  */
+/**
+ * Les propriétaires du bien, et la société qui le détient (retour #489).
+ *
+ * MAV : « un bien peut appartenir à une société, plusieurs propriétaires
+ * personne physique aussi, plusieurs propriétaires indivisaires. Les immeubles
+ * seront toujours rattachés à une ou plusieurs personnes physiques. La société
+ * n'est là que comme entité de facturation et comme signataire du mandat. »
+ *
+ * D'où deux étages : les PERSONNES — le propriétaire principal, que Bubble
+ * connaît, et les indivisaires qu'on ajoute ici —, puis, en dessous, la
+ * société détentrice, choisie parmi les sociétés de ces personnes (ou créée
+ * et rattachée au principal, fonction à préciser sur sa fiche).
+ */
+function Proprietaires({ b }: { b: BienData }) {
+  const [, start] = useTransition();
+  const [picker, setPicker] = useState(false);
+  const [socPicker, setSocPicker] = useState(false);
+  const { confirmer, question } = useQuestion();
+  const imId = String(b.im._id);
+  const principalId = String(b.im.PROPRIETAIRE ?? "");
+  const nomDe = (c: Record<string, unknown>) =>
+    `${String(c["prénom"] ?? "")} ${String(c.nom ?? "")}`.trim() || String(c.email ?? "—");
+  const det = b.societeDetentrice;
+  const plusieurs = b.proprietaires.length > 1;
+
+  return (
+    <div className="pr-cadre">
+      <div className="pr-titre">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2" /><circle cx="12" cy="9.6" r="2.9" /><path d="M6.6 18.6c.9-2.6 2.9-3.8 5.4-3.8s4.5 1.2 5.4 3.8" /></svg>
+        {plusieurs ? "Propriétaires" : "Propriétaire"}
+      </div>
+      <div className="pr-proprios">
+        {b.proprietaires.length === 0 && <span className="pr-chip off">Aucun propriétaire lié</span>}
+        {b.proprietaires.map((c) => {
+          const id = String(c._id);
+          const principal = id === principalId;
+          return (
+            <span key={id} className="pr-chip">
+              <Link href={`/contact/${id}`}>
+                <svg viewBox="0 0 24 24">{I.user}</svg>
+                {nomDe(c).toUpperCase()}
+              </Link>
+              {plusieurs && principal && <span className="r">principal</span>}
+              {!principal && (
+                <button type="button" className="x" title="Retirer cet indivisaire"
+                  onClick={() => confirmer(
+                    `${nomDe(c)} ne sera plus propriétaire de cet immeuble. Sa fiche contact n'est pas modifiée.`,
+                    { titre: "Retirer ce propriétaire ?", oui: "Retirer", danger: true },
+                  ).then((oui) => { if (oui) start(() => retirerProprietaire(imId, id)); })}>
+                  ✕
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <div className="pr-soc liens" style={{ borderTop: 0, paddingTop: 0, marginTop: 4 }}>
+        <ChangerProprietaire b={b} />
+        <button type="button" className="pr-chg" onClick={() => setPicker(true)}
+          title="Un autre propriétaire du même immeuble : indivision, usufruit, nue-propriété">
+          <svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.4" /><path d="M3.5 20c.7-4 3.2-5.6 6.5-5.6M17 12v6M14 15h6" /></svg>
+          Ajouter un indivisaire
+        </button>
+      </div>
+
+      <div className="pr-soc">
+        <div className="k">Détenu par une société</div>
+        {det ? (
+          <>
+            <Link href={`/societe/${det.id}`} className="pr-soc-chip" title="Ouvrir la fiche de la société">
+              <svg viewBox="0 0 24 24"><path d="M4 20V9.5l5-2.5V20M9 20V4.5l5 2v13.5M14 20v-8h6v8M4 20h17" /></svg>
+              <span>
+                <b>{det.nom}</b>
+                <br />
+                <i>
+                  {[
+                    sousTitreSociete(det),
+                    det.associesNommes.length
+                      ? det.associesNommes.map((a) => `${a.nom}${a.fonction ? ` (${a.fonction.toLowerCase()})` : " (fonction à préciser)"}`).join(", ")
+                      : "aucun associé rattaché",
+                  ].filter(Boolean).join(" — ")}
+                </i>
+              </span>
+            </Link>
+            <div className="liens">
+              <button type="button" className="mdt-lien" onClick={() => setSocPicker(true)}>Changer de société</button>
+              <button type="button" className="mdt-lien"
+                onClick={() => start(() => definirSocieteDetentrice(imId, null))}>
+                Détenu en direct par {plusieurs ? "les propriétaires" : "le propriétaire"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <select value="" onChange={(e) => {
+            const v = e.target.value;
+            if (v === "+") setSocPicker(true);
+            else if (v) start(() => definirSocieteDetentrice(imId, v));
+          }}>
+            <option value="">Non — détenu en direct par {plusieurs ? "les propriétaires" : "le propriétaire"}</option>
+            {b.societesProprietaires.map((s) => (
+              <option key={s.id} value={s.id}>{s.nom}{s.siren ? ` — SIREN ${s.siren}` : ""}</option>
+            ))}
+            <option value="+">Une autre société…</option>
+          </select>
+        )}
+      </div>
+
+      {picker && (
+        <ContactPicker
+          titre="Ajouter un propriétaire de l'immeuble"
+          libelleValider="Ajouter comme propriétaire"
+          onAnnuler={() => setPicker(false)}
+          onValider={(ct) => { setPicker(false); start(() => ajouterProprietaire(imId, ct.id)); }}
+        />
+      )}
+      {socPicker && (
+        <SocietePicker
+          titre="La société qui détient l'immeuble"
+          associe={principalId ? { contactId: principalId } : undefined}
+          demanderFonction
+          onAnnuler={() => setSocPicker(false)}
+          onValider={(id) => { setSocPicker(false); start(() => definirSocieteDetentrice(imId, id)); }}
+        />
+      )}
+      {question}
+    </div>
+  );
+}
+
 function ChangerProprietaire({ b }: { b: BienData }) {
   const [picker, setPicker] = useState(false);
   const [cible, setCible] = useState<{ id: string; nom: string } | null>(null);
@@ -1098,21 +1231,7 @@ function ProprioSection({ b, espace, compteActif }: {
 
   return (
     <>
-      <div className="pr-cadre">
-        <div className="pr-titre">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2" /><circle cx="12" cy="9.6" r="2.9" /><path d="M6.6 18.6c.9-2.6 2.9-3.8 5.4-3.8s4.5 1.2 5.4 3.8" /></svg>
-          Propriétaire
-        </div>
-        {c ? (
-          <Link className="pr-chip" href={`/contact/${String(c._id)}`}>
-            <svg viewBox="0 0 24 24">{I.user}</svg>
-            {(nomComplet || "—").toUpperCase()}
-          </Link>
-        ) : (
-          <span className="pr-chip off">Aucun propriétaire lié</span>
-        )}
-        <ChangerProprietaire b={b} />
-      </div>
+      <Proprietaires b={b} />
 
       <div className="pr-duo">
         <div className={`pr-case${profilTxt.trim() ? "" : " vide-req"}`}>
