@@ -225,8 +225,9 @@ export type SyntheseLocative = {
   libres: number;
   surface: number;
   loyerMensuel: number;
-  /** Détail par destination, pour le descriptif légal. */
-  parDestination: { destination: string; nb: number; surface: number }[];
+  /** Détail par destination, pour le descriptif légal — avec ses typologies
+   *  (« 2 T2, 1 T3 »), que le mandat doit nommer (#490). */
+  parDestination: { destination: string; nb: number; surface: number; types: { type: string; nb: number }[] }[];
   baux: string[];
   /** Un seul lot libre suffit à interdire « vendu occupé » sans réserve. */
   occupation: "occupe" | "libre" | "mixte";
@@ -256,7 +257,7 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
   let occupes = 0;
   let surface = 0;
   let loyerMensuel = 0;
-  const parDest = new Map<string, { nb: number; surface: number }>();
+  const parDest = new Map<string, { nb: number; surface: number; types: Map<string, number> }>();
   const baux = new Set<string>();
 
   for (const l of lots) {
@@ -272,8 +273,10 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
     const s = N(l.surface_carrez) ?? N(l.surface_sol) ?? 0;
     surface += s;
     const d = String(l.Destination ?? "Autre");
-    const acc = parDest.get(d) ?? { nb: 0, surface: 0 };
-    parDest.set(d, { nb: acc.nb + 1, surface: acc.surface + s });
+    const acc = parDest.get(d) ?? { nb: 0, surface: 0, types: new Map<string, number>() };
+    const t = S(l.Type_lot);
+    if (t) acc.types.set(t, (acc.types.get(t) ?? 0) + 1);
+    parDest.set(d, { nb: acc.nb + 1, surface: acc.surface + s, types: acc.types });
   }
 
   return {
@@ -283,7 +286,12 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
     surface: Math.round(surface),
     loyerMensuel: Math.round(loyerMensuel),
     parDestination: [...parDest.entries()]
-      .map(([destination, v]) => ({ destination, ...v, surface: Math.round(v.surface) }))
+      .map(([destination, v]) => ({
+        destination,
+        nb: v.nb,
+        surface: Math.round(v.surface),
+        types: [...v.types.entries()].map(([type, nb]) => ({ type, nb })).sort((a, b) => b.nb - a.nb || a.type.localeCompare(b.type)),
+      }))
       .sort((a, b) => b.nb - a.nb),
     baux: [...baux].sort(),
     occupation: occupes === 0 ? "libre" : occupes === lots.length ? "occupe" : "mixte",
@@ -344,7 +352,10 @@ export function descriptifLegal(
 
   const nature = natureImmeuble(lots);
   const ville = String(im.adresse_ville ?? "").trim();
-  const terrain = surfaceTerrain ? `, sur un terrain de ${group(surfaceTerrain)} m²` : "";
+  /* Retour #490 — « n'oublie pas de mettre environ pour les surfaces, pour ne
+     pas être lié par le document » : toute surface du descriptif est donnée
+     « environ ». Les loyers, eux, sont ceux des baux : ils restent exacts. */
+  const terrain = surfaceTerrain ? `, sur un terrain d'environ ${group(surfaceTerrain)} m²` : "";
 
   phrases.push(
     discret
@@ -356,11 +367,21 @@ export function descriptifLegal(
   );
 
   if (s.lots > 0) {
+    /* Les typologies se nomment (#490) : « 4 lots à destination logement
+       (2 T2, 2 T3, environ 180 m²) ». Un type qui ne dit rien de plus que la
+       destination (« Logement », « Commerce ») n'est pas répété. */
     const detail = s.parDestination
-      .map((d) => `${pluriel(d.nb, "lot")} à destination ${d.destination.toLowerCase()}${d.surface ? ` (${group(d.surface)} m²)` : ""}`)
+      .map((d) => {
+        const types = d.types
+          .filter((t) => t.type.toLowerCase() !== d.destination.toLowerCase())
+          .map((t) => `${t.nb} ${t.type}`)
+          .join(", ");
+        const entre = [types, d.surface ? `environ ${group(d.surface)} m²` : ""].filter(Boolean).join(", ");
+        return `${pluriel(d.nb, "lot")} à destination ${d.destination.toLowerCase()}${entre ? ` (${entre})` : ""}`;
+      })
       .join(", ");
     phrases.push(
-      `L'immeuble comporte ${pluriel(s.lots, "lot")} pour une surface habitable et utile totale de ${group(s.surface)} m² : ${detail}.`,
+      `L'immeuble comporte ${pluriel(s.lots, "lot")} pour une surface habitable et utile totale d'environ ${group(s.surface)} m² : ${detail}.`,
     );
   }
 

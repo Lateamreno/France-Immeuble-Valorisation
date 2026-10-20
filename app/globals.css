@@ -191,7 +191,10 @@ button { font-family: inherit; cursor: pointer; }
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  /* Retour #494 — « recopie les ombres autour des trois barres, ça donne un
+     aspect plus profond » : l'ombre portée de l'ancien BO, nette au contact et
+     diffuse en dessous, à la place du voile d'un pixel. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .14), 0 4px 12px rgba(0, 0, 0, .12);
   margin-bottom: 16px;
   /* Surtout pas `overflow: hidden` : le menu « … » d'une carte est un
      positionnement absolu, et le bloc le coupait net — il passait sous la

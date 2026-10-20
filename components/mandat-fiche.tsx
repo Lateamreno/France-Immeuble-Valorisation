@@ -1375,7 +1375,18 @@ function OngletObjet({
     [im, lots, cad, terrain],
   );
   const dejaEcrit = S(m.description);
-  const [libre, setLibre] = useMemoire(`${memo}:libre`, !!dejaEcrit && dejaEcrit !== auto);
+  /* Retour #490 — « je veux que le descriptif porté au mandat soit un
+     descriptif vraiment fait pour le mandat ; celui du dossier de l'immeuble ne
+     correspond pas ». Bubble recopie le descriptif commercial de l'immeuble
+     dans le mandat à sa création : ce texte-là n'est pas une rédaction à la
+     main, il ne doit pas verrouiller l'écran en mode libre. On le reconnaît à
+     ce qu'il est celui de la fiche (ou commence comme lui), et le mandat
+     repart alors sur le descriptif légal, rédigé depuis l'état locatif. */
+  const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+  const descFiche = norm(S(im?.descriptif));
+  const vientDeLaFiche = !!dejaEcrit && descFiche.length > 40
+    && (norm(dejaEcrit) === descFiche || descFiche.startsWith(norm(dejaEcrit).slice(0, 60)));
+  const [libre, setLibre] = useMemoire(`${memo}:libre`, !!dejaEcrit && dejaEcrit !== auto && !vientDeLaFiche);
   const [desc, setDesc] = useMemoire(`${memo}:desc`, dejaEcrit || auto);
   const texte = libre ? desc : auto;
 
