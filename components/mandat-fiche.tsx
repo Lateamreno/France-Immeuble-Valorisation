@@ -1279,7 +1279,7 @@ function ChercheSociete({ onChoisir, onChoisirConnue, onChoisirEntite }: {
               </span>
             </button>
           ))}
-          {res.length > 0 && connues.length > 0 && <span className="src haut">Annuaire des entreprises</span>}
+          {res.length > 0 && (entites.length > 0 || connues.length > 0) && <span className="src haut">Annuaire des entreprises</span>}
           {res.map((e) => (
             <button key={e.siren} type="button"
               onClick={() => { onChoisir(e); fermer(); }}>
