@@ -5405,9 +5405,15 @@ export type SaisieRecherche = {
  * Les critères vont dans `bo_recherche`, que Bubble connaît ; les exclusions
  * dans la table de l'application, qu'il n'écrase pas.
  */
-export async function enregistrerRecherche(saisie: SaisieRecherche, agentId?: string) {
+export async function enregistrerRecherche(
+  saisie: SaisieRecherche,
+  agentId?: string,
+  /** Pour une recherche venue du site (lot 3) : un identifiant tiré de la
+   *  référence du formulaire, qui rend le réessai sans doublon, et sa source. */
+  origine?: { id: string; source: string },
+) {
   const now = new Date().toISOString();
-  const id = saisie.id ?? newId();
+  const id = saisie.id ?? origine?.id ?? newId();
   const doc = cleanPatch({
     ACHETEUR: saisie.contactId || null,
     Cible: saisie.cible || null,
@@ -5439,6 +5445,7 @@ export async function enregistrerRecherche(saisie: SaisieRecherche, agentId?: st
         ...doc,
         agent: proprietaire?.estAgent ?? false,
         SUIVI: agentId ?? null,
+        ...(origine ? { source: origine.source } : {}),
         archived: false,
         standby: false,
         "Created By": agentId ?? null,
@@ -5958,12 +5965,50 @@ export async function cloturerQuestion(questionId: string, remarques: string, ag
   revalidatePath("/questions");
 }
 
+/**
+ * « J'ai appelé » sur une demande de dossier (lot 3) : l'appel rejoint
+ * l'historique du contact et du bien, et la carte le montre. MAV veut qu'on
+ * s'appelle avant d'envoyer le dossier ; le BO ne l'impose pas, il le trace.
+ */
+export async function noterAppelDemande(questionId: string, notes: string, agentId: string) {
+  const q = await bqOne("bo_question", questionId);
+  if (!q) throw new Error("Demande introuvable.");
+  const now = new Date().toISOString();
+  const immeubleId = typeof q.IMMEUBLE === "string" ? q.IMMEUBLE : undefined;
+  await rpc("bo_insert_doc", {
+    p_table: "bo_suivi",
+    p_id: newId(),
+    p_doc: {
+      Type: "Manuel",
+      AGENT: agentId,
+      CONTACT: typeof q.CONTACT === "string" ? q.CONTACT : null,
+      IMMEUBLEs: immeubleId ? [immeubleId] : [],
+      Canals: ["Téléphone"],
+      notes: `Appel suite à la demande de dossier du site.${notes.trim() ? `\n${notes.trim()}` : ""}`,
+      date_start: now,
+      "Created Date": now,
+      "Modified Date": now,
+      Statut: "Traité",
+    },
+  });
+  await rpc("bo_patch_doc", { p_table: "bo_question", p_id: questionId, p_patch: { appele_le: now, appele_par: agentId } });
+  revalidatePath("/questions");
+  if (immeubleId) refresh(immeubleId);
+}
+
+/** « Refuser » une demande de dossier : elle se clôture avec son motif. */
+export async function refuserDemandeDossier(questionId: string, motif: string, agentId?: string) {
+  if (!motif.trim()) throw new Error("Le motif est obligatoire.");
+  await rpc("bo_patch_doc", { p_table: "bo_question", p_id: questionId, p_patch: { dossier_refuse: true } });
+  await cloturerQuestion(questionId, `Dossier refusé : ${motif.trim()}`, agentId);
+}
+
 /** Rouvre une question clôturée par erreur. */
 export async function rouvrirQuestion(questionId: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_question",
     p_id: questionId,
-    p_patch: { ended: false, date_cloture: null },
+    p_patch: { ended: false, date_cloture: null, dossier_refuse: null },
   });
   revalidatePath("/questions");
 }

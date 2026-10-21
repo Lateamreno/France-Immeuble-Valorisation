@@ -3519,6 +3519,15 @@ export type QuestionCard = {
   clos: boolean;
   remarques?: string;
   date?: string;
+  /** Lot 3 du contrat site : la demande de dossier depuis une fiche à vendre. */
+  demande?: {
+    bienTitre?: string;
+    /** L'agent a noté son appel (l'idéal avant tout envoi, MAV 21/10). */
+    appeleLe?: string;
+    /** Une proposition de ce bien à ce contact, envoyée après la demande. */
+    dossierEnvoyeLe?: string;
+    refusee: boolean;
+  };
 };
 
 export async function listQuestionsBO(
@@ -3535,6 +3544,24 @@ export async function listQuestionsBO(
     parIds("contact", rows.map((q) => q.CONTACT)),
   ]);
   const parId = new Map(contacts.map((c) => [String(c._id), c]));
+
+  /* Les demandes de dossier : le dossier est-il parti ? On le lit dans les
+     propositions, qui sont la trace de chaque envoi — pas de drapeau à tenir
+     à la main, l'envoi par la modale habituelle suffit. */
+  const envois = new Map<string, string>();
+  await Promise.all(rows
+    .filter((q) => q.demande_dossier === true && q.CONTACT && q.IMMEUBLE)
+    .map(async (q) => {
+      const props = await fetchAll("proposition", [
+        { key: "ACHETEUR", constraint_type: "equals", value: String(q.CONTACT) },
+        { key: "IMMEUBLE", constraint_type: "equals", value: String(q.IMMEUBLE) },
+      ], 20).catch(() => []);
+      const apres = props
+        .map((p) => String(p.date_envoi ?? p["Created Date"] ?? ""))
+        .filter((d) => d && d >= String(q["Created Date"] ?? ""))
+        .sort()[0];
+      if (apres) envois.set(String(q._id), apres);
+    }));
 
   return rows.map((q) => {
     /* `suivi par` est une LISTE d'identifiants côté Bubble : la passer telle
@@ -3564,6 +3591,14 @@ export async function listQuestionsBO(
       clos: q.ended === true,
       remarques: S2(q.remarques_cloture),
       date: typeof q["Created Date"] === "string" ? (q["Created Date"] as string) : undefined,
+      demande: q.demande_dossier === true
+        ? {
+            bienTitre: S2(q.bien_titre),
+            appeleLe: S2(q.appele_le),
+            dossierEnvoyeLe: envois.get(String(q._id)),
+            refusee: q.dossier_refuse === true,
+          }
+        : undefined,
     } satisfies QuestionCard;
   });
 }
