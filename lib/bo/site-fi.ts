@@ -238,32 +238,9 @@ async function deposerPhotos(c: Config, id: string, proxys: string[]): Promise<s
   return gardees;
 }
 
-/* ---------------------------------------------------------------- Adresses */
-
-function slugifier(t: string): string {
-  return t
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/œ/g, "oe")
-    .replace(/æ/g, "ae")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-/**
- * L'adresse de la page, posée au premier dépôt et jamais changée ensuite : une
- * URL indexée qui bouge perd son trafic. Si la base du site sait la fabriquer
- * (déclencheur demandé à sa session), c'est elle qui l'emporte.
- */
-async function slugLibre(c: Config, ligne: LigneSite): Promise<string> {
-  const base = slugifier(`${ligne.type} ${ligne.ville} ${ligne.lots ?? ""} lots`) || `immeuble-${ligne.id}`;
-  const res = await site(c, `/rest/v1/biens_a_vendre?select=slug&slug=like.${encodeURIComponent(base)}*`);
-  const pris = new Set(((await res.json()) as { slug: string }[]).map((r) => r.slug));
-  if (!pris.has(base)) return base;
-  for (let n = 2; n < 100; n++) if (!pris.has(`${base}-${n}`)) return `${base}-${n}`;
-  return `${base}-${Date.now()}`;
-}
+/* L'adresse de la page (« immeuble-de-rapport-<commune>-<dept> », puis -2, -3)
+   est fabriquée et figée par la base du site, à la première insertion. Le BO
+   n'envoie jamais de slug : il lit celui que la base a posé. */
 
 /* ---------------------------------------------------------------- Publier */
 
@@ -297,7 +274,7 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
     const existe = await site(c, `/rest/v1/biens_a_vendre?select=id,slug,publie_le&id=eq.${encodeURIComponent(ligne.id)}`)
       .then((r) => r.json() as Promise<{ id: string; slug: string; publie_le: string }[]>);
     const maintenant = new Date().toISOString();
-    let slug: string;
+    let slug: string | undefined;
     if (existe[0]) {
       slug = existe[0].slug;
       await site(c, `/rest/v1/biens_a_vendre?id=eq.${encodeURIComponent(ligne.id)}`, {
@@ -306,14 +283,12 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
         body: JSON.stringify({ ...ligne, images, maj_le: maintenant }),
       });
     } else {
-      slug = await slugLibre(c, ligne);
       const r = await site(c, "/rest/v1/biens_a_vendre", {
         method: "POST",
         headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify({ ...ligne, slug, images, publie_le: maintenant, maj_le: maintenant }),
+        body: JSON.stringify({ ...ligne, images, publie_le: maintenant, maj_le: maintenant }),
       });
-      // Si la base a fabriqué sa propre adresse, c'est la sienne qui compte.
-      slug = ((await r.json()) as { slug?: string }[])[0]?.slug ?? slug;
+      slug = ((await r.json()) as { slug?: string }[])[0]?.slug;
     }
 
     await memoriser(immeubleId, {
@@ -330,7 +305,7 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
     if (!etat.publie || etat.statut !== statut) {
       await journaliser(b.im, { agent, destination: "site", geste: statut === "en_vente" ? "publié, en vente" : "publié, sous offre" });
     }
-    return { ok: true as const, statut, url: `${PUBLIC}/immeubles-a-vendre/${slug}/`, photos: images.length };
+    return { ok: true as const, statut, url: slug ? `${PUBLIC}/immeubles-a-vendre/${slug}/` : undefined, photos: images.length };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await memoriser(immeubleId, { site_erreur: message, site_synchro_le: new Date().toISOString() }).catch(() => {});
@@ -516,14 +491,27 @@ export async function deposerOffmarket() {
   if (!c) return { ok: false as const, message: "Le site n'est pas branché." };
   try {
     const lignes = await calculerOffmarket();
-    const maj_le = new Date().toISOString();
-    await site(c, "/rest/v1/offmarket?commune=not.is.null", { method: "DELETE", headers: { Prefer: "return=minimal" } });
-    if (lignes.length) {
-      await site(c, "/rest/v1/offmarket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-        body: JSON.stringify(lignes.map((l) => ({ ...l, maj_le }))),
-      });
+    /* D'un seul geste, par la fonction de la base du site : la page n'affiche
+       jamais « 0 immeuble » pendant le dépôt, et une ligne invalide n'efface
+       rien. Tant que la fonction n'est pas posée (404), l'ancien chemin. */
+    const rpc = await fetch(`${c.url}/rest/v1/rpc/remplacer_offmarket`, {
+      method: "POST",
+      headers: { apikey: c.cle, Authorization: `Bearer ${c.cle}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ lignes }),
+      cache: "no-store",
+    });
+    if (rpc.status === 404) {
+      const maj_le = new Date().toISOString();
+      await site(c, "/rest/v1/offmarket?commune=not.is.null", { method: "DELETE", headers: { Prefer: "return=minimal" } });
+      if (lignes.length) {
+        await site(c, "/rest/v1/offmarket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify(lignes.map((l) => ({ ...l, maj_le }))),
+        });
+      }
+    } else if (!rpc.ok) {
+      throw new Error(`Site ${rpc.status} : ${(await rpc.text()).slice(0, 300)}`);
     }
     return { ok: true as const, biens: lignes.reduce((s, l) => s + l.nombre, 0), communes: lignes.length };
   } catch (e) {

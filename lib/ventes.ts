@@ -28,6 +28,10 @@ export type FaitsVente = {
   type: string | null;
   lots: number | null;
   composition: string | null;
+  /** La surface exacte, en m² (décision de MAV du 21/10, côté site : elle
+   *  remplace la tranche). Caves et parkings exclus. */
+  surface: number | null;
+  /** L'ancienne tranche de 100 m², gardée pour les ventes sans surface exacte. */
   surface_min: number | null;
   surface_max: number | null;
   epoque: string | null;
@@ -43,6 +47,15 @@ export type FaitsVente = {
   acquereurs_sollicites: number | null;
   visites: number | null;
   offres: number | null;
+  /** Loyer annuel hors charges si tout était loué, en euros. */
+  loyer_potentiel: number | null;
+  /** Jours entre la mise en commercialisation (A/B/C/D) et l'offre retenue. */
+  delai_offre_jours: number | null;
+  /** Prix de l'acte comparé à l'estimation, en % (+3 = 3 % au-dessus). Masqué
+   *  sur le site tant que MAV ne l'a pas validé ; jamais dans le récit. */
+  ecart_estimation: number | null;
+  /** L'estimation retenue pour l'écart (honoraires inclus), pour l'écran. */
+  estimation: number | null;
   /** Prix de l'acte, honoraires inclus. */
   prix: number;
   /** Date de l'acte, AAAA-MM-JJ. */
@@ -73,6 +86,10 @@ export type SourcesVente = {
   publieEnLigne: boolean | null;
   /** La cible de l'acquéreur, lue sur sa recherche ou son type de contact. */
   cibleAcquereur: string | null;
+  /** Les estimations du bien (Statut, prix_hai, date_envoi, Created Date). */
+  estimations: Record<string, unknown>[];
+  /** Le premier envoi du dossier aux acquéreurs (A/B/C/D) ou en annonce. */
+  debutCommercialisation: number | undefined;
 };
 
 const IDF = new Set(["75", "77", "78", "91", "92", "93", "94", "95"]);
@@ -206,6 +223,29 @@ export function faitsDe(src: SourcesVente): FaitsVente {
   const loyers = loyersLots > 0 ? loyersLots : N(im.fin_loyers_an) ?? 0;
 
   const prix = N(vente.prix_hai) ?? N(im.prix_hai) ?? 0;
+
+  /* L'offre retenue : celle passée « Vendu », sinon la première qui a mené à un
+     compromis. Sa date sert au délai et borne le choix de l'estimation. */
+  const retenue = src.offres.find((o) => o.Statut === "Vendu") ?? src.offres.find((o) => dateValide(o.date_compromis));
+  const dOffre = dateValide(retenue?.date);
+  const delaiOffre = dOffre && src.debutCommercialisation ? Math.round((dOffre - src.debutCommercialisation) / 86_400_000) : undefined;
+
+  /* L'estimation : la DERNIÈRE envoyée au propriétaire avant le mandat (ou
+     avant l'offre retenue si elle est arrivée plus tôt). C'est le prix annoncé
+     au vendeur au moment où il nous a confié la vente. La date qui compte est
+     celle de l'envoi : les estimations d'avant 2022 portent toutes la date de
+     leur import dans Bubble (20/09/2022) comme date de création. */
+  const dMandat = src.mandats
+    .flatMap((m) => [dateValide(m.date_signature), dateValide(m["Created Date"])])
+    .filter((t): t is number => !!t).sort()[0];
+  const borne = [dMandat, dOffre].filter((t): t is number => !!t).sort()[0];
+  const ests = src.estimations
+    .map((e) => ({ prix: N(e.prix_hai) ?? 0, le: dateValide(e.date_envoi) ?? dateValide(e["Created Date"]), envoyee: String(e.Statut ?? "").startsWith("3") }))
+    .filter((e) => e.prix > 0 && e.le && (!borne || e.le <= borne + 86_400_000))
+    .sort((a, b) => a.le! - b.le!);
+  const est = ests.filter((e) => e.envoyee).at(-1) ?? ests.at(-1);
+  const ecart = est && prix > 0 ? Math.round(((prix - est.prix) / est.prix) * 1000) / 10 : null;
+  const loyerMax = N(im.fin_loyers_an_max) ?? 0;
   const rdt = prix > 0 && loyers > 0 ? Math.round((loyers / prix) * 1000) / 10 : null;
 
   // Le DPE de l'immeuble : une seule lettre partagée par tous les lots renseignés.
@@ -243,6 +283,7 @@ export function faitsDe(src: SourcesVente): FaitsVente {
     type: typeDe(lots),
     lots: lots.length || null,
     composition: compositionDe(lots),
+    surface: surface >= 20 ? Math.round(surface) : null,
     surface_min: surface >= 20 ? Math.floor(surface / 100) * 100 : null,
     surface_max: surface >= 20 ? Math.floor(surface / 100) * 100 + 100 : null,
     epoque: epoqueDe(N(im.year_constru)),
@@ -256,6 +297,10 @@ export function faitsDe(src: SourcesVente): FaitsVente {
     acquereurs_sollicites: sollicites,
     visites: src.visites > 0 ? src.visites : null,
     offres: src.offres.length > 0 ? src.offres.length : null,
+    loyer_potentiel: loyerMax > 0 ? Math.round(loyerMax) : null,
+    delai_offre_jours: delaiOffre !== undefined && delaiOffre >= 0 && delaiOffre <= 1825 ? delaiOffre : null,
+    ecart_estimation: ecart !== null && ecart >= -100 && ecart <= 100 ? ecart : null,
+    estimation: est ? est.prix : null,
     prix,
     date,
     region: vente.idf === true || IDF.has(dept) ? "idf" : vente.bordeaux === true ? "sud-ouest" : "autre",
@@ -269,7 +314,7 @@ export function faitsDe(src: SourcesVente): FaitsVente {
 /** Les faits qui comptent pour décider s'il y a matière à un récit (contrat §4). */
 export function nombreDeFaits(f: FaitsVente): number {
   return [
-    f.type, f.lots, f.composition, f.surface_min, f.epoque, f.occupation, f.rendement,
+    f.type, f.lots, f.composition, f.surface ?? f.surface_min, f.epoque, f.occupation, f.rendement,
     f.profil_acquereur, f.mode_commercialisation, f.delai_semaines, f.acquereurs_sollicites, f.visites, f.offres,
   ].filter((v) => v !== null && v !== undefined).length;
 }
@@ -294,7 +339,7 @@ export function faitsEnTexte(f: FaitsVente): string {
     ["Type", f.type],
     ["Lots", f.lots !== null ? String(f.lots) : null],
     ["Composition", f.composition],
-    ["Surface", f.surface_min === 0 ? `moins de ${f.surface_max} m²` : f.surface_min !== null ? `${f.surface_min} à ${f.surface_max} m²` : null],
+    ["Surface", f.surface !== null ? `${f.surface.toLocaleString("fr-FR")} m²` : f.surface_min === 0 ? `moins de ${f.surface_max} m²` : f.surface_min !== null ? `${f.surface_min} à ${f.surface_max} m²` : null],
     ["Époque", f.epoque],
     ["DPE", f.dpe],
     ["Occupation à la vente", f.occupation !== null ? `${f.occupation} %` : null],
@@ -304,6 +349,7 @@ export function faitsEnTexte(f: FaitsVente): string {
     ["Prix moyen au m² relevé dans la commune", f.prix_m2_commune !== null ? `${eur(f.prix_m2_commune)}/m²` : null],
     ["Loyer moyen au m² relevé dans la commune", f.loyer_m2_commune !== null ? `${f.loyer_m2_commune.toLocaleString("fr-FR")} €/m²/mois` : null],
     ["Rendement moyen relevé dans la commune", f.rendement_commune !== null ? pct(f.rendement_commune) : null],
+    ["Loyer annuel potentiel, tout loué", f.loyer_potentiel !== null ? eur(f.loyer_potentiel) : null],
     ["Date de l'acte", moisAnnee(f.date)],
     ["Profil de l'acquéreur", f.profil_acquereur],
     ["Profil du vendeur", f.profil_vendeur],
@@ -311,6 +357,9 @@ export function faitsEnTexte(f: FaitsVente): string {
       : f.mode_commercialisation === "diffusion" ? "par annonces en ligne"
       : f.mode_commercialisation === "mixte" ? "d'abord off-market auprès du fichier, puis en annonces" : null],
     ["Délai entre la signature du mandat et le compromis", f.delai_semaines !== null ? `${f.delai_semaines} semaines` : null],
+    ["Délai entre le premier envoi du dossier et l'offre retenue", f.delai_offre_jours !== null ? `${f.delai_offre_jours} jours` : null],
+    /* L'écart avec l'estimation n'est PAS donné au modèle : le site le masque
+       tant que MAV n'a pas validé les chiffres. */
     ["Acquéreurs du fichier ayant reçu le dossier", f.acquereurs_sollicites !== null ? String(f.acquereurs_sollicites) : null],
     ["Visites", f.visites !== null ? String(f.visites) : null],
     ["Offres reçues", f.offres !== null ? String(f.offres) : null],
@@ -419,7 +468,7 @@ export function recitGabarit(f: FaitsVente, graine: string): Recit {
   // Le bien.
   const bien = [
     `L'immeuble${f.composition ? ` compte ${f.composition}` : lots ? ` compte ${lots}` : ""}` +
-      (f.surface_min === 0 ? `, pour moins de ${f.surface_max} m²` : f.surface_min !== null ? `, pour une surface de ${f.surface_min} à ${f.surface_max} m²` : "") + ".",
+      (f.surface !== null ? `, pour ${f.surface.toLocaleString("fr-FR")} m²` : f.surface_min === 0 ? `, pour moins de ${f.surface_max} m²` : f.surface_min !== null ? `, pour une surface de ${f.surface_min} à ${f.surface_max} m²` : "") + ".",
     f.epoque ? choix(graine, "ep", [`Sa construction remonte ${f.epoque.startsWith("Années") ? `aux ${f.epoque.toLowerCase()}` : `à la période « ${f.epoque.toLowerCase()} »`}.`, `C'est un immeuble ${f.epoque.startsWith("Années") ? `des ${f.epoque.toLowerCase()}` : `bâti ${f.epoque.toLowerCase()}`}.`]) : null,
     f.dpe ? `Son diagnostic de performance énergétique le classe en ${f.dpe}.` : null,
   ].filter(Boolean).join(" ");
@@ -513,7 +562,7 @@ RÈGLES DE FOND
 3. Jamais de nom de personne ni de société.
 4. Jamais le motif personnel de la vente. « Indivision » est un profil, pas une histoire.
 5. Jamais le prix de mandat, l'estimation initiale ni l'écart de négociation. Le prix de l'acte, oui.
-6. Surface en tranche, telle que fournie.
+6. Surface telle que fournie (exacte quand elle l'est).
 
 RÈGLES DE FORME
 7. 350 à 650 mots. Français naturel et descriptif, phrases courtes, le ton d'un agent expérimenté qui raconte une vente à un confrère. Aucun superlatif creux (« exceptionnel », « unique », « idéal »), aucune formule publicitaire.

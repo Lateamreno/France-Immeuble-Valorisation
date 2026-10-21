@@ -229,6 +229,14 @@ async function sourcesDe(vente: Record<string, unknown>) {
   const commercialisations = await lireBo(`bo_commercialisation?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(b.im._id as string)}`);
   const enLigne = commercialisations.some((x) => x.data.diffusion_online === true) || !!b.im.pb_publie_le || !!b.im.site_publie_le;
   const horsLigne = commercialisations.some((x) => x.data.diffusion_online === false);
+  // Le premier envoi du dossier (propositions A/B/C/D) ou de l'annonce.
+  const valide = (v: unknown) => {
+    const t = typeof v === "string" ? Date.parse(v) : NaN;
+    return Number.isFinite(t) && new Date(t).getFullYear() > 2000 ? t : undefined;
+  };
+  const debutCommercialisation = commercialisations
+    .flatMap((x) => [valide(x.data.prop_date), valide(x.data.diffusion_date)])
+    .filter((t): t is number => !!t).sort()[0];
 
   const proprietaire = b.proprietaire ?? null;
   const faits = faitsDe({
@@ -245,6 +253,8 @@ async function sourcesDe(vente: Record<string, unknown>) {
     proprietaireEstSociete: !!S(proprietaire?.entreprise_nom) && !S(proprietaire?.["prénom"]),
     publieEnLigne: enLigne ? true : horsLigne ? false : null,
     cibleAcquereur: cible,
+    estimations: b.estimations,
+    debutCommercialisation,
   });
 
   /* Les noms à ne jamais laisser passer : propriétaires, sociétés, acquéreur,
@@ -382,11 +392,16 @@ export async function proposerReecriture(faits: FaitsVente, texteActuel?: Recit)
 
 /* ------------------------------------------------------------- Publication */
 
-/** La rue sans aucun chiffre : la base du site refuse le moindre numéro. */
+/**
+ * La rue sans aucun chiffre, telle qu'elle s'écrit dans une phrase : « rue des
+ * Bas-Fossés », « avenue Jean-Jaurès ». Seul le mot de voie passe en minuscule :
+ * « Grande Rue » reste « Grande Rue ». La base du site refuse le moindre chiffre.
+ */
 function rueSansNumero(rue: string | null): string | null {
   if (!rue) return null;
   const r = rue.replace(/\d+\s*(bis|ter|quater)?\b/gi, "").replace(/\s{2,}/g, " ").replace(/^[\s,]+|[\s,]+$/g, "");
-  return r && !/\d/.test(r) ? r.charAt(0).toLowerCase() + r.slice(1) : null;
+  if (!r || /\d/.test(r)) return null;
+  return r.replace(/^(Rue|Avenue|Boulevard|Impasse|All[ée]e|Place|Quai|Chemin|Cours|Passage|Square|Villa|Route|Sentier|Cit[ée]|Voie|Ruelle|Rond-point|Promenade|Esplanade|Faubourg)\b/, (m) => m.toLowerCase());
 }
 
 /** Copie la photo de la vente dans le coffre `ventes` du site, sous un nom neutre. */
@@ -444,8 +459,13 @@ async function deposer(venteId: string, faits: FaitsVente, texte: Recit | null) 
     arrondissement: faits.arrondissement,
     lots: faits.lots,
     composition: faits.composition,
-    surface_min: faits.surface_min,
-    surface_max: faits.surface_max,
+    surface: faits.surface,
+    // La tranche ne sert plus quand la surface exacte est connue (contrat du site, 0006).
+    surface_min: faits.surface !== null ? null : faits.surface_min,
+    surface_max: faits.surface !== null ? null : faits.surface_max,
+    loyer_potentiel: faits.loyer_potentiel,
+    ecart_estimation: faits.ecart_estimation,
+    delai_offre_jours: faits.delai_offre_jours,
     epoque: faits.epoque,
     dpe: faits.dpe,
     occupation: faits.occupation,
