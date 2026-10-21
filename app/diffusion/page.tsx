@@ -10,6 +10,9 @@ import { Vitrine } from "@/components/vitrine";
 import { vitrineParDefaut } from "@/lib/vitrine";
 
 export const dynamic = "force-dynamic";
+/* La reprise du parc sur le site copie les photos de chaque bien : quatorze
+   biens dépassent la minute par défaut d'une action serveur. */
+export const maxDuration = 300;
 
 /**
  * Le parc diffusé : ce qui est en ligne, et ce que ça rapporte.
