@@ -369,7 +369,9 @@ export function faitsEnTexte(f: FaitsVente): string {
       : f.mode_commercialisation === "diffusion" ? "par annonces en ligne"
       : f.mode_commercialisation === "mixte" ? "d'abord off-market auprès du fichier, puis en annonces" : null],
     ["Délai entre la signature du mandat et le compromis", f.delai_semaines !== null ? `${f.delai_semaines} semaines` : null],
-    ["Délai entre le premier envoi du dossier et l'offre retenue", f.delai_offre_jours !== null ? `${f.delai_offre_jours} jours` : null],
+    /* Zéro jour veut dire « offre avant le premier envoi, ou envoi non daté »,
+       pas « offre le jour même » : on ne le donne pas au modèle. */
+    ["Délai entre le premier envoi du dossier et l'offre retenue", f.delai_offre_jours ? `${f.delai_offre_jours} jours` : null],
     // Validé par MAV le 21/10 : l'écart peut être cité dans le récit.
     ["Meilleure offre reçue comparée à l'estimation", f.ecart_estimation !== null ? `${f.ecart_estimation > 0 ? "+" : ""}${pct(f.ecart_estimation)}` : null],
     ["Acquéreurs du fichier ayant reçu le dossier", f.acquereurs_sollicites !== null ? String(f.acquereurs_sollicites) : null],
