@@ -80,8 +80,9 @@ HC annuels, prix HAI, prix au m², DPE, travaux à prévoir, photos.
 - `publie_le` n'est posé qu'à la première publication ; `maj_le` à chaque dépôt.
 - Photos copiées dans le coffre `biens` du site sous un nom neutre,
   `<id>-<n>.jpg` ; supprimées au retrait.
-- `slug` : généré par la base du site (déclencheur, comme pour `ventes`), figé
-  une fois publié.
+- `slug` : généré et figé par la base du site (`immeuble-de-rapport-<commune>-<dept>`,
+  puis `-2`, `-3`…). **Le BO n'envoie jamais de slug** ; il lit celui que la
+  base a posé (précisé le 21/10 au soir).
 
 ## 4. Les ventes (`ventes`)
 
@@ -107,7 +108,7 @@ Un champ vide ne part pas.
 | Commune, département, arrondissement | adresse de l'immeuble | arrondissement à Paris, Lyon, Marseille seulement |
 | Type | destinations des lots | Immeuble de rapport, mixte ou de bureaux |
 | Lots, composition | état locatif | |
-| Surface | surface Carrez totale | tranche de 100 m², jamais la surface exacte |
+| Surface | somme des lots, caves et parkings exclus | **exacte**, en m² (`surface`) ; la tranche `surface_min`/`surface_max` n'est plus remplie quand la surface l'est. Revirement de MAV du 21/10 au soir, côté site |
 | Époque | année de construction | « Années 1930 » |
 | DPE, occupation | fiche, état locatif | occupation en % |
 | Rendement | loyers HC annuels sur le prix de l'acte | en %, entre 1 et 40 |
@@ -116,6 +117,9 @@ Un champ vide ne part pas.
 | Commercialisation | publication Plein Bail ou site | off-market, diffusion ou mixte |
 | Acquéreurs sollicités, visites, offres | propositions, visites, offres du dossier | comptes |
 | Délai | signature du mandat jusqu'au compromis | en semaines |
+| Loyer potentiel | loyer annuel max de la fiche (`fin_loyers_an_max`) | en €/an, HC, tout loué |
+| Délai jusqu'à l'offre | premier envoi du dossier (propositions A/B/C/D ou annonce) jusqu'à la date de l'offre « Vendu » | en jours ; vide si l'offre précède l'envoi |
+| Écart avec l'estimation | (prix de l'acte − estimation) ÷ estimation, honoraires inclus des deux côtés ; estimation = la dernière **envoyée** au propriétaire avant le mandat (ou avant l'offre si elle est arrivée plus tôt), datée par sa date d'envoi | en % ; **masqué sur le site** tant que MAV ne l'a pas validé, jamais dans le récit |
 | Prix, date, photo | la vente | photo sous un nom neutre |
 
 ### Le récit
@@ -136,7 +140,8 @@ cela »**, rien qui sonne écrit par une IA.
 
 **Le fond** : aucun fait inventé, aucun nom de personne ou de société, aucune
 rue ni code postal dans le texte, aucun motif personnel de vente, aucun prix de
-mandat ni écart de négociation, la surface en tranche. Moins de six faits
+mandat ni écart de négociation, ni écart avec l'estimation tant que MAV ne l'a
+pas validé. Moins de six faits
 renseignés : pas de récit, seulement « Publier sans récit » ou « Ne pas publier ».
 
 **Le contrôle d'anonymat**, avant « Valider et publier » : bloque un nom de voie,
@@ -150,7 +155,11 @@ l'écran, jamais en silence.
   (null hors Paris, Lyon, Marseille), `nombre integer`, `maj_le timestamptz`.
   Lecture publique, écriture par la clé secrète seulement.
 - Le BO la **remplace en entier deux fois par jour, à 9 h et à 19 h** (heure de
-  Paris).
+  Paris), d'un seul geste par `POST /rest/v1/rpc/remplacer_offmarket`
+  `{"lignes":[…]}` : la page ne s'affiche jamais vide pendant le dépôt, et une
+  ligne invalide n'efface rien. Tant que la fonction manque (404), l'ancien
+  chemin (effacer puis insérer). Au 21/10 au soir, elle est écrite dans la
+  migration 0004 du site mais **pas posée** dans sa base.
 - Compte comme off-market : un bien au statut 5, 6 ou 7, avec un mandat signé et
   en cours qui ne refuse pas la publication en ligne, et qui n'est en ligne ni sur
   Plein Bail ni sur le site.

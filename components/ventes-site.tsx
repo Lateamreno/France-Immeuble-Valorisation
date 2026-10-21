@@ -31,8 +31,7 @@ const CHAMPS: { groupe: string; note?: string; champs: Champ[] }[] = [
       { cle: "type", label: "Type", genre: "choix", options: ["Immeuble de rapport", "Immeuble mixte", "Immeuble de bureaux", "Murs commerciaux", "Local d'activité"] },
       { cle: "lots", label: "Lots", genre: "nombre" },
       { cle: "composition", label: "Composition", genre: "texte" },
-      { cle: "surface_min", label: "Surface de (m²)", genre: "nombre" },
-      { cle: "surface_max", label: "à (m²)", genre: "nombre" },
+      { cle: "surface", label: "Surface (m²)", genre: "nombre", aide: "Hors caves et parkings" },
       { cle: "epoque", label: "Époque", genre: "texte" },
       { cle: "dpe", label: "DPE", genre: "choix", options: ["A", "B", "C", "D", "E", "F", "G"] },
     ],
@@ -42,6 +41,7 @@ const CHAMPS: { groupe: string; note?: string; champs: Champ[] }[] = [
     champs: [
       { cle: "occupation", label: "Occupation (% de la surface)", genre: "nombre" },
       { cle: "rendement", label: "Rendement brut à l'acte (%)", genre: "nombre" },
+      { cle: "loyer_potentiel", label: "Loyer potentiel (€/an)", genre: "nombre", aide: "Tout loué, hors charges" },
     ],
   },
   {
@@ -54,6 +54,8 @@ const CHAMPS: { groupe: string; note?: string; champs: Champ[] }[] = [
       { cle: "acquereurs_sollicites", label: "Acquéreurs sollicités", genre: "nombre" },
       { cle: "visites", label: "Visites", genre: "nombre" },
       { cle: "offres", label: "Offres reçues", genre: "nombre" },
+      { cle: "delai_offre_jours", label: "1er envoi → offre retenue (jours)", genre: "nombre" },
+      { cle: "ecart_estimation", label: "Prix / estimation (%)", genre: "nombre", aide: "Masqué sur le site tant que vous ne l'avez pas validé" },
     ],
   },
   {
