@@ -61,6 +61,7 @@ export function statutCible(b: BienData, mandat: Record<string, unknown> | null)
   const statutBien = String(b.im.Statut ?? "");
   const rang = parseInt(statutBien, 10);
 
+  if (b.im.pb_coche === false) return { statut: null, motif: "Case « Plein Bail » décochée." };
   if (!mandat) return { statut: null, motif: "Aucun mandat de vente signé." };
   if (mandat.publication_web_yn === false) {
     return { statut: null, motif: "Le mandant a refusé la publication en ligne (article 6.4)." };
@@ -88,8 +89,195 @@ export function statutCible(b: BienData, mandat: Record<string, unknown> | null)
   if (rang === 7) {
     return { statut: "sous_offre", motif: "Offre reçue, non encore acceptée — l'annonce reste en ligne, marquée." };
   }
-  if (rang >= 5) return { statut: "online", motif: "Commercialisé." };
+  /* Le statut 5 est la commercialisation réservée au fichier clients : jamais
+     en ligne, ni ici ni sur le site (décision MAV du 21/10, contrat §3). La
+     mise en ligne se décide à la main, une fois le bien passé au statut 6. */
+  if (rang === 5) {
+    return { statut: null, motif: "Commercialisé auprès du fichier clients (A/B) : jamais publié en ligne." };
+  }
+  if (rang >= 6) return { statut: "online", motif: "Commercialisé." };
   return { statut: null, motif: "Le bien n'est pas encore au stade de la commercialisation." };
+}
+
+/**
+ * Le mandat de vente en vigueur sur ce bien, s'il y en a un : un mandat signé
+ * et non annulé prime ; à défaut, le plus récent.
+ */
+export function mandatEnVigueur(mandats: Record<string, unknown>[]): Record<string, unknown> | null {
+  const vente = mandats.filter((m) => String(m.Type ?? "Vente") === "Vente");
+  const signes = vente.filter(
+    (m) => (m.date_signature || m.pdf_signed) && String(m.Statut ?? "") !== "Annulé",
+  );
+  const pool = signes.length ? signes : vente;
+  return (
+    [...pool].sort((a, b) =>
+      String(b.date_effet ?? b["Created Date"] ?? "").localeCompare(String(a.date_effet ?? a["Created Date"] ?? "")),
+    )[0] ?? null
+  );
+}
+
+/** Le mandat permet-il encore une publication en ligne ? Signé, en cours, et
+ *  sans refus du mandant (article 6.4). Sert au site et au compteur off-market. */
+export function mandatPermetLigne(mandat: Record<string, unknown> | null): boolean {
+  if (!mandat) return false;
+  if (!S(mandat.date_signature) && !S(mandat.pdf_signed)) return false;
+  if (mandat.publication_web_yn === false) return false;
+  const st = String(mandat.Statut ?? "");
+  if (st === "Annulé" || st === "Expiré") return false;
+  const fin = S(mandat.date_fin);
+  if (fin && new Date(fin) < new Date()) return false;
+  return true;
+}
+
+/* ------------------------------------------------- Site France Immeuble */
+
+/** Les deux statuts que connaît `biens_a_vendre` côté site. */
+export type StatutSite = "en_vente" | "sous_offre";
+
+/**
+ * Ce que le bien devrait être sur le site (contrat §3).
+ *
+ * La différence avec Plein Bail tient en une ligne : sur le site, un bien DÉJÀ
+ * publié reste affiché « Sous offre » de l'offre reçue à l'acte programmé
+ * (statuts 7 à 10). Un bien qui n'a jamais été publié, lui, reste off-market
+ * jusqu'à la vente : il n'apparaît pas parce qu'il passe sous offre.
+ */
+export function statutSite(
+  b: BienData,
+  mandat: Record<string, unknown> | null,
+  dejaPublie: boolean,
+): { statut: StatutSite | null; motif: string } {
+  if (b.im.site_coche === false) return { statut: null, motif: "Case « Site France Immeuble » décochée." };
+  if (!mandat) return { statut: null, motif: "Aucun mandat de vente signé." };
+  if (mandat.publication_web_yn === false) {
+    return { statut: null, motif: "Le mandant a refusé la publication en ligne (article 6.4)." };
+  }
+  if (!mandatPermetLigne(mandat)) return { statut: null, motif: "Le mandat n'est plus en cours." };
+  const rang = parseInt(String(b.im.Statut ?? ""), 10);
+  if (rang === 6) return { statut: "en_vente", motif: "Commercialisé." };
+  if (rang >= 7 && rang <= 10) {
+    return dejaPublie
+      ? { statut: "sous_offre", motif: "Sous offre jusqu'à l'acte : le bien reste affiché, marqué." }
+      : { statut: null, motif: "Jamais publié : le bien reste off-market jusqu'à la vente." };
+  }
+  if (rang === 11) return { statut: null, motif: "Vendu : il rejoindra les ventes après validation." };
+  if (rang === 5) return { statut: null, motif: "Commercialisé auprès du fichier clients (A/B) : jamais publié en ligne." };
+  if (rang === 0) return { statut: null, motif: "Immeuble retiré." };
+  return { statut: null, motif: "Le bien n'est pas encore au stade de la commercialisation." };
+}
+
+/** Une ligne de `biens_a_vendre`, sans les champs que la base ou le dépôt fixent
+ *  (slug, photos, dates). */
+export type LigneSite = {
+  id: string;
+  statut: StatutSite;
+  titre: string;
+  description: string | null;
+  ville: string;
+  dept: string;
+  type: string;
+  surface: number | null;
+  lots: number | null;
+  annee_construction: number | null;
+  loyer_hc_an: number | null;
+  prix_hai: number;
+  rendement: number | null;
+  occupation: number | null;
+  prix_m2: number | null;
+  dpe: string | null;
+  travaux: string | null;
+};
+
+/** Le département sur deux caractères, Corse comprise. */
+export function departement(cp: string | undefined): string {
+  const c = (cp ?? "").replace(/\s/g, "");
+  if (/^20/.test(c)) return /^20[01]/.test(c) ? "2A" : "2B";
+  if (/^97/.test(c)) return c.slice(0, 3);
+  return c.slice(0, 2);
+}
+
+/** Le type affiché sur le site, déduit des destinations des lots. */
+export function typeImmeuble(lots: Record<string, unknown>[]): string {
+  const dests = new Set(lots.map((l) => String(l.Destination ?? "")));
+  const logement = dests.has("Logement");
+  const pro = dests.has("Commerce") || dests.has("Bureau");
+  if (!logement && dests.has("Bureau") && !dests.has("Commerce")) return "Immeuble de bureaux";
+  if (logement && pro) return "Immeuble mixte";
+  return "Immeuble de rapport";
+}
+
+const arrondi = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
+
+/**
+ * La fiche, telle que la reçoit `biens_a_vendre`. Mêmes informations que
+ * Plein Bail, sans l'adresse : la commune et le département seulement.
+ * Rendement et occupation partent EN POURCENTAGE (contrat §3).
+ */
+export function ligneSite(b: BienData, charge: ChargeUtile, statut: StatutSite): LigneSite {
+  const im = b.im;
+  const surfaceLot = (l: LotAnnonce) => l.surface_carrez ?? l.surface_m2 ?? 0;
+  const surface = charge.lots.reduce((s, l) => s + surfaceLot(l), 0);
+  const surfaceOcc = charge.lots.filter((l) => l.statut === "occupe").reduce((s, l) => s + surfaceLot(l), 0);
+  const loyerAn = charge.lots.reduce((s, l) => s + (l.statut === "occupe" ? l.loyer_mensuel_hc ?? 0 : 0), 0) * 12;
+  const prix = N(im.prix_hai) ?? 0;
+  const rendement = prix > 0 && loyerAn > 0 ? arrondi((loyerAn / prix) * 100) : null;
+  /* Une seule lettre pour tout l'immeuble : on ne la donne que si tous les lots
+     renseignés ont la même. Choisir la meilleure serait flatteur, la pire
+     injuste ; mieux vaut se taire. */
+  const dpes = [...new Set(charge.lots.map((l) => l.dpe_lot).filter((d): d is string => !!d))];
+  const ville = S(im.adresse_ville) ?? "";
+  const type = typeImmeuble(b.lots);
+  const nbLots = b.lots.length;
+  return {
+    id: String(im._id),
+    statut,
+    titre: `${type} de ${nbLots} lot${nbLots > 1 ? "s" : ""} à ${ville}`,
+    description: S(im.descriptif) ?? null,
+    ville,
+    dept: departement(S(im.adresse_zipcode)),
+    type,
+    surface: surface > 0 ? Math.round(surface) : null,
+    lots: nbLots || null,
+    annee_construction: N(im.year_constru) ?? null,
+    loyer_hc_an: loyerAn > 0 ? Math.round(loyerAn) : null,
+    prix_hai: prix,
+    /* La base du site refuse un rendement hors de 1 à 40 % : un chiffre
+       aberrant ne part pas, plutôt que de faire échouer tout le dépôt. */
+    rendement: rendement !== null && rendement >= 1 && rendement <= 40 ? rendement : null,
+    occupation: surface > 0 ? Math.min(100, arrondi((surfaceOcc / surface) * 100, 1)) : null,
+    prix_m2: prix > 0 && surface > 0 ? Math.round(prix / surface) : null,
+    dpe: dpes.length === 1 ? dpes[0] : null,
+    travaux: S(charge.travaux.travaux_a_prevoir) ?? null,
+  };
+}
+
+/** L'état de la diffusion sur le site, tel que le BO l'a mémorisé. */
+export type EtatSite = {
+  /** La case est-elle cochée ? Cochée par défaut (contrat §3). */
+  coche: boolean;
+  publie: boolean;
+  statut?: StatutSite;
+  slug?: string;
+  publieLe?: string;
+  empreinte?: string;
+  derniereSynchro?: string;
+  derniereErreur?: string;
+  retireLe?: string;
+};
+
+export function lireEtatSite(im: Record<string, unknown>): EtatSite {
+  const statut = S(im.site_statut) as StatutSite | undefined;
+  return {
+    coche: im.site_coche !== false,
+    publie: statut === "en_vente" || statut === "sous_offre",
+    statut,
+    slug: S(im.site_slug),
+    publieLe: S(im.site_publie_le),
+    empreinte: S(im.site_empreinte),
+    derniereSynchro: S(im.site_synchro_le),
+    derniereErreur: S(im.site_erreur),
+    retireLe: S(im.site_retire_le),
+  };
 }
 
 /* ------------------------------------------------------------- Blocages */

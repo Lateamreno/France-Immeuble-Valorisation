@@ -13,7 +13,7 @@
 import { revalidatePath, unstable_cache } from "next/cache";
 import { getAgentFiche, getBien } from "@/lib/bubble/server";
 import {
-  alertes, blocages, chargeUtile, empreinte, lireEtat, statutCible,
+  alertes, blocages, chargeUtile, empreinte, lireEtat, mandatEnVigueur, statutCible,
   type Alerte, type ChargeUtile, type StatutAnnonce,
 } from "@/lib/diffusion";
 import { BAREME_HONORAIRES, LIMITES, type VitrineSaisie } from "@/lib/vitrine";
@@ -239,21 +239,6 @@ async function urlTelechargeable(proxy: string): Promise<string | null> {
   }
 }
 
-/** Le mandat de vente en vigueur sur ce bien, s'il y en a un. */
-function mandatEnVigueur(mandats: Record<string, unknown>[]): Record<string, unknown> | null {
-  const vente = mandats.filter((m) => String(m.Type ?? "Vente") === "Vente");
-  // Un mandat signé et non annulé prime ; à défaut, le plus récent.
-  const signes = vente.filter(
-    (m) => (m.date_signature || m.pdf_signed) && String(m.Statut ?? "") !== "Annulé",
-  );
-  const pool = signes.length ? signes : vente;
-  return (
-    [...pool].sort((a, b) =>
-      String(b.date_effet ?? b["Created Date"] ?? "").localeCompare(String(a.date_effet ?? a["Created Date"] ?? "")),
-    )[0] ?? null
-  );
-}
-
 export type Apercu = {
   /** Ce qui empêche de publier, s'il y a lieu. */
   blocages: { cle: string; label: string; ou: string }[];
@@ -266,6 +251,8 @@ export type Apercu = {
   /** L'empreinte diffère-t-elle de ce qui est en ligne ? */
   ecart: boolean;
   configuree: boolean;
+  /** La case « Plein Bail » est-elle cochée ? Cochée par défaut (contrat §3). */
+  coche: boolean;
 };
 
 /**
@@ -275,7 +262,7 @@ export type Apercu = {
 export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
   const b = await getBien(immeubleId);
   if (!b) {
-    return { blocages: [{ cle: "fiche", label: "Fiche introuvable", ou: "" }], alertes: [], statut: null, motif: "", charge: null, ecart: false, configuree: !!(PB_URL && PB_TOKEN) };
+    return { blocages: [{ cle: "fiche", label: "Fiche introuvable", ou: "" }], alertes: [], statut: null, motif: "", charge: null, ecart: false, configuree: !!(PB_URL && PB_TOKEN), coche: true };
   }
   const mandat = mandatEnVigueur(b.mandats);
   const empeche = blocages(b, mandat);
@@ -293,6 +280,7 @@ export async function apercuAnnonce(immeubleId: string): Promise<Apercu> {
     empreinte: emp,
     ecart: !!emp && emp !== etat.empreintePubliee,
     configuree: !!(PB_URL && PB_TOKEN),
+    coche: b.im.pb_coche !== false,
   };
 }
 

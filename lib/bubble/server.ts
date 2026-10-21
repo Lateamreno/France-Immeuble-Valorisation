@@ -3030,18 +3030,25 @@ export async function listDiffusion(): Promise<{
   photo?: string;
   renta?: number;
   prixM2?: number;
+  /** Le bien sur le site France Immeuble (contrat §3). */
+  siteStatut?: "en_vente" | "sous_offre";
+  siteSlug?: string;
+  siteErreur?: string;
 }[]> {
   /* Le parc diffusé se compte en dizaines. On ne ramène donc QUE les fiches
      qui portent une annonce : le tri se fait dans la base. Le filtre était
      auparavant appliqué en mémoire, après avoir rapatrié les mille huit cents
-     immeubles — sept mégaoctets pour en afficher une poignée. */
-  const rows = await fetchAll(
-    "immeuble",
-    [{ key: "pb_listing_id", constraint_type: "is not empty", value: true }],
-    3000,
-  ).catch(() => []);
+     immeubles — sept mégaoctets pour en afficher une poignée.
+     Deux destinations depuis le 21/10 : un bien peut n'être que sur le site. */
+  const [pb, site] = await Promise.all([
+    fetchAll("immeuble", [{ key: "pb_listing_id", constraint_type: "is not empty", value: true }], 3000).catch(() => []),
+    fetchAll("immeuble", [{ key: "site_statut", constraint_type: "is not empty", value: true }], 3000).catch(() => []),
+  ]);
+  const parId = new Map<string, Record<string, unknown>>();
+  for (const im of [...pb, ...site]) parId.set(String(im._id), im);
+  const rows = [...parId.values()];
   return rows
-    .filter((im) => typeof im.pb_listing_id === "string" && im.pb_listing_id)
+    .filter((im) => (typeof im.pb_listing_id === "string" && im.pb_listing_id) || (typeof im.site_statut === "string" && im.site_statut))
     .map((im) => ({
       immeubleId: String(im._id),
       ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""})`,
@@ -3060,6 +3067,11 @@ export async function listDiffusion(): Promise<{
         : typeof im.prix_hai === "number" && typeof im.surface_carrez === "number" && im.surface_carrez > 0
           ? (im.prix_hai as number) / (im.surface_carrez as number)
           : undefined,
+      siteStatut: im.site_statut === "en_vente" || im.site_statut === "sous_offre"
+        ? (im.site_statut as "en_vente" | "sous_offre")
+        : undefined,
+      siteSlug: typeof im.site_slug === "string" ? im.site_slug : undefined,
+      siteErreur: typeof im.site_erreur === "string" ? im.site_erreur : undefined,
     }))
     .sort((a, b) => (b.publieLe ?? "").localeCompare(a.publieLe ?? ""));
 }
