@@ -55,7 +55,7 @@ const CHAMPS: { groupe: string; note?: string; champs: Champ[] }[] = [
       { cle: "visites", label: "Visites", genre: "nombre" },
       { cle: "offres", label: "Offres reçues", genre: "nombre" },
       { cle: "delai_offre_jours", label: "1er envoi → offre retenue (jours)", genre: "nombre" },
-      { cle: "ecart_estimation", label: "Prix / estimation (%)", genre: "nombre", aide: "Masqué sur le site tant que vous ne l'avez pas validé" },
+      { cle: "ecart_estimation", label: "Meilleure offre / estimation (%)", genre: "nombre", aide: "L'offre la plus haute reçue, retenue ou non" },
     ],
   },
   {

@@ -118,8 +118,8 @@ Un champ vide ne part pas.
 | Acquéreurs sollicités, visites, offres | propositions, visites, offres du dossier | comptes |
 | Délai | signature du mandat jusqu'au compromis | en semaines |
 | Loyer potentiel | loyer annuel max de la fiche (`fin_loyers_an_max`) | en €/an, HC, tout loué |
-| Délai jusqu'à l'offre | premier envoi du dossier (propositions A/B/C/D ou annonce) jusqu'à la date de l'offre « Vendu » | en jours ; vide si l'offre précède l'envoi |
-| Écart avec l'estimation | (prix de l'acte − estimation) ÷ estimation, honoraires inclus des deux côtés ; estimation = la dernière **envoyée** au propriétaire avant le mandat (ou avant l'offre si elle est arrivée plus tôt), datée par sa date d'envoi | en % ; **masqué sur le site** tant que MAV ne l'a pas validé, jamais dans le récit |
+| Délai jusqu'à l'offre | premier envoi du dossier (propositions A/B/C/D ou annonce) jusqu'à la date de l'offre « Vendu » | en jours ; **0** quand l'offre précède l'envoi ou que l'envoi n'est pas daté (MAV, 21/10) |
+| Écart avec l'estimation | (**meilleure offre reçue**, retenue ou non, − estimation) ÷ estimation, honoraires inclus des deux côtés (MAV, 21/10) ; estimation = la dernière **envoyée** au propriétaire avant le mandat (ou avant l'offre si elle est arrivée plus tôt), datée par sa date d'envoi | en % ; **validé par MAV le 21/10** : affichable, et citable dans le récit |
 | Prix, date, photo | la vente | photo sous un nom neutre |
 
 ### Le récit
@@ -140,8 +140,8 @@ cela »**, rien qui sonne écrit par une IA.
 
 **Le fond** : aucun fait inventé, aucun nom de personne ou de société, aucune
 rue ni code postal dans le texte, aucun motif personnel de vente, aucun prix de
-mandat ni écart de négociation, ni écart avec l'estimation tant que MAV ne l'a
-pas validé. Moins de six faits
+mandat ni écart de négociation. L'écart entre la meilleure offre et
+l'estimation peut être cité (validé le 21/10). Moins de six faits
 renseignés : pas de récit, seulement « Publier sans récit » ou « Ne pas publier ».
 
 **Le contrôle d'anonymat**, avant « Valider et publier » : bloque un nom de voie,

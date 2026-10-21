@@ -49,13 +49,16 @@ export type FaitsVente = {
   offres: number | null;
   /** Loyer annuel hors charges si tout était loué, en euros. */
   loyer_potentiel: number | null;
-  /** Jours entre la mise en commercialisation (A/B/C/D) et l'offre retenue. */
+  /** Jours entre la mise en commercialisation (A/B/C/D) et l'offre retenue ;
+   *  0 quand l'offre a précédé l'envoi ou que l'envoi n'est pas daté (MAV, 21/10). */
   delai_offre_jours: number | null;
-  /** Prix de l'acte comparé à l'estimation, en % (+3 = 3 % au-dessus). Masqué
-   *  sur le site tant que MAV ne l'a pas validé ; jamais dans le récit. */
+  /** La meilleure offre reçue comparée à l'estimation, en % (+3 = 3 % au-dessus).
+   *  Décision de MAV du 21/10 : l'offre la plus haute, retenue ou non. */
   ecart_estimation: number | null;
   /** L'estimation retenue pour l'écart (honoraires inclus), pour l'écran. */
   estimation: number | null;
+  /** La meilleure offre reçue, honoraires inclus : le prix de l'acte au moins. */
+  meilleure_offre: number | null;
   /** Prix de l'acte, honoraires inclus. */
   prix: number;
   /** Date de l'acte, AAAA-MM-JJ. */
@@ -228,7 +231,12 @@ export function faitsDe(src: SourcesVente): FaitsVente {
      compromis. Sa date sert au délai et borne le choix de l'estimation. */
   const retenue = src.offres.find((o) => o.Statut === "Vendu") ?? src.offres.find((o) => dateValide(o.date_compromis));
   const dOffre = dateValide(retenue?.date);
-  const delaiOffre = dOffre && src.debutCommercialisation ? Math.round((dOffre - src.debutCommercialisation) / 86_400_000) : undefined;
+  /* MAV (21/10) : une vente sans délai calculable compte zéro jour. C'est le
+     cas d'une offre arrivée avant le premier envoi (l'acquéreur était déjà
+     là) ou d'un envoi que le BO n'a pas daté. */
+  const delaiOffre = dOffre
+    ? Math.max(0, src.debutCommercialisation ? Math.round((dOffre - src.debutCommercialisation) / 86_400_000) : 0)
+    : undefined;
 
   /* L'estimation : la DERNIÈRE envoyée au propriétaire avant le mandat (ou
      avant l'offre retenue si elle est arrivée plus tôt). C'est le prix annoncé
@@ -244,7 +252,10 @@ export function faitsDe(src: SourcesVente): FaitsVente {
     .filter((e) => e.prix > 0 && e.le && (!borne || e.le <= borne + 86_400_000))
     .sort((a, b) => a.le! - b.le!);
   const est = ests.filter((e) => e.envoyee).at(-1) ?? ests.at(-1);
-  const ecart = est && prix > 0 ? Math.round(((prix - est.prix) / est.prix) * 1000) / 10 : null;
+  /* L'écart se mesure sur la MEILLEURE offre reçue (MAV, 21/10) : six ventes
+     ont eu une offre plus haute que le prix final, refusée. */
+  const meilleure = Math.max(prix, ...src.offres.map((o) => N(o.prix_hai) ?? 0));
+  const ecart = est && meilleure > 0 ? Math.round(((meilleure - est.prix) / est.prix) * 1000) / 10 : null;
   const loyerMax = N(im.fin_loyers_an_max) ?? 0;
   const rdt = prix > 0 && loyers > 0 ? Math.round((loyers / prix) * 1000) / 10 : null;
 
@@ -298,9 +309,10 @@ export function faitsDe(src: SourcesVente): FaitsVente {
     visites: src.visites > 0 ? src.visites : null,
     offres: src.offres.length > 0 ? src.offres.length : null,
     loyer_potentiel: loyerMax > 0 ? Math.round(loyerMax) : null,
-    delai_offre_jours: delaiOffre !== undefined && delaiOffre >= 0 && delaiOffre <= 1825 ? delaiOffre : null,
+    delai_offre_jours: delaiOffre !== undefined && delaiOffre <= 1825 ? delaiOffre : null,
     ecart_estimation: ecart !== null && ecart >= -100 && ecart <= 100 ? ecart : null,
     estimation: est ? est.prix : null,
+    meilleure_offre: meilleure > 0 ? meilleure : null,
     prix,
     date,
     region: vente.idf === true || IDF.has(dept) ? "idf" : vente.bordeaux === true ? "sud-ouest" : "autre",
@@ -358,8 +370,8 @@ export function faitsEnTexte(f: FaitsVente): string {
       : f.mode_commercialisation === "mixte" ? "d'abord off-market auprès du fichier, puis en annonces" : null],
     ["Délai entre la signature du mandat et le compromis", f.delai_semaines !== null ? `${f.delai_semaines} semaines` : null],
     ["Délai entre le premier envoi du dossier et l'offre retenue", f.delai_offre_jours !== null ? `${f.delai_offre_jours} jours` : null],
-    /* L'écart avec l'estimation n'est PAS donné au modèle : le site le masque
-       tant que MAV n'a pas validé les chiffres. */
+    // Validé par MAV le 21/10 : l'écart peut être cité dans le récit.
+    ["Meilleure offre reçue comparée à l'estimation", f.ecart_estimation !== null ? `${f.ecart_estimation > 0 ? "+" : ""}${pct(f.ecart_estimation)}` : null],
     ["Acquéreurs du fichier ayant reçu le dossier", f.acquereurs_sollicites !== null ? String(f.acquereurs_sollicites) : null],
     ["Visites", f.visites !== null ? String(f.visites) : null],
     ["Offres reçues", f.offres !== null ? String(f.offres) : null],
@@ -561,7 +573,7 @@ RÈGLES DE FOND
 2. Emplacement : parle de la commune (ou de l'arrondissement à Paris, Lyon, Marseille) et des repères de marché fournis (prix et loyer moyens relevés dans la commune). Seules les généralités notoires et vérifiables sont admises. Ne cite AUCUNE rue, place, adresse, aucun commerce, monument ou équipement voisin. En cas de doute sur une affirmation géographique, écris-la entre crochets [à vérifier].
 3. Jamais de nom de personne ni de société.
 4. Jamais le motif personnel de la vente. « Indivision » est un profil, pas une histoire.
-5. Jamais le prix de mandat, l'estimation initiale ni l'écart de négociation. Le prix de l'acte, oui.
+5. Jamais le prix de mandat ni l'écart de négociation. Le prix de l'acte, oui. L'écart entre la meilleure offre reçue et l'estimation peut être cité, en %, s'il figure dans les faits.
 6. Surface telle que fournie (exacte quand elle l'est).
 
 RÈGLES DE FORME
