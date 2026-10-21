@@ -1,7 +1,9 @@
 import { TopBar } from "@/components/topbar";
 import { DashboardBlocs } from "@/components/dashboard-blocs";
 import { DASHBOARD } from "@/lib/data/dashboard";
+import Link from "next/link";
 import { getDashboardLive, getAgents } from "@/lib/bubble/server";
+import { ventesAPublier } from "@/lib/bo/ventes-site";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,10 @@ export default async function DashboardPage({
     liveError = `Lecture données indisponible (${e instanceof Error ? e.message : "erreur"}) — mode démonstration.`;
   }
 
+  /* Les ventes neuves qui attendent d'être publiées sur le site (contrat
+     §4) : un rappel ici, en rouge au-delà de sept jours, jamais un e-mail. */
+  const vap = await ventesAPublier().catch(() => null);
+
   return (
     <>
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
@@ -44,6 +50,12 @@ export default async function DashboardPage({
         agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color }))} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
+      )}
+      {vap && vap.nombre > 0 && (
+        <Link href="/ventes-site" className={`vs-bandeau${vap.enRetard ? " ko" : ""}`}>
+          {vap.nombre} vente{vap.nombre > 1 ? "s" : ""} à publier sur le site
+          {vap.enRetard > 0 && `, dont ${vap.enRetard} depuis plus de sept jours`}
+        </Link>
       )}
       <DashboardBlocs blocs={blocs} mock={!!liveError} recherche={q}
         agents={agentList.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))} />

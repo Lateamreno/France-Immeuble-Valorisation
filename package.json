@@ -10,6 +10,7 @@
     "test": "TZ=UTC node --import ./scripts/brancher-resolveur.mjs --test \"lib/**/*.test.mts\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.0.0",
     "@sparticuz/chromium": "^149.0.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
