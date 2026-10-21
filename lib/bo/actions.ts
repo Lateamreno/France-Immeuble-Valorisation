@@ -119,6 +119,10 @@ function refresh(immeubleId?: string) {
       const { marquerAResynchroniser, synchroniserAnnonce } = await import("./diffusion");
       await marquerAResynchroniser(immeubleId);
       await synchroniserAnnonce(immeubleId).catch(() => undefined);
+      /* Le site suit le même chemin (contrat §3) : mise à jour, passage en
+         « Sous offre » ou retrait — jamais une première mise en ligne. */
+      const { synchroniserSite } = await import("./site-fi");
+      await synchroniserSite(immeubleId).catch(() => undefined);
     });
   } catch {
     /* Hors contexte de requête : la diffusion se rattrapera au tour suivant. */

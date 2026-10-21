@@ -15,6 +15,11 @@ import {
   apercuAnnonce, audienceAnnonce, deposerBrouillon, publierAnnonce, retirerAnnonce,
   type Apercu, type Audience, type Branchement,
 } from "@/lib/bo/diffusion";
+import {
+  apercuSite, cocherDestination, deposerOffmarket, publierParcSurSite, publierSurSite, retirerDuSite,
+  type ApercuSite,
+} from "@/lib/bo/site-fi";
+import { agentCourantSlug } from "@/lib/bo/agent-courant";
 
 /* ------------------------------------------------ Section de la fiche bien */
 
@@ -28,6 +33,7 @@ export function SectionDiffusion({
   };
 }) {
   const [a, setA] = useState<Apercu | null>(null);
+  const [s, setS] = useState<ApercuSite | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [avis, setAvis] = useState<string[]>([]);
   const [aud, setAud] = useState<Audience | null>(null);
@@ -35,32 +41,91 @@ export function SectionDiffusion({
   const [pending, start] = useTransition();
   const { confirmer, question } = useQuestion();
 
+  const relire = async () => {
+    const [x, y] = await Promise.all([
+      apercuAnnonce(immeubleId).catch(() => null),
+      apercuSite(immeubleId).catch(() => null),
+    ]);
+    setA(x);
+    setS(y);
+  };
+
   useEffect(() => {
     apercuAnnonce(immeubleId).then(setA).catch(() => setA(null));
+    apercuSite(immeubleId).then(setS).catch(() => setS(null));
   }, [immeubleId]);
+
+  /* Une seule décision, deux destinations (contrat §3) : la case dit où, le
+     bouton dit quand. Chaque destination part si elle est cochée ET prête ;
+     l'une peut réussir quand l'autre refuse, et le message dit les deux. */
+  const pretPb = !!a && a.coche && a.blocages.length === 0 && !!a.statut;
+  const pretSite = !!s && s.etat.coche && s.blocages.length === 0 && !!s.statut;
 
   const publier = () =>
     start(async () => {
       setMsg(null);
       setAvis([]);
-      const r = await publierAnnonce(immeubleId);
-      if (r.ok) {
-        const p = r.photos;
-        setMsg(
-          `Annonce publiée — ${r.lots ?? 0} lots` +
-            (p ? `, ${p.copiees} photo${p.copiees > 1 ? "s" : ""} copiée${p.copiees > 1 ? "s" : ""}` : "") +
-            (p && p.ignorees ? `, ${p.ignorees} ignorée${p.ignorees > 1 ? "s" : ""}` : "") +
-            ".",
-        );
-        /* Ce que Plein Bail n'a pas compris. Il ne devine jamais : il laisse
-           le champ vide et le dit ici. Ne pas l'afficher, c'est publier une
-           annonce amputée sans le savoir. */
-        setAvis(r.avertissements ?? []);
-      } else {
-        setMsg(r.message);
+      const lignes: string[] = [];
+      if (pretPb) {
+        const r = await publierAnnonce(immeubleId);
+        if (r.ok) {
+          const p = r.photos;
+          lignes.push(
+            `Plein Bail : annonce publiée, ${r.lots ?? 0} lots` +
+              (p ? `, ${p.copiees} photo${p.copiees > 1 ? "s" : ""} copiée${p.copiees > 1 ? "s" : ""}` : "") +
+              (p && p.ignorees ? `, ${p.ignorees} ignorée${p.ignorees > 1 ? "s" : ""}` : "") +
+              ".",
+          );
+          /* Ce que Plein Bail n'a pas compris. Il ne devine jamais : il laisse
+             le champ vide et le dit ici. Ne pas l'afficher, c'est publier une
+             annonce amputée sans le savoir. */
+          setAvis(r.avertissements ?? []);
+        } else {
+          lignes.push(`Plein Bail : ${r.message}`);
+        }
       }
-      setA(await apercuAnnonce(immeubleId));
+      if (pretSite) {
+        const r = await publierSurSite(immeubleId, agentCourantSlug() ?? undefined);
+        lignes.push(
+          r.ok
+            ? `Site France Immeuble : ${r.statut === "sous_offre" ? "affiché sous offre" : "en vente"}, ${r.photos} photo${r.photos > 1 ? "s" : ""}. En ligne d'ici dix minutes.`
+            : `Site France Immeuble : ${r.message}`,
+        );
+      }
+      setMsg(lignes.join("\n"));
+      await relire();
     });
+
+  /* Décocher une destination où le bien est en ligne l'en retire aussitôt :
+     on le demande avant, en disant ce qui va se passer. */
+  const cocher = async (destination: "pb" | "site", coche: boolean) => {
+    const enLigne = destination === "pb"
+      ? etat.publiee && etat.statutEnLigne !== "suspended"
+      : !!s?.etat.publie;
+    if (!coche && enLigne) {
+      const ok = await confirmer(
+        destination === "pb"
+          ? "Décocher Plein Bail retire l'annonce de Plein Bail maintenant."
+          : "Décocher le site retire le bien du site France Immeuble maintenant.",
+        { danger: true, oui: "Décocher et retirer" },
+      );
+      if (!ok) return;
+    }
+    start(async () => {
+      const r = await cocherDestination(immeubleId, destination, coche, agentCourantSlug() ?? undefined);
+      if (!r.ok) setMsg(r.message);
+      await relire();
+    });
+  };
+
+  const retirerSite = async () => {
+    if (!(await confirmer("Retirer le bien du site France Immeuble ?", { danger: true, oui: "Retirer du site" }))) return;
+    start(async () => {
+      const r = await retirerDuSite(immeubleId, "Retrait manuel depuis le BO", agentCourantSlug() ?? undefined);
+      setMsg(r.ok ? "Bien retiré du site." : r.message);
+      await relire();
+    });
+  };
 
   /* Sonder l'audience suppose une annonce déposée chez eux. Quand il n'y en a
      pas, on propose de déposer un BROUILLON : invisible de tous, y compris des
@@ -112,23 +177,64 @@ export function SectionDiffusion({
 
   if (!a) return <div className="fempty">Lecture de l&apos;état de diffusion…</div>;
 
-  const pret = a.blocages.length === 0 && !!a.statut;
+  const pret = pretPb || pretSite;
+  const dejaEnLigne = (etat.publiee && etat.statutEnLigne !== "suspended") || !!s?.etat.publie;
+  const libelleBouton = pending
+    ? "Envoi…"
+    : dejaEnLigne
+      ? "Republier maintenant"
+      : pretPb && pretSite
+        ? "Publier sur Plein Bail et le site"
+        : pretSite
+          ? "Publier sur le site"
+          : "Publier sur Plein Bail";
 
   return (
     <div className="dif">
+      {/* --- Les destinations : deux cases, cochées par défaut (contrat §3) --- */}
+      <div className="dif-dest">
+        <Destination
+          titre="Plein Bail"
+          sous="La marketplace des immeubles de rapport"
+          coche={a.coche}
+          pastille={etat.publiee ? (etat.statutEnLigne ?? "online") : "hors"}
+          libelle={etat.publiee
+            ? LIBELLE_STATUT[(etat.statutEnLigne ?? "online") as keyof typeof LIBELLE_STATUT] ?? etat.statutEnLigne ?? ""
+            : "Non publiée"}
+          lien={etat.url}
+          texteLien="Voir l'annonce ↗"
+          note={!a.coche ? "Case décochée : rien ne part sur Plein Bail." : !a.statut ? a.motif : undefined}
+          aRepublier={etat.publiee && a.ecart}
+          disabled={pending}
+          onCocher={(v) => cocher("pb", v)}
+        />
+        <Destination
+          titre="Site France Immeuble"
+          sous="La vitrine de l'agence"
+          coche={s?.etat.coche ?? true}
+          pastille={s?.etat.publie ? (s.etat.statut === "sous_offre" ? "sous_offre" : "online") : "hors"}
+          libelle={s?.etat.publie ? (s.etat.statut === "sous_offre" ? "Sous offre" : "En vente") : "Non publié"}
+          lien={s?.etat.publie ? s.url : undefined}
+          texteLien="Voir la page ↗"
+          note={
+            !s ? "Lecture…"
+              : !s.configuree ? "Le site n'est pas branché : il manque les variables SITE_FI_SUPABASE_* dans Vercel."
+              : !s.etat.coche ? "Case décochée : rien ne part sur le site."
+              : !s.statut ? s.motif
+              : undefined
+          }
+          erreur={s?.etat.derniereErreur}
+          aRepublier={!!s?.etat.publie && !!s?.ecart}
+          disabled={pending || !s}
+          onCocher={(v) => cocher("site", v)}
+        />
+      </div>
+
       <div className="dif-tete">
         <div className="t">
-          <b>Plein Bail</b>
-          <span>La marketplace des immeubles de rapport</span>
+          <b>Ce qui part</b>
+          <span>Le même contenu sur les deux destinations ; le site ne reçoit ni l&apos;adresse ni le détail des lots</span>
         </div>
-        <span className={`dif-pastille ${etat.publiee ? (etat.statutEnLigne ?? "online") : "hors"}`}>
-          {etat.publiee
-            ? LIBELLE_STATUT[(etat.statutEnLigne ?? "online") as keyof typeof LIBELLE_STATUT] ?? etat.statutEnLigne
-            : "Non publiée"}
-        </span>
-        {etat.url && (
-          <a className="dif-lien" href={etat.url} target="_blank" rel="noreferrer">Voir l&apos;annonce ↗</a>
-        )}
       </div>
 
       {!a.configuree && (
@@ -208,19 +314,25 @@ export function SectionDiffusion({
             {detail ? "Masquer" : "Voir"} les données brutes envoyées
           </button>
           {detail && (
-            <pre className="dif-json">{JSON.stringify(a.charge, null, 2)}</pre>
+            <pre className="dif-json">
+              {JSON.stringify({ plein_bail: a.charge, site_france_immeuble: s?.ligne ?? null }, null, 2)}
+            </pre>
           )}
         </>
       )}
 
       <div className="dif-actions">
         <button className="dif-go" type="button" disabled={!pret || pending} onClick={publier}>
-          <span className="ch">›</span>{" "}
-          {pending ? "Envoi…" : etat.publiee ? "Republier maintenant" : "Publier sur Plein Bail"}
+          <span className="ch">›</span> {libelleBouton}
         </button>
-        {etat.publiee && (
+        {etat.publiee && etat.statutEnLigne !== "suspended" && (
           <button className="dif-x" type="button" disabled={pending} onClick={retirer}>
-            Retirer l&apos;annonce
+            Retirer de Plein Bail
+          </button>
+        )}
+        {s?.etat.publie && (
+          <button className="dif-x" type="button" disabled={pending} onClick={retirerSite}>
+            Retirer du site
           </button>
         )}
         <button className="dif-x" type="button" disabled={pending || lecture || !a.configuree} onClick={sonder}>
@@ -522,6 +634,42 @@ function Kpi({ k, v, d, fort }: { k: string; v: string; d?: string; fort?: boole
   );
 }
 
+/** Une destination de diffusion : sa case, son état en ligne, son lien. */
+function Destination({
+  titre, sous, coche, pastille, libelle, lien, texteLien, note, erreur, aRepublier, disabled, onCocher,
+}: {
+  titre: string;
+  sous: string;
+  coche: boolean;
+  pastille: string;
+  libelle: string;
+  lien?: string;
+  texteLien: string;
+  note?: string;
+  erreur?: string;
+  aRepublier?: boolean;
+  disabled?: boolean;
+  onCocher: (v: boolean) => void;
+}) {
+  return (
+    <div className={`dif-dest-c${coche ? "" : " off"}`}>
+      <label className="h">
+        <input type="checkbox" checked={coche} disabled={disabled} onChange={(e) => onCocher(e.target.checked)} />
+        <span className="t">{titre}<small>{sous}</small></span>
+        <span className={`dif-pastille ${pastille}`}>{libelle}</span>
+      </label>
+      {(lien || aRepublier) && (
+        <div className="l">
+          {aRepublier && <span className="dif-att" title="La fiche a changé depuis la publication">à republier</span>}
+          {lien && <a className="dif-lien" href={lien} target="_blank" rel="noreferrer">{texteLien}</a>}
+        </div>
+      )}
+      {note && <div className="n">{note}</div>}
+      {erreur && <div className="e">Dernier dépôt en échec : {erreur}</div>}
+    </div>
+  );
+}
+
 function Cellule({ k, v, d, large }: { k: string; v: string; d?: string; large?: boolean }) {
   return (
     <div className={`dif-c${large ? " lg" : ""}`}>
@@ -550,6 +698,10 @@ export type LigneDiffusion = {
   photo?: string;
   renta?: number;
   prixM2?: number;
+  /** Le bien sur le site France Immeuble (contrat §3). */
+  siteStatut?: "en_vente" | "sous_offre";
+  siteUrl?: string;
+  siteErreur?: string;
 };
 
 export function ParcDiffusion({
@@ -630,8 +782,16 @@ export function ParcDiffusion({
                 <Link href={`/bien/${l.immeubleId}`}>{l.ville}</Link>
                 <span>{l.adresse}</span>
               </div>
-              <span className={`dif-pastille ${l.statut ?? "hors"}`}>
-                {LIBELLE_STATUT[(l.statut ?? "suspended") as keyof typeof LIBELLE_STATUT] ?? l.statut}
+              <span className="dif-deux">
+                <span className={`dif-pastille ${l.statut ?? "hors"}`} title="Plein Bail">
+                  PB · {l.statut ? LIBELLE_STATUT[l.statut as keyof typeof LIBELLE_STATUT] ?? l.statut : "Non publiée"}
+                </span>
+                <span
+                  className={`dif-pastille ${l.siteStatut === "sous_offre" ? "sous_offre" : l.siteStatut ? "online" : "hors"}`}
+                  title={l.siteErreur ? `Site France Immeuble · dernier dépôt en échec : ${l.siteErreur}` : "Site France Immeuble"}
+                >
+                  Site · {l.siteStatut === "sous_offre" ? "Sous offre" : l.siteStatut ? "En vente" : "Non publié"}
+                </span>
               </span>
               <span className="px">
                 {euros(l.prix) ?? "—"}
@@ -656,10 +816,96 @@ export function ParcDiffusion({
               {l.ecart && <span className="dif-att" title="La fiche a changé depuis la publication">à republier</span>}
               {l.erreur && <span className="dif-err" title={l.erreur}>erreur</span>}
               {l.url && <a className="dif-lien" href={l.url} target="_blank" rel="noreferrer">Voir l&apos;annonce ↗</a>}
+              {l.siteUrl && <a className="dif-lien" href={l.siteUrl} target="_blank" rel="noreferrer">Voir la page ↗</a>}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------- Le site France Immeuble */
+
+/**
+ * Le pont vers le site, vu du parc : est-il branché, que reste-t-il à y
+ * publier, et que dit le compteur off-market que le site affichera.
+ */
+export function PanneauSite({
+  test, aReprendre, offmarket,
+}: {
+  test: { ok: boolean; message: string };
+  /** Biens en ligne sur Plein Bail et pas encore sur le site. */
+  aReprendre: number;
+  offmarket: { commune: string; dept: string; arrondissement: string | null; nombre: number }[];
+}) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const { confirmer, question } = useQuestion();
+  const total = offmarket.reduce((s, l) => s + l.nombre, 0);
+
+  const reprendre = async () => {
+    const ok = await confirmer(
+      `Publier sur le site les ${aReprendre} bien${aReprendre > 1 ? "s" : ""} déjà en ligne sur Plein Bail ?\n\n` +
+        "Chacun part avec les mêmes informations que sur Plein Bail, sans l'adresse. Un bien dont la case « Site » est décochée est laissé de côté.",
+      { oui: "Publier sur le site" },
+    );
+    if (!ok) return;
+    start(async () => {
+      const r = await publierParcSurSite(agentCourantSlug() ?? undefined);
+      setMsg(
+        r.ok
+          ? `${r.publies} bien${r.publies > 1 ? "s" : ""} publié${r.publies > 1 ? "s" : ""} sur le site.` +
+              (r.refus.length ? `\n${r.refus.length} refusé${r.refus.length > 1 ? "s" : ""} : ${r.refus.map((x) => x.message).join(" · ")}` : "")
+          : r.message,
+      );
+    });
+  };
+
+  const deposer = () =>
+    start(async () => {
+      const r = await deposerOffmarket();
+      setMsg(r.ok ? `Compteur déposé : ${r.biens} bien${r.biens > 1 ? "s" : ""} dans ${r.communes} commune${r.communes > 1 ? "s" : ""}.` : r.message);
+    });
+
+  return (
+    <div className="dif-site">
+      <div className="dif-parc-h">
+        <span className="t">Site France Immeuble</span>
+        <span className="s">Le BO dépose, le site affiche : il ne lit jamais le BO</span>
+      </div>
+      <div className={`dif-test${test.ok ? " ok" : ""}`}>
+        <b>{test.ok ? "Pont vers le site branché" : "Pont vers le site — test échoué"}</b>
+        <span>{test.message}</span>
+      </div>
+      <div className="dif-site-l">
+        <div>
+          <b>{aReprendre}</b> bien{aReprendre > 1 ? "s" : ""} en ligne sur Plein Bail, pas encore sur le site.
+        </div>
+        <button className="fadd" type="button" disabled={pending || !test.ok || aReprendre === 0} onClick={reprendre}>
+          Publier sur le site
+        </button>
+      </div>
+      <div className="dif-site-l">
+        <div>
+          <b>{total}</b> immeuble{total > 1 ? "s" : ""} off-market, dans {offmarket.length} commune{offmarket.length > 1 ? "s" : ""}.
+          Le compteur part sur le site à 9 h et à 19 h.
+          {offmarket.length > 0 && (
+            <span className="dif-om">
+              {offmarket.map((l) => (
+                <i key={`${l.dept}${l.commune}${l.arrondissement ?? ""}`}>
+                  {l.arrondissement ? `${l.commune} ${l.arrondissement}` : l.commune} ({l.dept}) · {l.nombre}
+                </i>
+              ))}
+            </span>
+          )}
+        </div>
+        <button className="fadd" type="button" disabled={pending || !test.ok} onClick={deposer}>
+          Déposer maintenant
+        </button>
+      </div>
+      {msg && <div className="dif-msg">{msg}</div>}
+      {question}
     </div>
   );
 }
