@@ -22,6 +22,9 @@ export const NAV: NavItem[] = [
   // La diffusion est un métier à part : ce qui est en ligne, et ce que ça
   // rapporte. Elle se pilote depuis les fiches, elle se surveille d'ici.
   { href: "/diffusion", label: "Diffusion" },
+  /* Les ventes réalisées, telles que le site les raconte (lot 2 du contrat
+     site) : l'autre bout de la diffusion, celui qui prouve le savoir-faire. */
+  { href: "/ventes-site", label: "Biens vendus" },
   { href: "/recherches", label: "Recherches" },
   /* Contacts remonte au-dessus de Mandats (retour #114) : l'ordre du menu
      suit la fréquence d'usage, pas la logique du métier. */
