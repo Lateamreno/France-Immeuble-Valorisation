@@ -488,7 +488,10 @@ export function controleAnonymat(textes: string[], interdits: string[], rue: str
   for (const nom of interdits) {
     const n = nom.trim();
     if (n.length < 3) continue;
-    if (new RegExp(`(^|[^\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "iu").test(t)) {
+    /* Un nom propre s'écrit avec sa majuscule : « un petit immeuble » ne cite
+       pas M. PETIT. La casse du reste du mot, elle, est indifférente. */
+    const re = new RegExp(`(^|[^\\p{L}])(${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=[^\\p{L}]|$)`, "giu");
+    if ([...t.matchAll(re)].some((m) => /^\p{Lu}/u.test(m[2]))) {
       out.push({ cle: `nom:${n}`, texte: `Nom d'une personne ou d'une société du dossier : « ${n} »` });
     }
   }
