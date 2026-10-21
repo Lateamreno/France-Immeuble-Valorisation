@@ -5263,7 +5263,9 @@ export async function biensPourProposition(immeubleIds: string[]): Promise<BienP
  */
 export async function creerEtEnvoyerProposition(input: {
   immeubleIds: string[];
-  personnes: { id: string; email?: string }[];
+  /** `rechercheId` : la recherche de la personne, quand on la connaît (une
+   *  demande de dossier du site) ; la proposition s'y rattache. */
+  personnes: { id: string; email?: string; rechercheId?: string }[];
   objet: string;
   message: string;
   pieces: { nom: string; path?: string; url?: string }[];
@@ -5286,7 +5288,7 @@ export async function creerEtEnvoyerProposition(input: {
   let envoyes = 0;
   const echecs: string[] = [];
   for (const p of input.personnes) {
-    const r = await traiterAProposer("", input.immeubleIds,
+    const r = await traiterAProposer(p.rechercheId ?? "", input.immeubleIds,
       { mode: "envoyer", objet: input.objet, message: input.message, email: p.email }, agentId, p.id);
     crees += r.crees;
     if (!p.email) { echecs.push("Une fiche sans adresse e-mail : proposition créée, rien d'envoyé."); continue; }

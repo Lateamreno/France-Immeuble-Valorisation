@@ -198,11 +198,15 @@ function ChipPiece({ p, onRetirer }: { p: Piece; onRetirer?: () => void }) {
  * sur « Créer et envoyer » qui l'envoie.
  */
 export function ModaleProposition({
-  bien, contact, onFermer,
+  bien, contact, onFermer, rechercheId, surEnvoi,
 }: {
   bien?: Bien;
   contact?: Personne;
   onFermer: () => void;
+  /** La recherche du contact connu d'avance : sa proposition s'y rattache. */
+  rechercheId?: string;
+  /** Après l'envoi, à la place d'aller sur Propositions (écran Questions). */
+  surEnvoi?: () => void;
 }) {
   const router = useRouter();
   const [biens, setBiens] = useState<BienProposition[]>([]);
@@ -292,7 +296,8 @@ export function ModaleProposition({
       try {
         if (mode === "envoyer") {
           const r = await creerEtEnvoyerProposition({
-            immeubleIds: ids, personnes: gens.map((p) => ({ id: p.id, email: p.email })),
+            immeubleIds: ids,
+            personnes: gens.map((p) => ({ id: p.id, email: p.email, rechercheId: p.id === contact?.id ? rechercheId : undefined })),
             objet, message, pieces,
           });
           if (r.echecs.length) {
@@ -304,7 +309,7 @@ export function ModaleProposition({
              Une proposition sans recherche reste une proposition : c'est le bien et
              l'acquéreur qui comptent. */
           for (const p of gens) {
-            await traiterAProposer("", ids, {
+            await traiterAProposer(p.id === contact?.id ? rechercheId ?? "" : "", ids, {
               mode: "deja_envoye",
               retour: retour === "aucun" ? undefined : {
                 statut: retour === "refus" ? "Refusée (sans offre)" : "Intéressé",
@@ -313,6 +318,7 @@ export function ModaleProposition({
             }, undefined, p.id);
           }
         }
+        if (surEnvoi) { surEnvoi(); return; }
         onFermer();
         router.push("/propositions");
       } catch (e) {

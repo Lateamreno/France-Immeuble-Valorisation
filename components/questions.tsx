@@ -9,6 +9,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { QuestionCard } from "@/lib/bubble/server";
 import { cloturerQuestion, creerContactDepuisQuestion, noterAppelDemande, refuserDemandeDossier, rouvrirQuestion } from "@/lib/bo/actions";
 import { Modale, useQuestion } from "@/components/modale";
@@ -42,6 +43,7 @@ export function EcranQuestions({
   const [aEnvoyer, setAEnvoyer] = useState<QuestionCard | null>(null);
   const [pending, start] = useTransition();
   const { confirmer, question } = useQuestion();
+  const router = useRouter();
 
   /* Envoyer le dossier sans avoir appelé reste possible : MAV veut qu'on
      s'appelle d'abord, le BO le rappelle sans l'imposer. */
@@ -129,6 +131,9 @@ export function EcranQuestions({
                       : <Pastille ton="orange">Pas encore appelé</Pastille>}
                     {r.demande.dossierEnvoyeLe && <Pastille ton="vert">Dossier envoyé le {dmy(r.demande.dossierEnvoyeLe)}</Pastille>}
                     {r.demande.refusee && <Pastille ton="rouge">Refusée</Pastille>}
+                    {r.demande.rechercheId && r.contact && (
+                      <Link className="qc-rech" href={`/contact/${r.contact.id}`}>Sa recherche</Link>
+                    )}
                   </div>
                 )}
                 {r.projet && <div className="qc-projet">{r.projet}</div>}
@@ -220,7 +225,9 @@ export function EcranQuestions({
         <ModaleProposition
           bien={{ id: aEnvoyer.immeuble.id, libelle: aEnvoyer.immeuble.libelle }}
           contact={{ id: aEnvoyer.contact.id, nom: aEnvoyer.contact.nom, email: aEnvoyer.email }}
+          rechercheId={aEnvoyer.demande?.rechercheId}
           onFermer={() => setAEnvoyer(null)}
+          surEnvoi={() => { setAEnvoyer(null); router.refresh(); }}
         />
       )}
       {question}

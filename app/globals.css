@@ -8638,3 +8638,5 @@ button { font-weight: 700; }
 .qc-b.qc-env { border-color: var(--green); color: var(--green); }
 .qc-b.qc-ref { border-color: #e2b4b4; color: #a33; }
 .qc-b:disabled { opacity: .45; cursor: default; }
+.qc-rech { font-size: 12px; color: var(--slate-2); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; text-decoration: none; }
+.qc-rech:hover { border-color: var(--slate); }
