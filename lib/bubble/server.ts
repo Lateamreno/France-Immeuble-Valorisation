@@ -3527,6 +3527,8 @@ export type QuestionCard = {
     /** Une proposition de ce bien à ce contact, envoyée après la demande. */
     dossierEnvoyeLe?: string;
     refusee: boolean;
+    /** La recherche créée (ou retrouvée) pour la personne. */
+    rechercheId?: string;
   };
 };
 
@@ -3597,6 +3599,7 @@ export async function listQuestionsBO(
             appeleLe: S2(q.appele_le),
             dossierEnvoyeLe: envois.get(String(q._id)),
             refusee: q.dossier_refuse === true,
+            rechercheId: S2(q.RECHERCHE),
           }
         : undefined,
     } satisfies QuestionCard;

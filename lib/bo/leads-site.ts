@@ -382,6 +382,45 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
 
 /* ------------------------------------------- Contact depuis une fiche */
 
+const arrondi = (n: number) => Math.round(n / 10_000) * 10_000;
+
+/**
+ * La recherche de quelqu'un qui demande un dossier (MAV, 21/10 : « il faut
+ * aussi créer la recherche »). Ses critères se déduisent du bien demandé : le
+ * département, une fourchette de prix autour de celui du bien, les
+ * destinations de ses lots. La cible reste vide : l'agent la précise à
+ * l'appel. Un contact connu qui cherche déjà dans ce département garde sa
+ * recherche, on ne lui en ajoute pas une seconde.
+ */
+async function rechercheDeLaDemande(
+  ref: string, contact: { id: string; nouveau: boolean },
+  im: { id: string; data: Record<string, unknown> }, titre: string | undefined, agentId?: string,
+): Promise<string | undefined> {
+  const cp = T(im.data.adresse_zipcode) ?? "";
+  const dept = T(im.data.adresse_dpt) ?? (cp.startsWith("97") ? cp.slice(0, 3) : cp.slice(0, 2));
+  if (!contact.nouveau && dept) {
+    const siennes = await lire(`bo_recherche?select=id,data&data->>ACHETEUR=eq.${encodeURIComponent(contact.id)}&limit=50`).catch(() => []);
+    const deja = siennes.find((r) => r.data.archived !== true && Array.isArray(r.data.dpts) && (r.data.dpts as unknown[]).includes(dept));
+    if (deja) return deja.id;
+  }
+  const id = `app_site_${ref}_r1`;
+  if (await existe("bo_recherche", id)) return id;
+  const lots = await lire(`bo_lot?select=data&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=300`).catch(() => []);
+  const destinations = [...new Set(lots.map((l) => String(l.data.Destination ?? "")).filter((d) => DESTINATIONS.has(d)))];
+  const prix = N(im.data.prix_hai);
+  await enregistrerRecherche({
+    contactId: contact.id,
+    destinations,
+    villes: [],
+    departements: dept ? [dept] : [],
+    prixMin: prix ? arrondi(prix * 0.7) : undefined,
+    prixMax: prix ? arrondi(prix * 1.3) : undefined,
+    commentaire: `Créée depuis une demande de dossier sur le site${titre ? ` (${titre})` : ""}. Critères déduits du bien, à confirmer à l'appel.`,
+    exclusions: { destinations: [], villes: [], departements: [], regions: [] },
+  }, agentId, { id, source: "Site - Fiche à vendre" });
+  return id;
+}
+
 async function recevoirContact(ref: string, b: Record<string, unknown>) {
   const questionId = `app_site_${ref}`;
   if (await existe("bo_question", questionId)) return { deja: true, id: questionId };
@@ -395,6 +434,7 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
     source, agentId, noteD: true, acheteur: true,
   });
+  const rechercheId = im ? await rechercheDeLaDemande(ref, contact, im, T(b.bienTitre, 200), agentId) : undefined;
   const now = new Date().toISOString();
   await inserer("bo_question", questionId, {
     source,
@@ -408,6 +448,7 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
     IMMEUBLE: im ? im.id : undefined,
     bien_titre: T(b.bienTitre, 200),
     CONTACT: contact.id,
+    RECHERCHE: rechercheId,
     searchfield: [T(b.prenom), T(b.nom), T(b.email), T(b.bienTitre)].filter(Boolean).join(" ").toLowerCase(),
     "Created Date": now,
     "Modified Date": now,
