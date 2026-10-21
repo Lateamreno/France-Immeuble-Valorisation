@@ -189,7 +189,7 @@ Livré le 21/10 au soir (lot 3) : `BO_LEAD_ENDPOINT` =
 |---|---|---|
 | Vendre / Estimer (`type: "estimation"`, `etat: "principal"` puis `"complement"`, `formulaire: "vendre"` ou `"estimer"`) | un immeuble au statut « 1 - FORMULAIRE », avec son propriétaire, **sous la même vignette** que les anciens formulaires au tableau de bord ; le complément complète la même fiche | « Site - Formulaire Vendre » ou « Site - Formulaire estimer » |
 | Recherche (`type: "recherche_acquereur"`) | le contact, retrouvé par e-mail ou créé avec la **note D**, et une recherche par élément du tableau `recherches` | « Site - Formulaire recherche » |
-| Contact depuis une fiche à vendre (`type: "contact"`, `bien`, `bienTitre`) | le contact (note D s'il est nouveau) et une **demande de dossier** dans Questions, rattachée au bien et à son agent | « Site - Fiche à vendre » |
+| Contact depuis une fiche à vendre (`type: "contact"`, `bien`, `bienTitre`) | le contact (note D s'il est nouveau), sa **recherche** déduite du bien (département, 70 à 130 % du prix, destinations des lots ; gardée si le contact cherche déjà dans ce département) et une **demande de dossier** dans Questions, rattachée au bien et à son agent. L'envoi du dossier crée la proposition, rattachée à cette recherche (MAV, 21/10) | « Site - Fiche à vendre » |
 
 ### Les champs
 
