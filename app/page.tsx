@@ -4,6 +4,7 @@ import { DASHBOARD } from "@/lib/data/dashboard";
 import Link from "next/link";
 import { getDashboardLive, getAgents } from "@/lib/bubble/server";
 import { ventesAPublier } from "@/lib/bo/ventes-site";
+import { demandesDossierOuvertes } from "@/lib/bo/leads-site";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,13 @@ export default async function DashboardPage({
 
   /* Les ventes neuves qui attendent d'être publiées sur le site (contrat
      §4) : un rappel ici, en rouge au-delà de sept jours, jamais un e-mail. */
-  const vap = await ventesAPublier().catch(() => null);
+  const agentId = actifs.find((a) => a.slug === slug)?.id;
+  const [vap, demandes] = await Promise.all([
+    ventesAPublier().catch(() => null),
+    /* Les demandes de dossier venues des fiches à vendre du site (lot 3) :
+       à l'agent du bien, qui appelle avant d'envoyer. */
+    agentId ? demandesDossierOuvertes(agentId).catch(() => 0) : Promise.resolve(0),
+  ]);
 
   return (
     <>
@@ -50,6 +57,11 @@ export default async function DashboardPage({
         agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color }))} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
+      )}
+      {demandes > 0 && (
+        <Link href="/questions" className="vs-bandeau">
+          {demandes} demande{demandes > 1 ? "s" : ""} de dossier à traiter
+        </Link>
       )}
       {vap && vap.nombre > 0 && (
         <Link href="/ventes-site" className={`vs-bandeau${vap.enRetard ? " ko" : ""}`}>

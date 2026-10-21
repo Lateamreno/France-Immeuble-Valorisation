@@ -8629,3 +8629,12 @@ button { font-weight: 700; }
 .vs-journal { margin-top: 18px; font-size: 11.5px; color: var(--gray-lt); line-height: 1.6; border-left: 3px solid var(--line); padding-left: 12px; }
 .vs-bandeau { display: inline-block; margin: 10px 26px -4px; font-size: 12.5px; font-weight: 700; color: #8a5a12; background: #fdf8ef; border: 1px solid #ecd3a5; border-radius: 4px; padding: 5px 10px; text-decoration: none; }
 .vs-bandeau.ko { color: #8d2020; background: #fdf5f5; border-color: #efc3c3; }
+
+/* Demande de dossier (lot 3 du contrat site) */
+.qc.demande .qc-cadre { border-left: 3px solid var(--gold-bo); }
+.qc-dem { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 8px; }
+.qc-tel { font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate); text-decoration: none; margin-right: 4px; }
+.qc-tel:hover { text-decoration: underline; }
+.qc-b.qc-env { border-color: var(--green); color: var(--green); }
+.qc-b.qc-ref { border-color: #e2b4b4; color: #a33; }
+.qc-b:disabled { opacity: .45; cursor: default; }
