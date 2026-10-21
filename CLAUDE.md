@@ -365,6 +365,16 @@ ne retombe sur le téléphone du compte France Immeuble qu'à défaut. Un bien
 sans agent, ou dont l'agent n'a pas de portable, est **bloqué** à la
 publication (`blocages`, clés `agent` / `agent_tel`).
 
+### 7.3 bis Site France Immeuble — seconde destination
+
+Décidé avec MAV le 21/10/26, contrat complet dans `docs/CONTRAT-SITE.md` (il
+fait foi entre la session du BO et celle du site). L'essentiel : le BO **dépose**
+dans la base Supabase du site (`omtkttpvfjsbnqsajcsp`, variables
+`SITE_FI_SUPABASE_*`), le site ne lit jamais le BO ; le site poste ses
+formulaires sur `/api/site/lead` (jeton `BO_LEAD_TOKEN`), qui ne sait
+qu'enregistrer. Le BO ne crée aucune table dans la base du site. Le statut 5
+n'est jamais en ligne, ni sur le site ni sur Plein Bail.
+
 ### 7.4 Docusign (V2)
 Mandats, contrats de mission, protocoles de départ locataire.
 
@@ -478,6 +488,13 @@ arbitrage de MAV, ne pas y revenir sans lui.
   **jamais tous les mandats**.
 - Le lien secret sans mot de passe est conservé, mais il s'échange contre une
   session ordinaire : un seul mécanisme d'accès dans toute l'application.
+
+**Revirement du 21/10/26.** MAV veut désormais que l'acquéreur crée lui-même
+son compte, **sur le site France Immeuble**, et que le BO ne parle jamais
+directement au client. L'espace client acquéreur du BO sera remplacé par celui
+du site (lot 4 du contrat, `docs/CONTRAT-SITE.md` §9, pas encore conçu). Les
+règles ci-dessus restent en vigueur jusque-là ; l'espace propriétaire n'est pas
+concerné.
 
 **Ce qui reste pour boucler le parcours de bout en bout.**
 1. Variables Vercel : `SITE_URL` (adresse publique du BO, pour le lien « mot de
