@@ -168,6 +168,16 @@ export function profilAcquereurDe(v: string | null): ProfilAcquereur | null {
   return null;
 }
 
+/**
+ * Bubble range les dates en UTC à minuit heure de Paris : « 2026-01-29T23:00Z »
+ * est le 30 janvier. On relit donc la date à Paris, en AAAA-MM-JJ.
+ */
+export function dateParis(v: unknown): string {
+  const brute = S(v);
+  const t = brute ? Date.parse(brute) : NaN;
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) : (brute ?? "").slice(0, 10);
+}
+
 /** Les faits d'une vente, calculés depuis le dossier. */
 export function faitsDe(src: SourcesVente): FaitsVente {
   const { vente, im, lots } = src;
@@ -223,11 +233,7 @@ export function faitsDe(src: SourcesVente): FaitsVente {
   const prixVille = N(src.secteur?.hab_prix_ville_moyen);
   const loyerVille = N(src.secteur?.hab_loyer_ville_moyen);
   const rdtVille = N(src.secteur?.hab_renta_ville_moyen);
-  /* Bubble range les dates en UTC à minuit heure de Paris : « 2026-01-29T23:00Z »
-     est le 30 janvier. On relit donc la date à Paris. */
-  const brute = S(vente.date);
-  const t = brute ? Date.parse(brute) : NaN;
-  const date = Number.isFinite(t) ? new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) : (brute ?? "").slice(0, 10);
+  const date = dateParis(vente.date);
 
   return {
     commune,

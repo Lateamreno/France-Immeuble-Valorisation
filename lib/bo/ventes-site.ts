@@ -12,7 +12,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { getBien } from "@/lib/bubble/server";
 import {
-  CONSIGNES_REDACTION, controleAnonymat, compterMots, faitsDe, faitsEnTexte, lireReponse, nombreDeFaits, recitGabarit, seoDe,
+  CONSIGNES_REDACTION, controleAnonymat, compterMots, dateParis, faitsDe, faitsEnTexte, lireReponse, nombreDeFaits, recitGabarit, seoDe,
   type FaitsVente, type Recit,
 } from "@/lib/ventes";
 
@@ -116,7 +116,7 @@ export async function listeVentes(): Promise<{ aPublier: LigneVente[]; passees: 
       immeubleId: S(v.data.IMMEUBLE),
       commune: S(v.data.ville) ?? "?",
       dept: String(v.data["département"] ?? "").padStart(2, "0"),
-      date: String(v.data.date ?? "").slice(0, 10),
+      date: dateParis(v.data.date),
       prix: Number(v.data.prix_hai ?? 0),
       faits: Number(v.data.site_nb_faits ?? 0),
       brouillon: !!S(v.data.site_recit),
