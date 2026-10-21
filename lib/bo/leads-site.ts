@@ -47,11 +47,24 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   if (!res.ok) throw new Error(`Écriture ${fn} ${res.status} : ${(await res.text()).slice(0, 200)}`);
 }
 
-const existe = async (table: string, id: string) =>
+const present = async (table: string, id: string) =>
   (await lire(`${table}?select=id&id=eq.${encodeURIComponent(id)}&limit=1`)).length > 0;
 
-const inserer = (table: string, id: string, doc: Record<string, unknown>) =>
-  rpc("bo_insert_doc", { p_table: table, p_id: id, p_doc: sansVides(doc) });
+/**
+ * Existe, ou a existé : une fiche passée à la corbeille compte comme traitée.
+ * La base refuse d'ailleurs de la recréer (déclencheur
+ * `trg_bo_refuser_reinsertion`) : un complément qui arrive après que l'agent a
+ * supprimé le formulaire ne doit pas le ressusciter, ni boucler en erreur.
+ */
+const existe = async (table: string, id: string) =>
+  (await present(table, id)) ||
+  (await lire(`bo_trash?select=id&id=eq.${encodeURIComponent(id)}&src_table=eq.${table}&limit=1`).catch(() => [])).length > 0;
+
+/** Insère, puis relit : un 200 au site doit vouloir dire « c'est dans la base ». */
+async function inserer(table: string, id: string, doc: Record<string, unknown>) {
+  await rpc("bo_insert_doc", { p_table: table, p_id: id, p_doc: sansVides(doc) });
+  if (!(await present(table, id))) throw new Error(`${table} ${id} : l'insertion n'a rien laissé dans la base.`);
+}
 
 const sansVides = (o: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ""));
@@ -212,9 +225,9 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
 
   // Le complément d'un formulaire déjà reçu : on complète la même fiche.
   if (complement && dejaLa) {
-    const suivi = `app_site_${ref}_s2`;
-    if (await existe("bo_suivi", suivi)) return { deja: true, id: immeubleId };
     const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${immeubleId}`);
+    if (!im) return { deja: true, id: immeubleId }; // supprimé par l'agent entre-temps
+    if (im.data.site_lead_complement_le || (await existe("bo_suivi", `app_site_${ref}_s2`))) return { deja: true, id: immeubleId };
     const lots = ["lotsHabitation", "lotsCommerces", "lotsBureaux", "lotsActivite"].map((k) => N(b[k]) ?? 0);
     // Le complément ne redit pas ce que le principal a déjà dit.
     const avant = String(im?.data.form ?? "");
@@ -230,15 +243,24 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
         lots_tot: lots.some((n) => n > 0) ? lots.reduce((s, n) => s + n, 0) : undefined,
         "occupé": T(b.occupation) ? T(b.occupation) !== "Libre" : undefined,
         form: `${avant}\n\n${ajout}`.trim(),
+        site_lead_complement_le: new Date().toISOString(),
         "Modified Date": new Date().toISOString(),
       }),
     });
-    await suiviFormulaire(suivi, {
-      agentId: T(im?.data.AGENT) ?? agentId,
-      contactId: T(im?.data.PROPRIETAIRE) ?? "",
-      immeubleId,
-      notes: ajout,
-    });
+    /* Le complément rejoint le suivi du formulaire au lieu d'en ouvrir un
+       second : la carte du tableau de bord affiche le DERNIER suivi, et elle
+       doit continuer de montrer le message du propriétaire. */
+    const [s1] = await lire(`bo_suivi?select=id,data&id=eq.app_site_${ref}_s1`);
+    if (s1) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_suivi", p_id: s1.id,
+        p_patch: { notes: `${String(s1.data.notes ?? "")}\n\n${ajout}`.trim(), "Modified Date": new Date().toISOString() },
+      });
+    } else {
+      await suiviFormulaire(`app_site_${ref}_s2`, {
+        agentId: T(im.data.AGENT) ?? agentId, contactId: T(im.data.PROPRIETAIRE) ?? "", immeubleId, notes: ajout,
+      });
+    }
     return { deja: false, id: immeubleId };
   }
   if (dejaLa) {
@@ -247,6 +269,7 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
     const suivi = `app_site_${ref}_s1`;
     if (await existe("bo_suivi", suivi)) return { deja: true, id: immeubleId };
     const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${immeubleId}`);
+    if (!im) return { deja: true, id: immeubleId };
     const texte = texteEstimation(b, false);
     await rpc("bo_patch_doc", {
       p_table: "bo_immeuble",
