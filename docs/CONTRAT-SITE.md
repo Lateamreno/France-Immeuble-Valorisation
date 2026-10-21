@@ -174,6 +174,17 @@ JSON. Réponse `200` : enregistré. Tout autre code : à réessayer (file
 `leads_outbox` côté site). Idempotent sur `ref` : un réessai ne crée jamais de
 doublon. Débit limité. Aucun e-mail ne part automatiquement vers le visiteur.
 
+Livré le 21/10 au soir (lot 3) : `BO_LEAD_ENDPOINT` =
+`https://france-immeuble-valorisation.vercel.app/api/site/lead`.
+- `200 {"ok":true,"deja":false|true,"id":…}` : enregistré, ou déjà enregistré
+  (réessai). Le site efface le lead de sa file.
+- `422` : formulaire illisible (pas de `ref` UUID, type inconnu, ni ville ni
+  code postal pour une estimation, ni e-mail ni téléphone ailleurs). Le
+  renvoyer tel quel ne servira à rien ; le site peut le garder pour un humain.
+- `401` jeton refusé, `429` trop d'envois, `500`/`503` : passager, à réessayer.
+- Un formulaire dont la fiche a été supprimée dans le BO répond `200` « déjà »
+  et ne la recrée pas.
+
 | Formulaire | Ce que crée le BO | Source |
 |---|---|---|
 | Vendre / Estimer (`type: "estimation"`, `etat: "principal"` puis `"complement"`, `formulaire: "vendre"` ou `"estimer"`) | un immeuble au statut « 1 - FORMULAIRE », avec son propriétaire, **sous la même vignette** que les anciens formulaires au tableau de bord ; le complément complète la même fiche | « Site - Formulaire Vendre » ou « Site - Formulaire estimer » |
