@@ -19,6 +19,10 @@ const ETAPES: Record<string, string> = {
 const ETATS: Record<string, string> = { disponible: "Disponible", sous_offre: "Sous offre", vendu: "Vendu", retire: "Retiré" };
 const REPONSES: Record<string, string> = { interesse: "Intéressé", visite: "Visite demandée", pas_pour_moi: "Pas pour lui" };
 const DEMANDES: Record<string, string> = { en_attente: "En attente", dossier_envoye: "Dossier envoyé", close: "Close" };
+const PIECES: Record<string, string> = {
+  titre: "Titre de propriété", baux: "Bail", diagnostics: "Diagnostic", taxe: "Taxe foncière",
+  charges: "Charges / travaux", autre: "Pièce",
+};
 
 type L = Record<string, unknown>;
 const t = (v: unknown) => (v === null || v === undefined || v === "" ? undefined : String(v));
@@ -79,6 +83,7 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
           <span className="cps-t">Ses immeubles</span>
           {l.compte_biens.map((b) => {
             const est = l.compte_estimations.filter((e) => e.bien_cle === b.cle);
+            const docs = (l.compte_documents ?? []).filter((d) => d.bien_cle === b.cle);
             return (
               <div className="cps-l" key={String(b.cle)}>
                 <span>{lieu(b)}</span>
@@ -90,6 +95,12 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
                 {est.map((e) => (
                   <span className="cps-n" key={String(e.cle)}>
                     Estimé {euros(e.valeur)}{e.prix_m2 ? ` (${euros(e.prix_m2)}/m²)` : ""}{e.rendement ? `, ${String(e.rendement).replace(".", ",")} % brut` : ""} le {dmy(e.estimee_le)}
+                  </span>
+                ))}
+                {/* Lot 5 : les pièces qu'il a déposées ; elles sont au coffre de l'immeuble. */}
+                {docs.map((d) => (
+                  <span className="cps-n" key={String(d.cle)}>
+                    {PIECES[String(d.categorie)] ?? "Pièce"} déposée le {dmy(d.recu_le) ?? "?"} — {t(d.nom)}
                   </span>
                 ))}
               </div>

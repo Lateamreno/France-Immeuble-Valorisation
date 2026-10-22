@@ -2,6 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import { LeadInvalide, recevoirLead } from "@/lib/bo/leads-site";
 
 export const dynamic = "force-dynamic";
+/* Une pièce de 25 Mo se rapatrie du site au coffre dans la même requête
+   (lot 5) : on laisse une minute plutôt que les dix secondes par défaut. */
+export const maxDuration = 60;
 
 /**
  * L'adresse des formulaires du site France Immeuble (contrat §6, lot 3).

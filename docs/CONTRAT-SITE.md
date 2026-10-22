@@ -343,5 +343,74 @@ Questions, à l'agent du bien, avec le compteur du tableau de bord.
 L'espace client et le lien propriétaire du BO sont fermés : pages retirées,
 fonctions `ec_*` retirées à la clé publique. Au 22/10, un seul compte y était
 ouvert, aucun lien propriétaire. Les dépôts de pièces par le propriétaire ne
-sont pas repris en lot 4 ; ils viendront dans un lot suivant si MAV le
-demande.
+sont pas repris en lot 4 : c'est le lot 5 (§10).
+
+## 10. Les pièces du propriétaire (lot 5, lancé par MAV le 22/10)
+
+Le propriétaire dépose depuis son compte les pièces qu'on lui demande, sur
+chacun de ses immeubles. Elles arrivent au **coffre de l'immeuble** dans le BO,
+comme un document déposé par un agent. **Le site n'en garde aucune copie** :
+une fuite de sa base ou de son stockage n'expose ni un titre de propriété, ni
+un bail, ni un avis de taxe foncière.
+
+### 10.1 Le parcours
+
+1. Dans le compte, sur un immeuble de `compte_biens`, le propriétaire choisit
+   une catégorie (§10.2) et un fichier.
+2. Le site pose le fichier dans son seau **privé** `depots-proprietaires`, au
+   chemin `<compte>/<uuid>-<nom du fichier>` — toujours sous la clé du compte.
+3. Le site envoie le type `document` sur l'adresse des formulaires (§6), avec
+   le même jeton et la même file d'attente.
+4. Le BO vérifie que l'immeuble appartient bien au contact de ce compte, lit
+   le fichier dans le seau, le range au coffre, ajoute une ligne au suivi de
+   l'immeuble pour l'agent, **puis efface le fichier du seau du site**.
+5. Le BO redépose le compte : la pièce apparaît dans `compte_documents`,
+   « déposée le … ».
+
+Tant que le BO n'a pas répondu 200, le fichier reste dans le seau et le site
+réessaie. Un fichier refusé (422) est à effacer par le site, avec un message
+au propriétaire.
+
+### 10.2 Les catégories
+
+| Clé | Ce qu'on demande |
+|---|---|
+| `titre` | Titre de propriété — l'acte notarié d'acquisition |
+| `baux` | Baux en cours — un fichier par bail, ou un seul pour tous |
+| `diagnostics` | Diagnostics — DPE, amiante, plomb, électricité, gaz, même anciens |
+| `taxe` | Taxe foncière — le dernier avis |
+| `charges` | Charges et travaux — appels de charges, devis, factures récentes |
+| `autre` | Autre pièce |
+
+Formats acceptés : PDF, JPEG, PNG, WebP, HEIC, Word, Excel, OpenDocument.
+25 Mo au plus par fichier.
+
+### 10.3 Du site vers le BO
+
+| Type | Champs |
+|---|---|
+| `document` | `compte`, `bien` (sa `cle` dans `compte_biens`), `categorie` (§10.2), `chemin` (dans `depots-proprietaires`, commençant par `<compte>/`), `nom` (nom d'origine du fichier) |
+
+Réponses : 200 rangé (ou déjà rangé : le BO retente alors l'effacement) ;
+422 bien d'un autre compte, catégorie inconnue, chemin hors du dossier du
+compte, format refusé, fichier vide ou trop lourd ; 500 fichier introuvable
+ou site injoignable, à réessayer.
+
+### 10.4 Du BO vers le site
+
+| Table | Colonnes |
+|---|---|
+| `compte_documents` | `compte`, `cle`, `bien_cle`, `categorie`, `nom`, `recu_le` |
+
+Clé primaire `(compte, cle)`, mêmes règles d'accès que les tables du §9.5.
+Seules les pièces déposées **par ce compte** y figurent : ni les documents de
+l'agence, ni ce qu'aurait déposé un co-indivisaire depuis son propre compte.
+
+### 10.5 Côté site, à créer
+
+- le seau privé `depots-proprietaires` : aucune lecture publique, écriture
+  par la route du site seulement, sous `<compte>/` ;
+- la table `compte_documents` ;
+- dans le compte, sur chaque immeuble : la liste du §10.2, un bouton
+  « Déposer » par catégorie, et les pièces déjà reçues avec leur date.
+
