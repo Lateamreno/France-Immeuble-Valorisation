@@ -491,7 +491,11 @@ arbitrage de MAV, ne pas y revenir sans lui.
 1. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
    connaît le chemin : tant que le BO n'a pas d'authentification, c'est une
    porte ouverte à refermer.
-2. Dépôt de documents par le propriétaire depuis le site : hors lot 4.
+2. Pièces du propriétaire (lot 5, contrat §10) : livré côté BO le 22/10. Le
+   site pose la pièce dans son seau privé, le BO la range au coffre de
+   l'immeuble puis l'efface du site — **le site n'en garde jamais de copie**.
+   Le chemin ne peut viser que le dossier du compte, l'immeuble est vérifié
+   par le BO sur ses propres fiches. En attente des tables et du seau du site.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).

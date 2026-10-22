@@ -39,7 +39,9 @@ export function DocumentsCoffre({ b }: { b: BienData }) {
       {b.documents.map((d) => (
         <div key={String(d._id)} className="chrow">
           <span className="t">{String(d.name ?? d.file_name ?? "Document")}</span>
-          <span className="c">{dmy(d["Created Date"])}{typeof d.size_kB === "number" ? ` · ${Math.round((d.size_kB as number) / 102.4) / 10} Mo` : ""}</span>
+          <span className="c">{dmy(d["Created Date"])}{typeof d.size_kB === "number" ? ` · ${(d.size_kB as number) < 1024 ? `${Math.max(1, Math.round(d.size_kB as number))} Ko` : `${Math.round((d.size_kB as number) / 102.4) / 10} Mo`}` : ""}</span>
+          {/* Lot 5 : la pièce vient du compte du propriétaire sur le site. */}
+          {d.source === "Site - Compte client" && <span className="fchip" title="Déposé depuis son compte sur le site France Immeuble">Déposé par le propriétaire</span>}
           <span className="sp" style={{ flex: 1 }} />
           <a className="fadd" href={`/api/photo?s=${encodeURIComponent(String(d.path ?? ""))}`} target="_blank" rel="noreferrer">Ouvrir</a>
           <button

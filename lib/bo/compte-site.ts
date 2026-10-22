@@ -73,7 +73,7 @@ async function cleDe(table: string, d: Doc): Promise<string> {
   return cle;
 }
 
-export const TABLES_COMPTE = ["compte_recherches", "compte_propositions", "compte_demandes", "compte_biens", "compte_estimations"] as const;
+export const TABLES_COMPTE = ["compte_recherches", "compte_propositions", "compte_demandes", "compte_biens", "compte_estimations", "compte_documents"] as const;
 export type TableCompte = (typeof TABLES_COMPTE)[number];
 export type LignesCompte = Record<TableCompte, Record<string, unknown>[]>;
 
@@ -181,8 +181,9 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     });
   }
 
-  // Ses immeubles, et leurs estimations envoyées.
+  // Ses immeubles, leurs estimations envoyées et les pièces qu'il a déposées.
   const lb: Record<string, unknown>[] = [];
+  const lpieces: Record<string, unknown>[] = [];
   const le: Record<string, unknown>[] = [];
   for (const im of immeubles) {
     const st = statutNum(im.data.Statut);
@@ -191,12 +192,24 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     const c = await carte(im.id);
     if (!c) continue;
     const cle = await cleDe("bo_immeuble", im);
-    const [props, visites, offres, estimations] = await Promise.all([
+    const [props, visites, offres, estimations, pieces] = await Promise.all([
       lireBo(`bo_proposition?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=5000`),
       lireBo(`bo_visite?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=1000`),
       lireBo(`bo_offre?select=id&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([im.id]))}&limit=500`),
       lireBo(`bo_estimation?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=50`),
+      /* Les pièces que CE compte a déposées sur cet immeuble (lot 5) — jamais
+         le reste du coffre : un co-indivisaire ne voit pas ce qu'a déposé
+         l'autre, et aucune pièce de l'agence ne remonte. */
+      lireBo(`bo_app_document?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&data->>site_compte=eq.${encodeURIComponent(compte)}&limit=200`),
     ]);
+    for (const d of pieces) {
+      lpieces.push({
+        compte, cle: await cleDe("bo_app_document", d), bien_cle: cle,
+        categorie: S(d.data.site_categorie) ?? "autre",
+        nom: S(d.data.file_name) ?? "Pièce",
+        recu_le: jour(d.data["Created Date"]),
+      });
+    }
     lb.push({
       compte, cle,
       commune: c.commune, dept: c.dept, type: c.type, lots: c.lots,
@@ -224,7 +237,7 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     }
   }
 
-  return { compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le };
+  return { compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le, compte_documents: lpieces };
 }
 
 /* ------------------------------------------------------------ Le dépôt */
@@ -309,4 +322,35 @@ export async function lireCompteSurLeSite(compte: string): Promise<LignesCompte 
     out[t] = r ? await r.json() : [];
   }
   return out;
+}
+
+/* ------------------------------------------------- Les pièces (lot 5) */
+
+/** Le seau privé du site où le propriétaire dépose ses pièces (contrat §10). */
+export const SEAU_DEPOTS = "depots-proprietaires";
+
+/** Lit une pièce déposée sur le site ; `null` si le site n'est pas branché ou si elle n'y est pas. */
+export async function lirePieceDuSite(chemin: string): Promise<{ octets: Buffer; taille: number } | null> {
+  const s = site();
+  if (!s) return null;
+  const res = await fetch(`${s.url}/storage/v1/object/${SEAU_DEPOTS}/${chemin.split("/").map(encodeURIComponent).join("/")}`, {
+    headers: { apikey: s.cle, Authorization: `Bearer ${s.cle}` },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const octets = Buffer.from(await res.arrayBuffer());
+  return { octets, taille: octets.length };
+}
+
+/** Efface la pièce du seau du site, une fois rangée au coffre : le site n'en garde pas de copie. */
+export async function effacerPieceDuSite(chemin: string): Promise<boolean> {
+  const s = site();
+  if (!s) return false;
+  const res = await fetch(`${s.url}/storage/v1/object/${SEAU_DEPOTS}`, {
+    method: "DELETE",
+    headers: { apikey: s.cle, Authorization: `Bearer ${s.cle}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ prefixes: [chemin] }),
+    cache: "no-store",
+  }).catch(() => null);
+  return !!res?.ok;
 }

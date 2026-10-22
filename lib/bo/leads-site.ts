@@ -16,7 +16,8 @@
 // part vers le visiteur, et rien ne se publie : on enregistre, c'est tout.
 
 import { after } from "next/server";
-import { deposerCompte, effacerCompte } from "@/lib/bo/compte-site";
+import { randomUUID } from "node:crypto";
+import { deposerCompte, effacerCompte, effacerPieceDuSite, lirePieceDuSite } from "@/lib/bo/compte-site";
 import { capturerFacadeRue, enregistrerRecherche, saveAdresse } from "@/lib/bo/actions";
 import { getAgents } from "@/lib/bubble/server";
 import { AGENT_DEFAUT_INITIALES } from "@/lib/bo/agent-defaut";
@@ -633,15 +634,107 @@ async function recevoirPrixProprietaire(ref: string, b: Record<string, unknown>)
   const cle = cleCompte(b.bien);
   const prix = N(b.prix);
   if (!cle || !prix) throw new LeadInvalide("Bien ou prix illisible.");
-  const [im] = await lire(`bo_immeuble?select=id,data&data->>site_cle=eq.${cle}&limit=1`);
-  const proprietaires = [T(im?.data.PROPRIETAIRE), ...(Array.isArray(im?.data.PROPRIETAIREs) ? (im!.data.PROPRIETAIREs as unknown[]).map((x) => T(x)) : [])];
-  if (!im || !proprietaires.includes(contactId)) throw new LeadInvalide("Ce bien n'appartient pas à ce compte.");
+  const im = await immeubleDuCompte(contactId, cle);
   const id = `app_site_${ref}`;
   if (await existe("bo_question", id)) return { deja: true, id };
   await questionCompte(id, {
     nature: "prix", contactId, immeubleId: im.id, source: "Site - Compte client",
     message: `Prix souhaité par le propriétaire : ${eur(prix)}${T(b.message, 2000) ? `\n${T(b.message, 2000)}` : ""}`,
   });
+  return { deja: false, id };
+}
+
+/**
+ * L'immeuble désigné par sa clé neutre, À CONDITION qu'il appartienne au
+ * contact du compte. C'est le BO qui tranche, sur ses propres fiches : le
+ * site ne peut pas viser l'immeuble d'un autre en changeant une clé.
+ */
+async function immeubleDuCompte(contactId: string, cle: string) {
+  const [im] = await lire(`bo_immeuble?select=id,data&data->>site_cle=eq.${cle}&limit=1`);
+  const proprietaires = [T(im?.data.PROPRIETAIRE), ...(Array.isArray(im?.data.PROPRIETAIREs) ? (im!.data.PROPRIETAIREs as unknown[]).map((x) => T(x)) : [])];
+  if (!im || !proprietaires.includes(contactId)) throw new LeadInvalide("Ce bien n'appartient pas à ce compte.");
+  return im;
+}
+
+/* Les pièces qu'on demande au propriétaire (contrat §10.2), et leur libellé
+   au coffre de l'immeuble. */
+const CATEGORIES_PIECE: Record<string, string> = {
+  titre: "Titre de propriété", baux: "Bail", diagnostics: "Diagnostic",
+  taxe: "Taxe foncière", charges: "Charges / travaux", autre: "Pièce du propriétaire",
+};
+/** Les formats acceptés, et le type qu'on leur donne au coffre. */
+const FORMATS: Record<string, string> = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+  heic: "image/heic", doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  odt: "application/vnd.oasis.opendocument.text", ods: "application/vnd.oasis.opendocument.spreadsheet",
+};
+/** 25 Mo : la limite du coffre. */
+const TAILLE_MAX = 25 * 1024 * 1024;
+const nomSur = (name: string) =>
+  name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.\-]+/g, "_").slice(0, 120);
+
+/**
+ * `document` (lot 5) : une pièce déposée par le propriétaire depuis son compte.
+ *
+ * Le site la pose dans son seau privé ; le BO la rapatrie au coffre de
+ * l'immeuble, puis l'efface du site — le site n'en garde pas de copie, une
+ * fuite de sa base ou de son stockage n'expose donc aucun titre ni aucun bail.
+ * Le chemin vient du site mais ne peut viser que le dossier de CE compte.
+ */
+async function recevoirDocument(ref: string, b: Record<string, unknown>) {
+  const { compte, contactId } = await contactDuCompte(b);
+  const cle = cleCompte(b.bien);
+  if (!cle) throw new LeadInvalide("Bien absent ou illisible.");
+  const im = await immeubleDuCompte(contactId, cle);
+  const categorie = T(b.categorie, 40) ?? "autre";
+  if (!(categorie in CATEGORIES_PIECE)) throw new LeadInvalide("Catégorie de pièce inconnue.");
+  const chemin = T(b.chemin, 400);
+  if (!chemin || !chemin.startsWith(`${compte}/`) || chemin.includes("..") || chemin.includes("//")) {
+    throw new LeadInvalide("Chemin de pièce invalide : il doit commencer par la clé du compte.");
+  }
+  const nom = T(b.nom, 160) ?? chemin.split("/").pop()!;
+  const ext = nom.split(".").pop()?.toLowerCase() ?? "";
+  if (!FORMATS[ext]) throw new LeadInvalide(`Format refusé (.${ext}) : PDF, image, Word, Excel ou OpenDocument.`);
+
+  const id = `app_site_${ref}_d`;
+  if (await existe("bo_app_document", id)) {
+    // Déjà rangée : on retente seulement l'effacement côté site.
+    await effacerPieceDuSite(chemin);
+    return { deja: true, id };
+  }
+  const piece = await lirePieceDuSite(chemin);
+  // Passager (500) : le site réessaiera.
+  if (!piece) throw new Error("Pièce introuvable dans le seau du site, ou site injoignable.");
+  if (piece.taille === 0 || piece.taille > TAILLE_MAX) throw new LeadInvalide("Fichier vide ou de plus de 25 Mo.");
+
+  if (!BO_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente.");
+  const path = `documents/${im.id}/${randomUUID()}-${nomSur(nom)}`;
+  const up = await fetch(`${BO_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${BO_KEY}`, "Content-Type": FORMATS[ext], "x-upsert": "true" },
+    body: new Uint8Array(piece.octets),
+    cache: "no-store",
+  });
+  if (!up.ok) throw new Error(`Coffre ${up.status} : ${(await up.text()).slice(0, 200)}`);
+
+  const now = new Date().toISOString();
+  await inserer("bo_app_document", id, {
+    IMMEUBLE: im.id,
+    name: `${CATEGORIES_PIECE[categorie]} — ${nom}`,
+    file_name: nom, path, format: FORMATS[ext], size_kB: Math.round(piece.taille / 1024),
+    source: "Site - Compte client",
+    site_compte: compte, site_categorie: categorie, site_cle: randomUUID(),
+    "Created Date": now, "Modified Date": now,
+  });
+  await suiviFormulaire(`app_site_${ref}_s1`, {
+    agentId: T(im.data.AGENT) ?? (await agentParDefaut()), contactId, immeubleId: im.id,
+    notes: `Pièce déposée par le propriétaire depuis son compte sur le site : ${CATEGORIES_PIECE[categorie]} — ${nom}. Rangée au coffre de l'immeuble.`,
+  });
+  await effacerPieceDuSite(chemin);
+  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
   return { deja: false, id };
 }
 
@@ -674,6 +767,7 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "reponse": return recevoirReponse(ref, b);
     case "prix_proprietaire": return recevoirPrixProprietaire(ref, b);
     case "compte_supprime": return recevoirCompteSupprime(ref, b);
+    case "document": return recevoirDocument(ref, b);
     default: throw new LeadInvalide(`Type de formulaire inconnu : ${String(b.type).slice(0, 40)}`);
   }
 }
