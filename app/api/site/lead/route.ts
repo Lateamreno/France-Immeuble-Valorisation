@@ -53,7 +53,8 @@ export async function POST(req: Request) {
 
   try {
     const r = await recevoirLead(corps as Record<string, unknown>);
-    return json(200, { ok: true, deja: r.deja, id: r.id });
+    // Jamais d'identifiant du BO dans la réponse : le site n'en a pas l'usage (contrat §7).
+    return json(200, { ok: true, deja: r.deja });
   } catch (e) {
     if (e instanceof LeadInvalide) return json(422, { ok: false, message: e.message });
     console.error("[site/lead]", e);

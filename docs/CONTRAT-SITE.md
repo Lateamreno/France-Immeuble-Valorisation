@@ -235,11 +235,113 @@ envoyer le dossier. »
   de diffusion (« à republier », dernière erreur).
 - Le site relit sa base toutes les 10 minutes.
 
-## 9. Le compte client (lot 4, pas encore conçu)
+## 9. Le compte client (lot 4, validé par MAV le 22/10)
 
-Revirement du 21/10 sur la décision du 03/09 (§10 bis du CLAUDE.md) : le client
-créera lui-même son compte, **sur le site**. Principe : le compte vit sur le
-site ; le BO reste la source des données ; le site envoie au BO la création du
-compte et les recherches ; le BO renvoie au site, pour ce seul client, ce qu'il
-a le droit de voir ; le lien se fait par une clé neutre, jamais par un
-identifiant du BO. Rien n'est construit avant la conception validée par MAV.
+Le compte vit sur le site, pour **tous** les clients : acquéreurs et
+propriétaires ont le même compte, et une même personne peut être les deux.
+Le BO reste la source des données et ne parle jamais directement au client.
+**Il n'y a plus d'espace client dans le BO** (décision MAV du 22/10, pour
+limiter les risques de fuite) : ni espace acquéreur, ni lien propriétaire. Les
+agents voient depuis le BO exactement ce que voit chaque client (§9.6).
+
+### 9.1 Le parcours
+
+- **Création** proposée après le formulaire de recherche, après une demande de
+  dossier, après une estimation, et par « Mon compte » dans l'en-tête.
+  Facultative. Le site gère tout : e-mail, mot de passe, vérification de
+  l'adresse, mot de passe oublié. Le BO ne voit jamais un mot de passe.
+- **Rattachement** seulement après la vérification de l'adresse par le site :
+  le site envoie `compte`, le BO retrouve le contact par l'e-mail (ou le crée,
+  note D) et note la clé du compte sur la fiche. Sans vérification, taper
+  l'e-mail d'un autre suffirait à voir ses propositions.
+- **Fermeture** : le site envoie `compte_supprime` ; le BO efface tout ce qu'il
+  avait déposé pour ce compte et retire la clé de la fiche. Le contact reste
+  dans le BO ; une demande d'effacement complet arrive comme une question et
+  MAV la traite à la main.
+- **Aucun e-mail automatique** vers le client, ni du BO ni du site, à cause du
+  compte. L'agent écrit quand il envoie un dossier ; le compte montre, il
+  n'annonce rien.
+
+### 9.2 Ce que voit l'acquéreur
+
+- Ses recherches, modifiables. Une modification met à jour la recherche du BO
+  directement, avec une ligne dans l'historique du contact.
+- Les biens qu'on lui a proposés, **y compris off-market**, en carte réduite :
+  commune, département, type, lots, prix, rendement, date. Ni adresse, ni
+  photo d'un bien off-market, ni dossier PDF (il reste dans l'e-mail de
+  l'agent). Le lien vers la fiche quand le bien est en ligne.
+  Trois boutons : « Intéressé », « Demander une visite », « Pas pour moi ».
+- Ses demandes de dossier et leur état (en attente, dossier envoyé, close).
+- Les biens **en ligne** qui correspondent à ses recherches (calcul du site,
+  sur `biens_a_vendre`).
+
+### 9.3 Ce que voit le propriétaire
+
+MAV : inciter les propriétaires à faire eux-mêmes leurs estimations, ce qui
+amène des mandats.
+
+- **« Estimer mon immeuble »** dans le compte : le formulaire d'estimation
+  détaillé (adresse, lots par type, surfaces, loyers, occupation, travaux).
+  Il part au BO comme une estimation (§6) portant la clé du compte, et
+  apparaît dans le compte aussitôt, « en cours d'estimation ».
+- **L'estimation** apparaît dans le compte quand l'agent l'a faite et l'a
+  envoyée au propriétaire depuis le BO (statut « Envoyée ») : la valeur estimée,
+  le prix au m², le rendement, la date. Jamais de chiffre calculé sans un humain (§7.1 du BO,
+  « validation humaine avant tout envoi »).
+- **Ses immeubles** confiés : l'étape (estimation, mandat signé, en
+  commercialisation, sous offre, vendu), le prix affiché, et les compteurs de
+  la commercialisation (acquéreurs sollicités, visites, offres). Jamais le nom
+  d'un acquéreur ni le montant d'une offre.
+- **Proposer son prix** : un montant et un mot, qui arrivent dans Questions,
+  à l'agent du bien.
+
+### 9.4 Du site vers le BO
+
+Par l'adresse des formulaires (§6), même jeton, même file, même règle sans
+doublon sur `ref`. Types ajoutés :
+
+| Type | Champs |
+|---|---|
+| `compte` | `compte` (UUID du site), `email` (vérifié), `prenom`, `nom`, `telephone` |
+| `recherche_compte` | `compte`, `cle` (UUID du site), `action` : `enregistrer` ou `supprimer`, puis les champs d'une recherche (§6) |
+| `reponse` | `compte`, `proposition` (sa `cle`), `reponse` : `interesse`, `visite` ou `pas_pour_moi`, `message` |
+| `prix_proprietaire` | `compte`, `bien` (sa `cle` dans `compte_biens`), `prix`, `message` |
+| `compte_supprime` | `compte` |
+
+Les types existants `estimation`, `recherche_acquereur` et `contact` acceptent
+un champ `compte` facultatif : le BO rattache alors ce qu'il crée au compte.
+
+### 9.5 Du BO vers le site
+
+Tables créées par la session du site, lisibles par le seul titulaire du compte
+(règle d'accès de la base, pas du code), écrites par la clé secrète du BO.
+Clés neutres partout : `cle` est un UUID que le BO tire et garde sur sa fiche,
+jamais un identifiant du BO.
+
+| Table | Colonnes |
+|---|---|
+| `compte_recherches` | `compte`, `cle`, `cible`, `departements text[]`, `villes text[]`, `prix_min`, `prix_max`, `rendement_min`, `destinations text[]`, `commentaire`, `maj_le` |
+| `compte_propositions` | `compte`, `cle`, `bien` (id de `biens_a_vendre` si en ligne, sinon null), `commune`, `dept`, `type`, `lots`, `prix`, `rendement`, `propose_le`, `reponse`, `repondu_le`, `etat` (`disponible`, `sous_offre`, `vendu`, `retire`), `maj_le` |
+| `compte_demandes` | `compte`, `cle`, `bien`, `titre`, `etat` (`en_attente`, `dossier_envoye`, `close`), `demande_le`, `maj_le` |
+| `compte_biens` | `compte`, `cle`, `commune`, `dept`, `type`, `lots`, `etape`, `prix`, `sollicites`, `visites`, `offres`, `bien` (id de `biens_a_vendre` si en ligne), `maj_le` |
+| `compte_estimations` | `compte`, `cle`, `bien_cle`, `valeur`, `prix_m2`, `rendement`, `estimee_le` |
+
+Clé primaire `(compte, cle)` partout. Dépôt au rattachement du compte, après
+chaque proposition envoyée, chaque réponse, chaque estimation validée, chaque
+changement d'étape d'un bien, et une reprise complète chaque nuit. Un
+`compte_supprime` efface toutes les lignes du compte.
+
+### 9.6 Ce que voient les agents
+
+Sur la fiche contact du BO, un panneau « Son compte sur le site » montre ce
+que le client voit, lu dans les tables ci-dessus : mêmes lignes, mêmes
+champs. Les réponses, demandes de visite et prix proposés arrivent dans
+Questions, à l'agent du bien, avec le compteur du tableau de bord.
+
+### 9.7 Ce qui disparaît du BO
+
+L'espace client et le lien propriétaire du BO sont fermés : pages retirées,
+fonctions `ec_*` retirées à la clé publique. Au 22/10, un seul compte y était
+ouvert, aucun lien propriétaire. Les dépôts de pièces par le propriétaire ne
+sont pas repris en lot 4 ; ils viendront dans un lot suivant si MAV le
+demande.

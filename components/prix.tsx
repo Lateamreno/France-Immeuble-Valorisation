@@ -14,9 +14,6 @@ import { euros, group, S } from "@/lib/format";
 import { ecart, rendements, type ContexteRendement } from "@/lib/bo/rendements";
 import { PICTOS_DEST } from "@/components/pictos-destination";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
-import { marquerPrixRepris, ouvrirEspace, revoquerEspace } from "@/lib/bo/espace-actions";
-import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
-import type { Espace } from "@/lib/bo/espace-modele";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { Modale, useQuestion } from "@/components/modale";
 
@@ -200,213 +197,6 @@ function ModalePrix({
   );
 }
 
-/* ---------- L'espace vendeur, côté agent (tâche #56) ---------- */
-
-/**
- * Le lien ouvert au propriétaire, et ce qu'il en a fait.
- *
- * Deux choses au même endroit, parce qu'elles se répondent : le lien qu'on lui
- * envoie, et le prix qu'il en rapporte. Le prix arrive EN ATTENTE — MAV l'a
- * tranché : rien n'entre tout seul dans la fiche, même doctrine que les envois
- * d'e-mails. « Reprendre ce prix » ouvre la fenêtre « Nouveau prix » déjà
- * remplie, avec le motif « Prix souhaité par le vendeur » : le prix passe par
- * le chemin habituel, avec son historique, pas par une porte dérobée.
- */
-/**
- * Retour #310 — « je veux que l'espace vendeur soit dans l'onglet propriétaire. »
- *
- * C'est sa place : il ne parle pas du prix mais de la PERSONNE — son accès,
- * son compte, son adresse e-mail, les pièces qu'elle dépose. Il occupait le
- * haut de « Description et prix », où l'on vient pour fixer un prix, et
- * repoussait le prix sous la ligne de flottaison.
- *
- * Il reprend le prix arrêté par le propriétaire, ce qui se fait dans l'autre
- * onglet : quand `onReprendre` n'est pas fourni — c'est le cas depuis l'onglet
- * Propriétaire — le bouton devient un renvoi vers l'écran du prix, qui sait le
- * reprendre.
- */
-export function EspaceVendeur({
-  immeubleId, espace, tauxHonos, proprietaireId, proprietaireEmail, compteActif, onReprendre,
-}: {
-  immeubleId: string;
-  espace?: Espace | null;
-  tauxHonos: number;
-  /** La fiche contact du propriétaire : c'est elle qui porte le compte. */
-  proprietaireId?: string;
-  proprietaireEmail?: string;
-  compteActif?: boolean;
-  /** Absent depuis l'onglet Propriétaire : la reprise se fait sur le prix. */
-  onReprendre?: (nv: number) => void;
-}) {
-  const [pending, start] = useTransition();
-  const [jeton, setJeton] = useState(espace && !espace.revoque ? espace.jeton : null);
-  const [copie, setCopie] = useState(false);
-  /* L'espace CLIENT (compte + mot de passe), ouvert depuis le bien : MAV le
-     demande ici parce que c'est ici qu'on parle du propriétaire, pas dans sa
-     fiche contact. Le compte reste rattaché à la fiche — une personne, un
-     compte — mais on n'a plus à y aller pour l'ouvrir. */
-  const [lienCompte, setLienCompte] = useState<string | null>(null);
-  const [copieCompte, setCopieCompte] = useState(false);
-  const [erreurCompte, setErreurCompte] = useState<string | null>(null);
-  /* Retour #382 — le compte se ferme aussi d'ici. L'état vient du serveur,
-     mais on le tient localement pour que la ligne dise « fermé » à la seconde
-     où l'on ferme, sans attendre le rechargement. */
-  const [compteOuvert, setCompteOuvert] = useState(!!compteActif);
-  const { confirmer, question } = useQuestion();
-  const urlCompte = lienCompte
-    ? `${typeof window === "undefined" ? "" : window.location.origin}${lienCompte}` : "";
-
-  const url = jeton ? `${typeof window === "undefined" ? "" : window.location.origin}/proprietaire/${jeton}` : "";
-  const prix = espace?.prix_nv ?? undefined;
-  const aRepondu = prix !== undefined && !espace?.prix_repris;
-
-  const copier = () => {
-    navigator.clipboard?.writeText(url).then(() => {
-      setCopie(true);
-      setTimeout(() => setCopie(false), 2200);
-    }).catch(() => undefined);
-  };
-
-  return (
-    <div className={`espv${aRepondu ? " repondu" : ""}`}>
-      <div className="espv-hd">
-        <svg viewBox="0 0 24 24" aria-hidden>
-          <path d="M4 10.5 12 4l8 6.5V20H4z" /><path d="M9.5 20v-5.5h5V20" />
-        </svg>
-        <b>Espace vendeur</b>
-        <span className="sp" style={{ flex: 1 }} />
-        {jeton ? (
-          <>
-            <a className="espv-lien" href={url} target="_blank" rel="noreferrer">Ouvrir</a>
-            <button type="button" className="espv-b" onClick={copier}>{copie ? "Lien copié ✓" : "Copier le lien"}</button>
-            <button type="button" className="espv-b ko" disabled={pending}
-              onClick={() => start(async () => { await revoquerEspace(immeubleId, jeton); setJeton(null); })}>
-              Fermer l&apos;accès
-            </button>
-          </>
-        ) : (
-          <button type="button" className="espv-b go" disabled={pending}
-            onClick={() => start(async () => { setJeton(await ouvrirEspace(immeubleId)); })}>
-            {pending ? "Ouverture…" : "Ouvrir un espace vendeur"}
-          </button>
-        )}
-      </div>
-
-      {!jeton && (
-        <p className="espv-txt">
-          Un lien secret à envoyer au propriétaire{proprietaireEmail ? ` (${proprietaireEmail})` : ""} : il y
-          arrête son prix, dépose ses pièces — elles arrivent au coffre de l&apos;immeuble — et suit
-          l&apos;avancement. Aucune donnée de locataire ni d&apos;acquéreur ne s&apos;y affiche.
-        </p>
-      )}
-
-      {jeton && !prix && (
-        <p className="espv-txt">
-          {espace?.ouvert_le
-            ? `Lien ouvert ${espace.visites} fois, la dernière le ${dateFr(espace.derniere_visite)}. Le propriétaire n'a pas encore arrêté son prix.`
-            : "Lien créé, jamais ouvert. Envoyez-le au propriétaire — il est valable quatre mois."}
-        </p>
-      )}
-
-      {prix !== undefined && (
-        <div className="espv-prix">
-          <div>
-            <span className="espv-lab">
-              {espace?.prix_repris ? "Prix repris du propriétaire" : "Le propriétaire a arrêté son prix"}
-              {espace?.prix_le ? ` · ${dateFr(espace.prix_le)}` : ""}
-            </span>
-            <b>{euros(prix)} net vendeur</b>
-            <em>soit {euros(Math.round(prix * (1 + tauxHonos / 100)))} HAI</em>
-          </div>
-          {aRepondu && (onReprendre ? (
-            <button type="button" className="espv-b go" onClick={() => onReprendre(prix)}>
-              Reprendre ce prix
-            </button>
-          ) : (
-            <Link className="espv-b go" href={`/bien/${immeubleId}?ecran=prix&reprendre=1`}>
-              Reprendre ce prix →
-            </Link>
-          ))}
-        </div>
-      )}
-      {espace?.prix_mot && (
-        <p className="espv-mot">« {espace.prix_mot} »</p>
-      )}
-
-      {/* L'espace client, avec mot de passe : celui sur lequel le propriétaire
-          revient. Le lien secret ci-dessus reste pour qui refuse d'en créer un. */}
-      {proprietaireId && (
-        <div className="espv-cli">
-          <span className="espv-lab">
-            Espace client (avec mot de passe) —
-            {compteOuvert ? " ouvert" : " pas encore ouvert"}
-            {proprietaireEmail ? ` · ${proprietaireEmail}` : ""}
-          </span>
-          {/* Retour #382 — « mets-moi un bouton pour annuler l'espace vendeur
-              et un lien pour voir à quoi ça ressemble ».
-              #382 bis — MAV : « je voulais juste voir un aperçu de ce que le
-              client verra avant de lui envoyer un lien. » Ce que le propriétaire
-              voit derrière son mot de passe est SA session — le BO ne s'y glisse
-              pas (§10 bis). L'aperçu est donc une page du BO qui rend le même
-              écran avec les mêmes données, sans lien ni session : il s'ouvre
-              que le lien secret existe ou non.
-              Fermer : le compte reste, l'accès tombe (`desactiverCompteClient`),
-              après une confirmation — c'est un geste qu'on ne devine pas. */}
-          <div className="espv-cli-act">
-            <a className="espv-lien" href={`/bien/${immeubleId}/apercu-vendeur`} target="_blank" rel="noreferrer"
-              title="Ouvre, dans un nouvel onglet, l'écran tel que le propriétaire le verra. Rien n'est envoyé.">
-              Aperçu de l&apos;espace ↗
-            </a>
-            <button type="button" className="espv-b" disabled={pending || !proprietaireEmail}
-              onClick={() => start(async () => {
-                setErreurCompte(null);
-                const r = await ouvrirCompteClient(proprietaireId, proprietaireEmail ?? "");
-                if (r.ok) { setLienCompte(r.lien); setCompteOuvert(true); } else setErreurCompte(r.message);
-              })}>
-              {pending ? "…" : compteOuvert ? "Renvoyer un lien d'accès" : "Ouvrir l'espace client"}
-            </button>
-            {compteOuvert && (
-              <button type="button" className="espv-b ko" disabled={pending}
-                onClick={async () => {
-                  if (!(await confirmer(
-                    "Fermer l'espace vendeur de ce propriétaire ? Son mot de passe ne fonctionnera plus et ses sessions ouvertes seront coupées. Le compte pourra être rouvert plus tard.",
-                    { titre: "Fermer l'espace vendeur", danger: true, oui: "Fermer l'espace" },
-                  ))) return;
-                  start(async () => {
-                    setErreurCompte(null);
-                    try {
-                      await desactiverCompteClient(proprietaireId, immeubleId);
-                      setCompteOuvert(false);
-                      setLienCompte(null);
-                    } catch {
-                      setErreurCompte("La fermeture a échoué. Réessayez dans un instant.");
-                    }
-                  });
-                }}>
-                Fermer l&apos;espace vendeur
-              </button>
-            )}
-          </div>
-          {erreurCompte && <p className="espv-txt" style={{ color: "#a5341f" }}>{erreurCompte}</p>}
-          {lienCompte && (
-            <p className="espv-txt">
-              <code style={{ fontSize: 12, wordBreak: "break-all" }}>{urlCompte}</code>{" "}
-              <button type="button" className="espv-b" onClick={() => {
-                navigator.clipboard?.writeText(urlCompte).then(() => {
-                  setCopieCompte(true);
-                  setTimeout(() => setCopieCompte(false), 2200);
-                }).catch(() => undefined);
-              }}>{copieCompte ? "Copié ✓" : "Copier"}</button>
-              <br />Valable 7 jours, une seule fois. Il y retrouvera ses immeubles et ses recherches.
-            </p>
-          )}
-        </div>
-      )}
-      {question}
-    </div>
-  );
-}
-
 /* ---------- Écran ---------- */
 
 /* Depuis le retour #310, l'écran du prix ne s'occupe plus du compte client :
@@ -528,8 +318,8 @@ function ResumeLocatif({ b }: { b: BienData }) {
   );
 }
 
-export function PrixEcran({ b, espace }: {
-  b: BienData; espace?: Espace | null;
+export function PrixEcran({ b }: {
+  b: BienData;
 }) {
   const im = b.im;
   const immeubleId = String(im._id);
@@ -538,12 +328,6 @@ export function PrixEcran({ b, espace }: {
   /* Le prix du propriétaire, quand l'agent choisit de le reprendre : il
      ouvre la fenêtre « Nouveau prix » déjà remplie, avec le bon motif. */
   const [duVendeur, setDuVendeur] = useState<number | null>(null);
-  /* Retour #310 — l'espace vendeur vit maintenant dans l'onglet Propriétaire ;
-     son bouton « Reprendre ce prix » renvoie donc ici, avec `?reprendre=1`.
-     On ouvre alors la fenêtre « Nouveau prix » déjà remplie du prix arrêté par
-     le propriétaire, exactement comme le bouton le faisait sur place. */
-  const demandeReprise = useDepartUrl<string>("reprendre", "");
-  const [repriseVue, setRepriseVue] = useState(false);
 
   /* Contexte de calcul : les mêmes entrées que l'estimation. */
   const ctx: ContexteRendement = useMemo(() => {
@@ -574,18 +358,6 @@ export function PrixEcran({ b, espace }: {
   const nvEnBase = Math.max(0, prixEnBase - honosEnBase);
   const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
 
-  /* On n'ouvre la fenêtre qu'une fois, et seulement s'il y a bien un prix de
-     propriétaire à reprendre : ajuster l'état pendant le rendu est la façon
-     prévue de réagir à une demande venue de l'adresse, et un effet ferait
-     apparaître l'écran du prix avant la fenêtre. */
-  const prixVendeur = espace?.prix_nv;
-  if (demandeReprise === "1" && !repriseVue) {
-    setRepriseVue(true);
-    if (prixVendeur !== undefined && prixVendeur !== null && !espace?.prix_repris) {
-      setDuVendeur(Math.round(prixVendeur * (1 + tauxHonos / 100)));
-      setModale(true);
-    }
-  }
 
   /* Le taux d'occupation des pastilles de synthèse (#338). Il se compte en
      SURFACE et non en nombre de lots : douze caves libres et un plateau de
@@ -770,7 +542,6 @@ export function PrixEcran({ b, espace }: {
           motifDepart={duVendeur !== null ? "Prix souhaité par le vendeur" : undefined}
           onFermer={() => { setModale(false); setDuVendeur(null); }}
           onEnregistre={() => {
-            if (duVendeur !== null && espace) void marquerPrixRepris(immeubleId, espace.jeton);
             setDuVendeur(null);
           }}
         />

@@ -2,14 +2,16 @@
 //
 // Il ne fait quelque chose qu'à trois heures de Paris (contrat §5 et §8) :
 //   · 9 h et 19 h : le compteur off-market est redéposé sur le site ;
-//   · 3 h : le rapprochement de nuit retire ce qui ne doit plus être en ligne.
+//   · 3 h : le rapprochement de nuit retire ce qui ne doit plus être en ligne,
+//     et chaque compte client du site est redéposé en entier (§9.5).
 // Le cron de Vercel tourne en UTC : l'heure de Paris se lit ici, ce qui règle
 // le passage à l'heure d'hiver sans toucher à vercel.json.
 //
 // Protégé par le secret du cron, comme la relève des mails. `?faire=offmarket`
-// ou `?faire=rapprochement` force un passage, toujours avec le secret.
+// `?faire=rapprochement` ou `?faire=comptes` force un passage, toujours avec le secret.
 import { NextRequest } from "next/server";
 import { deposerOffmarket, rapprocherSite } from "@/lib/bo/site-fi";
+import { deposerTousLesComptes } from "@/lib/bo/compte-site";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +41,8 @@ export async function GET(req: NextRequest) {
   try {
     if (force === "offmarket" || (!force && (h === 9 || h === 19))) out.offmarket = await deposerOffmarket();
     if (force === "rapprochement" || (!force && h === 3)) out.rapprochement = await rapprocherSite();
-    if (!out.offmarket && !out.rapprochement) out.rien = true;
+    if (force === "comptes" || (!force && h === 3)) out.comptes = await deposerTousLesComptes();
+    if (!out.offmarket && !out.rapprochement && !out.comptes) out.rien = true;
     return Response.json(out);
   } catch (e) {
     return Response.json({ erreur: e instanceof Error ? e.message : String(e) }, { status: 500 });

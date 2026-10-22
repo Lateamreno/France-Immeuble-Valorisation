@@ -16,6 +16,7 @@
 // part vers le visiteur, et rien ne se publie : on enregistre, c'est tout.
 
 import { after } from "next/server";
+import { deposerCompte, effacerCompte } from "@/lib/bo/compte-site";
 import { capturerFacadeRue, enregistrerRecherche, saveAdresse } from "@/lib/bo/actions";
 import { getAgents } from "@/lib/bubble/server";
 import { AGENT_DEFAUT_INITIALES } from "@/lib/bo/agent-defaut";
@@ -103,7 +104,13 @@ async function agentParDefaut(): Promise<string | undefined> {
 async function contactDuLead(ref: string, p: {
   prenom?: string; nom?: string; email?: string; telephone?: string;
   source: string; agentId?: string; noteD: boolean; vendeur?: boolean; acheteur?: boolean;
+  /** La clé du compte du site, quand le formulaire vient d'un compte (§9.4). */
+  compte?: string | null;
 }): Promise<{ id: string; nouveau: boolean }> {
+  if (p.compte) {
+    const deja = await contactParCompte(p.compte);
+    if (deja) return { id: deja, nouveau: false };
+  }
   if (p.email) {
     // ilike sans joker : « _ » et « % » sont fréquents dans une adresse.
     const motif = p.email.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -130,6 +137,27 @@ async function contactDuLead(ref: string, p: {
     "Modified Date": now,
   });
   return { id, nouveau: true };
+}
+
+/** La clé d'un compte du site : un UUID, sinon rien. */
+function cleCompte(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s) ? s : null;
+}
+
+async function contactParCompte(compte: string): Promise<string | null> {
+  const [c] = await lire(`bo_contact?select=id&data->>site_compte=eq.${encodeURIComponent(compte)}&limit=1`);
+  return c?.id ?? null;
+}
+
+/** Rattache un contact au compte du site, puis dépose ce que le compte doit montrer. */
+async function rattacher(contactId: string, compte: string | null) {
+  if (!compte) return;
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  if (c && c.data.site_compte !== compte) {
+    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: { site_compte: compte, site_compte_le: new Date().toISOString() } });
+  }
+  after(async () => { await deposerCompte(contactId).catch(() => undefined); });
 }
 
 /** Un suivi « Formulaire » : c'est son texte que la carte du tableau de bord affiche. */
@@ -287,9 +315,10 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
   const cp = T(b.codePostal, 10);
   const rue = T(b.rue, 200);
   if (!ville && !cp) throw new LeadInvalide("Ni ville ni code postal : impossible de situer l'immeuble.");
+  const compte = cleCompte(b.compte);
   const { id: contactId } = await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
-    source, agentId, noteD: false, vendeur: true,
+    source, agentId, noteD: false, vendeur: true, compte,
   });
   const lots = ["lotsHabitation", "lotsCommerces", "lotsBureaux", "lotsActivite"].map((k) => N(b[k]) ?? 0);
   const texte = texteEstimation(b, complement);
@@ -320,6 +349,8 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
   });
   await rpc("bo_append_ref", { p_table: "bo_contact", p_id: contactId, p_key: "IMMEUBLES", p_value: immeubleId }).catch(() => undefined);
   await suiviFormulaire(`app_site_${ref}_s${complement ? 2 : 1}`, { agentId, contactId, immeubleId, notes: texte });
+  // Depuis le compte : l'immeuble apparaît aussitôt, « en cours d'estimation » (§9.3).
+  await rattacher(contactId, compte);
 
   /* L'adresse géocodée et la façade : après la réponse, pour que le site ait
      son 200 sans attendre le réseau. Un échec ici ne défait rien. */
@@ -346,9 +377,10 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
   if (!T(b.email) && !T(b.telephone)) throw new LeadInvalide("Ni e-mail ni téléphone.");
   const agentId = await agentParDefaut();
   const source = "Site - Formulaire recherche";
+  const compte = cleCompte(b.compte);
   const contact = await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
-    source, agentId, noteD: true, acheteur: true,
+    source, agentId, noteD: true, acheteur: true, compte,
   });
   let creees = 0;
   for (const [i, r] of recherches.entries()) {
@@ -377,6 +409,7 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
     agentId, contactId: contact.id,
     notes: [`Formulaire de recherche du site${contact.nouveau ? "" : " (contact déjà connu)"}.`, ...resume].join("\n"),
   });
+  await rattacher(contact.id, compte);
   return { deja: creees === 0 && recherches.length > 0, id: contact.id };
 }
 
@@ -430,9 +463,10 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
   // La demande va à l'agent du bien ; sans bien reconnu, à l'agent par défaut.
   const agentId = T(im?.data.AGENT) ?? (await agentParDefaut());
   const source = "Site - Fiche à vendre";
+  const compte = cleCompte(b.compte);
   const contact = await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
-    source, agentId, noteD: true, acheteur: true,
+    source, agentId, noteD: true, acheteur: true, compte,
   });
   const rechercheId = im ? await rechercheDeLaDemande(ref, contact, im, T(b.bienTitre, 200), agentId) : undefined;
   const now = new Date().toISOString();
@@ -453,7 +487,177 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
     "Created Date": now,
     "Modified Date": now,
   });
+  await rattacher(contact.id, compte);
   return { deja: false, id: questionId };
+}
+
+/* ------------------------------------------------- Le compte (§9.4) */
+
+/** Le contact rattaché au compte ; tant que le site n'a pas envoyé `compte`, on réessaiera. */
+async function contactDuCompte(b: Record<string, unknown>): Promise<{ compte: string; contactId: string }> {
+  const compte = cleCompte(b.compte);
+  if (!compte) throw new LeadInvalide("Clé de compte absente ou qui n'est pas un UUID.");
+  const contactId = await contactParCompte(compte);
+  // Erreur passagère (500) : le rattachement `compte` est peut-être encore dans la file du site.
+  if (!contactId) throw new Error("Compte pas encore rattaché à un contact.");
+  return { compte, contactId };
+}
+
+/** `compte` : le site a vérifié l'adresse, le BO rattache la personne et dépose. */
+async function recevoirCompte(ref: string, b: Record<string, unknown>) {
+  const compte = cleCompte(b.compte);
+  if (!compte) throw new LeadInvalide("Clé de compte absente ou qui n'est pas un UUID.");
+  if (!T(b.email)) throw new LeadInvalide("Le rattachement exige l'adresse e-mail vérifiée.");
+  const agentId = await agentParDefaut();
+  const contact = await contactDuLead(ref, {
+    prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
+    source: "Site - Compte client", agentId, noteD: true, compte,
+  });
+  const deja = (await contactParCompte(compte)) === contact.id;
+  await rattacher(contact.id, compte);
+  return { deja, id: contact.id };
+}
+
+/** `recherche_compte` : le client crée, modifie ou supprime une recherche depuis son compte. */
+async function recevoirRechercheCompte(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const cle = cleCompte(b.cle);
+  if (!cle) throw new LeadInvalide("Clé de recherche absente ou qui n'est pas un UUID.");
+  const suivi = `app_site_${ref}_s1`;
+  if (await existe("bo_suivi", suivi)) return { deja: true, id: contactId };
+  const [deja] = await lire(`bo_recherche?select=id,data&data->>site_cle=eq.${cle}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&limit=1`);
+  let notes: string;
+  if (b.action === "supprimer") {
+    if (deja) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_recherche", p_id: deja.id,
+        p_patch: { archived: true, motif_archivage: "Supprimée par le client depuis son compte", date_modif: new Date().toISOString() },
+      });
+    }
+    notes = "Recherche supprimée par le client depuis son compte.";
+  } else {
+    const cible = T(b.cible);
+    const saisie = {
+      contactId,
+      cible: cible && CIBLES.includes(cible) ? cible : undefined,
+      destinations: L(b.destinations).filter((d) => DESTINATIONS.has(d)),
+      villes: L(b.villes),
+      departements: L(b.departements).map((d) => d.toUpperCase()).filter((d) => /^(\d{2}|2A|2B|97\d)$/.test(d)),
+      prixMin: N(b.prixMin), prixMax: N(b.prixMax), renta: N(b.rendementMin),
+      commentaire: T(b.commentaire, 2000),
+      exclusions: { destinations: [], villes: [], departements: [], regions: [] },
+    };
+    const agentId = await agentParDefaut();
+    if (deja) {
+      await enregistrerRecherche({ ...saisie, id: deja.id }, agentId);
+    } else {
+      const id = await enregistrerRecherche(saisie, agentId, { id: `app_site_${cle.replace(/-/g, "")}_r`, source: "Site - Compte client" });
+      await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: { site_cle: cle } });
+    }
+    const prix = [N(b.prixMin), N(b.prixMax)].map((x) => (x ? eur(x) : "…")).join(" à ");
+    notes = `Recherche ${deja ? "modifiée" : "créée"} par le client depuis son compte : ${cible ?? "cible non précisée"}, ${L(b.departements).join(", ") || "tous départements"}, ${prix}.`;
+  }
+  await suiviFormulaire(suivi, { agentId: await agentParDefaut(), contactId, notes });
+  after(async () => { await deposerCompte(contactId).catch(() => undefined); });
+  return { deja: false, id: contactId };
+}
+
+const REPONSES: Record<string, { statut: string; libelle: string }> = {
+  interesse: { statut: "Intéressé", libelle: "Intéressé" },
+  visite: { statut: "Intéressé", libelle: "Demande une visite" },
+  pas_pour_moi: { statut: "Refusée (sans offre)", libelle: "Pas pour moi" },
+};
+
+/** Une question à l'agent du bien : demande de visite, intérêt, prix du propriétaire. */
+async function questionCompte(id: string, p: {
+  nature: "visite" | "interet" | "prix"; contactId: string; immeubleId: string; message: string; source: string;
+}) {
+  if (await existe("bo_question", id)) return;
+  const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(p.immeubleId)}`);
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(p.contactId)}`);
+  const agentId = T(im?.data.AGENT) ?? (await agentParDefaut());
+  const now = new Date().toISOString();
+  await inserer("bo_question", id, {
+    source: p.source,
+    nature: p.nature,
+    "suivi par": agentId ? [agentId] : undefined,
+    ended: false,
+    message: p.message,
+    email: T(c?.data.email),
+    "téléphone": T(c?.data.portable) ?? T(c?.data.fixe),
+    IMMEUBLE: p.immeubleId,
+    CONTACT: p.contactId,
+    "Created Date": now,
+    "Modified Date": now,
+  });
+}
+
+/** `reponse` : intéressé, demande de visite ou pas pour moi, sur une proposition du compte. */
+async function recevoirReponse(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const cle = cleCompte(b.proposition);
+  const r = REPONSES[String(b.reponse ?? "")];
+  if (!cle || !r) throw new LeadInvalide("Proposition ou réponse illisible.");
+  const [p] = await lire(`bo_proposition?select=id,data&data->>site_cle=eq.${cle}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&limit=1`);
+  if (!p) throw new LeadInvalide("Proposition inconnue pour ce compte.");
+  if (p.data.site_reponse_ref === ref) return { deja: true, id: p.id };
+  const statut = String(p.data.Statut ?? "");
+  /* La réponse du client ne fait jamais reculer un dossier : une visite faite,
+     une offre ou une vente gardent leur statut. */
+  const avance = /^(Visite|Offre|Vendu)/.test(statut);
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_proposition", p_id: p.id,
+    p_patch: {
+      ...(avance ? {} : { Statut: r.statut }),
+      ...(b.reponse === "pas_pour_moi" && !avance ? { motif_refus: "Pas pour moi (réponse depuis son compte)", date_fin: now, stop_relances_yn: true } : {}),
+      site_reponse: String(b.reponse), site_repondu_le: now, site_reponse_ref: ref, date_modif: now,
+    },
+  });
+  const immeubleId = T(p.data.IMMEUBLE) ?? "";
+  const message = `${r.libelle}${T(b.message, 2000) ? ` : ${T(b.message, 2000)}` : ""}`;
+  if (b.reponse === "pas_pour_moi") {
+    await suiviFormulaire(`app_site_${ref}_s1`, { agentId: await agentParDefaut(), contactId, immeubleId, notes: `Réponse depuis son compte : ${message}` });
+  } else {
+    await questionCompte(`app_site_${ref}`, {
+      nature: b.reponse === "visite" ? "visite" : "interet", contactId, immeubleId, message, source: "Site - Compte client",
+    });
+  }
+  after(async () => { await deposerCompte(contactId).catch(() => undefined); });
+  return { deja: false, id: p.id };
+}
+
+/** `prix_proprietaire` : le propriétaire propose son prix depuis son compte. */
+async function recevoirPrixProprietaire(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const cle = cleCompte(b.bien);
+  const prix = N(b.prix);
+  if (!cle || !prix) throw new LeadInvalide("Bien ou prix illisible.");
+  const [im] = await lire(`bo_immeuble?select=id,data&data->>site_cle=eq.${cle}&limit=1`);
+  const proprietaires = [T(im?.data.PROPRIETAIRE), ...(Array.isArray(im?.data.PROPRIETAIREs) ? (im!.data.PROPRIETAIREs as unknown[]).map((x) => T(x)) : [])];
+  if (!im || !proprietaires.includes(contactId)) throw new LeadInvalide("Ce bien n'appartient pas à ce compte.");
+  const id = `app_site_${ref}`;
+  if (await existe("bo_question", id)) return { deja: true, id };
+  await questionCompte(id, {
+    nature: "prix", contactId, immeubleId: im.id, source: "Site - Compte client",
+    message: `Prix souhaité par le propriétaire : ${eur(prix)}${T(b.message, 2000) ? `\n${T(b.message, 2000)}` : ""}`,
+  });
+  return { deja: false, id };
+}
+
+/** `compte_supprime` : le BO efface ses dépôts et retire la clé ; le contact reste. */
+async function recevoirCompteSupprime(_ref: string, b: Record<string, unknown>) {
+  const compte = cleCompte(b.compte);
+  if (!compte) throw new LeadInvalide("Clé de compte absente ou qui n'est pas un UUID.");
+  const contactId = await contactParCompte(compte);
+  if (contactId) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_contact", p_id: contactId,
+      p_patch: { site_compte: null, site_compte_supprime_le: new Date().toISOString() },
+    });
+  }
+  await effacerCompte(compte);
+  return { deja: !contactId, id: contactId ?? "" };
 }
 
 /* -------------------------------------------------------------- Entrée */
@@ -465,16 +669,21 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "estimation": return recevoirEstimation(ref, b);
     case "recherche_acquereur": return recevoirRecherche(ref, b);
     case "contact": return recevoirContact(ref, b);
+    case "compte": return recevoirCompte(ref, b);
+    case "recherche_compte": return recevoirRechercheCompte(ref, b);
+    case "reponse": return recevoirReponse(ref, b);
+    case "prix_proprietaire": return recevoirPrixProprietaire(ref, b);
+    case "compte_supprime": return recevoirCompteSupprime(ref, b);
     default: throw new LeadInvalide(`Type de formulaire inconnu : ${String(b.type).slice(0, 40)}`);
   }
 }
 
 /* ------------------------------------------------- Tableau de bord */
 
-/** Les demandes de dossier ouvertes d'un agent, pour le compteur du tableau de bord. */
+/** Les demandes ouvertes d'un agent (dossier, visite, intérêt, prix), pour le compteur du tableau de bord. */
 export async function demandesDossierOuvertes(agentId: string): Promise<number> {
   const rows = await lire(
-    "bo_question?select=id,data&data->>demande_dossier=eq.true&data->>ended=eq.false&limit=500",
+    "bo_question?select=id,data&data->>ended=eq.false&or=(data->>demande_dossier.eq.true,data->>nature.not.is.null)&limit=500",
   ).catch(() => []);
   return rows.filter((q) => {
     const suivi = q.data["suivi par"];

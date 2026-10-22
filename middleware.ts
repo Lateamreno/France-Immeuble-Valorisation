@@ -2,9 +2,9 @@
  * Le seul rôle de ce fichier : dire à la mise en page racine sur quelle URL
  * elle se trouve.
  *
- * L'espace client (`/espace/…`) et le lien propriétaire (`/proprietaire/…`) sont
- * les premières pages du site qui ne s'adressent pas à un agent : elle ne doit porter ni le rail, ni le bouton de
- * création rapide, ni la revue des retours. Or `app/layout.tsx` est le seul
+ * Les anciennes adresses de l'espace client (`/espace/…`, `/proprietaire/…`),
+ * fermé le 22/10, mènent à une page qui s'adresse à un client : elle ne doit
+ * porter ni le rail, ni le bouton de création rapide, ni la revue des retours. Or `app/layout.tsx` est le seul
  * layout du projet et les monte pour tout le monde.
  *
  * Un groupe de routes ne suffirait pas — il s'imbrique DANS le layout racine,
@@ -14,9 +14,7 @@
  * layout choisit.
  *
  * Ce middleware N'AUTHENTIFIE RIEN et ne doit pas le laisser croire : le BO
- * n'a pas encore de connexion, qui a l'URL a l'accès. La protection de
- * l'espace propriétaire tient à son jeton, vérifié côté serveur à chaque
- * lecture et à chaque écriture.
+ * n'a pas encore de connexion, qui a l'URL a l'accès.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
