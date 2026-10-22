@@ -2,7 +2,7 @@ import { TopBar } from "@/components/topbar";
 import { DashboardBlocs } from "@/components/dashboard-blocs";
 import { DASHBOARD } from "@/lib/data/dashboard";
 import Link from "next/link";
-import { getDashboardLive, getAgents } from "@/lib/bubble/server";
+import { getDashboardLive, getAgents, TOUS_AGENTS } from "@/lib/bubble/server";
 import { ventesAPublier } from "@/lib/bo/ventes-site";
 import { demandesDossierOuvertes } from "@/lib/bo/leads-site";
 
@@ -17,7 +17,7 @@ export default async function DashboardPage({
   const onglet = vue === "attente" ? "attente" : "cours";
   const agentList = await getAgents().catch(() => []);
   const actifs = agentList.filter((a) => a.actif);
-  const slug = actifs.some((a) => a.slug === agent) ? agent : (actifs[0]?.slug ?? "marc-antoine");
+  const slug = agent === TOUS_AGENTS || actifs.some((a) => a.slug === agent) ? agent : (actifs[0]?.slug ?? "marc-antoine");
 
   let blocs = DASHBOARD;
   let agentName = "Marc-Antoine";
@@ -54,7 +54,12 @@ export default async function DashboardPage({
     <>
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
         agent={agentName} agentSlug={slug} recherche={q}
-        agents={agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color }))} />
+        agents={[
+          ...agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color })),
+          /* Retour #509 : la vue de tous les portefeuilles, la seule où les
+             vignettes portent les initiales de l'agent. */
+          { slug: TOUS_AGENTS, name: "tous les agents" },
+        ]} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>
       )}

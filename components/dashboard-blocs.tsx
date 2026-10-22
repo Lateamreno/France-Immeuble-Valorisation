@@ -93,7 +93,7 @@ function Card({
         <Vignette c={c} />
         <div className="kbody">
           <div className="krow1">
-            <span className="kt">{c.ville}</span>
+            <span className="kt" title={c.ville}>{c.ville}</span>
             {/* La vignette partagée (retour du 24/09 : la même fiche contact
                 partout, tableau de bord compris). */}
             <VignetteContact
@@ -486,15 +486,15 @@ const estTel = () => typeof document !== "undefined" && document.body.classList.
  * interdisent de la réutiliser comme photo du bien, dossier de vente ou
  * annonce comprises.
  */
-function Vignette({ c, voirAgent = false }: { c: KCard; voirAgent?: boolean }) {
+function Vignette({ c }: { c: KCard }) {
   return (
     <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
       <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
         repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
-      {/* Retour #509 : les initiales de l'agent ne servent que sur une vue qui
-          mélange les portefeuilles. Le tableau de bord est toujours celui
-          d'UN agent : elles ne s'y affichent plus. */}
-      {c.rv && voirAgent && <span className="rv" style={c.rvCouleur ? { background: `${c.rvCouleur}b3` } : undefined}>{c.rvText ?? "RV"}</span>}
+      {/* Retour #509 : les initiales de l'agent ne servent que sur la vue
+          « Tous », qui mélange les portefeuilles — le serveur ne pose `rv`
+          que là. Fond légèrement transparent. */}
+      {c.rv && <span className="rv" style={c.rvCouleur ? { background: `${c.rvCouleur}b3` } : undefined}>{c.rvText ?? "RV"}</span>}
     </div>
   );
 }
