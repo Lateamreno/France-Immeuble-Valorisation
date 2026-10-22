@@ -1,43 +1,72 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
-import { TopBar } from "@/components/topbar";
-import { Dock } from "@/components/dock";
+import { Rail } from "@/components/rail";
+import { Burger } from "@/components/burger";
+import { getAgents } from "@/lib/bubble/server";
+import { QuickCreate } from "@/components/quick-create";
+import { RevueButton } from "@/components/revue";
+import { listFeedbackOuverts } from "@/lib/bo/feedback";
+import { lireMode } from "@/lib/bo/mode";
+import { PastilleSalve, SalveRelancesProvider } from "@/components/salve-relances";
+
+/** Un déploiement de recette porte la marque en négatif et le dit dans le
+ *  titre : avec le tableau de bord Vercel, la preview et la production
+ *  ouverts côte à côte, l'onglet se reconnaît sans le lire. */
+const preview = process.env.VERCEL_ENV === "preview";
 
 export const metadata: Metadata = {
-  title: "Cockpit Découpe — France Immeuble",
+  title: preview ? "Preview · France Immeuble" : "France Immeuble — Back-office",
   description:
-    "Cockpit d'opération de vente à la découpe : du mandat à l'encaissement du dernier lot.",
+    "Back-office France Immeuble : prospection, commercialisation et bouclage des ventes d'immeubles de rapport.",
+  icons: {
+    icon: [{ url: preview ? "/favicon-preview.svg" : "/favicon.svg", type: "image/svg+xml" }],
+    // iOS ignore les icônes du manifeste pour l'écran d'accueil : sans
+    // celle-ci, « Ajouter à l'écran d'accueil » pose une capture de la page.
+    apple: [{ url: "/icone-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "France Immeuble" },
 };
 
-const DUST = [
-  { left: "22%", top: "20%", d: "0s" }, { left: "48%", top: "12%", d: "1.2s" },
-  { left: "70%", top: "26%", d: ".6s" }, { left: "86%", top: "48%", d: "2s" },
-  { left: "34%", top: "64%", d: "1.6s" }, { left: "62%", top: "78%", d: ".3s" },
-  { left: "12%", top: "52%", d: "2.4s" }, { left: "92%", top: "16%", d: "1s" },
-];
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#121110",
+};
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  /* Les anciennes adresses de l'espace client (fermé le 22/10, contrat §9)
+     mènent à une page « Votre espace a déménagé » qui s'adresse à un client :
+     ni rail, ni création rapide, ni revue des retours. Le chemin vient du
+     middleware, qui existe pour ça. */
+  const chemin = (await headers()).get("x-chemin") ?? "";
+  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")) {
+    return (
+      <html lang="fr">
+        <body className="hors-bo">{children}</body>
+      </html>
+    );
+  }
+
   return (
     <html lang="fr">
       <body>
-        <div className="app">
-          <div className="dust">
-            {DUST.map((p, i) => (
-              <i key={i} style={{ left: p.left, top: p.top, animationDelay: p.d }} />
-            ))}
-          </div>
+        {/* La salve de relances vit ici, au-dessus des pages : on ferme la
+            fenêtre, on change de page, elle continue, et sa pastille la suit. */}
+        <SalveRelancesProvider>
           <div className="shell">
-            <Sidebar />
+            <Burger />
+            <Rail mode={await lireMode()} />
             <div className="main">
-              <TopBar />
               {children}
-              <Dock />
+              <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
             </div>
+            <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
+            <PastilleSalve />
           </div>
-        </div>
+        </SalveRelancesProvider>
       </body>
     </html>
   );
