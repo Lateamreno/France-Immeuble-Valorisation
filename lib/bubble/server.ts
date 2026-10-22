@@ -3519,6 +3519,8 @@ export type QuestionCard = {
   clos: boolean;
   remarques?: string;
   date?: string;
+  /** Lot 4 : ce qui vient d'un compte client du site, à traiter par l'agent du bien. */
+  nature?: "visite" | "interet" | "prix";
   /** Lot 3 du contrat site : la demande de dossier depuis une fiche à vendre. */
   demande?: {
     bienTitre?: string;
@@ -3593,6 +3595,7 @@ export async function listQuestionsBO(
       clos: q.ended === true,
       remarques: S2(q.remarques_cloture),
       date: typeof q["Created Date"] === "string" ? (q["Created Date"] as string) : undefined,
+      nature: q.nature === "visite" || q.nature === "interet" || q.nature === "prix" ? q.nature : undefined,
       demande: q.demande_dossier === true
         ? {
             bienTitre: S2(q.bien_titre),

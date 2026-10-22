@@ -23,7 +23,7 @@ import {
   createEstimation, envoyerEstimation, genererPdfEstimation, setEstimationStatut,
   supprimerEstimation, updateEmplacement, uploadPhoto, type EstimationPayload,
 } from "@/lib/bo/actions";
-import { ouvrirEspace } from "@/lib/bo/espace-actions";
+import { COMPTE_SITE_URL } from "@/lib/site-public";
 import { MOYENS } from "@/lib/bo/itineraire";
 import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 import { analyseAuto } from "@/lib/bo/analyse";
@@ -288,7 +288,6 @@ export function EstimationWizard({
   const [pjDocs, setPjDocs] = useMem<string[]>("pjDocs", []);
   const [pjFichiers, setPjFichiers] = useState<File[]>([]);
   /** Ouverture en cours de l'espace vendeur (tâche #56). */
-  const [espaceEnCours, setEspaceEnCours] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** « Personnaliser les informations » : les champs servis deviennent éditables. */
   const [perso, setPerso] = useMem("perso", false);
@@ -1576,25 +1575,16 @@ export function EstimationWizard({
             </label>
             <div className="est-l">
               <Copier valeur={corps} titre="Copier le message" petit>Copier le message</Copier>
-              {/* L'espace vendeur (tâche #56). Un bouton, pas une case cochée
-                  d'avance : le lien n'existe qu'à partir du moment où l'agent
-                  décide de l'ouvrir, et il voit le paragraphe s'ajouter au
-                  message — il peut le réécrire comme le reste. */}
-              <button type="button" className="fadd" disabled={espaceEnCours || corps.includes("/proprietaire/")}
-                onClick={() => {
-                  setEspaceEnCours(true);
-                  ouvrirEspace(immeubleId, { estimationId: estId ?? undefined })
-                    .then((jeton) => {
-                      const url = `${window.location.origin}/proprietaire/${jeton}`;
-                      setCorpsSaisi(
-                        `${corps}\n\nPour aller plus vite, je vous ai ouvert un espace personnel : vous pouvez y indiquer vous-même le prix que vous souhaitez percevoir et y déposer vos documents (titre de propriété, baux, diagnostics, taxe foncière).\n${url}\nCe lien vous est personnel.`,
-                      );
-                    })
-                    .finally(() => setEspaceEnCours(false));
-                }}>
-                {espaceEnCours ? "Ouverture…"
-                  : corps.includes("/proprietaire/") ? "Espace vendeur joint ✓"
-                  : "+ Joindre l'espace vendeur"}
+              {/* Lot 4 (MAV 22/10) : plus d'espace vendeur dans le BO. On invite
+                  le propriétaire à créer son compte sur le site, avec la même
+                  adresse : il y retrouve cette estimation dès qu'elle est
+                  envoyée, puis le suivi de sa vente. Un bouton, pas un ajout
+                  automatique : l'agent voit le paragraphe et le réécrit s'il veut. */}
+              <button type="button" className="fadd" disabled={corps.includes(COMPTE_SITE_URL)}
+                onClick={() => setCorpsSaisi(
+                  `${corps}\n\nVous retrouverez cette estimation dans votre compte France Immeuble, où vous pourrez aussi suivre la vente de votre immeuble. Pour le créer, utilisez l'adresse e-mail à laquelle vous recevez ce message :\n${COMPTE_SITE_URL}`,
+                )}>
+                {corps.includes(COMPTE_SITE_URL) ? "Invitation au compte jointe ✓" : "+ Inviter à créer son compte"}
               </button>
             </div>
             <div className="est-note">

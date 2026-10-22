@@ -60,7 +60,7 @@ export default async function DashboardPage({
       )}
       {demandes > 0 && (
         <Link href="/questions" className="vs-bandeau">
-          {demandes} demande{demandes > 1 ? "s" : ""} de dossier à traiter
+          {demandes} demande{demandes > 1 ? "s" : ""} du site à traiter
         </Link>
       )}
       {vap && vap.nombre > 0 && (

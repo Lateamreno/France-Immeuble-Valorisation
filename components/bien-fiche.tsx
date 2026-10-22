@@ -31,7 +31,6 @@ const SectionDiffusion = dynamic(() => import("@/components/diffusion").then((m)
 const Acheteurs = dynamic(() => import("@/components/acheteurs").then((m) => m.Acheteurs), { loading: chargement });
 const DocumentsCoffre = dynamic(() => import("@/components/fichiers").then((m) => m.DocumentsCoffre), { loading: chargement });
 import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
-import type { Espace } from "@/lib/bo/espace-modele";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
@@ -68,7 +67,8 @@ import {
 import { apercuRelanceSms } from "@/lib/bo/propositions-actions";
 import { messageRelance, objetRelance, PLAFOND_RELANCES } from "@/lib/bo/relances";
 import { Copier, copierTexte } from "@/components/copier";
-import { EspaceVendeur, PrixEcran } from "@/components/prix";
+import { PrixEcran } from "@/components/prix";
+import { CompteSite } from "@/components/compte-site";
 import { PasserEnDecoupe, SectionDecoupe } from "@/components/decoupe-fiche";
 import type { OperationDecoupe } from "@/lib/bubble/server";
 import { PHASES, phase as phaseDe } from "@/lib/decoupe";
@@ -196,7 +196,7 @@ type MemoEst = { mode: EcranEstimation["mode"]; eid?: string };
 const sansAbonnement = () => () => {};
 
 export function BienFiche({
-  b, contenu, contenuLabel, contenuIcone, operation, secteur, espace, compteActif, envoiActif, ouvrir, cleEcran,
+  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir, cleEcran,
 }: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
@@ -211,10 +211,6 @@ export function BienFiche({
   /** Prix du secteur : le wizard d'estimation s'en sert, la fiche les porte
    *  donc en permanence pour pouvoir le monter sans changer de page (#125). */
   secteur?: Record<string, unknown> | null;
-  /** L'espace propriétaire ouvert sur ce bien, s'il y en a un. */
-  espace?: Espace | null;
-  /** Le propriétaire a-t-il déjà un espace client actif ? */
-  compteActif?: boolean;
   /** Vrai quand la boîte d'envoi est configurée. */
   envoiActif?: boolean;
   /** Estimation à ouvrir d'emblée (accès direct par l'URL). */
@@ -503,13 +499,13 @@ export function BienFiche({
             <>
               {sect === "suivi" && <SuiviSection b={b} />}
               {sect === "proprietaire" && (
-                <ProprioSection b={b} espace={espace} compteActif={compteActif} />
+                <ProprioSection b={b} />
               )}
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
               {sect === "prix" && (
-                <PrixSection b={b} espace={espace}
+                <PrixSection b={b}
                   tab={sous.prix} onTab={majSous("prix")}
                   ouverte={est ? LIBELLE_EST[est.mode] : contenu ? contenuLabel ?? "Estimation en cours" : undefined}
                   onReprendre={() => setSect("encours")} />
@@ -1193,14 +1189,7 @@ function ChangerProprietaire({ b }: { b: BienData }) {
   );
 }
 
-function ProprioSection({ b, espace, compteActif }: {
-  b: BienData; espace?: Espace | null; compteActif?: boolean;
-}) {
-  /* Le taux d'honoraires du bien : l'espace vendeur s'en sert pour dire ce que
-     le prix net du propriétaire donne en HAI. */
-  const honosEnBase = typeof b.im.honos_ht === "number" ? b.im.honos_ht as number : 0;
-  const nvEnBase = typeof b.im.prix_nv === "number" ? b.im.prix_nv as number : 0;
-  const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
+function ProprioSection({ b }: { b: BienData }) {
   const c = b.proprietaire;
   const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   const nomComplet = c ? `${S2(c["prénom"]) ?? ""} ${S2(c.nom) ?? ""}`.trim() : "";
@@ -1293,16 +1282,12 @@ function ProprioSection({ b, espace, compteActif }: {
         </>
       )}
 
-      {/* Retour #310 — « je veux que l'espace vendeur soit dans l'onglet
-          propriétaire. » Il parle de la personne, pas du prix : son accès, son
-          compte, l'adresse à laquelle on lui envoie le lien. */}
-      <div className="fh2">Espace vendeur</div>
-      <EspaceVendeur
-        immeubleId={String(b.im._id)} espace={espace} tauxHonos={tauxHonos}
-        proprietaireId={c ? String(c._id) : undefined}
-        proprietaireEmail={mail}
-        compteActif={compteActif}
-      />
+      {/* Lot 4 (MAV 22/10) : plus d'espace vendeur dans le BO. Le propriétaire
+          suit son immeuble dans son compte sur le site ; on voit ici ce qu'il
+          y voit. */}
+      <div className="fh2">Son compte sur le site</div>
+      {c ? <CompteSite contactId={String(c._id)} titre="Ce que voit le propriétaire" />
+        : <div className="fempty">Pas de propriétaire rattaché.</div>}
 
       <div className="fh2" style={{ marginTop: 20 }}>Immeubles appartenant au même propriétaire</div>
       {b.autresBiens.length === 0 && <div className="fempty">Aucun autre immeuble.</div>}
@@ -1371,8 +1356,8 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
  * faire défiler l'un pour atteindre l'autre. Le rail porte donc les deux
  * sous-entrées, comme pour l'emplacement ou l'état locatif.
  */
-function PrixSection({ b, espace, tab, onTab, ouverte, onReprendre }: {
-  b: BienData; espace?: Espace | null;
+function PrixSection({ b, tab, onTab, ouverte, onReprendre }: {
+  b: BienData;
   tab?: string; onTab?: (t: string) => void;
   /** L'estimation déjà ouverte dans la fiche, rappelée ici aussi (#473). */
   ouverte?: string; onReprendre?: () => void;
@@ -1401,7 +1386,7 @@ function PrixSection({ b, espace, tab, onTab, ouverte, onReprendre }: {
       {courant === "descriptif" ? (
         <DescriptifForm b={b} />
       ) : (
-        <PrixEcran b={b} espace={espace} />
+        <PrixEcran b={b} />
       )}
     </>
   );

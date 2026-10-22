@@ -38,13 +38,12 @@ import { etatLien } from "@/lib/bo/lien-dossier";
 import {
   JOURS_RELANCE, joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
 } from "@/lib/bo/relances";
-import { desactiverCompteClient, ouvrirCompteClient } from "@/lib/bo/comptes-bo";
 import {
   CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
   SOURCES_CONTACT as SOURCES,
 } from "@/lib/referentiels";
 
-import type { CompteVu } from "@/lib/bo/comptes-bo";
+import { CompteSite } from "@/components/compte-site";
 import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 
 /* Les onglets que l'adresse a le droit de rouvrir — dans l'ordre de la barre. */
@@ -139,90 +138,10 @@ const IC: Record<string, React.ReactNode> = {
 
 const Ic = ({ k }: { k: string }) => <span className="cfx-ic"><svg viewBox="0 0 24 24">{IC[k]}</svg></span>;
 
-/**
- * L'espace client du contact (tâche #56).
- *
- * MAV : « il faut que ce soit un compte avec mot de passe où le gars voit ses
- * recherches et ses immeubles. Sinon il va pas revenir sur un lien où tout le
- * monde peut aller. »
- *
- * Le lien d'activation ne s'envoie pas tout seul : il s'affiche, l'agent le
- * copie et le colle dans son message. Même doctrine que partout ailleurs — le
- * BO prépare, l'agent envoie.
- */
-function EspaceCompte({ contactId, email, compte }: {
-  contactId: string; email: string; compte?: CompteVu | null;
-}) {
-  const [pending, start] = useTransition();
-  const [lien, setLien] = useState<string | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [copie, setCopie] = useState(false);
-  const [ferme, setFerme] = useState(false);
-
-  const actif = !!compte?.actif && !ferme;
-  const url = lien ? `${typeof window === "undefined" ? "" : window.location.origin}${lien}` : "";
-
-  return (
-    <div className="espv" style={{ marginBottom: 14 }}>
-      <div className="espv-hd">
-        <svg viewBox="0 0 24 24" aria-hidden>
-          <circle cx="12" cy="8" r="3.6" /><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6" />
-        </svg>
-        <b>Espace client</b>
-        <span className="sp" style={{ flex: 1 }} />
-        <button type="button" className="espv-b go" disabled={pending || !email.includes("@")}
-          onClick={() => start(async () => {
-            setErreur(null);
-            const r = await ouvrirCompteClient(contactId, email);
-            if (r.ok) { setLien(r.lien); setFerme(false); } else setErreur(r.message);
-          })}>
-          {pending ? "…" : actif ? "Renvoyer un lien d'accès" : "Ouvrir l'espace client"}
-        </button>
-        {actif && (
-          <button type="button" className="espv-b ko" disabled={pending}
-            onClick={() => start(async () => { await desactiverCompteClient(contactId); setFerme(true); setLien(null); })}>
-            Fermer l&apos;accès
-          </button>
-        )}
-      </div>
-
-      {erreur && <p className="espv-txt" style={{ color: "#a5341f" }}>{erreur}</p>}
-
-      {!erreur && !lien && (
-        <p className="espv-txt">
-          {actif
-            ? compte?.active_le
-              ? `Espace actif depuis le ${new Date(compte.active_le).toLocaleDateString("fr-FR")}` +
-                (compte.vu_le ? `, dernière visite le ${new Date(compte.vu_le).toLocaleDateString("fr-FR")} (${compte.connexions} connexions).` : ", jamais ouvert.")
-              : "Espace ouvert, mot de passe pas encore choisi. Renvoyez-lui un lien d'accès."
-            : "Un compte avec mot de passe, où le client retrouve ses immeubles, ses recherches et les biens qu'on lui propose."}
-        </p>
-      )}
-
-      {lien && (
-        <div className="espv-prix">
-          <div>
-            <span className="espv-lab">Lien d&apos;activation à lui envoyer — valable 7 jours, une seule fois</span>
-            <code style={{ fontSize: 12, wordBreak: "break-all" }}>{url}</code>
-          </div>
-          <button type="button" className="espv-b" onClick={() => {
-            navigator.clipboard?.writeText(url).then(() => {
-              setCopie(true);
-              setTimeout(() => setCopie(false), 2200);
-            }).catch(() => undefined);
-          }}>{copie ? "Copié ✓" : "Copier"}</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function ContactFiche({ d, echanges = [], compte }: {
+export function ContactFiche({ d, echanges = [] }: {
   d: ContactData;
   /** E-mails échangés avec ce contact (module Mails). */
   echanges?: FilMail[];
-  /** Son espace client, s'il en a un. */
-  compte?: CompteVu | null;
 }) {
   const c = d.c;
   const id = String(c._id);
@@ -516,10 +435,10 @@ export function ContactFiche({ d, echanges = [], compte }: {
                 </Champ>
               </Bloc>
 
-              {/* L'espace client (tâche #56) : c'est ici qu'on l'ouvre, parce
-                  que c'est la personne qui a un espace, pas l'immeuble — elle
-                  y retrouve ce qu'elle vend ET ce qu'elle cherche. */}
-              <EspaceCompte contactId={id} email={email} compte={compte} />
+              {/* Son compte sur le site (lot 4, MAV 22/10) : il n'y a plus
+                  d'espace client dans le BO. On voit ici ce que la personne
+                  voit sur le site, ce qu'elle vend ET ce qu'elle cherche. */}
+              <CompteSite contactId={id} />
 
               <Bloc titre="Informations" picto="info">
                 <Champ libelle="Civilité" gauche className={LIGNE}>

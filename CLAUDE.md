@@ -457,58 +457,41 @@ arbitrage de MAV, ne pas y revenir sans lui.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.
 - **Extranet vendeur ET extranet locataire** retenus (locataire en dernier, garde-fous §8.3).
 
-## 10 bis. Espace client — décisions actées et reste à faire
+## 10 bis. Espace client — fermé dans le BO le 22/10/26
 
-> Mis en pause par MAV le 03/09/26, le temps qu'il boucle le parcours client de
-> son côté. À reprendre ici, sans redécider ce qui suit.
+> L'espace client du BO (`/espace`, `/proprietaire`) n'existe plus. Décision de
+> MAV : un seul compte client, **sur le site France Immeuble**, pour les
+> acquéreurs comme pour les propriétaires — moins de surfaces exposées, moins
+> de risques de fuite. Contrat complet : `docs/CONTRAT-SITE.md` §9 (lot 4).
 
-**Ce qui est tranché et livré.**
-- **Un compte par PERSONNE**, rattaché à une fiche `bo_contact`, pas un lien par
-  immeuble : « sinon il va pas revenir sur un lien où tout le monde peut aller ».
-  Une seule personne porte les deux casquettes — ce qu'elle vend, ce qu'elle
-  cherche — et les deux vivent sur la même page.
-- **Cloisonnement en base, pas dans le code.** L'espace client porte la clé
-  publique (`anon`), qui ne lit aucune table, et n'appelle que les fonctions
-  `ec_*` (SECURITY DEFINER, `search_path` fixe, EXECUTE accordé au seul `anon`).
-  Chacune exige un jeton de session, le résout elle-même en contact, et ne rend
-  que ses lignes. **Ne jamais rebrancher une page cliente sur la clé de
-  service** : ce serait défaire tout l'édifice. Seule exception tolérée, l'écriture
-  d'un fichier dans le seau (`espace-depot.ts`), autorisée par la base AVANT.
-- Piège à retenir : une fonction SQL `returns <composite>` qui ne trouve rien
-  rend **une ligne toute nulle**, pas « rien » — d'où `returns setof` sur
-  `ec_compte_de_session`. Toute nouvelle garde de session doit passer par elle.
-- Mots de passe en **bcrypt calculé dans la base** : l'empreinte ne sort jamais.
-  12 caractères minimum, aucune règle de composition. Cinq échecs → blocage 15 min.
-- **On ne dit jamais si un compte existe** (connexion comme mot de passe oublié).
-  Le lien de réinitialisation part par e-mail, jamais rendu à l'appelant.
-- **Rien ne s'auto-crée** : MAV ouvre les comptes, depuis le bien (Description et
-  prix) ou depuis la fiche contact. Aucune page d'inscription.
-- Côté acquéreur : il remplit lui-même ses critères, et ne voit que ce qu'on lui
-  a proposé **ou** ce qui est **en ligne sur Plein Bail** (`pb_url` renseignée) —
-  **jamais tous les mandats**.
-- Le lien secret sans mot de passe est conservé, mais il s'échange contre une
-  session ordinaire : un seul mécanisme d'accès dans toute l'application.
+**Ce qui tient désormais.**
+- **Le BO ne parle jamais directement au client.** Le site gère l'inscription,
+  la connexion, les mots de passe et la vérification d'e-mail. Le BO reçoit des
+  événements (`/api/site/lead`, types `compte`, `recherche_compte`, `reponse`,
+  `prix_proprietaire`, `compte_supprime`) et **dépose** ce que le client doit
+  voir dans les tables `compte_*` du site (`lib/bo/compte-site.ts`), sous une
+  clé neutre `site_cle` — jamais un identifiant du BO (contrat §7).
+- **Rattachement** : par le compte déjà connu, sinon par l'e-mail **vérifié**
+  par le site. Rien ne s'auto-crée côté BO hormis la fiche contact du lead.
+- **L'agent voit ce que voit le client** : panneau « Son compte sur le site »
+  (`components/compte-site.tsx`) sur la fiche contact et sur l'onglet
+  Propriétaire de la fiche bien. Il relit la base du site, pas le BO.
+- Acquéreur : ne voit que ce qu'on lui a proposé (12 derniers mois ou bien
+  encore en vente) et ses propres recherches — **jamais tous les mandats**.
+- Propriétaire : une estimation n'apparaît qu'une fois **envoyée**
+  (statut « 3 »). On l'incite à estimer lui-même sur le site (bouton
+  « Inviter à créer son compte » de l'assistant d'estimation) : c'est une
+  porte d'entrée vers le mandat.
+- Les anciennes adresses mènent à « Votre espace a déménagé », avec un lien
+  vers le compte du site. Les fonctions `ec_*` restent en base mais **plus
+  aucun rôle exposé ne peut les exécuter** (migration
+  `fermer_espace_client_bo`). Ne pas les rebrancher.
 
-**Revirement du 21/10/26.** MAV veut désormais que l'acquéreur crée lui-même
-son compte, **sur le site France Immeuble**, et que le BO ne parle jamais
-directement au client. L'espace client acquéreur du BO sera remplacé par celui
-du site (lot 4 du contrat, `docs/CONTRAT-SITE.md` §9, pas encore conçu). Les
-règles ci-dessus restent en vigueur jusque-là ; l'espace propriétaire n'est pas
-concerné.
-
-**Ce qui reste pour boucler le parcours de bout en bout.**
-1. Variables Vercel : `SITE_URL` (adresse publique du BO, pour le lien « mot de
-   passe oublié ») et, si on veut l'expliciter, `SUPABASE_ANON_KEY`.
-2. Le mail d'estimation joint encore le **lien secret** ; le basculer sur le lien
-   d'**activation de compte**, qui est ce qui fait revenir.
-3. Les réponses d'acquéreurs (« intéressé », « visite ») s'écrivent bien mais ne
-   s'affichent nulle part dans le BO : `reponsesEnAttente()` existe dans
-   `comptes-bo.ts`, il lui manque son écran (fiche bien et/ou Propositions).
-4. « Mot de passe oublié » dépend de `envoiPossible()` : à vérifier une fois la
-   route d'envoi configurée.
-5. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
-   connaît le chemin. L'espace client ne s'en sert pas, mais tant que le BO n'a
-   pas d'authentification, c'est une porte ouverte à refermer.
+**Reste à faire.**
+1. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
+   connaît le chemin : tant que le BO n'a pas d'authentification, c'est une
+   porte ouverte à refermer.
+2. Dépôt de documents par le propriétaire depuis le site : hors lot 4.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
@@ -572,14 +555,12 @@ déploiement passe **Ready** mais sert le dossier statique `public/` (sans
 ## 13. Objets partagés et leur jumeau côté client
 
 Décidé le 25/09/26 (catalogue des objets). Certains éléments existent en
-**deux versions volontairement séparées** : l'une pour le BO, l'autre pour
-l'espace client ou l'espace propriétaire, réduite pour que rien d'interne ne
-franchisse la cloison (§8.4). Ils ne sont **jamais** fusionnés :
+**deux versions volontairement séparées**, qui ne sont **jamais** fusionnées.
+Les jumeaux « côté client » (carte de proposition de l'espace client, bloc de
+prix de l'espace propriétaire) ont disparu avec l'espace client du BO le
+22/10/26 (§10 bis) : leur équivalent vit désormais sur le site, et
+`propositions.tsx` / `prix.tsx` n'ont plus de jumeau dans ce dépôt. Reste :
 
-- la carte de proposition : `components/propositions.tsx` (BO) et
-  `components/espace-accueil.tsx` (espace client) ;
-- le bloc de prix : `components/prix.tsx` (BO) et
-  `components/espace-proprietaire.tsx` (espace propriétaire) ;
 - la pièce jointe : celle du contact (`contact-fiche.tsx`) et celle de
   l'assistant de commercialisation (`commercialisation-assistant.tsx`) sont
   deux objets différents sous le même nom, pas deux copies.

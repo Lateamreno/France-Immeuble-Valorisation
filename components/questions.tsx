@@ -20,6 +20,15 @@ import { Avatar } from "@/components/avatar";
 import { PuceImmeuble } from "@/components/puce-immeuble";
 
 const TAILLES = [10, 25, 50, 100];
+/* L'en-tête dit d'où vient la demande : le site (fiche à vendre) ou le compte
+   client du site (lot 4). */
+const TETES: Record<string, string> = {
+  question: "Question du ",
+  dossier: "Demande de dossier du ",
+  visite: "Demande de visite du ",
+  interet: "Intérêt pour un bien proposé, le ",
+  prix: "Prix proposé par le propriétaire, le ",
+};
 type VueQuestions = "en_cours" | "cloturees";
 const VUES_QUESTIONS: readonly VueQuestions[] = ["en_cours", "cloturees"];
 
@@ -96,7 +105,7 @@ export function EcranQuestions({
 
       <div className="lst-col-simple">
         {tranche.map((r) => (
-          <div className={`qc${r.clos ? " clos" : ""}${r.demande ? " demande" : ""}`} key={r.id}>
+          <div className={`qc${r.clos ? " clos" : ""}${r.demande || r.nature ? " demande" : ""}`} key={r.id}>
             <div className="qc-gauche">
               <span className="qc-bulle">
                 <svg viewBox="0 0 24 24"><path d="M12 3C6.8 3 2.6 6.3 2.6 10.4c0 2.3 1.3 4.4 3.4 5.7-.2 1.3-.9 2.5-1.9 3.4 1.9 0 3.7-.7 5-1.9.9.2 1.8.3 2.9.3 5.2 0 9.4-3.3 9.4-7.5S17.2 3 12 3z" /></svg>
@@ -108,7 +117,7 @@ export function EcranQuestions({
               <div className="qc-cadre">
                 <div className="qc-tete">
                   <span>
-                    {r.demande ? "Demande de dossier du " : "Question du "}<b>{r.quand}</b> <i>({r.source})</i>
+                    {TETES[r.nature ?? (r.demande ? "dossier" : "question")]}<b>{r.quand}</b> <i>({r.source})</i>
                   </span>
                   <span style={{ flex: 1 }} />
                   {r.contact ? (
@@ -134,6 +143,12 @@ export function EcranQuestions({
                     {r.demande.rechercheId && r.contact && (
                       <Link className="qc-rech" href={`/contact/${r.contact.id}`}>Sa recherche</Link>
                     )}
+                  </div>
+                )}
+                {r.nature && r.telephone && (
+                  <div className="qc-dem">
+                    <a className="qc-tel" href={`tel:${r.telephone.replace(/[^\d+]/g, "")}`}>☎ {r.telephone}</a>
+                    <Pastille ton="bleu">Depuis son compte sur le site</Pastille>
                   </div>
                 )}
                 {r.projet && <div className="qc-projet">{r.projet}</div>}
@@ -163,6 +178,11 @@ export function EcranQuestions({
                 )}
                 {r.email && !r.demande && (
                   <a className="qc-b" href={`mailto:${r.email}`}>✉ Envoyer un mail</a>
+                )}
+                {r.nature && !r.clos && (
+                  <button type="button" className="qc-b" disabled={pending} onClick={() => setAAppeler(r)}>
+                    ✓ J&apos;ai appelé
+                  </button>
                 )}
                 {r.demande && !r.clos && (
                   <>

@@ -37,15 +37,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  /* L'espace client ne s'adresse pas à un agent : ni rail, ni création
-     rapide, ni revue des retours. Et on ne va pas non plus chercher les
-     agents et les retours du BO pour une page que lit un vendeur — le chemin
-     vient du middleware, qui existe pour ça. */
+  /* Les anciennes adresses de l'espace client (fermé le 22/10, contrat §9)
+     mènent à une page « Votre espace a déménagé » qui s'adresse à un client :
+     ni rail, ni création rapide, ni revue des retours. Le chemin vient du
+     middleware, qui existe pour ça. */
   const chemin = (await headers()).get("x-chemin") ?? "";
-  /* #382 bis — l'aperçu de l'espace vendeur est une page du BO, mais il doit
-     montrer l'écran tel que le propriétaire le verra : sans le rail. */
-  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")
-    || /^\/bien\/[^/]+\/apercu-vendeur\/?$/.test(chemin)) {
+  if (chemin.startsWith("/proprietaire") || chemin.startsWith("/espace")) {
     return (
       <html lang="fr">
         <body className="hors-bo">{children}</body>

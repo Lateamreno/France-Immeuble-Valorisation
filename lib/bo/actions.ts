@@ -123,6 +123,10 @@ function refresh(immeubleId?: string) {
          « Sous offre » ou retrait — jamais une première mise en ligne. */
       const { synchroniserSite } = await import("./site-fi");
       await synchroniserSite(immeubleId).catch(() => undefined);
+      /* Les comptes du site qui voient ce bien (son propriétaire, ses
+         acquéreurs) se remettent à jour : étape, prix, compteurs (§9.5). */
+      const { deposerComptesDeLImmeuble } = await import("./compte-site");
+      await deposerComptesDeLImmeuble(immeubleId).catch(() => undefined);
     });
   } catch {
     /* Hors contexte de requête : la diffusion se rattrapera au tour suivant. */
@@ -5615,6 +5619,15 @@ export async function traiterAProposer(
   revalidatePath("/recherches");
   revalidatePath("/propositions");
   if (acheteurId) revalidatePath(`/contact/${acheteurId}`);
+  /* Le bien proposé apparaît dans le compte de l'acquéreur, s'il en a un (§9.2). */
+  if (acheteurId) {
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(acheteurId).catch(() => undefined);
+      });
+    } catch { /* hors requête : la reprise de nuit s'en charge */ }
+  }
   return { crees };
 }
 
@@ -5986,7 +5999,7 @@ export async function noterAppelDemande(questionId: string, notes: string, agent
       CONTACT: typeof q.CONTACT === "string" ? q.CONTACT : null,
       IMMEUBLEs: immeubleId ? [immeubleId] : [],
       Canals: ["Téléphone"],
-      notes: `Appel suite à la demande de dossier du site.${notes.trim() ? `\n${notes.trim()}` : ""}`,
+      notes: `Appel suite à une demande reçue du site.${notes.trim() ? `\n${notes.trim()}` : ""}`,
       date_start: now,
       "Created Date": now,
       "Modified Date": now,
