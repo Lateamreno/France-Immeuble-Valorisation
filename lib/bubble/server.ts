@@ -423,14 +423,21 @@ function attenteEnCours(im: Record<string, unknown>, suivi?: Record<string, unkn
   return relance ? relance.getTime() > Date.now() : false;
 }
 
+/** Le slug de la vue qui mélange tous les portefeuilles (retour #509). */
+export const TOUS_AGENTS = "tous";
+
 export async function getDashboardLive(
   agentSlug: string,
   vue: "cours" | "attente" = "cours",
 ): Promise<DashboardLive | null> {
   if (!TOKEN && !USE_SB) return null;
   const all = await agents();
+  /* Retour #509 : la vue « Tous » mélange les portefeuilles. C'est la seule
+     où les initiales de l'agent ont un sens sur la vignette. */
+  const tous = agentSlug === TOUS_AGENTS;
   const agent = all.find((a) => a.slug === agentSlug) ?? all[0];
   if (!agent) return null;
+  const parId = new Map(all.map((a) => [a.id, a]));
   await loadInitials();
 
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
@@ -454,7 +461,7 @@ export async function getDashboardLive(
   ]);
 
   const imsAgent = imsAll
-    .filter((i) => i.AGENT === agent.id)
+    .filter((i) => tous || i.AGENT === agent.id)
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
   // Dernier suivi par immeuble + historique complet (les récents d'abord).
@@ -661,9 +668,9 @@ export async function getDashboardLive(
       // donc elle arrive par `photoUrl` comme n'importe quelle photo. Le
       // drapeau sert seulement à la signaler « à remplacer ».
       facadeRue: estFacadeRue(im.photo_main_compressed),
-      rv: true,
-      rvText: agent.initials,
-      rvCouleur: agent.color,
+      rv: tous && parId.has(String(im.AGENT ?? "")),
+      rvText: parId.get(String(im.AGENT ?? ""))?.initials,
+      rvCouleur: parId.get(String(im.AGENT ?? ""))?.color,
       history: !!suivi,
       statutNum: statutOf(im),
       contactId: typeof im.PROPRIETAIRE === "string" ? (im.PROPRIETAIRE as string) : undefined,
@@ -898,7 +905,7 @@ export async function getDashboardLive(
   return {
     blocs,
     agentSlug,
-    agentName: agent.name,
+    agentName: tous ? "tous les agents" : agent.name,
     // Retour #58 : le badge « En cours » ne compte que les vignettes rouges —
     // les biens mis en attente dont l'échéance est passée sans nouveau suivi.
     // Le reste du flux n'est pas une alerte, il n'a rien à faire au compteur.
