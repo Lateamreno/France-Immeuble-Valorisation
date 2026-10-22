@@ -11,7 +11,7 @@ import { useTransition } from "react";
 // tachymètre, calculatrice, immeuble, mallette, JUMELLES (recherches),
 // groupe (contacts), avion en papier, BULLE (questions), voiture, marteau,
 // historique, horloge, base de données.
-const IC: Record<string, React.ReactNode> = {
+export const IC: Record<string, React.ReactNode> = {
   "/": <path d="M12 4a9 9 0 0 0-8 13.2c.3.5.9.8 1.5.8h13c.6 0 1.2-.3 1.5-.8A9 9 0 0 0 12 4zm-6.2 9.2a1.1 1.1 0 1 1 0-2.3 1.1 1.1 0 0 1 0 2.3zm2.4-3.6a1.1 1.1 0 1 1 0-2.3 1.1 1.1 0 0 1 0 2.3zm3.8-.9a1.1 1.1 0 1 1 0-2.3 1.1 1.1 0 0 1 0 2.3zm4.7 1.7-2.3 3.6a2 2 0 1 1-1.7-1l4-2.6z" />,
   "/estimation": <path d="M6.5 2h11A1.5 1.5 0 0 1 19 3.5v17A1.5 1.5 0 0 1 17.5 22h-11A1.5 1.5 0 0 1 5 20.5v-17A1.5 1.5 0 0 1 6.5 2zM7 4v3.2h10V4H7zm.4 5.6v1.8h1.8V9.6H7.4zm3.7 0v1.8h1.8V9.6h-1.8zm3.7 0v1.8h1.8V9.6h-1.8zM7.4 13v1.8h1.8V13H7.4zm3.7 0v1.8h1.8V13h-1.8zm3.7 0v1.8h1.8V13h-1.8zM7.4 16.4v1.8h1.8v-1.8H7.4zm3.7 0v1.8h1.8v-1.8h-1.8zm3.7 0v1.8h1.8v-1.8h-1.8z" />,
   "/immeubles": <path d="M5 2h11a1 1 0 0 1 1 1v18h3v2H4v-2h1V3a1 1 0 0 1 0-1zm2.5 3v2h2V5h-2zm4 0v2h2V5h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-2 3.8V21h4v-5h-4z" />,

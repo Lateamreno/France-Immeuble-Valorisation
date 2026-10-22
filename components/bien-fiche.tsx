@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
@@ -430,7 +430,7 @@ export function BienFiche({
     { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: pastille("emplacement") },
     { key: "locatif", label: "Etat locatif", icon: I.key, indicator: pastille("locatif") },
     { key: "technique", label: "Etat technique", icon: I.tech, indicator: pastille("technique") },
-    { key: "prix", label: "Description et prix", icon: I.info, indicator: pastille("prix") },
+    { key: "prix", label: "Description et prix", icon: I.euro, indicator: pastille("prix") },
     { key: "photos", label: "Photos", icon: I.cam, indicator: manque("photos") ? <span className="ncount">{b.photos.length}</span> : <span className="okv">✓</span> },
   ];
 
@@ -836,10 +836,28 @@ function MapsBtn({ b }: { b: BienData }) {
   const adresse = `${b.adresse} ${String(b.im.adresse_zipcode ?? "")} ${String(b.im.adresse_ville ?? "")}`.trim();
   const lien = lienMaps(adresse, (b.adr?.geo ?? null) as { lat?: number; lng?: number } | null);
   return (
-    <a className="smaps" href={lien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps"
+    <a className="smaps gmaps" href={lien} target="_blank" rel="noreferrer" title="Ouvrir dans Google Maps"
       onClick={(e) => e.stopPropagation()}>
-      <svg viewBox="0 0 24 24">{I.maps}</svg>
+      <LogoMaps />
     </a>
+  );
+}
+
+/* Retour #508 — « un logo Google Maps en couleur reconnaissable » : l'épingle
+   aux quatre couleurs, pour savoir où mène le clic avant de cliquer. */
+function LogoMaps() {
+  const id = `gm${useId().replace(/:/g, "")}`;
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <defs><clipPath id={id}><path d="M12 1.5C7.9 1.5 4.6 4.8 4.6 8.9c0 5.6 7.4 13.6 7.4 13.6s7.4-8 7.4-13.6c0-4.1-3.3-7.4-7.4-7.4z" /></clipPath></defs>
+      <g clipPath={`url(#${id})`}>
+        <path fill="#1A73E8" d="M0 0h13L0 13z" />
+        <path fill="#EA4335" d="M13 0h11v1L11 14 5 8z" />
+        <path fill="#FBBC04" d="M0 13l5-5 6 6-10 10H0z" />
+        <path fill="#34A853" d="M24 1v23H1z" />
+      </g>
+      <circle cx="12" cy="8.9" r="2.8" fill="#fff" />
+    </svg>
   );
 }
 
