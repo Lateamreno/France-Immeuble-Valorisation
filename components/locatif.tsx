@@ -8,7 +8,7 @@
 // tableau des lots (components/lots-editor.tsx) : mêmes colonnes, même
 // enregistrement, une seule barre. MAV : « de cette façon j'ai accès aux infos
 // totales du bien en cliquant sur ce dont j'ai besoin ».
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
 import { euros, S } from "@/lib/format";
@@ -396,10 +396,13 @@ function ChargesTab({ b }: { b: BienData }) {
 
 /* ---------- Conteneur : vues du tableau + onglet Charges ---------- */
 
-/* Les sous-onglets repris dans le rail. Baux et Locataires n'y sont plus :
-   ce sont des vues du tableau des lots (#379), pas des écrans. */
+/* Les sous-onglets repris dans le rail. Baux et Locataires restent des vues
+   du tableau des lots (#379), mais le rail y mène directement (#507) :
+   « c'est pratique de pouvoir y avoir accès direct ». */
 export const ONGLETS_LOCATIF = [
   { key: "lots", label: "Lots" },
+  { key: "baux", label: "Baux" },
+  { key: "locataires", label: "Locataires" },
   { key: "charges", label: "Charges" },
 ] as const;
 
@@ -426,6 +429,18 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
      demande encore « baux » ou « locataires » y tombe sans casser. */
   const onglet = tab === "charges" ? "charges" : "lots";
   const { vue, colonnes, setVue, basculer } = useVueLocatif();
+  /* Le rail choisit la vue : « Baux » et « Locataires » ouvrent le tableau
+     sur la leur, « Lots » le ramène à l'état locatif s'il montrait l'une
+     des deux (une vue composée à la main, elle, est gardée). À l'ouverture,
+     « lots » ne touche pas la vue mémorisée. */
+  const premier = useRef(true);
+  useEffect(() => {
+    const ouverture = premier.current;
+    premier.current = false;
+    if (tab === "baux" || tab === "locataires") { if (vue !== tab) setVue(tab); }
+    else if (!ouverture && tab === "lots" && (vue === "baux" || vue === "locataires")) setVue("base");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const compte: Record<(typeof VUES_LISTE)[number]["key"], number> = {
     base: b.lots.length, baux: b.baux.length, locataires: b.locataires.length,
   };
@@ -436,7 +451,7 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
           <button key={v.key} type="button"
             className={`ftab${onglet === "lots" && vue === v.key ? " on" : ""}`}
             title={v.key === "base" ? "L'état locatif de base : toutes les informations habituelles" : `Les colonnes du ${v.label.toLowerCase()}`}
-            onClick={() => { setTab("lots"); setVue(v.key); }}>
+            onClick={() => { setTab(v.key === "base" ? "lots" : v.key); setVue(v.key); }}>
             <Picto nom={v.picto} className="ftab-ic" />{v.label}
             {compte[v.key] > 0 ? <span className="n">{compte[v.key]}</span> : null}
           </button>

@@ -816,8 +816,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     const loyersAn = visibles.reduce((s, r) => s + (N(r.loyer) ?? 0), 0) * 12;
     const maxAn = visibles.reduce((s, r) => s + (N(r.loyer_max) ?? N(r.loyer) ?? 0), 0) * 12;
     const loyersSurfaces = occ.reduce((s, r) => s + (N(r.loyer) ?? 0), 0);
+    const sol = surfaces.reduce((s, r) => s + (N(r.surface_sol) ?? 0), 0);
     return {
-      lots: visibles.length, carrez, loyersAn, maxAn,
+      lots: visibles.length, carrez, sol, loyersAn, maxAn,
       // Le « % » du bandeau du BO est l'occupation FINANCIÈRE :
       // loyers actuels / loyers potentiels (vérifié : 1 206 583 / 1 253 323 ≈ 97 %).
       occupation: maxAn > 0 ? Math.round((loyersAn / maxAn) * 100) : 0,
@@ -833,15 +834,31 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     loyer: "loyer_max",
   };
 
+  /* Ce que valaient la case et sa suivante quand l'agent est entré dans la
+     case (retour #502) : « quand je supprime un loyer actuel je ne veux pas
+     que cela supprime le loyer potentiel ». Le report se juge sur l'état à
+     l'entrée, pas frappe par frappe — sinon effacer 1 200 € chiffre à chiffre
+     ferait descendre le potentiel à 1 €. Une case vidée rend à la suivante
+     la valeur qu'elle avait à l'entrée. */
+  const prise = useRef<{ id: string; field: keyof Row; cible: string; suivait: boolean } | null>(null);
+  const entrer = (r: Row, field: keyof Row) => {
+    const suite = REPORTS[field];
+    prise.current = suite
+      ? { id: r.id, field, cible: r[suite] as string, suivait: r[suite] === "" || r[suite] === r[field] }
+      : null;
+  };
+
   const edit = (id: string, field: keyof Row, value: string) => {
     setRows((rs) =>
       rs.map((r) => {
         if (r.id !== id) return r;
         const suite = REPORTS[field];
+        const p = prise.current?.id === id && prise.current.field === field ? prise.current : null;
         // Le report ne s'applique que si la case cible suivait la case source :
         // une valeur saisie à la main n'est jamais écrasée.
-        const suit = suite && (r[suite] === "" || r[suite] === r[field]);
-        return { ...r, [field]: value, ...(suit ? { [suite!]: value } : null), ...bailDeduit(r, field, value) };
+        const suit = suite && (p ? p.suivait : r[suite] === "" || r[suite] === r[field]);
+        const report = suit ? { [suite!]: value === "" ? (p?.cible ?? r[suite!]) : value } : null;
+        return { ...r, [field]: value, ...report, ...bailDeduit(r, field, value) };
       }),
     );
     setDirty((d) => new Set(d).add(id));
@@ -861,8 +878,12 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const ligneNeuve = (id: string, ordre: number, numero: number, dest = "Logement", type = "", surface = "", loyer = ""): Row => ({
     id, isNew: true, ordre, travaux: "", travaux_objet: "", travaux_urgence: "",
     batiment: "", etage: "", numero: String(numero),
-    Destination: dest, Type_lot: type, surface_carrez: surface, surface_sol: "",
-    Type_bail: "Vide", loyer, loyer_max: "", lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
+    /* Retours #500, #501, #504 : des lots créés d'un coup avec une surface et
+       un loyer prennent les mêmes reports qu'une saisie à la main — au sol =
+       Carrez, potentiel = actuel, et « n.c. » plutôt que « Vide » dès qu'il y
+       a un loyer. */
+    Destination: dest, Type_lot: type, surface_carrez: surface, surface_sol: surface,
+    Type_bail: (N(loyer) ?? 0) > 0 ? "n.c." : "Vide", loyer, loyer_max: loyer, lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
     renov_year: "", commentaire: "",
     ...VIDE_BAIL_LOC,
   });
@@ -1202,6 +1223,8 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
 
   /** Cases à cocher + colonnes affichées. */
   const nbCols = 1 + colonnes.length;
+  /** Les colonnes de repère en tête de ligne, que couvre « Total » (#505). */
+  const tete = colonnes.findIndex((c) => c !== "bat" && c !== "etg" && c !== "num");
 
   /** Une case de saisie texte, sur toute la largeur de sa colonne. */
   const texte = (c: ColKey, r: Row, champ: keyof Row, placeholder?: string) => (
@@ -1213,7 +1236,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   /** Une case de nombre, avec son unité à droite. */
   const nombre = (c: ColKey, r: Row, champ: keyof Row, unite?: string) => (
     <td key={c} className={cls(c, "na")}>
-      <input className="lcell num" value={r[champ] as string} onChange={(e) => edit(r.id, champ, e.target.value)} />
+      <input className="lcell num" value={r[champ] as string}
+        onFocus={() => entrer(r, champ)}
+        onChange={(e) => edit(r.id, champ, e.target.value)} />
       {unite && <i>{unite}</i>}
     </td>
   );
@@ -1468,6 +1493,10 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
             <span className="fchip"><svg viewBox="0 0 24 24">{IC.lots}</svg><b>{totaux.lots}</b> lots</span>
             <span className="fchip"><svg viewBox="0 0 24 24">{IC.surface}</svg><b>{Math.round(totaux.carrez).toLocaleString("fr-FR")}</b> m²</span>
             <span className="fchip"><svg viewBox="0 0 24 24">{IC.entree}</svg><b>{euros(totaux.loyersAn) ?? "0 €"}</b>/an</span>
+            {/* Retour #506 : les rentrées de loyers HC du mois, à côté de l'année. */}
+            <span className="fchip" title="Loyers hors charges encaissés chaque mois">
+              <svg viewBox="0 0 24 24">{IC.entree}</svg><b>{euros(Math.round(totaux.loyersAn / 12)) ?? "0 €"}</b> HC/mois
+            </span>
             <span className="fchip"><svg viewBox="0 0 24 24">{IC.cle}</svg><b>{totaux.occupation}</b> %</span>
             <span className="fchip gold"><svg viewBox="0 0 24 24">{IC.entree}</svg><b>{euros(totaux.maxAn) ?? "0 €"}</b>/an</span>
             <span className={`fchip${euros(b.im.fin_travaux) ? "" : " off"}`}>
@@ -1566,6 +1595,26 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
               </td></tr>
             )}
           </tbody>
+          {/* Retour #505 : une ligne de total, en lecture seule. Mêmes règles
+              que les pastilles du haut : caves et parkings ne comptent pas
+              dans les m², leurs loyers comptent dans les loyers. */}
+          {visibles.length > 1 && (
+            <tfoot>
+              <tr className="ltotal">
+                {/* Le libellé prend la case à cocher et les colonnes de repère
+                    (bâtiment, étage, n°) : seul, il n'y tiendrait pas. */}
+                <td className="brd" colSpan={1 + tete}>Total</td>
+                {colonnes.slice(tete).map((c) => {
+                  const v = c === "carrez" ? `${Math.round(totaux.carrez).toLocaleString("fr-FR")} m²`
+                    : c === "sol" ? `${Math.round(totaux.sol).toLocaleString("fr-FR")} m²`
+                    : c === "hc" ? euros(Math.round(totaux.loyersAn / 12)) ?? "0 €"
+                    : c === "hcmax" ? euros(Math.round(totaux.maxAn / 12)) ?? "0 €"
+                    : "";
+                  return <td key={c} className={cls(c, v ? "na" : undefined)}>{v}</td>;
+                })}
+              </tr>
+            </tfoot>
+          )}
         </table>
         )}
       </div>

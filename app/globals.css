@@ -145,6 +145,7 @@ button { font-family: inherit; cursor: pointer; }
   flex: none;
 }
 .topbar .tt svg { width: 28px; height: 28px; stroke: var(--slate); fill: none; stroke-width: 2; }
+.topbar .tt svg.plein { fill: var(--slate); stroke: none; }
 .search {
   flex: 1; max-width: 920px;
   display: flex; align-items: stretch;
@@ -1410,6 +1411,9 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
 .smaps { display: inline-flex; align-items: center; margin-left: 6px; opacity: .55; }
 .smaps svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .smaps:hover { opacity: 1; color: var(--red); }
+.smaps.gmaps { opacity: 1; }
+.smaps.gmaps svg { width: 16px; height: 16px; stroke: none; }
+.smaps.gmaps:hover { transform: scale(1.12); }
 .modal.lg { width: min(880px, 94vw); }
 .mapsframe { width: 100%; height: min(520px, 62vh); border: 0; display: block; background: #eceae5; }
 
@@ -8646,3 +8650,42 @@ button { font-weight: 700; }
 .cps-t { display: block; font-family: var(--font-title); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-txt); margin-bottom: 4px; }
 .cps-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--slate); padding: 3px 0; }
 .cps-n { color: var(--gray-txt); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Retour #505 — ligne de total de l'état locatif, en lecture seule. */
+.ltable.v2 tfoot .ltotal td { background: var(--bg-soft, #f6f7f8); border-top: 2px solid #c9ccd0; font-weight: 700; color: var(--slate); padding: 7px 8px; font-size: 12.5px; }
+.ltable.v2 tfoot .ltotal td.na { color: var(--slate); text-align: right; padding-right: 22px; }
+/* Retour #503 — « des petits points à côté de chaque carré de sélection » :
+   la case déborde à peine de sa colonne de 22 px et la cellule, réglée en
+   « … » pour les textes trop longs, dessinait des points de suspension. */
+.ltable.v2 td:has(> input[type="checkbox"]:only-child),
+.ltable.v2 th:has(> input[type="checkbox"]:only-child) { text-overflow: clip; padding-left: 2px; padding-right: 2px; text-align: center; }
+
+/* Retour #495 — le texte du suivi déroule le suivi. La zone de clic déborde
+   de 3 px autour du texte (padding compensé par une marge négative : rien
+   ne bouge à l'écran), le reste de la carte ouvre toujours la fiche. */
+.kdep { cursor: pointer; padding: 3px; margin: -3px; border-radius: 4px; }
+.kdep:hover { background: rgba(68, 82, 95, .07); color: var(--slate); }
+.kdep:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 0; }
+
+/* Retour #509 — les cartes immeuble du tableau de bord.
+   Coins plus arrondis ; même hauteur pour toutes les cartes d'une étape ;
+   photo plus large (+15 %) et presque sur toute la hauteur de la case ;
+   pastilles en gélules ; vignette du contact calée à droite, sur fond blanc
+   et cerclée, pour qu'on voie qu'elle se clique. */
+.kard { border-radius: 10px; overflow: hidden; }
+.kard-top { min-height: 112px; align-items: stretch; padding: 8px 12px 8px 8px; }
+.kthumb { width: 94px; height: auto; min-height: 96px; align-self: stretch; border-radius: 7px; }
+.kbody { display: flex; flex-direction: column; }
+.kbody .krow3 { margin-top: auto; padding-top: 6px; }
+.kperf { border-radius: 999px; padding: 2px 9px 2px 7px; }
+.kard .krow1 .vgn { margin-left: auto; flex: none; }
+.kard .krow1 .vgn-chip { background: #fff; border: 1px solid #d5d9de; border-radius: 999px; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.kard .krow1 .vgn-chip:hover, .kard .krow1 .vgn-chip.on { border-color: var(--gold-bo); }
+/* Les initiales, là où elles restent : fond légèrement transparent. */
+.kthumb .rv { backdrop-filter: blur(2px); border-radius: 0 6px 0 0; }
+/* Même hauteur pour toutes les cartes (#509) : le cadre rouge ou doré
+   d'une carte en attente ne l'épaissit plus — le second pixel est une ombre,
+   qui ne prend pas de place. */
+.kard-top { min-height: 118px; }
+.kard.alert { border: 1px solid var(--red); box-shadow: 0 0 0 1px var(--red), 0 1px 2px rgba(0, 0, 0, .05); }
+.kard.hold { border: 1px solid var(--gold-bo); box-shadow: 0 0 0 1px var(--gold-bo), 0 1px 2px rgba(0, 0, 0, .05); }

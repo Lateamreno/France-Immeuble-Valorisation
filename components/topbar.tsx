@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { IC } from "@/components/rail";
 
 
 // Barre haute — réplique : titre + recherche immeuble + filtres
@@ -51,11 +52,8 @@ export function TopBar({
   return (
     <div className="topbar">
       <div className="tt">
-        <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 3a9 9 0 0 0 0 18c1.5 0 1.8-1 1.3-1.9-.6-1 .1-2.1 1.2-2.1H17a4 4 0 0 0 4-4c0-5-4-10-9-10z" />
-          <circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7.5" r="1" /><circle cx="14.5" cy="7.5" r="1" />
-        </svg>
+        {/* Retour #497 : le même tachymètre que l'entrée Dashboard du rail. */}
+        <svg viewBox="0 0 24 24" className="plein">{IC["/"]}</svg>
         {title}
       </div>
       <form

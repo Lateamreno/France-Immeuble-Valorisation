@@ -126,7 +126,16 @@ function Card({
                 </span>
               )}
               {c.note && (
-                <span className="knote">
+                /* Retour #495 : le texte du suivi déroule le suivi, comme la
+                   flèche — sans ouvrir la fiche. La zone cliquable déborde de
+                   quelques pixels autour du texte, pas davantage : le reste
+                   de la carte ouvre toujours le bien. */
+                <span className={`knote${c.chevron && c.noteComplete ? " kdep" : ""}`}
+                  {...(c.chevron && c.noteComplete ? {
+                    role: "button", tabIndex: 0, title: note ? "Replier le suivi" : "Dérouler le suivi",
+                    onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); },
+                    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); } },
+                  } : {})}>
                   {c.note === "Formulaire" && (
                     <span className="nic"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></svg></span>
                   )}
@@ -148,7 +157,14 @@ function Card({
             <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
-                <span className="lbl">{c.wait.motif}</span>
+                {c.noteComplete ? (
+                  <span className="lbl kdep" role="button" tabIndex={0}
+                    title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); } }}>
+                    {c.wait.motif}
+                  </span>
+                ) : <span className="lbl">{c.wait.motif}</span>}
                 {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
                 {/* La flèche déroule et replie le dernier suivi (retour #349).
                     Elle était décorative et se contentait d'être dans le lien
@@ -470,12 +486,15 @@ const estTel = () => typeof document !== "undefined" && document.body.classList.
  * interdisent de la réutiliser comme photo du bien, dossier de vente ou
  * annonce comprises.
  */
-function Vignette({ c }: { c: KCard }) {
+function Vignette({ c, voirAgent = false }: { c: KCard; voirAgent?: boolean }) {
   return (
     <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
       <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
         repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
-      {c.rv && <span className="rv" style={c.rvCouleur ? { background: c.rvCouleur } : undefined}>{c.rvText ?? "RV"}</span>}
+      {/* Retour #509 : les initiales de l'agent ne servent que sur une vue qui
+          mélange les portefeuilles. Le tableau de bord est toujours celui
+          d'UN agent : elles ne s'y affichent plus. */}
+      {c.rv && voirAgent && <span className="rv" style={c.rvCouleur ? { background: `${c.rvCouleur}b3` } : undefined}>{c.rvText ?? "RV"}</span>}
     </div>
   );
 }
