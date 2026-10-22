@@ -1,6 +1,9 @@
 import { COMPTE_SITE_URL } from "@/lib/site-public";
 
-export const dynamic = "force-static";
+/* Rendue à la demande, jamais figée au build : la mise en page racine lit le
+   chemin dans un en-tête pour retirer le rail du BO, et une page statique n'en
+   a pas — le client verrait le menu des agents. */
+export const dynamic = "force-dynamic";
 
 /**
  * L'ancien espace client du BO, fermé le 22/10 (contrat §9.7, décision MAV :
