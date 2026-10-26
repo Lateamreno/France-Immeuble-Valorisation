@@ -30,6 +30,7 @@ const JOIGNABLE: Record<Joignable, { court: string; ton: Ton; plein?: boolean; t
   holding: { court: "Holding commerciale", ton: "bleu", titre: "La SCI est gérée par une société commerciale." },
   civile: { court: "Sociétés civiles", ton: "gris", titre: "Les gérants ne dirigent que d'autres sociétés civiles." },
   aucun: { court: "Rien d'autre", ton: "gris", titre: "Aucune autre société trouvée pour ces gérants." },
+  institutionnel: { court: "Institutionnel", ton: "gris", titre: "SCPI, fonds ou assureur : pas une cible de découpe." },
   introuvable: { court: "Introuvable", ton: "gris", titre: "Société introuvable à l'annuaire des entreprises." },
 };
 

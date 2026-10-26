@@ -40,7 +40,7 @@ export type LienDirigeant = {
 };
 
 /** Du plus au moins joignable. */
-export type Joignable = "salaries" | "commerciale" | "holding" | "civile" | "aucun" | "introuvable";
+export type Joignable = "salaries" | "commerciale" | "holding" | "civile" | "aucun" | "institutionnel" | "introuvable";
 
 export type Recoupe = { siren: string; dep?: string; joignable: Joignable; liens: LienDirigeant[]; maj?: string };
 
@@ -50,6 +50,7 @@ export const LIBELLE_JOIGNABLE: Record<Joignable, string> = {
   holding: "Gérée par une société commerciale",
   civile: "Autres sociétés civiles seulement",
   aucun: "Aucune autre société",
+  institutionnel: "Investisseur institutionnel",
   introuvable: "Introuvable à l'annuaire",
 };
 
@@ -125,15 +126,28 @@ export async function recouper(siren: string, dep?: string): Promise<Recoupe> {
     });
   }
 
-  const perso = liens.filter((l) => l.type === "personne").flatMap((l) => l.societes);
+  return { siren, dep, joignable: classer(liens), liens };
+}
+
+/* Banque (64.1), fonds (64.3), assurance (65), gestion de fonds (66.3) : le
+   propriétaire est un investisseur institutionnel (SCPI, fonds, assureur). Ce
+   n'est pas une cible de découpe, et son « gérant » ne se démarche pas par
+   l'e-mail d'une PME. Les holdings (64.20) restent : la plupart sont
+   familiales, et ce sont justement des cibles. */
+const NAF_INSTITUTIONNEL = /^(64\.1|64\.3|65\.|66\.3)/;
+const QUALITE_INSTITUTIONNELLE = /surveillance|directoire/i;
+
+/** Par où la société se joint, d'après ses liens — sans rappeler l'annuaire. */
+export function classer(liens: LienDirigeant[]): Joignable {
   const holding = liens.filter((l) => l.type === "societe").flatMap((l) => l.societes);
-  const joignable: Joignable =
-    perso.some((s) => s.commerciale && s.salaries) ? "salaries"
-      : perso.some((s) => s.commerciale) ? "commerciale"
-        : holding.some((s) => s.commerciale) ? "holding"
-          : perso.length + holding.length > 0 ? "civile"
-            : "aucun";
-  return { siren, dep, joignable, liens };
+  if (liens.some((l) => QUALITE_INSTITUTIONNELLE.test(l.qualite ?? ""))
+    || holding.some((s) => NAF_INSTITUTIONNEL.test(s.naf ?? ""))) return "institutionnel";
+  const perso = liens.filter((l) => l.type === "personne").flatMap((l) => l.societes);
+  return perso.some((s) => s.commerciale && s.salaries) ? "salaries"
+    : perso.some((s) => s.commerciale) ? "commerciale"
+      : holding.some((s) => s.commerciale) ? "holding"
+        : perso.length + holding.length > 0 ? "civile"
+          : "aucun";
 }
 
 /* ----------------------------------------------------------- en base --- */
