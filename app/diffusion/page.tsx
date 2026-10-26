@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
-import { listDiffusion } from "@/lib/bubble/server";
+import { listDiffusables, listDiffusion } from "@/lib/bubble/server";
+import { listeVentes } from "@/lib/bo/ventes-site";
+import { slugsAdmin } from "@/lib/bo/admin";
 import { diffusionConfiguree, retombeesAnnonces, testerBranchement } from "@/lib/bo/diffusion";
 import { calculerOffmarket, testerSite } from "@/lib/bo/site-fi";
 import { PanneauSite, ParcDiffusion, type LigneDiffusion } from "@/components/diffusion";
@@ -25,12 +27,15 @@ export default async function DiffusionPage() {
   /* Le test de branchement se joue à l'ouverture de l'écran : c'est le seul
      moment où quelqu'un regarde. Il ne touche pas au catalogue — voir
      `testerBranchement` — donc le jouer systématiquement ne coûte rien. */
-  const [parc, configuree, branchement, testSite, offmarket] = await Promise.all([
+  const [parc, configuree, branchement, testSite, offmarket, diffusables, ventes, admins] = await Promise.all([
     listDiffusion().catch(() => []),
     diffusionConfiguree(),
     testerBranchement().catch(() => undefined),
     testerSite().catch((e) => ({ ok: false, message: e instanceof Error ? e.message : String(e) })),
     calculerOffmarket().catch(() => []),
+    listDiffusables().catch(() => []),
+    listeVentes().catch(() => ({ aPublier: [], passees: [], configuree: false })),
+    slugsAdmin(),
   ]);
 
   const retombees = await retombeesAnnonces(parc.map((p) => `FI:${p.immeubleId}`)).catch(() => []);
@@ -54,6 +59,8 @@ export default async function DiffusionPage() {
       siteStatut: p.siteStatut,
       siteUrl: p.siteStatut && p.siteSlug ? `${SITE_PUBLIC}/immeubles-a-vendre/${p.siteSlug}/` : undefined,
       siteErreur: p.siteErreur,
+      retire: p.retire,
+      vendu: p.vendu,
       retombees: r
         ? { vues: r.vues, contacts: r.contacts, telephones: r.telephones, favoris: r.favoris, offres: r.offres }
         : undefined,
@@ -76,6 +83,12 @@ export default async function DiffusionPage() {
         configuree={configuree}
         vuesDisponibles={retombees.some((r) => typeof r.vues === "number")}
         branchement={branchement}
+        diffusables={diffusables}
+        ventes={ventes.passees.map((v) => ({
+          ...v,
+          url: v.slug ? `${SITE_PUBLIC}/immeubles-vendus/${v.slug}/` : undefined,
+        }))}
+        admins={admins}
       />
       <PanneauSite
         test={testSite}

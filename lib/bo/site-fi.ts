@@ -251,6 +251,10 @@ async function deposerPhotos(c: Config, id: string, proxys: string[]): Promise<s
  * automatique.
  */
 export async function publierSurSite(immeubleId: string, agent?: string) {
+  /* Retour #531 : le site se règle depuis le poste de l'administrateur. Sans
+     agent (le réconciliateur), c'est le BO lui-même qui agit : il passe. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   const c = config();
   if (!c) {
     return { ok: false as const, message: "Le site n'est pas branché : SITE_FI_SUPABASE_URL ou SITE_FI_SUPABASE_SECRET_KEY manque." };
@@ -315,6 +319,10 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
 
 /** Retire le bien du site : la ligne, et ses photos avec. */
 export async function retirerDuSite(immeubleId: string, motif: string, agent?: string) {
+  /* Retour #531 : le site se règle depuis le poste de l'administrateur. Sans
+     agent (le réconciliateur), c'est le BO lui-même qui agit : il passe. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   const c = config();
   try {
     const b = await getBien(immeubleId);
@@ -369,6 +377,10 @@ export async function synchroniserSite(immeubleId: string) {
  * quelqu'un y repense.
  */
 export async function cocherDestination(immeubleId: string, destination: "pb" | "site", coche: boolean, agent?: string) {
+  if (destination === "site") {
+    const { estAdmin, REFUS_ADMIN } = await import("./admin");
+    if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  }
   try {
     const b = await getBien(immeubleId);
     if (!b) return { ok: false as const, message: "Fiche introuvable." };
@@ -407,6 +419,10 @@ export async function testerSite(): Promise<{ ok: boolean; message: string }> {
  * parc existant au jour où le site ouvre.
  */
 export async function publierParcSurSite(agent?: string) {
+  /* Retour #531 : le site se règle depuis le poste de l'administrateur. Sans
+     agent (le réconciliateur), c'est le BO lui-même qui agit : il passe. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   if (!BO_KEY) return { ok: false as const, message: "SUPABASE_SERVICE_ROLE_KEY absente." };
   const res = await fetch(
     `${BO_URL}/rest/v1/bo_immeuble?select=id&data->>pb_statut=in.(online,sous_offre)`,

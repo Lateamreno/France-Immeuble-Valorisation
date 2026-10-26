@@ -8863,3 +8863,53 @@ button.aj-lh:hover { background: #fafafa; }
 .kmq span { font-weight: 700; border-radius: 4px; padding: 0 7px; }
 .kmq .ko { background: #fde8e8; color: var(--red); }
 .kmq .ok { background: #e7f6e3; color: #2a8a1b; }
+
+/* Retour #529 : la croix qui vide la recherche d'une liste. */
+.lst-search { position: relative; }
+.lst-raz {
+  flex: none; border: 0; background: none; cursor: pointer;
+  color: var(--gray-txt); font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px;
+}
+.lst-raz:hover { background: var(--cols); color: var(--slate); }
+
+/* Retour #535 : le cadre doré de l'état locatif entoure toujours toutes les
+   pastilles. Plus de plafond à 920 px : le cadre prend la place de la ligne,
+   et si elle manque, les pastilles passent à la ligne plutôt que de sortir. */
+.lhead.v3 > .lsum { max-width: none; min-width: 0; }
+.lsum-chips { flex-wrap: wrap; }
+
+/* ==== Retours #530 et #531 : l'écran Diffusions ====
+   Une grille de huit colonnes fixes : photo, bien, destinations, prix,
+   retombées, état, liens, geste. Une case vide garde sa largeur — les
+   colonnes ne se décalent plus d'une ligne à l'autre. */
+.dif-l {
+  display: grid; flex-wrap: nowrap; align-items: center; gap: 12px;
+  grid-template-columns: 64px minmax(160px, 1.6fr) 150px 130px 170px 110px 120px 96px;
+}
+.dif-l .id { min-width: 0; }
+.dif-l .id a, .dif-l .id b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dif-l .id b { font-family: var(--font-title); font-size: 14px; color: var(--slate); }
+.dif-l .rt { justify-content: flex-start; }
+.dif-etat, .dif-liens { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.dif-geste { display: flex; justify-content: flex-end; }
+.dif-geste .fadd { min-width: 84px; justify-content: center; }
+.dif-geste .dif-x { color: var(--red); border-color: #f0c9c9; }
+.dif-l.retire { background: #fafafa; }
+.dif-l.retire .id, .dif-l.retire .px, .dif-l.retire .dif-ph { opacity: .55; }
+@media (max-width: 1280px) {
+  .dif-l { grid-template-columns: 56px minmax(140px, 1fr) 140px 120px 110px 110px 92px; }
+  .dif-l .rt { display: none; }
+}
+@media (max-width: 760px) {
+  .dif-l { grid-template-columns: 56px 1fr auto; }
+  .dif-l .dif-deux, .dif-l .rt, .dif-l .dif-etat, .dif-l .dif-liens { display: none; }
+}
+.dif-parc-h { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.dif-vues { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.dif-vues button { border: 0; background: #fff; padding: 6px 14px; font-family: var(--font-title); font-size: 12.5px; font-weight: 600; color: var(--slate-2); cursor: pointer; }
+.dif-vues button + button { border-left: 1px solid var(--line); }
+.dif-vues button.on { background: var(--slate); color: #fff; }
+.dif-vues i { font-style: normal; font-weight: 400; opacity: .75; margin-left: 4px; }
+.dif-sous-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 22px 0 8px; }
+.dif-sous-h b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }
+.dif-sous-h span { font-size: 12.5px; color: var(--gray-txt); }

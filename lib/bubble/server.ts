@@ -3097,21 +3097,30 @@ export async function listDiffusion(): Promise<{
   siteStatut?: "en_vente" | "sous_offre";
   siteSlug?: string;
   siteErreur?: string;
+  /** Retour #530 : retiré à la main (cases décochées) — il reste dans la liste. */
+  retire: boolean;
+  /** Un bien vendu se voit dans la vue « Vendus », pas dans le parc en vente. */
+  vendu: boolean;
 }[]> {
   /* Le parc diffusé se compte en dizaines. On ne ramène donc QUE les fiches
      qui portent une annonce : le tri se fait dans la base. Le filtre était
      auparavant appliqué en mémoire, après avoir rapatrié les mille huit cents
      immeubles — sept mégaoctets pour en afficher une poignée.
      Deux destinations depuis le 21/10 : un bien peut n'être que sur le site. */
-  const [pb, site] = await Promise.all([
+  const [pb, site, retires] = await Promise.all([
     fetchAll("immeuble", [{ key: "pb_listing_id", constraint_type: "is not empty", value: true }], 3000).catch(() => []),
     fetchAll("immeuble", [{ key: "site_statut", constraint_type: "is not empty", value: true }], 3000).catch(() => []),
+    /* Retour #530 : un bien retiré à la main du site seul ne porte plus de
+       statut ; on le garde grâce à sa date de retrait et à sa case décochée. */
+    fetchAll("immeuble", [{ key: "site_retire_le", constraint_type: "is not empty", value: true }], 3000).catch(() => []),
   ]);
   const parId = new Map<string, Record<string, unknown>>();
-  for (const im of [...pb, ...site]) parId.set(String(im._id), im);
+  for (const im of [...pb, ...site, ...retires.filter((x) => x.site_coche === false)]) parId.set(String(im._id), im);
   const rows = [...parId.values()];
   return rows
-    .filter((im) => (typeof im.pb_listing_id === "string" && im.pb_listing_id) || (typeof im.site_statut === "string" && im.site_statut))
+    .filter((im) => (typeof im.pb_listing_id === "string" && im.pb_listing_id)
+      || (typeof im.site_statut === "string" && im.site_statut)
+      || im.site_coche === false)
     .map((im) => ({
       immeubleId: String(im._id),
       ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""})`,
@@ -3135,8 +3144,47 @@ export async function listDiffusion(): Promise<{
         : undefined,
       siteSlug: typeof im.site_slug === "string" ? im.site_slug : undefined,
       siteErreur: typeof im.site_erreur === "string" ? im.site_erreur : undefined,
+      retire: im.pb_coche === false && im.site_coche === false,
+      vendu: String(im.Statut ?? "").startsWith("11") || im.pb_statut === "vendu",
     }))
     .sort((a, b) => (b.publieLe ?? "").localeCompare(a.publieLe ?? ""));
+}
+
+/**
+ * Retour #530 : les biens qu'on POURRAIT diffuser — un mandat de vente en
+ * vigueur, signé, qui autorise la publication en ligne — et qui ne le sont
+ * pas encore. Ils se diffusent depuis l'écran Diffusion, d'un clic.
+ */
+export async function listDiffusables(): Promise<{
+  immeubleId: string; ville: string; adresse: string; prix?: number; photo?: string; mandat?: string;
+}[]> {
+  const { mandatEnVigueur, mandatPermetLigne } = await import("@/lib/diffusion");
+  const [ims, mandats] = await Promise.all([
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000, undefined, [
+      "Statut", "pb_listing_id", "site_statut", "pb_coche", "site_coche", "adresse_ville", "adresse_zipcode",
+      "adresse_numero_rue", "adresse_rue", "prix_hai", "photo_main_compressed", "prix_hai_estim", "date_last_est", "ESTIMATIONs",
+    ]).catch(() => [] as Record<string, unknown>[]),
+    fetchAll("mandat", undefined, 4000).catch(() => [] as Record<string, unknown>[]),
+  ]);
+  const parIm = new Map<string, Record<string, unknown>[]>();
+  for (const m of mandats) {
+    for (const id of (Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as string[]) : [m.IMMEUBLE].filter(Boolean) as string[])) {
+      parIm.set(id, [...(parIm.get(id) ?? []), m]);
+    }
+  }
+  return ims
+    .filter((im) => { const st = statutOf(im); return st >= 4 && st <= 7; })
+    .filter((im) => !im.pb_listing_id && !im.site_statut)
+    .map((im) => ({ im, mandat: mandatEnVigueur(parIm.get(String(im._id)) ?? []) }))
+    .filter(({ mandat }) => mandatPermetLigne(mandat))
+    .map(({ im, mandat }) => ({
+      immeubleId: String(im._id),
+      ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""})`,
+      adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
+      prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
+      photo: photoProxy(im.photo_main_compressed),
+      mandat: mandat?.numero !== undefined && mandat?.numero !== null ? `n° ${mandat.numero}` : undefined,
+    }));
 }
 
 /* ============================ Écran Recherches ============================

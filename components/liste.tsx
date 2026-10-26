@@ -115,6 +115,11 @@ export function ListeShell({
       <div className="lst-search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
         <input placeholder={searchPlaceholder} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+        {/* Retour #529 : une croix pour vider la recherche d'un clic. */}
+        {q && (
+          <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+            onClick={() => { setQ(""); setPage(1); }}>✕</button>
+        )}
       </div>
       {filtres ? (
         <div className="lstx-sw" role="group" aria-label="Vue">

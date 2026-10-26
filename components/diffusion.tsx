@@ -20,6 +20,8 @@ import {
   type ApercuSite,
 } from "@/lib/bo/site-fi";
 import { agentCourantSlug } from "@/lib/bo/agent-courant";
+import { remettreDansLeParc, retirerDuParc } from "@/lib/bo/parc-diffusion";
+import { remettreVente, retirerVente, type LigneVente } from "@/lib/bo/ventes-site";
 
 /* ------------------------------------------------ Section de la fiche bien */
 
@@ -702,29 +704,72 @@ export type LigneDiffusion = {
   siteStatut?: "en_vente" | "sous_offre";
   siteUrl?: string;
   siteErreur?: string;
+  /** Retiré à la main : il reste dans la liste, hors ligne (#530). */
+  retire?: boolean;
+  vendu?: boolean;
 };
 
+export type Diffusable = { immeubleId: string; ville: string; adresse: string; prix?: number; photo?: string; mandat?: string };
+
 export function ParcDiffusion({
-  lignes, configuree, vuesDisponibles, branchement,
+  lignes: toutes, configuree, vuesDisponibles, branchement, diffusables = [], ventes = [], admins = [],
 }: {
   lignes: LigneDiffusion[];
   configuree: boolean;
   vuesDisponibles: boolean;
   /** Résultat du test de branchement, joué à l'ouverture de l'écran. */
   branchement?: Branchement;
+  /** Retour #530 : les biens qu'un mandat autorise à diffuser, pas encore en ligne. */
+  diffusables?: Diffusable[];
+  /** Retour #531 : les ventes sur le site, en ligne ou retirées. */
+  ventes?: (LigneVente & { url?: string })[];
+  /** Les agents administrateurs : seuls eux retirent et remettent (#531). */
+  admins?: string[];
 }) {
+  /* Retour #531 : « diffusions tout court » — le parc en vente d'un côté, les
+     biens vendus de l'autre. */
+  const [vue, setVue] = useState<"vente" | "vendus">("vente");
+  const lignes = toutes.filter((l) => !l.vendu);
   const enLigne = lignes.filter((l) => l.statut === "online" || l.statut === "sous_offre");
   const somme = (f: (l: LigneDiffusion) => number) => lignes.reduce((s, l) => s + f(l), 0);
+  const [admin, setAdmin] = useState(false);
+  /* Le poste dit qui est aux commandes ; personne de retenu = MAV. Lu après le
+     rendu : le stockage local n'existe qu'au navigateur. */
+  useEffect(() => {
+    const slug = agentCourantSlug();
+    setAdmin(!slug || admins.includes(slug));
+  }, [admins]);
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const { confirmer, question } = useQuestion();
+  const geste = async (texte: string, oui: string, f: () => Promise<{ ok: boolean; message?: string }>, danger = false) => {
+    if (!(await confirmer(texte, { oui, danger }))) return;
+    start(async () => {
+      setMsg(null);
+      const r = await f();
+      setMsg(r.message ?? (r.ok ? "Fait." : "Échec."));
+    });
+  };
+  const agent = () => agentCourantSlug() ?? undefined;
+  const horsLigne = (l: LigneDiffusion) => !(l.statut === "online" || l.statut === "sous_offre") && !l.siteStatut;
 
   return (
     <div className="dif-parc">
       <div className="dif-parc-h">
-        <span className="t">Diffusion Plein Bail</span>
+        <span className="t">Diffusions</span>
         <span className="s">
           {enLigne.length} annonce{enLigne.length > 1 ? "s" : ""} en ligne sur {lignes.length} publiée
           {lignes.length > 1 ? "s" : ""}
         </span>
+        <span className="dif-vues" role="group" aria-label="Vue">
+          <button type="button" className={vue === "vente" ? "on" : ""} onClick={() => setVue("vente")}>En vente <i>{lignes.length}</i></button>
+          <button type="button" className={vue === "vendus" ? "on" : ""} onClick={() => setVue("vendus")}>Vendus <i>{ventes.length}</i></button>
+        </span>
       </div>
+      {!admin && (
+        <div className="dif-note-vues">Retirer, remettre et diffuser sont réservés à l&apos;administrateur : la liste se lit d&apos;ici, elle se règle depuis le poste de MAV.</div>
+      )}
+      {msg && <div className="dif-msg">{msg}</div>}
 
       {!configuree && (
         <div className="dif-simu">
@@ -763,7 +808,7 @@ export function ParcDiffusion({
         </div>
       )}
 
-      {lignes.length === 0 ? (
+      {vue === "vente" && (lignes.length === 0 ? (
         <div className="fempty" style={{ padding: 40 }}>
           Aucune annonce publiée. Le bouton se trouve sur la fiche de chaque immeuble,
           entrée « Diffusion », dès qu&apos;un mandat signé autorise la publication.
@@ -771,7 +816,7 @@ export function ParcDiffusion({
       ) : (
         <div className="dif-liste">
           {lignes.map((l) => (
-            <div key={l.immeubleId} className="dif-l">
+            <div key={l.immeubleId} className={`dif-l${l.retire ? " retire" : ""}`}>
               <Link href={`/bien/${l.immeubleId}`} className="dif-ph" aria-hidden tabIndex={-1}>
                 {l.photo
                   // eslint-disable-next-line @next/next/no-img-element
@@ -801,6 +846,8 @@ export function ParcDiffusion({
                   {l.renta !== undefined ? `${l.renta.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "— %"}
                 </small>
               </span>
+              {/* Retour #530 : chaque colonne à sa place, même quand une
+                  information manque — une case vide garde sa largeur. */}
               <span className="rt">
                 {l.retombees ? (
                   <>
@@ -810,17 +857,119 @@ export function ParcDiffusion({
                     <i title="Offres reçues">€ {l.retombees.offres}</i>
                   </>
                 ) : (
-                  <i className="vide">retombées indisponibles</i>
+                  <i className="vide">—</i>
                 )}
               </span>
-              {l.ecart && <span className="dif-att" title="La fiche a changé depuis la publication">à republier</span>}
-              {l.erreur && <span className="dif-err" title={l.erreur}>erreur</span>}
-              {l.url && <a className="dif-lien" href={l.url} target="_blank" rel="noreferrer">Voir l&apos;annonce ↗</a>}
-              {l.siteUrl && <a className="dif-lien" href={l.siteUrl} target="_blank" rel="noreferrer">Voir la page ↗</a>}
+              <span className="dif-etat">
+                {l.retire && <span className="dif-att">retiré</span>}
+                {l.ecart && <span className="dif-att" title="La fiche a changé depuis la publication">à republier</span>}
+                {l.erreur && <span className="dif-err" title={l.erreur}>erreur</span>}
+              </span>
+              <span className="dif-liens">
+                {l.url && <a className="dif-lien" href={l.url} target="_blank" rel="noreferrer">Annonce ↗</a>}
+                {l.siteUrl && <a className="dif-lien" href={l.siteUrl} target="_blank" rel="noreferrer">Site ↗</a>}
+              </span>
+              <span className="dif-geste">
+                {admin && (horsLigne(l) ? (
+                  <button type="button" className="fadd" disabled={pending}
+                    onClick={() => geste(`Remettre ${l.ville} en ligne sur Plein Bail et le site ?`, "Remettre en ligne",
+                      () => remettreDansLeParc(l.immeubleId, agent()))}>Remettre</button>
+                ) : (
+                  <button type="button" className="fadd dif-x" disabled={pending}
+                    onClick={() => geste(`Retirer ${l.ville} de Plein Bail et du site ? Le bien reste dans la liste, hors ligne, jusqu'à ce que vous le remettiez.`, "Retirer",
+                      () => retirerDuParc(l.immeubleId, agent()), true)}>Retirer</button>
+                ))}
+              </span>
             </div>
           ))}
         </div>
+      ))}
+
+      {/* Retour #530 : à la suite, les biens qu'un mandat autorise à diffuser
+          et qui ne le sont pas encore. */}
+      {vue === "vente" && (
+        <>
+          <div className="dif-sous-h">
+            <b>Biens diffusables</b>
+            <span>Mandat de vente signé et en vigueur, qui autorise la publication en ligne — pas encore diffusés.</span>
+          </div>
+          {diffusables.length === 0 ? (
+            <div className="fempty" style={{ padding: 18 }}>Aucun : tous les biens sous mandat qui peuvent l&apos;être sont déjà diffusés.</div>
+          ) : (
+            <div className="dif-liste">
+              {diffusables.map((d) => (
+                <div key={d.immeubleId} className="dif-l diffusable">
+                  <Link href={`/bien/${d.immeubleId}`} className="dif-ph" aria-hidden tabIndex={-1}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {d.photo ? <img src={d.photo} alt="" /> : <span className="vide" />}
+                  </Link>
+                  <div className="id">
+                    <Link href={`/bien/${d.immeubleId}`}>{d.ville}</Link>
+                    <span>{d.adresse}</span>
+                  </div>
+                  <span className="dif-deux"><span className="dif-pastille hors">Mandat {d.mandat ?? ""}</span></span>
+                  <span className="px">{euros(d.prix) ?? "—"}</span>
+                  <span className="rt" />
+                  <span className="dif-etat" />
+                  <span className="dif-liens" />
+                  <span className="dif-geste">
+                    {admin && (
+                      <button type="button" className="fadd" disabled={pending}
+                        onClick={() => geste(`Diffuser ${d.ville} sur Plein Bail et le site ? Chaque destination part si ses conditions sont remplies ; sinon le message dit ce qui manque.`, "Diffuser",
+                          () => remettreDansLeParc(d.immeubleId, agent()))}>Diffuser</button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
+
+      {/* Retour #531 : les biens vendus, tels que le site les montre. On les
+          voit, on modifie leur texte, on les retire et on les remet ; ils
+          restent dans la liste. */}
+      {vue === "vendus" && (
+        ventes.length === 0 ? (
+          <div className="fempty" style={{ padding: 40 }}>Aucune vente sur le site pour l&apos;instant.</div>
+        ) : (
+          <div className="dif-liste">
+            {ventes.map((v) => (
+              <div key={v.id} className={`dif-l vendu${v.etat === "retiree" ? " retire" : ""}`}>
+                <span className="dif-ph"><span className="vide" /></span>
+                <div className="id">
+                  <b>{v.commune} ({v.dept})</b>
+                  <span>Vendu le {v.date ? v.date.split("-").reverse().join("/") : "—"}</span>
+                </div>
+                <span className="dif-deux">
+                  <span className={`dif-pastille ${v.etat === "retiree" ? "hors" : "online"}`}>
+                    Site · {v.etat === "retiree" ? "Retirée" : v.etat === "avec_recit" ? "En ligne, récit" : "En ligne, sans récit"}
+                  </span>
+                </span>
+                <span className="px">{euros(v.prix) ?? "—"}<small>{v.faits}/13 faits</small></span>
+                <span className="rt" />
+                <span className="dif-etat">{v.brouillon && v.etat !== "avec_recit" && <span className="dif-att">récit à relire</span>}</span>
+                <span className="dif-liens">
+                  {admin && <Link className="dif-lien" href={`/ventes-site/${encodeURIComponent(v.id)}`}>Modifier le texte</Link>}
+                  {v.url && v.etat !== "retiree" && <a className="dif-lien" href={v.url} target="_blank" rel="noreferrer">Site ↗</a>}
+                </span>
+                <span className="dif-geste">
+                  {admin && (v.etat === "retiree" ? (
+                    <button type="button" className="fadd" disabled={pending}
+                      onClick={() => geste(`Remettre la vente de ${v.commune} en ligne sur le site, telle qu'elle était ?`, "Remettre",
+                        () => remettreVente(v.id, agent()))}>Remettre</button>
+                  ) : (
+                    <button type="button" className="fadd dif-x" disabled={pending}
+                      onClick={() => geste(`Retirer la vente de ${v.commune} du site ? Elle reste dans la liste et se remet d'un clic.`, "Retirer",
+                        () => retirerVente(v.id, agent()), true)}>Retirer</button>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+      {question}
     </div>
   );
 }

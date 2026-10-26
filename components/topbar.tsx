@@ -94,7 +94,12 @@ export function TopBar({
       <select
         className="agentbtn"
         value={agentSlug}
-        onChange={(e) => router.push(`/?agent=${e.target.value}`)}
+        /* Retour #532 : changer d'agent garde la recherche en cours (et la
+           vue) — elle s'applique au portefeuille choisi, ou à tous. */
+        onChange={(e) => router.push(
+          `/?agent=${e.target.value}${vue === "attente" ? "&vue=attente" : ""}`
+          + `${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`,
+        )}
         aria-label="Filtrer par agent"
         style={{
           cursor: "pointer", appearance: "none",

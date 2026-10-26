@@ -65,7 +65,7 @@ const ids = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(String).fil
 /* ------------------------------------------------------------------ Lecture */
 
 /** « inconnu » : la base du site n'a pas répondu, on ne sait pas ce qui y est. */
-export type EtatSiteVente = "non_publiee" | "sans_recit" | "avec_recit" | "inconnu";
+export type EtatSiteVente = "non_publiee" | "sans_recit" | "avec_recit" | "retiree" | "inconnu";
 
 export type LigneVente = {
   id: string;
@@ -120,7 +120,9 @@ export async function listeVentes(): Promise<{ aPublier: LigneVente[]; passees: 
       prix: Number(v.data.prix_hai ?? 0),
       faits: Number(v.data.site_nb_faits ?? 0),
       brouillon: !!S(v.data.site_recit),
-      etat: !enLigne ? "inconnu" : !s ? "non_publiee" : s.recit && s.recit_valide_le ? "avec_recit" : "sans_recit",
+      etat: !enLigne ? "inconnu"
+        : !s ? (S(v.data.site_retiree_le) ? "retiree" : "non_publiee")
+        : s.recit && s.recit_valide_le ? "avec_recit" : "sans_recit",
       attendDepuis: !s ? S(v.data["Created Date"]) : undefined,
       slug: s?.slug,
     };
@@ -325,6 +327,9 @@ async function journaliser(venteId: string, geste: string, agent?: string) {
 
 /** Garde les faits corrigés et le texte en cours, sans rien publier. */
 export async function enregistrerBrouillon(venteId: string, faits: FaitsVente, texte: Recit, agent?: string) {
+  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   await rpcBo("bo_patch_doc", {
     p_table: "bo_vente",
     p_id: venteId,
@@ -507,6 +512,9 @@ async function deposer(venteId: string, faits: FaitsVente, texte: Recit | null) 
  * un bouton forcé dans le navigateur ne doit pas suffire à le contourner.
  */
 export async function validerEtPublier(venteId: string, faits: FaitsVente, texte: Recit, agent?: string) {
+  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   try {
     const [v] = await lireBo(`bo_vente?select=id,data&id=eq.${encodeURIComponent(venteId)}`);
     if (!v) return { ok: false as const, message: "Vente introuvable." };
@@ -527,6 +535,9 @@ export async function validerEtPublier(venteId: string, faits: FaitsVente, texte
 
 /** « Publier sans récit » : la fiche existe, le site ne la fait pas indexer. */
 export async function publierSansRecit(venteId: string, faits: FaitsVente, agent?: string) {
+  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   try {
     const url = await deposer(venteId, faits, null);
     await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_faits: faits, site_ecartee: null } });
@@ -538,8 +549,65 @@ export async function publierSansRecit(venteId: string, faits: FaitsVente, agent
   }
 }
 
+/**
+ * Retour #531 : retirer une vente du site sans la perdre. La ligne du site est
+ * gardée telle quelle dans la vente (faits, récit, image), puis effacée du
+ * site ; « Remettre » la redépose à l'identique. Réservé à l'administrateur.
+ */
+export async function retirerVente(venteId: string, agent?: string) {
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  try {
+    const c = config();
+    if (!c) return { ok: false as const, message: "Le site n'est pas branché : rien n'a été retiré." };
+    const r = await site(c, `/rest/v1/ventes?select=*&id=eq.${encodeURIComponent(venteId)}`);
+    const [ligne] = (await r.json()) as Record<string, unknown>[];
+    if (!ligne) return { ok: false as const, message: "Cette vente n'est pas en ligne sur le site." };
+    await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_copie_retrait: ligne, site_retiree_le: new Date().toISOString() } });
+    await site(c, `/rest/v1/ventes?id=eq.${encodeURIComponent(venteId)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    await journaliser(venteId, "retirée du site", agent);
+    revalidatePath("/ventes-site");
+    revalidatePath("/diffusion");
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Remet en ligne une vente retirée, telle qu'elle était au retrait. */
+export async function remettreVente(venteId: string, agent?: string) {
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  try {
+    const c = config();
+    if (!c) return { ok: false as const, message: "Le site n'est pas branché : rien n'a été remis." };
+    const [v] = await lireBo(`bo_vente?select=id,data&id=eq.${encodeURIComponent(venteId)}`);
+    const copie = v?.data.site_copie_retrait as Record<string, unknown> | undefined;
+    if (!copie) return { ok: false as const, message: "Pas de copie de la page retirée : republiez-la depuis Biens vendus." };
+    /* Le slug appartient à la base du site (contrat §3) : on ne le renvoie
+       pas, elle le repose. */
+    const { slug: _slug, ...ligne } = copie;
+    void _slug;
+    await site(c, "/rest/v1/ventes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal,resolution=merge-duplicates" },
+      body: JSON.stringify(ligne),
+    });
+    await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_retiree_le: null } });
+    await journaliser(venteId, "remise en ligne sur le site", agent);
+    revalidatePath("/ventes-site");
+    revalidatePath("/diffusion");
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** « Ne pas publier » : rien ne part, et la vente sort de la file. */
 export async function nePasPublier(venteId: string, agent?: string) {
+  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return REFUS_ADMIN;
   await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_ecartee: new Date().toISOString() } });
   await journaliser(venteId, "ne pas publier", agent);
   revalidatePath("/ventes-site");
