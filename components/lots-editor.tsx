@@ -563,7 +563,7 @@ export const COLONNES: Record<ColKey, Colonne> = {
   dpe: { label: "DPE", poids: 3.6, px: 44 },
   /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
      saisie débordait de sa case (retour #251). */
-  renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, px: 58, poidsCompact: 6.0 },
+  renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, px: 68, poidsCompact: 6.0 },
   /* En-têtes courts : à seize colonnes, « Loyer initial » se coupait en
      « Loyer ini… » ; le libellé entier reste dans le menu Colonnes. */
   b_loyer: { label: "Loyer init.", menu: "Loyer initial", poids: 5.0 },

@@ -9016,3 +9016,6 @@ button.aj-lh:hover { background: #fafafa; }
    cellule à 1 % » visait l'en-tête de groupe « Autres » et l'écrasait. */
 .ltable.v2 td:last-child, .ltable.v2 th:last-child { width: auto; }
 @media (max-width: 1699px) { .ltable.v2 { --fs: 12px; --rh: 32px; } }
+/* Retour MAV du 27/10 : les écarts en % des €/m² ne sont pas en gras — la
+   couleur suffit à les signaler. */
+.ltable.v2 .pc span, .ltable.v2 .pc .pos, .ltable.v2 .pc .neg { font-weight: 400; }
