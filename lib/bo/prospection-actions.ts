@@ -17,6 +17,8 @@
  * droit de les nommer) et les adresses de moins de quatre locaux.
  */
 
+import { LIBELLE_JOIGNABLE, type Joignable } from "@/lib/bo/recoupement";
+
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -33,6 +35,9 @@ export type CritèresProspection = {
   formes?: string[];
   /** Une société précise, par SIREN ou par nom. */
   societe?: string;
+  /** Seulement les sociétés dont un gérant dirige aussi une société
+      commerciale (recoupement fait au préalable, `fi_pm_recoupe`). */
+  joignables?: boolean;
   page?: number;
 };
 
@@ -44,6 +49,8 @@ export type Cible = {
   nom: string;
   forme?: string;
   locaux: number;
+  /** Résultat du recoupement des dirigeants, quand il a été fait. */
+  joignable?: Joignable;
 };
 
 export type PageProspection = {
@@ -69,7 +76,7 @@ function noyauVoie(v: string) {
 
 function requete(c: CritèresProspection) {
   const p = new URLSearchParams();
-  p.set("select", "insee,num,voie,nature,siren,nom,forme,locaux");
+  p.set("select", "insee,num,voie,nature,siren,nom,forme,locaux,joignable");
   p.set("order", "locaux.desc,insee.asc,num.asc");
   const commune = nettoyer(c.commune);
   const dep = nettoyer(c.departement);
@@ -82,6 +89,7 @@ function requete(c: CritèresProspection) {
   if (c.min && c.min > 0) p.append("locaux", `gte.${c.min}`);
   if (c.max && c.max > 0) p.append("locaux", `lte.${c.max}`);
   if (c.formes?.length) p.append("forme", `in.(${c.formes.map(nettoyer).filter(Boolean).join(",")})`);
+  if (c.joignables) p.append("joignable", "in.(salaries,commerciale,holding)");
   const soc = nettoyer(c.societe);
   if (soc) {
     p.append(/^\d{6,9}$/.test(soc) ? "siren" : "nom", /^\d{6,9}$/.test(soc) ? `like.${soc}*` : `ilike.*${soc}*`);
@@ -91,7 +99,8 @@ function requete(c: CritèresProspection) {
 
 async function lire(p: URLSearchParams, depuis: number, jusqu: number) {
   if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente.");
-  const res = await fetch(`${SB_URL}/rest/v1/fi_pm_cible?${p}`, {
+  /* La vue ajoute à chaque cible le résultat du recoupement de ses dirigeants. */
+  const res = await fetch(`${SB_URL}/rest/v1/fi_pm_cible_recoupe?${p}`, {
     headers: {
       apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
       Range: `${depuis}-${jusqu}`, Prefer: "count=estimated",
@@ -126,6 +135,7 @@ function enCible(r: Record<string, unknown>, noms: Map<string, string>): Cible {
     nom: String(r.nom ?? ""),
     forme: r.forme ? String(r.forme) : undefined,
     locaux: Number(r.locaux ?? 0),
+    joignable: r.joignable ? (String(r.joignable) as Joignable) : undefined,
   };
 }
 
@@ -204,11 +214,12 @@ export async function exporterCibles(c: CritèresProspection, avecSiege = false)
 
     const entete = [
       "Commune", "Adresse de l'immeuble", "Locaux détenus", "Société", "Forme", "SIREN",
-      "Siège social", "Dirigeant",
+      "Siège social", "Dirigeant", "Recoupement",
     ];
     const lignes = cibles.map((x) => [
       x.commune ?? x.insee, x.adresse, String(x.locaux), x.nom, x.forme ?? "", x.siren,
       connus.get(x.siren)?.siege ?? "", connus.get(x.siren)?.dirigeant ?? "",
+      x.joignable ? LIBELLE_JOIGNABLE[x.joignable] : "",
     ]);
     const csv = [entete, ...lignes]
       .map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";"))

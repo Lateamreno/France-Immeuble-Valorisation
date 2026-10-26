@@ -18,7 +18,20 @@ import {
   chercherCibles, chercherCommunes, exporterCibles,
   type Cible, type CritèresProspection,
 } from "@/lib/bo/prospection-actions";
-import { ficheDirigeants, type FicheDirigeants } from "@/lib/bo/dirigeants-actions";
+import { ficheDirigeants, recoupementSociete, type FicheDirigeants } from "@/lib/bo/dirigeants-actions";
+import type { Joignable, Recoupe } from "@/lib/bo/recoupement";
+import { Pastille, type Ton } from "@/components/pastille";
+
+/* Le recoupement des dirigeants (génération de leads, étape 1) : par où la
+   société se joint, du plus prometteur au moins. */
+const JOIGNABLE: Record<Joignable, { court: string; ton: Ton; plein?: boolean; titre: string }> = {
+  salaries: { court: "Entreprise avec salariés", ton: "vert", plein: true, titre: "Un gérant dirige aussi une société commerciale qui emploie du monde : site et e-mail probables." },
+  commerciale: { court: "Société commerciale", ton: "vert", titre: "Un gérant dirige aussi une SARL, SAS ou SA en activité." },
+  holding: { court: "Holding commerciale", ton: "bleu", titre: "La SCI est gérée par une société commerciale." },
+  civile: { court: "Sociétés civiles", ton: "gris", titre: "Les gérants ne dirigent que d'autres sociétés civiles." },
+  aucun: { court: "Rien d'autre", ton: "gris", titre: "Aucune autre société trouvée pour ces gérants." },
+  introuvable: { court: "Introuvable", ton: "gris", titre: "Société introuvable à l'annuaire des entreprises." },
+};
 
 const FORMES = ["SCI", "SC", "SARL", "SAS", "SASU", "SNC", "SA", "SCPI"];
 
@@ -44,6 +57,7 @@ export function Prospection() {
   const [taille, setTaille] = useState(1);
   const [formes, setFormes] = useState<string[]>([]);
   const [societe, setSociete] = useState("");
+  const [joignables, setJoignables] = useState(false);
 
   const [lignes, setLignes] = useState<Cible[]>([]);
   const [total, setTotal] = useState(0);
@@ -66,6 +80,7 @@ export function Prospection() {
     max: TAILLES[taille].max || undefined,
     formes: formes.length ? formes : undefined,
     societe: societe.trim() || undefined,
+    joignables: joignables || undefined,
     page: p,
   });
 
@@ -203,6 +218,17 @@ export function Prospection() {
           </div>
         </div>
 
+        <div className="pro-ch lg">
+          <span>Gérant joignable</span>
+          <div className="pro-formes">
+            <button type="button" className={joignables ? "on" : ""}
+              title="Seulement les sociétés dont un gérant dirige aussi une société commerciale — recoupement déjà fait sur les Hauts-de-Seine (SCI de 6 lots et plus)"
+              onClick={() => setJoignables((v) => !v)}>
+              Via une société commerciale
+            </button>
+          </div>
+        </div>
+
         <div className="pro-go">
           <button type="button" className="savebar-go" disabled={cherche} onClick={() => lancer(0)}>
             <span className="ch">›</span> {cherche ? "Recherche…" : "Chercher"}
@@ -248,6 +274,7 @@ export function Prospection() {
                 <th className="n">Locaux</th>
                 <th>Société propriétaire</th>
                 <th>SIREN</th>
+                <th>Gérant joignable</th>
                 <th />
               </tr>
             </thead>
@@ -265,6 +292,12 @@ export function Prospection() {
                       <td className="n"><b>{l.locaux}</b></td>
                       <td>{l.nom}{l.forme ? <i> · {l.forme}</i> : null}</td>
                       <td className="mono">{l.siren}</td>
+                      <td>
+                        {l.joignable
+                          ? <Pastille ton={JOIGNABLE[l.joignable].ton} plein={JOIGNABLE[l.joignable].plein}
+                            titre={JOIGNABLE[l.joignable].titre}>{JOIGNABLE[l.joignable].court}</Pastille>
+                          : <span className="pro-nc" title="Pas encore recoupé : ouvrez « Qui décide ? »">—</span>}
+                      </td>
                       <td className="act">
                         <button type="button" className="fadd"
                           onClick={() => setOuvert(ouvert === cle ? null : cle)}>
@@ -279,8 +312,9 @@ export function Prospection() {
                     {ouvert === cle && (
                       <tr className="pro-det">
                         <td />
-                        <td colSpan={6}>
-                          <Dirigeants siren={l.siren} ville={l.commune ?? ""} societe={l.nom} />
+                        <td colSpan={7}>
+                          <Dirigeants siren={l.siren} ville={l.commune ?? ""} societe={l.nom} dep={l.insee.slice(0, 2)}
+                            onRecoupe={(j) => setLignes((ls) => ls.map((x) => x.siren === l.siren ? { ...x, joignable: j } : x))} />
                         </td>
                       </tr>
                     )}
@@ -327,9 +361,28 @@ export function Prospection() {
  * seul endroit d'où sortent un portable et un e-mail légitimes) ; et à défaut,
  * deux recherches préparées, à ouvrir d'un clic.
  */
-function Dirigeants({ siren, ville, societe }: { siren: string; ville: string; societe: string }) {
+function Dirigeants({ siren, ville, societe, dep, onRecoupe }: {
+  siren: string; ville: string; societe: string; dep: string;
+  onRecoupe: (j: Joignable) => void;
+}) {
   const [f, setF] = useState<FicheDirigeants | null>(null);
   const [charge, setCharge] = useState(true);
+  const [rc, setRc] = useState<Recoupe | null>(null);
+  const [rcErr, setRcErr] = useState<string | null>(null);
+
+  /* Le recoupement est plus long (une question à l'annuaire par gérant) : il
+     arrive après la fiche, sans la retenir. */
+  useEffect(() => {
+    let vivant = true;
+    recoupementSociete(siren, dep)
+      .then((r) => {
+        if (!vivant) return;
+        if (r.ok) { setRc(r.r); onRecoupe(r.r.joignable); } else setRcErr(r.erreur);
+      })
+      .catch((e) => { if (vivant) setRcErr(e instanceof Error ? e.message : String(e)); });
+    return () => { vivant = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siren]);
 
   useEffect(() => {
     let vivant = true;
@@ -389,6 +442,13 @@ function Dirigeants({ siren, ville, societe }: { siren: string; ville: string; s
       </div>
 
       <div className="pro-dir-col">
+        <h4>Leurs autres sociétés</h4>
+        {!rc && !rcErr && <p className="v">Recherche des autres sociétés de ces gérants…</p>}
+        {rcErr && <p className="v">{rcErr}</p>}
+        {rc && <AutresSocietes r={rc} />}
+      </div>
+
+      <div className="pro-dir-col">
         <h4>Déjà dans notre fichier</h4>
         {f.contacts.length === 0 ? (
           <p className="v">
@@ -406,5 +466,51 @@ function Dirigeants({ siren, ville, societe }: { siren: string; ville: string; s
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Les autres sociétés des gérants : là où se trouve une adresse e-mail.
+ *
+ * La correspondance tient au nom, au premier prénom et à l'année de naissance
+ * — elle écarte la plupart des homonymes, pas tous : on la montre telle
+ * quelle, et l'agent juge. Les sociétés commerciales passent en tête, celles
+ * qui emploient du monde d'abord ; c'est elles qui ont un site.
+ */
+function AutresSocietes({ r }: { r: Recoupe }) {
+  const rang = (s: { commerciale: boolean; salaries: boolean }) => (s.commerciale ? 0 : 2) + (s.salaries ? 0 : 1);
+  const liens = r.liens.filter((l) => l.societes.length > 0);
+  if (!liens.length) {
+    return <p className="v">{r.joignable === "introuvable" ? "Société introuvable à l'annuaire." : "Aucune autre société en activité pour ces gérants."}</p>;
+  }
+  return (
+    <>
+      {liens.map((l, i) => (
+        <div className="pro-rc" key={`${l.nom}-${i}`}>
+          <span className="pro-rc-q">
+            {l.type === "societe"
+              ? <>Gérée par <b>{l.nom}</b></>
+              : <><b>{[l.prenoms?.split(/\s+/)[0], l.nom].filter(Boolean).join(" ")}</b> ({l.annee}) dirige aussi :</>}
+          </span>
+          {[...l.societes].sort((a, b) => rang(a) - rang(b)).slice(0, 6).map((s) => (
+            <div className="pro-rc-s" key={s.siren}>
+              <a target="_blank" rel="noreferrer" href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${s.siren}`}>
+                {s.nom}
+              </a>
+              <i>{[s.forme, s.commune].filter(Boolean).join(" · ")}</i>
+              {s.salaries && s.commerciale && <Pastille ton="vert" plein>salariés</Pastille>}
+              {s.commerciale && (
+                <a className="pro-rc-web" target="_blank" rel="noreferrer"
+                  title="Chercher le site de la société : son domaine donne la forme des adresses e-mail"
+                  href={`https://www.google.com/search?q=${encodeURIComponent(`"${s.nom}" ${s.commune ?? ""} site officiel`)}`}>
+                  Site ?
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+      <p className="v pro-rc-n">Même nom, même prénom, même année de naissance : à vérifier avant d&apos;écrire.</p>
+    </>
   );
 }

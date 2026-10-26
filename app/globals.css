@@ -6869,7 +6869,18 @@ a.cfc-doc:hover { border-color: var(--slate); }
 .pro-tab td.act { display: flex; gap: 6px; white-space: nowrap; }
 .pro-dir-att { padding: 12px 4px; font-size: 12.5px; color: var(--gray-txt); }
 .pro-tab tr.pro-det td { background: #fbfaf7; }
-.pro-dir { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 6px 0 10px; }
+.pro-dir { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 18px; padding: 6px 0 10px; }
+/* Génération de leads, étape 1 : les autres sociétés des gérants. */
+.pro-rc { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.pro-rc-q { font-size: 12px; color: var(--gray-txt); }
+.pro-rc-q b { color: var(--slate); }
+.pro-rc-s { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; padding-left: 10px; }
+.pro-rc-s > a:first-child { color: var(--slate); font-weight: 600; text-decoration: none; }
+.pro-rc-s > a:first-child:hover { text-decoration: underline; }
+.pro-rc-s i { font-style: normal; color: var(--gray-txt); font-size: 11.5px; }
+.pro-rc-web { font-size: 11.5px; color: var(--gold-bo); }
+.pro-rc-n { font-size: 11px !important; }
+.pro-nc { color: var(--gray-lt); }
 .pro-dir-col h4 {
   font-family: var(--font-title); font-size: 11.5px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--gold-bo); margin-bottom: 8px;
