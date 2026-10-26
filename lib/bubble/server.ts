@@ -379,11 +379,28 @@ import { dmy, euros, keur } from "@/lib/format";
 import { rangNote } from "@/lib/referentiels";
 import { assemblerVivier, type Vivier } from "@/lib/mails/serveur";
 
+/* MAV (26/10) : « mets pas le prénom en premier dans le contact mais le nom
+   plutôt » — « MARTY Sébastien ». Une société sans nom de personne garde son
+   nom de société. */
 function contactLabel(c?: Record<string, unknown>) {
   if (!c) return "";
-  const p = typeof c["prénom"] === "string" ? (c["prénom"] as string) : "";
-  const n = typeof c.nom === "string" ? (c.nom as string) : "";
-  return `${p ? p[0].toUpperCase() + ". " : ""}${n.toUpperCase()}`.trim();
+  const p = typeof c["prénom"] === "string" ? (c["prénom"] as string).trim() : "";
+  const n = typeof c.nom === "string" ? (c.nom as string).trim() : "";
+  if (!n && !p) return typeof c.entreprise_nom === "string" ? c.entreprise_nom : "";
+  return `${n.toUpperCase()} ${p}`.trim();
+}
+
+/** « il y a 2 h », « il y a 3 jours » — depuis une date ISO. */
+function ilYa(iso: unknown): { texte: string; heures: number } | undefined {
+  const t = typeof iso === "string" ? new Date(iso).getTime() : NaN;
+  if (!Number.isFinite(t)) return undefined;
+  const h = Math.max(0, (Date.now() - t) / 3_600_000);
+  if (h < 1) return { texte: "il y a moins d'une heure", heures: h };
+  if (h < 48) return { texte: `il y a ${Math.floor(h)} h`, heures: h };
+  const j = Math.floor(h / 24);
+  if (j < 60) return { texte: `il y a ${j} jours`, heures: h };
+  const m = Math.floor(j / 30);
+  return { texte: m < 24 ? `il y a ${m} mois` : `il y a ${Math.floor(m / 12)} ans`, heures: h };
 }
 
 /* ---------- assemblage du dashboard ---------- */
@@ -449,7 +466,7 @@ export async function getDashboardLive(
       "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
       "adresse_zipcode", "fin_renta_ba", "fin_renta_bm", "fin_loyers_an", "fin_loyers_an_max", "occupation_lots",
       "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
-      "date_contact_form",
+      "date_contact_form", "fin_charges_total", "CHARGEs",
     ]),
     // Tous les suivis : en n'en chargeant que 600, les immeubles au suivi
     // ancien perdaient leur historique sur le dashboard (retour MAV #23).
@@ -465,11 +482,18 @@ export async function getDashboardLive(
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
   // Dernier suivi par immeuble + historique complet (les récents d'abord).
+  /* Carte du 26/10 : le formulaire du site (un suivi de type « Formulaire »)
+     est le DESCRIPTIF du propriétaire ; la ligne de suivi montre le dernier
+     échange de l'agent. On les sépare. */
   const suiviByIm = new Map<string, Record<string, unknown>>();
+  const echangeByIm = new Map<string, Record<string, unknown>>();
+  const formByIm = new Map<string, Record<string, unknown>>();
   const suivisParIm = new Map<string, Record<string, unknown>[]>();
   for (const s of [...suivis].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
     for (const id of (s.IMMEUBLEs as string[] | undefined) ?? []) {
       if (!suiviByIm.has(id)) suiviByIm.set(id, s);
+      if (s.Type === "Formulaire") { if (!formByIm.has(id)) formByIm.set(id, s); }
+      else if (!echangeByIm.has(id)) echangeByIm.set(id, s);
       suivisParIm.set(id, [...(suivisParIm.get(id) ?? []), s]);
     }
   }
@@ -653,6 +677,8 @@ export async function getDashboardLive(
     const card: KCard = {
       id,
       ville,
+      villeNom: String(im.adresse_ville ?? "") || "Ville inconnue",
+      dpt: String(im.adresse_dpt ?? "") || undefined,
       contact: contactLabel(contacts.get(im.PROPRIETAIRE as string)),
       adresse,
       photo,
@@ -764,6 +790,30 @@ export async function getDashboardLive(
       };
     }
 
+    /* ---- La carte du 26/10 : ce que chaque étape montre ------------------ */
+    const telProprio = card.contactInfo?.tel;
+    if (st <= 2 && telProprio) card.tel = telProprio;
+    if (st === 1) {
+      const form = formByIm.get(id);
+      const r = ilYa(im.date_contact_form ?? form?.date_start ?? form?.["Created Date"] ?? im["Created Date"]);
+      if (r) card.recu = { texte: r.texte, retard: r.heures > 48 };
+      if (typeof form?.notes === "string" && form.notes.trim()) card.descriptif = form.notes.trim();
+      if (r && r.heures <= 48 && !echangeByIm.has(id)) card.pastille = { texte: "Nouveau", ton: "vert" };
+    }
+    if (st === 2) {
+      const loyers = nb(im.fin_loyers_an) ?? nb(im.fin_loyers_an_max);
+      const surf = nb(im.surface_carrez);
+      card.loyerAn = loyers ? euros(loyers) : undefined;
+      card.surface = surf ? `${Math.round(surf).toLocaleString("fr-FR")} m²` : undefined;
+      /* MAV : « État locatif est manquant si j'ai pas les surfaces ou les
+         loyers » ; les charges, dès qu'aucune n'est chiffrée. */
+      card.manque = [
+        ...(!loyers || !surf ? ["État locatif"] : []),
+        ...(!nb(im.fin_charges_total) ? ["Charges"] : []),
+      ];
+      if (card.manque.length === 0) card.pastille = { texte: "Prêt à estimer", ton: "vert" };
+    }
+
     if (enAttente && suivi) {
       const debut = new Date(String(suivi.date_start ?? suivi["Created Date"] ?? ""));
       const relance = typeof suivi.date_relance === "string" ? new Date(suivi.date_relance as string) : null;
@@ -780,6 +830,7 @@ export async function getDashboardLive(
       };
       card.prix = euros(im.prix_hai);
       card.action = { label: "Réactiver", kind: "green" };
+      card.pastille = { texte: card.wait.motif || "En attente", ton: card.wait.late === false ? "or" : "rouge" };
       /* La flèche au milieu de la frise déroule le dernier suivi (retour #349 :
          « quand on clique sur la flèche vers le bas ça devrait afficher le
          dernier suivi […]. Là actuellement ça ouvre la fiche »). Le texte doit
@@ -790,15 +841,19 @@ export async function getDashboardLive(
       return card;
     }
 
-    // Chip date + note = dernier événement connu.
-    if (suivi && typeof suivi.notes === "string" && suivi.notes) {
+    // Chip date + note = dernier ÉCHANGE (le formulaire est le descriptif).
+    const echange = echangeByIm.get(id);
+    if (echange && typeof echange.notes === "string" && echange.notes) {
+      card.date = dmy(echange.date_start ?? echange["Created Date"]);
+      card.note = (echange.notes as string).split("\n")[0];
+      card.noteComplete = echange.notes as string;
+      card.chevron = true;
+    } else if (st !== 1 && suivi && typeof suivi.notes === "string" && suivi.notes) {
+      /* Un bien plus avancé dont le seul suivi est son formulaire : on le
+         montre tel quel, comme avant. */
       card.date = dmy(suivi.date_start ?? suivi["Created Date"]);
       card.note = (suivi.notes as string).split("\n")[0];
       card.noteComplete = suivi.notes as string;
-      card.chevron = (suivi.notes as string).length > 40;
-    } else if (st === 1) {
-      card.date = dmy(im.date_contact_form ?? im["Created Date"]);
-      card.note = "Formulaire";
       card.chevron = true;
     } else if (im.date_last_est) {
       card.date = dmy(im.date_last_est);
@@ -811,6 +866,7 @@ export async function getDashboardLive(
       if (ms === "Expiré") card.statusMandat = "Mandat expiré";
       else if (ms === "Attente signature" || ms === "A signer") card.statusMandat = "Mandat à signer";
       else if (ms === "A rédiger") card.statusMandat = "Mandat à rédiger";
+      if (card.statusMandat) card.pastille = { texte: card.statusMandat, ton: "rouge" };
     }
 
     if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);

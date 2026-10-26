@@ -8801,3 +8801,65 @@ button.aj-lh:hover { background: #fafafa; }
    tant qu'un champ obligatoire est vide (déjà porté par `.requis`). */
 .aj-deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 @media (max-width: 560px) { .aj-deux { grid-template-columns: 1fr; } .aj-lc { padding-left: 18px; } }
+
+/* ==== La carte du tableau de bord, sur la capture de MAV (26/10) ====
+   Photo carrée toute hauteur ; ville + département (qui ne se coupe jamais)
+   + statut ; prix ou téléphone + client ; trois vignettes ; le suivi.
+   Chaque ligne tient sur une ligne : toutes les cartes ont la même hauteur,
+   la flèche déroule ce qui est coupé. */
+/* 148 px : la hauteur naturelle de la carte la plus chargée (immeuble à
+   estimer en attente : vignettes, « Manque », frise), mesurée au navigateur. */
+.kard { --kh: 148px; }
+.kard .kthumb { width: var(--kh); height: var(--kh); min-height: 0; aspect-ratio: auto; align-self: flex-start; flex: none; }
+.kbody.k26 { display: flex; flex-direction: column; justify-content: space-between; gap: 5px; min-height: var(--kh); }
+.k26 .krow1 { align-items: center; gap: 6px; min-width: 0; }
+.k26 .krow1 .kt { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kdpt {
+  flex: none; font-family: var(--font-title); font-size: 11px; font-weight: 600; line-height: 17px;
+  border: 1px solid #d5d9dd; border-radius: 4px; padding: 0 5px; color: var(--gray-txt); background: #f6f7f8;
+}
+.kpast {
+  margin-left: auto; flex: 0 1 auto; min-width: 0; max-width: 42%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--font-title); font-size: 11px; font-weight: 600; line-height: 18px;
+  border-radius: 4px; padding: 0 7px; background: var(--puce-fond); color: var(--slate-2);
+}
+.kpast.rouge { background: #fde8e8; color: var(--red); }
+.kpast.vert { background: #e7f6e3; color: #2a8a1b; }
+.kpast.or { background: #f7f1dc; color: #8c7a2e; }
+.krowp { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.kprix { flex: none; font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+.kprix small { font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--gray-txt); margin-left: 6px; }
+.kprix.vide { font-size: 13px; font-weight: 600; color: var(--gray-lt); }
+.ktel {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap;
+  font-family: var(--font-title); font-size: 15px; font-weight: 700; color: #2a8a1b; border-radius: 4px;
+}
+.ktel svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.ktel:hover { text-decoration: underline; }
+.ktel:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 2px; }
+.krowp .vgn { margin-left: auto; min-width: 0; flex: 0 1 auto; }
+.krowp .vgn-chip {
+  max-width: 100%; min-width: 0;
+  background: #fff; border: 1px solid #d5d9de; border-radius: 999px; box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+}
+.krowp .vgn-chip:hover, .krowp .vgn-chip.on { border-color: var(--gold-bo); }
+.vgn-n { min-width: 0; }
+.krowp .vgn-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ktu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ktu-c { background: #f5f6f7; border-radius: 5px; padding: 3px 8px; min-width: 0; }
+.ktu-c span { display: block; font-size: 11px; line-height: 1.3; color: var(--gray-txt); }
+.ktu-c b { display: block; font-family: var(--font-title); font-size: 13.5px; font-weight: 600; color: var(--slate); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ktu-c b.v { color: #2a8a1b; }
+.ktu-c b.r { color: var(--red); }
+.ktu-c.vide b { color: var(--gray-lt); }
+.krecu { font-size: 12px; font-weight: 700; color: var(--gray-txt); }
+.krecu.r { color: var(--red); }
+.k26 .krow2, .k26 .kwait { margin-top: 0; }
+.knote.vide { color: var(--gray-lt); font-style: italic; }
+.kdesc .knote { font-style: italic; flex: 1; min-width: 0; }
+.kmq { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 12px; }
+.kmq b { font-family: var(--font-title); font-size: 11.5px; font-weight: 600; color: var(--gray-txt); }
+.kmq span { font-weight: 700; border-radius: 4px; padding: 0 7px; }
+.kmq .ko { background: #fde8e8; color: var(--red); }
+.kmq .ok { background: #e7f6e3; color: #2a8a1b; }
