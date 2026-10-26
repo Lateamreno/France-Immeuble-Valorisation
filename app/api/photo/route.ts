@@ -75,9 +75,12 @@ const ALLOWED_HOSTS = new Set([
 const hoteAutorise = (h: string) =>
   ALLOWED_HOSTS.has(h) || h === "cdn.bubble.io" || h.endsWith(".cdn.bubble.io");
 
-/** Pixel transparent : une image source cassée ne doit pas casser la page. */
+/** Pixel transparent : une image source cassée ne doit pas casser la page.
+    Le précédent était en fait VERT à demi transparent (0, 255, 0, 127) : la
+    panne Bubble du 26/10 a teint toutes les vignettes. Celui-ci est vérifié
+    (0, 0, 0, 0) — la vignette garde son fond gris. */
 const PIXEL = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
   "base64",
 );
 const pixel = () =>
