@@ -136,7 +136,7 @@ export function ReglagesAgence({ initial, envois }: { initial: Reglages; envois?
         onEnregistrer={() => setConfirme(true)}
         onAnnuler={() => { setV(initial); setMsg(null); }}
       >
-        {modifie ? "Ces réglages s'appliquent à tout le site" : "Tout est enregistré"}
+        {modifie ? "Ces réglages s'appliquent à tout le site" : "Aucune modification en attente"}
       </BarreEnregistrer>
 
       {/* La confirmation : un barème changé par mégarde se retrouve sur des

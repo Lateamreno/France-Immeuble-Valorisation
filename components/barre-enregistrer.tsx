@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 // Barre d'enregistrement collée en bas (retours #79, #81, #83, puis #192 et #196).
 //
 // Règle générale du site, pas un habillage d'écran : toute page qui demande un
@@ -12,6 +14,12 @@
 //   · rien modifié      → pas de barre ;
 //   · modification      → la barre monte : bouton vert, et Annuler à côté ;
 //   · pendant l'envoi   → « Enregistrement… », puis elle s'en va.
+//
+// Retour #536 (précision du #515) : une fois montée, la barre RESTE, même si
+// la valeur revient d'elle-même à celle de la base ou si un champ voisin
+// s'enregistre seul. Elle ne s'en va qu'au clic sur Enregistrer (une fois
+// l'enregistrement passé) ou sur Annuler, et ne revient qu'à la modification
+// suivante.
 //
 // `onAnnuler` rétablit les valeurs enregistrées : c'est le filet de l'agent
 // qui s'est trompé de champ et ne sait plus ce qu'il y avait avant.
@@ -37,7 +45,21 @@ export function BarreEnregistrer({
   /** Message à gauche, sinon le rappel par défaut. */
   children?: React.ReactNode;
 }) {
-  if (!modifie && !pending) return null;
+  const [ouverte, setOuverte] = useState(false);
+  /* Vrai entre le clic sur Enregistrer et la fin de l'enregistrement. */
+  const [aFermer, setAFermer] = useState(false);
+  useEffect(() => { if (modifie) setOuverte(true); }, [modifie]);
+  useEffect(() => {
+    if (aFermer && !pending && !modifie) { setOuverte(false); setAFermer(false); }
+  }, [aFermer, pending, modifie]);
+
+  if (!ouverte && !pending) return null;
+  const enregistrer = () => {
+    setAFermer(true);
+    // Rien à écrire : le clic vaut fermeture.
+    if (modifie) onEnregistrer();
+  };
+  const annuler = () => { onAnnuler?.(); setAFermer(false); setOuverte(false); };
   return (
     <div className={`savebar${plein ? " plein" : ""}${modifie ? "" : " calme"}`} role="status">
       <span className="savebar-t">
@@ -46,15 +68,15 @@ export function BarreEnregistrer({
             ? <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.2M12 16.2v.2" /></>
             : <path d="m5 13 4 4L19 7" />}
         </svg>
-        {children ?? (modifie ? "Modifications non enregistrées" : "Tout est enregistré")}
+        {children ?? (modifie ? "Modifications non enregistrées" : "Aucune modification en attente")}
       </span>
       <span className="sp" />
-      {onAnnuler && (
-        <button type="button" className="savebar-x" disabled={pending || !modifie} onClick={onAnnuler}>
+      {(onAnnuler || !modifie) && (
+        <button type="button" className="savebar-x" disabled={pending} onClick={annuler}>
           Annuler
         </button>
       )}
-      <button type="button" className="savebar-go" disabled={pending || !modifie} onClick={onEnregistrer}>
+      <button type="button" className="savebar-go" disabled={pending} onClick={enregistrer}>
         {pending ? "Enregistrement…" : libelle}
       </button>
     </div>
