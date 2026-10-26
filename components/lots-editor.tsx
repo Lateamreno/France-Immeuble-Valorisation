@@ -517,21 +517,21 @@ type Colonne = {
 };
 
 export const COLONNES: Record<ColKey, Colonne> = {
-  bat: { label: "Bat.", menu: "Bâtiment", poids: 2.1, large: true },
-  etg: { label: "Etg", menu: "Étage", poids: 2.0, poidsCompact: 3.4 },
-  num: { label: "N°", menu: "Numéro", poids: 2.1, poidsCompact: 3.4 },
-  dest: { label: "Dest.", menu: "Destination", poids: 2.3, poidsCompact: 3.2 },
+  bat: { label: "Bat.", menu: "Bâtiment", poids: 1.8, large: true },
+  etg: { label: "Etg", menu: "Étage", poids: 2.1, poidsCompact: 3.4 },
+  num: { label: "N°", menu: "Numéro", poids: 2.5, poidsCompact: 3.4 },
+  dest: { label: "Dest.", menu: "Destination", poids: 2.1, poidsCompact: 3.2 },
   type: { label: "Type", poids: 6.8 },
-  carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.2 },
-  sol: { label: "Au sol", menu: "Surface au sol", poids: 5.5, large: true },
-  bail: { label: "Type bail", menu: "Type de bail", poids: 5.2 },
-  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 4.9 },
-  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 3.8, large: true },
-  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 4.9 },
-  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.0, large: true },
+  carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.6 },
+  sol: { label: "Au sol", menu: "Surface au sol", poids: 5.6, large: true },
+  bail: { label: "Type bail", menu: "Type de bail", poids: 7.9 },
+  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 6.0 },
+  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 4.2, large: true },
+  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 6.0 },
+  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.2, large: true },
   etat: { label: "Etat", menu: "État du lot", poids: 5.2 },
-  travaux: { label: "Travaux", poids: 6.1, large: true },
-  dpe: { label: "DPE", poids: 2.7 },
+  travaux: { label: "Travaux", poids: 4.6, large: true },
+  dpe: { label: "DPE", poids: 3.6 },
   /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
      saisie débordait de sa case (retour #251). */
   renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, poidsCompact: 6.0 },
@@ -553,7 +553,7 @@ export const COLONNES: Record<ColKey, Colonne> = {
   l_phone: { label: "Téléphone", poids: 6.5 },
   l_email: { label: "E-mail", poids: 9.0 },
   l_com: { label: "Comm. locataire", menu: "Commentaire du locataire", poids: 10, large: true },
-  commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 17.3 },
+  commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 9.0 },
   photos: { label: "Photos", poids: 2.9, large: true },
 };
 
@@ -793,8 +793,10 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     .map((g) => ({ label: g.label, cols: g.cols.filter((c) => colonnes.includes(c)) }))
     .filter((g) => g.cols.length > 0);
   const brd = new Set(groupes.map((g) => g.cols[0]));
+  /* `c-<colonne>` : la feuille de style vise une colonne par son nom (les
+     €/m² centrés et grisés de la version A, retour #481). */
   const cls = (c: ColKey, ...extra: (string | false | undefined)[]) =>
-    [brd.has(c) ? "brd" : "", ...extra].filter(Boolean).join(" ") || undefined;
+    [`c-${c}`, brd.has(c) ? "brd" : "", ...extra].filter(Boolean).join(" ") || undefined;
 
   const poids = (c: ColKey) => (compacte ? COLONNES[c].poidsCompact : undefined) ?? COLONNES[c].poids;
   const totalPoids = colonnes.reduce((s2, c) => s2 + poids(c), 0);

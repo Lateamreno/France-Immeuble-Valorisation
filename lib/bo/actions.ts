@@ -2050,7 +2050,10 @@ export async function rafraichirFiche(immeubleId: string) {
 async function promouvoir(immeubleId: string, photoId: string, vignette?: string) {
   const photos = await photosDe(immeubleId);
   const cible = photos.find((p) => p._id === photoId);
-  const url = vignette ?? (cible?.compressed as string | undefined) ?? (cible?.image as string | undefined);
+  /* `compressed` vaut souvent true / false dans les photos venues de Bubble :
+     seule une adresse compte, sinon la couverture recevait « true ». */
+  const comp = typeof cible?.compressed === "string" && cible.compressed ? cible.compressed : undefined;
+  const url = vignette ?? comp ?? (cible?.image as string | undefined);
   await Promise.all([
     ...photos
       .filter((p) => p.Type === "Principale" && p._id !== photoId)
