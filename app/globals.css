@@ -9019,3 +9019,16 @@ button.aj-lh:hover { background: #fafafa; }
 /* Retour MAV du 27/10 : les écarts en % des €/m² ne sont pas en gras — la
    couleur suffit à les signaler. */
 .ltable.v2 .pc span, .ltable.v2 .pc .pos, .ltable.v2 .pc .neg { font-weight: 400; }
+/* Retour MAV du 27/10 (suite).
+   — Une ligne sur deux en gris à peine perceptible : de quoi suivre une
+     ligne, sans revenir à l'alternance marquée du #380. Le survol reste
+     plus foncé.
+   — L'en-tête : la famille (« Loyer ») et ses colonnes (« HC actuel ») se
+     touchent presque, comme dans le BO Bubble ; le second rang se colle sous
+     le premier, à sa hauteur exacte, pour défiler sans jour.
+   — Titres de colonnes un peu plus foncés, moins que les chiffres. */
+.ltable.v2 tbody tr:nth-child(even) { background: #fafafa; }
+.ltable.v2 tbody tr:hover { background: #eef0f2; }
+.ltable.v2 thead tr:first-child th { height: 22px; padding: 4px 3px 0; line-height: 18px; vertical-align: bottom; }
+.ltable.v2 thead tr:first-child th[rowspan] { vertical-align: middle; padding: 0 3px; }
+.ltable.v2 thead tr:last-child th { top: 22px; padding: 0 3px 4px; line-height: 16px; color: #5f676f; }
