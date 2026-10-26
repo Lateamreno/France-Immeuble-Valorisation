@@ -11,7 +11,7 @@ import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { QuestionCard } from "@/lib/bubble/server";
-import { cloturerQuestion, creerContactDepuisQuestion, noterAppelDemande, refuserDemandeDossier, rouvrirQuestion } from "@/lib/bo/actions";
+import { cloturerQuestion, creerContactDepuisQuestion, demandeTraitee, noterAppelDemande, refuserDemandeDossier, rouvrirQuestion } from "@/lib/bo/actions";
 import { Modale, useQuestion } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
 import { ModaleProposition } from "@/components/actions-rapides";
@@ -110,7 +110,7 @@ export function EcranQuestions({
               <span className="qc-bulle">
                 <svg viewBox="0 0 24 24"><path d="M12 3C6.8 3 2.6 6.3 2.6 10.4c0 2.3 1.3 4.4 3.4 5.7-.2 1.3-.9 2.5-1.9 3.4 1.9 0 3.7-.7 5-1.9.9.2 1.8.3 2.9.3 5.2 0 9.4-3.3 9.4-7.5S17.2 3 12 3z" /></svg>
               </span>
-              <Avatar initiales={r.agent} couleur={r.agentCouleur} />
+              {r.agent && <Avatar initiales={r.agent} couleur={r.agentCouleur} />}
             </div>
 
             <div className="qc-corps">
@@ -247,7 +247,13 @@ export function EcranQuestions({
           contact={{ id: aEnvoyer.contact.id, nom: aEnvoyer.contact.nom, email: aEnvoyer.email }}
           rechercheId={aEnvoyer.demande?.rechercheId}
           onFermer={() => setAEnvoyer(null)}
-          surEnvoi={() => { setAEnvoyer(null); router.refresh(); }}
+          surEnvoi={() => {
+            const traitee = aEnvoyer;
+            setAEnvoyer(null);
+            // #513 : celui qui envoie le dossier traite la demande, le contact lui revient.
+            if (traitee && agentId) void demandeTraitee(traitee.id, agentId).then(() => router.refresh());
+            else router.refresh();
+          }}
         />
       )}
       {question}
@@ -255,8 +261,37 @@ export function EcranQuestions({
   );
 }
 
+/* Retour #512 : des motifs à cocher, dont « C'était un test », pour traiter
+   plus vite et pouvoir sortir les essais des statistiques. Un seul motif par
+   question ; le texte reste libre à côté. */
+const MOTIFS_CLOTURE: [string, string][] = [
+  ["test", "C'était un test"], ["rappele", "Rappelé"], ["dossier", "Dossier envoyé"],
+  ["estimation", "Estimation envoyée"], ["sans_suite", "Sans suite"], ["doublon", "Doublon"], ["autre", "Autre"],
+];
+const MOTIFS_REFUS: [string, string][] = [
+  ["test", "C'était un test"], ["financement", "Pas de financement"], ["hors_cible", "Hors cible"],
+  ["injoignable", "Injoignable"], ["indisponible", "Bien plus disponible"], ["doublon", "Doublon"], ["autre", "Autre"],
+];
+
+function MotifsCases({ motifs, valeur, onChange }: {
+  motifs: [string, string][]; valeur: string; onChange: (v: string) => void;
+}) {
+  return (
+    <div className="motifs" role="radiogroup" aria-label="Motif">
+      {motifs.map(([cle, libelle]) => (
+        <button key={cle} type="button" role="radio" aria-checked={valeur === cle}
+          className={`motif${valeur === cle ? " on" : ""}${cle === "test" ? " test" : ""}`}
+          onClick={() => onChange(valeur === cle ? "" : cle)}>
+          {libelle}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Cloture({ q, agentId, onClose }: { q: QuestionCard; agentId: string; onClose: () => void }) {
   const [texte, setTexte] = useState("");
+  const [motif, setMotif] = useState("");
   const [pending, start] = useTransition();
   return (
     <Modale
@@ -265,13 +300,18 @@ function Cloture({ q, agentId, onClose }: { q: QuestionCard; agentId: string; on
         <>
           <span style={{ flex: 1 }} />
           <button type="button" className="savebar-go" disabled={pending}
-            onClick={() => start(async () => { await cloturerQuestion(q.id, texte, agentId); onClose(); })}>
+            onClick={() => start(async () => {
+              const libelle = MOTIFS_CLOTURE.find(([c]) => c === motif)?.[1];
+              await cloturerQuestion(q.id, [libelle, texte.trim()].filter(Boolean).join(" — "), agentId, motif || undefined);
+              onClose();
+            })}>
             <span className="ch">›</span> Clôturer
           </button>
         </>
       }
     >
       <p className="rc-com" style={{ marginTop: 0 }}>{q.message}</p>
+      <MotifsCases motifs={MOTIFS_CLOTURE} valeur={motif} onChange={setMotif} />
       <label className="vit-l" style={{ marginTop: 12 }}>
         <span>Ce qui a été fait</span>
         <textarea rows={4} value={texte} onChange={(e) => setTexte(e.target.value)}
@@ -363,23 +403,31 @@ function Appel({ q, agentId, onClose }: { q: QuestionCard; agentId: string; onCl
 /** « Refuser » : un motif, et la demande se clôture. */
 function Refus({ q, agentId, onClose }: { q: QuestionCard; agentId: string; onClose: () => void }) {
   const [motif, setMotif] = useState("");
+  const [code, setCode] = useState("");
   const [pending, start] = useTransition();
+  /* Un motif coché suffit, sauf « Autre », qui demande deux mots. */
+  const pret = code ? code !== "autre" || !!motif.trim() : !!motif.trim();
   return (
     <Modale
       titre="Refuser l'envoi du dossier" onFermer={onClose}
       pied={
         <>
           <span style={{ flex: 1 }} />
-          <button type="button" className="savebar-go" disabled={pending || !motif.trim()}
-            onClick={() => start(async () => { await refuserDemandeDossier(q.id, motif, agentId); onClose(); })}>
+          <button type="button" className="savebar-go" disabled={pending || !pret}
+            onClick={() => start(async () => {
+              const libelle = MOTIFS_REFUS.find(([c]) => c === code)?.[1];
+              await refuserDemandeDossier(q.id, [libelle, motif.trim()].filter(Boolean).join(" — "), agentId, code || undefined);
+              onClose();
+            })}>
             <span className="ch">›</span> Refuser
           </button>
         </>
       }
     >
-      <label className="vit-l" style={{ marginTop: 0 }}>
-        <span>Motif</span>
-        <textarea rows={3} value={motif} onChange={(e) => setMotif(e.target.value)} autoFocus
+      <MotifsCases motifs={MOTIFS_REFUS} valeur={code} onChange={setCode} />
+      <label className="vit-l" style={{ marginTop: 12 }}>
+        <span>{code && code !== "autre" ? "Précision (facultatif)" : "Motif"}</span>
+        <textarea rows={3} value={motif} onChange={(e) => setMotif(e.target.value)}
           placeholder="Pas de financement, projet hors cible, injoignable…" />
       </label>
       <p className="vit-note" style={{ marginTop: 10 }}>Rien ne part vers la personne : le refus reste dans le BO.</p>

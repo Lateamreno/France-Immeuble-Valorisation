@@ -8672,7 +8672,10 @@ button { font-weight: 700; }
    photo plus large (+15 %) et presque sur toute la hauteur de la case ;
    pastilles en gélules ; vignette du contact calée à droite, sur fond blanc
    et cerclée, pour qu'on voie qu'elle se clique. */
-.kard { border-radius: 10px; overflow: hidden; }
+/* Retour #514 : ni `overflow: hidden` ni `container-type` sur la carte. Les
+   deux enfermaient dans la carte tout ce qui s'ouvre depuis elle — vignette
+   du contact, menu « … », fenêtres —, coupé ou rendu à l'intérieur. */
+.kard { border-radius: 8px; }
 .kard-top { min-height: 112px; align-items: stretch; padding: 8px 12px 8px 8px; }
 .kthumb { width: 94px; height: auto; min-height: 96px; align-self: stretch; border-radius: 7px; }
 .kbody { display: flex; flex-direction: column; }
@@ -8705,8 +8708,9 @@ button { font-weight: 700; }
 .kwait .mid .lbl { left: 4px; right: 4px; transform: none; text-align: center; overflow: hidden; text-overflow: ellipsis; }
 .krow3 { flex-wrap: wrap; row-gap: 4px; column-gap: 6px; }
 .kperf { padding: 2px 8px 2px 6px; }
-.kard { container-type: inline-size; }
-@container (max-width: 430px) {
+/* Carte étroite (écran de portable) : une requête de largeur d'écran et non
+   de conteneur, pour la raison dite plus haut (#514). */
+@media (max-width: 1700px) {
   .kthumb { width: 30%; }
   .krow1 .kt { font-size: 15px; }
 }
@@ -8715,3 +8719,17 @@ button { font-weight: 700; }
    haute pour la frise, les pastilles et un prix passé à la ligne. */
 .krow1 .kt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; }
 .kard-top { min-height: 140px; }
+
+/* Retour #510 : moins d'écart entre deux cartes d'une étape. */
+.col-body { gap: 8px; }
+
+/* Retour #512 — motifs à cocher (clôture et refus d'une question). */
+.motifs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.motif {
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--slate);
+  font: 600 12.5px var(--font-body); padding: 5px 12px; cursor: pointer;
+}
+.motif:hover { border-color: var(--gold-bo); }
+.motif.on { background: var(--slate); border-color: var(--slate); color: #fff; }
+.motif.test { border-style: dashed; }
+.motif.test.on { background: #8a6d1a; border-color: #8a6d1a; border-style: solid; }
