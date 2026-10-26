@@ -459,6 +459,10 @@ const TYPE_BAIL: Record<string, string> = {
   "Airbnb": "meuble",
   "3/6/9": "commercial_369",
   "Précaire": "precaire",
+  /* Bail professionnel (professions libérales, 26/10) : ni commercial ni
+     d'habitation ; la marketplace n'a pas de case à lui, le civil est le plus
+     proche. */
+  "Professionnel": "civil",
   "Civil": "civil",
   "Ferme": "civil",
 };
