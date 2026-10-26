@@ -139,6 +139,23 @@ export type KCard = {
   objet?: string;
   /** Bouton historique visible. */
   history?: boolean;
+  /* ---- La carte de la capture de MAV (26/10) ----------------------------
+     Ville, puis le département dans sa propre pastille qui ne se coupe
+     jamais ; la pastille de statut à droite ; le téléphone du propriétaire à
+     la place du prix tant qu'il n'y a pas de prix (formulaires, à estimer). */
+  villeNom?: string;
+  dpt?: string;
+  pastille?: { texte: string; ton?: "rouge" | "vert" | "or" };
+  tel?: string;
+  /** Formulaires : « Reçu il y a 2 h », rouge au-delà de 48 h. */
+  recu?: { texte: string; retard: boolean };
+  /** Formulaires : le texte que le propriétaire a écrit sur le site. */
+  descriptif?: string;
+  /** Immeubles à estimer : loyer annuel et surface connus. */
+  loyerAn?: string;
+  surface?: string;
+  /** Immeubles à estimer : ce qui manque pour estimer (état locatif, charges). */
+  manque?: string[];
 };
 
 export type KCol = {

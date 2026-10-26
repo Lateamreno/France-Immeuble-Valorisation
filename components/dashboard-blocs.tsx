@@ -56,6 +56,7 @@ function Card({
   const [archivage, setArchivage] = useState(false);
   const [attente, setAttente] = useState(false);
   const [note, setNote] = useState(false);
+  const [desc, setDesc] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,19 +89,87 @@ function Card({
       router.push(`/bien/${c.id}?section=locatif`);
     });
   };
+  /* La carte de la capture de MAV (26/10) : photo carrée toute hauteur,
+     ville + département + statut, prix (ou téléphone) + client, trois
+     vignettes, puis le suivi. Chaque ligne tient sur une ligne : toutes les
+     cartes ont la même hauteur, la flèche déroule ce qui est coupé. */
+  const etape = c.statutNum ?? 0;
+  const basculer = (f: (v: boolean) => void, v: boolean) => (e: React.SyntheticEvent) => {
+    e.preventDefault(); e.stopPropagation(); f(!v);
+  };
+  const touche = (f: (v: boolean) => void, v: boolean) => (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault(); e.stopPropagation(); f(!v);
+  };
+  const appeler = (e: React.SyntheticEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (c.tel) window.location.href = `tel:${c.tel.replace(/[^\d+]/g, "")}`;
+  };
+  const tuile = (label: string, valeur: string | undefined, ton = "", titre?: string) => (
+    <div className={`ktu-c${valeur === undefined ? " vide" : ""}`} title={titre}>
+      <span>{label}</span><b className={ton}>{valeur ?? "—"}</b>
+    </div>
+  );
+  const rentaAff = c.perf?.rentaPot ?? c.perf?.renta;
+  const tuiles = etape === 2 ? (
+    <div className="ktu">
+      {tuile("Loyer", c.loyerAn)}
+      {tuile("Surface", c.surface)}
+      {tuile("Occup.", c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+        c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "")}
+    </div>
+  ) : (
+    <div className="ktu">
+      {tuile("Renta", rentaAff !== undefined ? pct(rentaAff) : undefined,
+        c.perf?.rentaEcart ? (c.perf.rentaEcart > 0 ? "v" : "r") : "",
+        rentaAff === undefined ? undefined
+          : (c.perf!.rentaPot !== undefined
+            ? `Renta potentielle ${pct(c.perf!.rentaPot)}` + (c.perf!.renta !== undefined ? ` — actuelle ${pct(c.perf!.renta)}` : "")
+            : `Renta actuelle ${pct(c.perf!.renta!)}`)
+            + (c.perf!.rentaRef !== undefined ? ` — secteur ${pct(c.perf!.rentaRef)}` : ""))}
+      {tuile("Occup.", c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+        c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "",
+        c.perf?.occupation !== undefined ? `Occupation : ${c.perf.occupation} % des lots loués` : undefined)}
+      {tuile("Vs secteur", c.perf?.ecartM2 !== undefined ? `${c.perf.ecartM2 > 0 ? "+" : ""}${c.perf.ecartM2} %` : undefined,
+        c.perf?.ecartM2 ? (c.perf.ecartM2 > 0 ? "r" : "v") : "",
+        c.perf?.ecartM2 !== undefined
+          ? "Écart prix secteur : "
+            + (c.perf.prixM2 ? `${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €/m²` : "prix au m²")
+            + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €/m²` : "")
+            + (c.perf.prixM2RefLe ? ` (relevé du ${c.perf.prixM2RefLe})` : "")
+          : undefined)}
+    </div>
+  );
+
   const top = (
     <>
         <Vignette c={c} />
-        <div className="kbody">
+        <div className="kbody k26">
           <div className="krow1">
-            <span className="kt" title={c.ville}>{c.ville}</span>
+            <span className="kt" title={c.ville}>{c.villeNom ?? c.ville}</span>
+            {c.dpt && <span className="kdpt">{c.dpt}</span>}
+            {c.pastille && <span className={`kpast ${c.pastille.ton ?? ""}`} title={c.pastille.texte}>{c.pastille.texte}</span>}
+          </div>
+
+          <div className="krowp">
+            {etape <= 2 ? (
+              c.tel ? (
+                <span className="ktel" role="link" tabIndex={0} title={`Appeler le ${c.tel}`}
+                  onClick={appeler} onKeyDown={(e) => { if (e.key === "Enter") appeler(e); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden><path d="M6.6 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.1 6.1l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z" /></svg>
+                  {c.tel}
+                </span>
+              ) : <span className="kprix vide">Pas de numéro</span>
+            ) : (
+              <span className="kprix">{c.prix ?? "—"}{c.fee && <small>{c.fee}</small>}</span>
+            )}
             {/* La vignette partagée (retour du 24/09 : la même fiche contact
-                partout, tableau de bord compris). */}
+                partout, tableau de bord compris). NOM puis prénom (26/10). */}
             <VignetteContact
               nom={c.contact}
               immeuble={c.objet}
               v={c.contactId && c.contactInfo ? {
-                id: c.contactId, nom: c.contactInfo.nom || c.contact, qualite: c.contactInfo.type,
+                id: c.contactId, nom: c.contact || c.contactInfo.nom, qualite: c.contactInfo.type,
                 tel: c.contactInfo.tel, email: c.contactInfo.email,
                 immeubles: c.contactInfo.nbImmeubles ?? 0, recherches: c.contactInfo.nbRecherches ?? 0,
                 note: c.contactInfo.note, estAgent: c.contactInfo.estAgent,
@@ -109,76 +178,55 @@ function Card({
             />
           </div>
 
-          {c.statusMandat && (
-            <div className="kstatus">
-              <svg viewBox="0 0 24 24"><path d="M5 8h14v12H5z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></svg>
-              {c.statusMandat}
+          {etape === 1 ? (
+            <>
+              <div className={`krecu${c.recu?.retard ? " r" : ""}`}>{c.recu ? `Reçu ${c.recu.texte}` : "Reçu —"}</div>
+              {/* Ce que le propriétaire a écrit sur le site, coupé à une
+                  ligne ; la flèche le déroule. */}
+              <div className="krow2 kdesc">
+                {c.descriptif ? (
+                  <>
+                    <span className="knote kdep" role="button" tabIndex={0}
+                      title={desc ? "Replier le descriptif" : "Dérouler le descriptif"}
+                      onClick={basculer(setDesc, desc)} onKeyDown={touche(setDesc, desc)}>« {c.descriptif} »</span>
+                    <span className={`kchev${desc ? " on" : ""}`} role="button" tabIndex={0}
+                      title={desc ? "Replier le descriptif" : "Dérouler le descriptif"}
+                      onClick={basculer(setDesc, desc)} onKeyDown={touche(setDesc, desc)}>
+                      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+                    </span>
+                  </>
+                ) : <span className="knote vide">Pas de descriptif</span>}
+              </div>
+              {desc && c.descriptif && <div className="knote-full">{c.descriptif}</div>}
+            </>
+          ) : tuiles}
+
+          {etape === 2 && c.manque && (
+            <div className="kmq">
+              {c.manque.length > 0 ? (
+                <><b>Manque</b>{c.manque.map((m) => <span key={m} className="ko">× {m}</span>)}</>
+              ) : <span className="ok">✓ État locatif et charges reçus</span>}
             </div>
           )}
 
-          {(c.date || c.note || c.estimation) && !c.wait && (
-            <div className="krow2">
-              {c.date && <span className="kdate">{c.date}</span>}
-              {c.estimation && (
-                <span className="knote">
-                  <span className="nic"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg></span>
-                  Estimation
-                </span>
-              )}
-              {c.note && (
-                /* Retour #495 : le texte du suivi déroule le suivi, comme la
-                   flèche — sans ouvrir la fiche. La zone cliquable déborde de
-                   quelques pixels autour du texte, pas davantage : le reste
-                   de la carte ouvre toujours le bien. */
-                <span className={`knote${c.chevron && c.noteComplete ? " kdep" : ""}`}
-                  {...(c.chevron && c.noteComplete ? {
-                    role: "button", tabIndex: 0, title: note ? "Replier le suivi" : "Dérouler le suivi",
-                    onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); },
-                    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); } },
-                  } : {})}>
-                  {c.note === "Formulaire" && (
-                    <span className="nic"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></svg></span>
-                  )}
-                  {c.note}
-                </span>
-              )}
-              {c.chevron && (
-                <span className={`kchev${note ? " on" : ""}`} role="button" tabIndex={0}
-                  title={note ? "Replier la note" : "Dérouler la note"}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setNote((v) => !v); } }}>
-                  <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
-                </span>
-              )}
-            </div>
-          )}
-
-          {c.wait && (
+          {/* Le suivi : la frise d'une attente, sinon le dernier échange. */}
+          {c.wait ? (
             <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
               <span className="d">{c.wait.from}</span>
               <span className="mid">
                 {c.noteComplete ? (
                   <span className="lbl kdep" role="button" tabIndex={0}
                     title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); } }}>
+                    onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
                     {c.wait.motif}
                   </span>
                 ) : <span className="lbl">{c.wait.motif}</span>}
                 {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
-                {/* La flèche déroule et replie le dernier suivi (retour #349).
-                    Elle était décorative et se contentait d'être dans le lien
-                    de la carte : cliquer dessus ouvrait donc la fiche. Sans
-                    suivi à montrer, elle redevient un simple ornement plutôt
-                    qu'un bouton qui ne fait rien. */}
+                {/* La flèche déroule et replie le dernier suivi (retour #349). */}
                 {c.noteComplete ? (
                   <span className={`ar act${note ? " on" : ""}`} role="button" tabIndex={0}
                     title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNote((v) => !v); }}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
-                      e.preventDefault(); e.stopPropagation(); setNote((v) => !v);
-                    }}>
+                    onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
                     ▾
                   </span>
                 ) : (
@@ -187,76 +235,39 @@ function Card({
               </span>
               <span className="d">{c.wait.to}</span>
             </div>
-          )}
-
-          {/* Posé après la frise : sur une carte en attente le suivi se lit
-              sous elle, et sur les autres cartes (qui n'ont pas de frise) il
-              reste collé sous la note, exactement comme avant. */}
-          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
-
-          {(c.perf || c.prix || c.fee) && (
-            <div className="krow3">
-              {/* Le rendement, coloré face à celui du secteur (demande MAV).
-                  Sens inverse de la pastille de prix à droite : un rendement
-                  AU-DESSUS du secteur est vert. Pas de référence utilisable,
-                  pas de couleur — la pastille reste neutre plutôt que de
-                  mentir. */}
-              {/* MAV (12/10) : la renta POTENTIELLE, pas l'actuelle, et un
-                  picto devant chaque chiffre pour qu'on sache ce qu'on lit —
-                  le survol le dit en toutes lettres. L'actuelle reste au
-                  survol, avec le secteur. */}
-              {(c.perf?.rentaPot ?? c.perf?.renta) !== undefined && (
-                <span
-                  className={`kperf ${
-                    c.perf!.rentaEcart === undefined || c.perf!.rentaEcart === 0 ? ""
-                      : c.perf!.rentaEcart > 0 ? "kdec" : "ksur"
-                  }`}
-                  title={
-                    (c.perf!.rentaPot !== undefined
-                      ? `Renta potentielle ${pct(c.perf!.rentaPot)}`
-                        + (c.perf!.renta !== undefined ? ` — actuelle ${pct(c.perf!.renta)}` : "")
-                      : `Renta actuelle ${pct(c.perf!.renta!)} (potentielle inconnue)`)
-                    + (c.perf!.rentaRef !== undefined
-                      ? ` — secteur ${pct(c.perf!.rentaRef)}`
-                        + (c.perf!.rentaEcart
-                          ? ` (${c.perf!.rentaEcart > 0 ? "+" : ""}${c.perf!.rentaEcart.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt)`
-                          : " (au niveau du secteur)")
-                      : "")
-                  }>
-                  <svg viewBox="0 0 24 24" aria-hidden><path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" /></svg>
-                  {pct(c.perf!.rentaPot ?? c.perf!.renta!)}
+          ) : (c.date || c.note || c.estimation) ? (
+            <div className="krow2">
+              {c.date && <span className="kdate">{c.date}</span>}
+              {c.estimation && !c.note && (
+                <span className="knote">
+                  <span className="nic"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg></span>
+                  Estimation
                 </span>
               )}
-              {/* L'occupation, en % des lots loués (MAV, 12/10). Neutre : un
-                  immeuble vide est une opportunité pour l'un, un risque pour
-                  l'autre. */}
-              {c.perf?.occupation !== undefined && (
-                <span className="kperf" title={`Occupation : ${c.perf.occupation} % des lots loués`}>
-                  <svg viewBox="0 0 24 24" aria-hidden><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M15 8l2 2M18 5l2 2" /></svg>
-                  {c.perf.occupation} %
+              {c.note && (
+                /* Retour #495 : le texte du suivi déroule le suivi, comme la
+                   flèche — sans ouvrir la fiche. */
+                <span className={`knote${c.noteComplete ? " kdep" : ""}`}
+                  {...(c.noteComplete ? {
+                    role: "button", tabIndex: 0, title: note ? "Replier le suivi" : "Dérouler le suivi",
+                    onClick: basculer(setNote, note), onKeyDown: touche(setNote, note),
+                  } : {})}>
+                  {c.note}
                 </span>
               )}
-              {/* L'écart du prix du jour au prix du SECTEUR, au m². Signé
-                  toujours, pour qu'on ne le confonde pas avec le rendement
-                  juste à gauche — et neutre à zéro, ce qui ne concerne que
-                  douze biens. */}
-              {c.perf?.ecartM2 !== undefined && (
-                <span
-                  className={`kperf ${c.perf.ecartM2 > 0 ? "ksur" : c.perf.ecartM2 < 0 ? "kdec" : ""}`}
-                  title={
-                    "Écart prix secteur : "
-                    + (c.perf.prixM2 ? `${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €/m²` : "prix au m²")
-                    + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €/m²` : " face au secteur")
-                    + (c.perf.prixM2RefLe ? ` (relevé du ${c.perf.prixM2RefLe})` : "")
-                  }>
-                  <svg viewBox="0 0 24 24" aria-hidden><path d="M20 13l-7 7-9-9V4h7z" /><circle cx="7.5" cy="7.5" r="1.3" /></svg>
-                  {c.perf.ecartM2 > 0 ? "+" : ""}{c.perf.ecartM2} %
+              {c.noteComplete && (
+                <span className={`kchev${note ? " on" : ""}`} role="button" tabIndex={0}
+                  title={note ? "Replier le suivi" : "Dérouler le suivi"}
+                  onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
+                  <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
                 </span>
               )}
-              {c.fee && <span className="kfee">{c.fee}</span>}
-              {c.prix && <span className="kprice">{c.prix}</span>}
             </div>
+          ) : (
+            <div className="krow2"><span className="knote vide">Pas encore de suivi</span></div>
           )}
+
+          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
         </div>
     </>
   );

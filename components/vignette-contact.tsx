@@ -307,7 +307,9 @@ export function VignetteContact({
         title={v.estAgent ? "Agent immobilier" : undefined}
       >
         <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
-        {libelle}
+        {/* Dans une span : un nom très long peut alors se couper en « … »
+            (carte du tableau de bord, 26/10) sans emporter l'insigne. */}
+        <span className="vgn-n">{libelle}</span>
         {insigne}
       </button>
 
