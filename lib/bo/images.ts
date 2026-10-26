@@ -60,7 +60,10 @@ export async function versWeb(fichier: File): Promise<ImageWeb> {
     base
       .clone()
       .resize({ width: cote, height: cote, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: cote === COTE_MAX ? 82 : 72, mozjpeg: true })
+      /* #517 : sans mozjpeg, l'encodage est trois à quatre fois plus rapide,
+         pour un fichier ~20 % plus lourd ; l'optimisation des tables de
+         Huffman, elle, ne coûte presque rien. */
+      .jpeg({ quality: cote === COTE_MAX ? 82 : 72, optimiseCoding: true })
       .toBuffer({ resolveWithObject: true });
 
   let pleine: { data: Buffer; info: { width: number; height: number } };

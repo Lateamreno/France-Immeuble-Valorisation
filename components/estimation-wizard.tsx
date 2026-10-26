@@ -27,6 +27,7 @@ import { COMPTE_SITE_URL } from "@/lib/site-public";
 import { MOYENS } from "@/lib/bo/itineraire";
 import { loyerAffiche, loyerStocke, uniteSecteur } from "@/lib/bo/secteur-unites";
 import { analyseAuto } from "@/lib/bo/analyse";
+import { reduireImage } from "@/lib/reduire-image";
 import {
   DEST_PREFIX, aggLocatif, ecartRef, loyerM2Actuel, loyerM2Potentiel, pistesPrix,
 } from "@/lib/bo/marche";
@@ -47,9 +48,9 @@ const IC_DEST = PICTOS_DEST;
 
 /* Fondamentaux : la note se choisit en étoiles, le libellé suit (comme le BO). */
 const FONDAMENTAUX = [
-  { cle: "bati", label: "Bati", libelles: ["à rénover entièrement", "gros travaux à prévoir", "en état d'usage", "en bon état", "comme neuf"] },
+  { cle: "bati", label: "Bati", libelles: ["à rénover entièrement", "gros travaux à prévoir", "en état d'usage", "en bon état", "rénové ou très bon état"] },
   { cle: "emp", label: "Emplacement", libelles: ["emplacement difficile", "emplacement moyen", "correctement situé", "bien situé", "idéalement situé"] },
-  { cle: "lot", label: "Lots", libelles: ["à rénover entièrement", "travaux à prévoir", "en état d'usage", "en bon état", "comme neufs"] },
+  { cle: "lot", label: "Lots", libelles: ["à rénover entièrement", "travaux à prévoir", "en état d'usage", "en bon état", "rénovés ou très bon état"] },
 ] as const;
 
 /* Le BO affiche des libellés courts ; la valeur enregistrée reste celle du
@@ -718,20 +719,27 @@ export function EstimationWizard({
   const inputPhoto = useRef<HTMLInputElement>(null);
   const [photoKo, setPhotoKo] = useState<string | null>(null);
   const [photoEnvoi, setPhotoEnvoi] = useState(false);
+  /* #517 : la photo choisie s'affiche tout de suite, pendant qu'elle part. */
+  const [apercu, setApercu] = useState<string | null>(null);
   const deposerPhoto = (f: File | undefined) => {
     if (!f) return;
     setPhotoKo(null);
     setPhotoEnvoi(true);
+    const local = URL.createObjectURL(f);
+    setApercu(local);
     start(async () => {
       try {
         const fd = new FormData();
-        fd.set("file", f);
+        // #517 : réduite dans le navigateur, elle monte en une fraction du temps.
+        fd.set("file", await reduireImage(f));
         const r = await uploadPhoto(immeubleId, "Principale", null, fd);
         if (!r.ok) setPhotoKo(r.message);
       } catch (e) {
         setPhotoKo(e instanceof Error ? e.message : String(e));
       } finally {
         setPhotoEnvoi(false);
+        setApercu(null);
+        URL.revokeObjectURL(local);
         if (inputPhoto.current) inputPhoto.current.value = "";
       }
     });
@@ -1357,9 +1365,10 @@ export function EstimationWizard({
                       </span>
                       {a && "photo" in a && (
                         <span className="est-manq-act">
+                          {apercu && <img className="est-manq-apercu" src={apercu} alt="" />}
                           <button type="button" className="fadd" disabled={photoEnvoi}
                             onClick={() => inputPhoto.current?.click()}>
-                            {photoEnvoi ? "Dépôt…" : "Déposer une photo"}
+                            {photoEnvoi ? "Envoi…" : "Déposer une photo"}
                           </button>
                           {onAller && (
                             <button type="button" className="est-manq-lien" onClick={() => onAller("photos")}>

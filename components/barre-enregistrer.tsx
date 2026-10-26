@@ -5,13 +5,13 @@
 // Règle générale du site, pas un habillage d'écran : toute page qui demande un
 // enregistrement porte cette barre, collée en bas, bouton à droite.
 //
-// Elle est TOUJOURS là (retour #196) — elle ne se montrait avant qu'en cas de
-// modification, ce qui obligeait l'agent à deviner si son écran était à jour
-// ou s'il n'avait rien touché. Trois états, et un seul coup d'œil suffit :
+// Retours #515 et #516 (revirement du #196, où elle était toujours là) : elle
+// n'apparaît QUE quand quelque chose a été modifié, et disparaît une fois
+// enregistré ou annulé.
 //
-//   · rien modifié      → bouton gris, inactif, « Tout est enregistré » ;
-//   · modification      → bouton vert, actif, et un bouton Annuler à côté ;
-//   · après l'envoi     → retour au gris, jusqu'à la modification suivante.
+//   · rien modifié      → pas de barre ;
+//   · modification      → la barre monte : bouton vert, et Annuler à côté ;
+//   · pendant l'envoi   → « Enregistrement… », puis elle s'en va.
 //
 // `onAnnuler` rétablit les valeurs enregistrées : c'est le filet de l'agent
 // qui s'est trompé de champ et ne sait plus ce qu'il y avait avant.
@@ -37,6 +37,7 @@ export function BarreEnregistrer({
   /** Message à gauche, sinon le rappel par défaut. */
   children?: React.ReactNode;
 }) {
+  if (!modifie && !pending) return null;
   return (
     <div className={`savebar${plein ? " plein" : ""}${modifie ? "" : " calme"}`} role="status">
       <span className="savebar-t">

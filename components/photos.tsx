@@ -16,6 +16,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Modale } from "@/components/modale";
+import { reduireImage } from "@/lib/reduire-image";
 import {
   associerPhoto, basculerCadragePhoto, basculerDiffusionPhoto, definirPhotoPrincipale, deletePhoto,
   fixerPhotosDossier, ordonnerPhotos, rafraichirFiche, uploadPhoto,
@@ -51,34 +52,6 @@ const LIBELLE: Record<string, string> = {
   Cadastre: "Cadastre",
   Carte: "Carte",
 };
-
-const COTE_CLIENT = 2400;
-
-/**
- * Réduit l'image dans le navigateur avant l'envoi : une rafale de 30 photos
- * d'iPhone fait 150 Mo bruts, quelques mégaoctets une fois redimensionnée.
- * Un HEIC que le navigateur ne sait pas décoder (tout sauf Safari) part tel
- * quel : le serveur s'en charge.
- */
-async function reduire(f: File): Promise<File> {
-  if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic|heif|avif|gif)$/i.test(f.name)) return f;
-  try {
-    const bmp = await createImageBitmap(f);
-    const k = Math.min(1, COTE_CLIENT / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * k);
-    c.height = Math.round(bmp.height * k);
-    const ctx = c.getContext("2d");
-    if (!ctx) return f;
-    ctx.drawImage(bmp, 0, 0, c.width, c.height);
-    bmp.close();
-    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.85));
-    if (!blob) return f;
-    return new File([blob], f.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
-  } catch {
-    return f;
-  }
-}
 
 /* ---------------------------------------------------------------- écran --- */
 
@@ -167,14 +140,18 @@ export function PhotosEcran({ b }: { b: BienData }) {
       const rate: string[] = [];
       const avertis: string[] = [];
       let rang = toutes.length;
+      let rafraichie = false;
       for (let i = 0; i < liste.length; i++) {
         try {
           const fd = new FormData();
-          fd.set("file", await reduire(liste[i]));
+          fd.set("file", await reduireImage(liste[i]));
           // Une seule photo principale : les suivantes rejoignent la façade.
           // `true` = pas de revalidation par fichier : on rafraîchit une fois
           // la rafale terminée (sinon trente photos = trente rendus).
-          const r = await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "" : type, null, fd, rang++, true);
+          // #517 : la dernière photo rafraîchit la fiche elle-même — un aller-retour de moins.
+          const derniere = i === liste.length - 1;
+          const r = await uploadPhoto(immeubleId, i === 0 ? type : type === "Principale" ? "" : type, null, fd, rang++, !derniere);
+          if (derniere && r.ok) rafraichie = true;
           if (!r.ok) rate.push(r.message);
           else if (r.avertissement) avertis.push(`${liste[i].name} — ${r.avertissement}`);
         } catch (e) {
@@ -184,7 +161,7 @@ export function PhotosEcran({ b }: { b: BienData }) {
         }
         setEnvoi({ fait: i + 1, total: liste.length });
       }
-      await rafraichirFiche(immeubleId);
+      if (!rafraichie) await rafraichirFiche(immeubleId);
       setEnvoi(null);
       setOrdre(null);
       const messages = [
