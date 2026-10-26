@@ -72,6 +72,10 @@ export function ListeServeur({
         <div className="lst-search">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder={searchPlaceholder} value={saisie} onChange={(e) => setSaisie(e.target.value)} />
+          {saisie && (
+            <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+              onClick={() => setSaisie("")}>✕</button>
+          )}
         </div>
         <span className="lst-count">{total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}</span>
       </div>

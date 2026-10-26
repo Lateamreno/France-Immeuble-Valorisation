@@ -30,20 +30,17 @@ export const NAV: NavItem[] = [
      suit la fréquence d'usage, pas la logique du métier. */
   { href: "/contacts", label: "Contacts" },
   { href: "/mandats", label: "Mandats" },
-  { href: "/propositions", label: "Propositions" },
-  /* Les relances. Juste sous Propositions, parce que c'est la même matière
-     vue par l'autre bout : la proposition est ce qu'on a envoyé, la relance
-     est ce qu'on attend. Et surtout, l'écran raisonne PAR CLIENT quand tout
-     le reste du BO raisonne par immeuble — il lui fallait sa propre entrée. */
+  /* Retours #533 et #534 (26/10) : Propositions, Visites, Offres et Suivi /
+     Rappels sortent du menu — « ça sert à rien », tout se fait depuis les
+     fiches. Les écrans et leurs adresses restent, seul le raccourci part.
+     Les relances raisonnent PAR CLIENT quand le reste du BO raisonne par
+     immeuble : elles gardent leur entrée. */
   { href: "/relances", label: "Relances" },
   { href: "/questions", label: "Questions" },
-  { href: "/visites", label: "Visites" },
-  { href: "/offres", label: "Offres" },
   /* Prospection en dur : les immeubles détenus par une société et PAS en
      copropriété — la cible de la découpe. Elle vit à côté des Recherches,
      qui sont la demande, quand celle-ci est l'offre à aller chercher. */
   { href: "/prospection", label: "Prospection" },
-  { href: "/suivi", label: "Suivi / Rappels" },
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },
   { href: "#mailing", label: "Mailing" },

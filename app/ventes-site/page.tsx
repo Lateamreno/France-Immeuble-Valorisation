@@ -65,7 +65,8 @@ function Table({ lignes, limite }: { lignes: LigneVente[]; limite: number }) {
                 <td className="n">{euros(v.prix) ?? "—"}</td>
                 <td className={`n ${v.faits >= 6 ? "" : "pauvre"}`}>{v.faits ? `${v.faits}/13` : "—"}</td>
                 <td>
-                  {v.etat === "avec_recit" ? <Pastille ton="vert">En ligne</Pastille>
+                  {v.etat === "retiree" ? <Pastille ton="gris" titre="Retirée du site depuis l'écran Diffusion">Retirée</Pastille>
+                    : v.etat === "avec_recit" ? <Pastille ton="vert">En ligne</Pastille>
                     : v.brouillon ? <Pastille ton="bleu">À relire</Pastille>
                     : v.etat === "sans_recit" ? <Pastille ton="gris">Sans récit</Pastille>
                     : v.etat === "inconnu" ? <Pastille ton="gris" titre="La base du site n'a pas répondu">État inconnu</Pastille>
