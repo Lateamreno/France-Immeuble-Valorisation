@@ -22,7 +22,7 @@ import { dateMatrice, lireMatrice, matriceCsv, rempli } from "@/lib/bo/matrice";
 import { ChampDate } from "@/components/champ-date";
 import { PhotosDuLot } from "@/components/photos";
 import { BadgeDpe } from "@/components/pictos";
-import { PICTOS_DEST } from "@/components/pictos-destination";
+import { PICTOS_DEST, PICTOS_DEST_PLEIN } from "@/components/pictos-destination";
 import { LotPleinEcran, LotsCartes } from "@/components/lots-mobile";
 import {
   compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, INDICES_BAIL, RATTACHE, TYPES_BAIL, TYPES_DPE as DPES,
@@ -1215,6 +1215,16 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     const l = N(loyer), c = N(carrez);
     return l && c && l > 0 && c > 0 ? l / c : undefined;
   };
+  /* Retour MAV du 26/10 : au survol d'une case €/m², le vrai loyer au m² —
+     par mois pour l'habitation, par an pour le commerce, le bureau et
+     l'entrepôt, comme on les cote. Sur la surface Carrez, à défaut au sol. */
+  const loyerReel = (r: Row, loyer: string, quoi: string) => {
+    const l = N(loyer), s = N(r.surface_carrez) || N(r.surface_sol);
+    if (!l || !s || l <= 0 || s <= 0 || compteAuLot(r.Destination)) return undefined;
+    const annuel = ["Commerce", "Bureau", "Logistique"].includes(r.Destination);
+    const v = annuel ? (l * 12) / s : l / s;
+    return `${quoi} : ${v.toLocaleString("fr-FR", { maximumFractionDigits: annuel ? 0 : 2, minimumFractionDigits: annuel ? 0 : 2 })} €/m²/${annuel ? "an" : "mois"}`;
+  };
   const ecart = (v?: number) => {
     if (v === undefined || !refM2) return null;
     const p = Math.round(((v - refM2) / refM2) * 100);
@@ -1266,9 +1276,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       case "dest":
         return (
           <td key={c} className={cls(c, "dest")} title={r.Destination}>
-            <span className="destic">
+            <span className="destic plein">
               {r.Destination
-                ? <svg viewBox="0 0 24 24">{IC_DEST[r.Destination] ?? IC_DEST.Annexe}</svg>
+                ? <svg viewBox="0 0 24 24">{PICTOS_DEST_PLEIN[r.Destination] ?? PICTOS_DEST_PLEIN.Annexe}</svg>
                 : <i>—</i>}
             </span>
             <select className="lcell inv" value={r.Destination}
@@ -1317,7 +1327,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       case "hc": return nombre(c, r, "loyer", "€");
       case "hcm2": {
         const act = m2(r.loyer, r.surface_carrez);
-        return <td key={c} className={cls(c, "na", "pc")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
+        return <td key={c} className={cls(c, "na", "pc")} data-info={loyerReel(r, r.loyer, "Loyer réel")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
       }
       case "hcmax": {
         /* Retour #466 : « quand un loyer potentiel est supérieur au loyer
@@ -1333,7 +1343,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       }
       case "hcmaxm2": {
         const max = m2(r.loyer_max || r.loyer, r.surface_carrez);
-        return <td key={c} className={cls(c, "na", "pc")}>{max ? ecart(max) ?? `${max.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
+        return <td key={c} className={cls(c, "na", "pc")} data-info={loyerReel(r, r.loyer_max || r.loyer, "Loyer max")}>{max ? ecart(max) ?? `${max.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
       }
       case "etat":
         return (

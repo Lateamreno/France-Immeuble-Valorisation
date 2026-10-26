@@ -1782,6 +1782,19 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
 .destic { display: inline-grid; place-items: center; color: var(--slate-2); }
 .destic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .destic i { font-style: normal; color: var(--gray-lt); }
+/* Pictos pleins dans le tableau des lots (retour MAV du 26/10). */
+.destic.plein svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+/* Le vrai loyer au m² au survol d'une case €/m² : par mois pour l'habitation,
+   par an pour le commerce et le bureau. Une bulle, pas le `title` du
+   navigateur, qui arrive tard et se lit mal. */
+.ltable.v2 td.pc[data-info] { position: relative; cursor: default; }
+.ltable.v2 td.pc[data-info]:hover { overflow: visible; z-index: 3; }
+.ltable.v2 td.pc[data-info]:hover::after {
+  content: attr(data-info); position: absolute; left: 50%; bottom: calc(100% + 3px); transform: translateX(-50%);
+  background: #2b2f36; color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1;
+  padding: 6px 9px; border-radius: 4px; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+}
 .ltable .lcell.inv { position: absolute; inset: 0; width: 100% !important; opacity: 0; cursor: pointer; }
 
 /* --- Contact et note A/B/C/D sur les cartes de liste (comme le BO) --- */
