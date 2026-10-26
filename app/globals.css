@@ -8481,9 +8481,10 @@ button { font-weight: 700; }
 .dif-l .px small { font-family: var(--font-body); font-size: 11.5px; color: var(--gray-txt); font-weight: 400; }
 .dif-l .dif-lien { font-size: 12px; white-space: nowrap; }
 
-/* Retour #466 : un loyer potentiel au-dessus du loyer actuel se lit en vert,
-   comme dans le BO Bubble. */
-.ltable td.up .lcell.num { color: var(--green); font-weight: 700; }
+/* Retour #466 : un loyer potentiel au-dessus du loyer actuel se lisait en
+   vert. Revirement de MAV le 27/10 : « laisse les loyers actuel et potentiel
+   en noir, c'est le €/m² qui est coloré ». La classe `up` reste posée, sans
+   effet. */
 
 /* Retours #459 et #460 : une photo dont Bubble n'a plus le fichier. */
 .gph.cassee { outline: 2px solid var(--red); outline-offset: -2px; }
@@ -8975,8 +8976,10 @@ button.aj-lh:hover { background: #fafafa; }
    à cocher garde sa colonne à part. Police et hauteur de ligne plus grandes
    sur un grand écran, plus serrées en dessous de 1 700 px. Cette règle
    remplace l'alternance du #380. */
-.ltable.v2 { --fs: 12.5px; --rh: 36px; font-size: var(--fs); color: #2b2f36; border-right: 2px solid #4a4f55; border-bottom: 2px solid #4a4f55; }
-@media (min-width: 1700px) { .ltable.v2 { --fs: 13.5px; --rh: 43px; } }
+/* Taille et couleur des polices relevées sur le BO Bubble (retour MAV du
+   27/10 : « carrément lisible, on voit mieux les chiffres ») : Poppins 13 px,
+   chiffres en noir, unités en gris clair, lignes de 33 px. */
+.ltable.v2 { --fs: 13px; --rh: 33px; font-family: var(--font-title); font-size: var(--fs); color: #2b2f36; border-right: 2px solid #4a4f55; border-bottom: 2px solid #4a4f55; }
 .ltable-wrap:has(> .ltable.v2) { background: #fff; }
 .ltable.v2 tbody tr:nth-child(odd), .ltable.v2 tbody tr:nth-child(even) { background: #fff; height: var(--rh); }
 .ltable.v2 tbody tr:hover { background: #f2f3f4; }
@@ -9004,3 +9007,12 @@ button.aj-lh:hover { background: #fafafa; }
 /* Bat., Etg, N° : des colonnes étroites, le chiffre centré sans marge. */
 .ltable.v2 td.c-bat .lcell, .ltable.v2 td.c-etg .lcell, .ltable.v2 td.c-num .lcell { padding: 0 1px; text-align: center; }
 .ltable.v2 thead th.c-bat, .ltable.v2 thead th.c-etg, .ltable.v2 thead th.c-num { padding: 0 1px; text-overflow: clip; }
+.ltable.v2 td.na i { font-size: 10.5px; color: #a7adb3; margin-left: 2px; }
+.ltable.v2 .lcell.red { font-weight: 400; }
+.ltable.v2 .pc span { font-size: 11.5px; font-weight: 500; }
+.ltable.v2 thead th { font-size: 12px; }
+.ltable.v2 th.grp { font-size: 13px; font-weight: 600; }
+/* La colonne qui prend le reste (commentaire) : l'ancienne règle « dernière
+   cellule à 1 % » visait l'en-tête de groupe « Autres » et l'écrasait. */
+.ltable.v2 td:last-child, .ltable.v2 th:last-child { width: auto; }
+@media (max-width: 1699px) { .ltable.v2 { --fs: 12px; --rh: 32px; } }

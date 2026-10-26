@@ -364,6 +364,28 @@ const N = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
+/** « 1 180 », « 57,91 » : le nombre à la française, hors saisie. */
+const enFrancais = (s: string) => {
+  const v = N(s);
+  return v === undefined ? s : v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+};
+
+/**
+ * Une case de nombre (retour MAV du 27/10 : « passe au format français »).
+ * Hors saisie, le nombre s'affiche à la française ; à la saisie, la virgule
+ * remplace le point et rien d'autre ne bouge. La base reçoit ce qui est tapé,
+ * que `nb` sait lire (virgule, espaces).
+ */
+function CaseNombre({ value, onChange, onFocus }: { value: string; onChange: (v: string) => void; onFocus?: () => void }) {
+  const [saisie, setSaisie] = useState(false);
+  return (
+    <input className="lcell num" value={saisie ? value.replace(".", ",") : enFrancais(value)}
+      onFocus={() => { setSaisie(true); onFocus?.(); }}
+      onBlur={() => setSaisie(false)}
+      onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
 /* Les types de bail qui veulent dire « personne dedans ». */
 const BAIL_VIDE = new Set(["", "Vide", "n.c."]);
 
@@ -508,6 +530,10 @@ type Colonne = {
      normalisées à 100 % sur les seules colonnes affichées : masquer une
      colonne ne doit pas faire grossir la case à cocher (retour #52). */
   poids: number;
+  /* Retour MAV du 27/10 : largeur fixe en pixels, relevée sur l'état locatif
+     du BO Bubble. Le commentaire n'en a pas : il prend ce qui reste. Une
+     colonne sans `px` en reçoit une tirée de son poids. */
+  px?: number;
   /* En vue compacte il reste moins de colonnes : les repères (étage, numéro,
      destination) peuvent respirer, sinon ils tronquent leur contenu. */
   poidsCompact?: number;
@@ -516,30 +542,33 @@ type Colonne = {
   large?: boolean;
 };
 
+/** Les colonnes de texte libre, qui prennent la largeur restante. */
+const LIBRES = new Set<ColKey>(["commentaire", "b_com", "l_com"]);
+
 export const COLONNES: Record<ColKey, Colonne> = {
-  bat: { label: "Bat.", menu: "Bâtiment", poids: 1.8, large: true },
-  etg: { label: "Etg", menu: "Étage", poids: 2.1, poidsCompact: 3.4 },
-  num: { label: "N°", menu: "Numéro", poids: 2.5, poidsCompact: 3.4 },
-  dest: { label: "Dest.", menu: "Destination", poids: 2.1, poidsCompact: 3.2 },
-  type: { label: "Type", poids: 6.8 },
-  carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.6 },
-  sol: { label: "Au sol", menu: "Surface au sol", poids: 5.6, large: true },
-  bail: { label: "Type bail", menu: "Type de bail", poids: 7.9 },
-  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 6.0 },
-  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 4.2, large: true },
-  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 6.0 },
-  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.2, large: true },
-  etat: { label: "Etat", menu: "État du lot", poids: 5.2 },
-  travaux: { label: "Travaux", poids: 4.6, large: true },
-  dpe: { label: "DPE", poids: 3.6 },
+  bat: { label: "Bat.", menu: "Bâtiment", poids: 1.8, px: 30, large: true },
+  etg: { label: "Etg", menu: "Étage", poids: 2.1, px: 32, poidsCompact: 3.4 },
+  num: { label: "N°", menu: "Numéro", poids: 2.5, px: 34, poidsCompact: 3.4 },
+  dest: { label: "Dest.", menu: "Destination", poids: 2.1, px: 34, poidsCompact: 3.2 },
+  type: { label: "Type", poids: 6.8, px: 100 },
+  carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.6, px: 80 },
+  sol: { label: "Au sol", menu: "Surface au sol", poids: 5.6, px: 80, large: true },
+  bail: { label: "Type bail", menu: "Type de bail", poids: 7.9, px: 78 },
+  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 6.0, px: 82 },
+  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 4.2, px: 58, large: true },
+  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 6.0, px: 82 },
+  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.2, px: 58, large: true },
+  etat: { label: "Etat", menu: "État du lot", poids: 5.2, px: 80 },
+  travaux: { label: "Travaux", poids: 4.6, px: 70, large: true },
+  dpe: { label: "DPE", poids: 3.6, px: 44 },
   /* « Date réno. » ne tenait pas dans 3.6 : l'en-tête se coupait et l'année
      saisie débordait de sa case (retour #251). */
-  renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, poidsCompact: 6.0 },
+  renov: { label: "Date réno.", menu: "Date de rénovation", poids: 5.4, px: 58, poidsCompact: 6.0 },
   /* En-têtes courts : à seize colonnes, « Loyer initial » se coupait en
      « Loyer ini… » ; le libellé entier reste dans le menu Colonnes. */
   b_loyer: { label: "Loyer init.", menu: "Loyer initial", poids: 5.0 },
   b_dg: { label: "Dépôt", menu: "Dépôt de garantie", poids: 5.0 },
-  b_entree: { label: "Entrée", menu: "Date d'entrée", poids: 7.0 },
+  b_entree: { label: "Entrée", menu: "Date d'entrée", poids: 7.0, px: 72 },
   b_indice: { label: "Indice", poids: 4.0 },
   b_i0: { label: "Ind. sign.", menu: "Indice à la signature", poids: 4.8 },
   b_i1: { label: "Ind. actuel", menu: "Indice actuel", poids: 4.8 },
@@ -554,7 +583,7 @@ export const COLONNES: Record<ColKey, Colonne> = {
   l_email: { label: "E-mail", poids: 9.0 },
   l_com: { label: "Comm. locataire", menu: "Commentaire du locataire", poids: 10, large: true },
   commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 9.0 },
-  photos: { label: "Photos", poids: 2.9, large: true },
+  photos: { label: "Photos", poids: 2.9, px: 54, large: true },
 };
 
 /** Les groupes de l'en-tête, dans l'ordre du tableau. */
@@ -745,12 +774,15 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const wrap = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [mobile, setMobile] = useState(false);
+  /** La largeur disponible, pour choisir entre pixels fixes et proportions. */
+  const [dispo, setDispo] = useState(0);
   useEffect(() => {
     const el = wrap.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(([e]) => {
       setCompact(e.contentRect.width < SEUIL_COMPACT);
       setMobile(e.contentRect.width < SEUIL_MOBILE);
+      setDispo(e.contentRect.width);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -801,6 +833,17 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const poids = (c: ColKey) => (compacte ? COLONNES[c].poidsCompact : undefined) ?? COLONNES[c].poids;
   const totalPoids = colonnes.reduce((s2, c) => s2 + poids(c), 0);
   const largeur = (c: ColKey) => (poids(c) / totalPoids) * 100;
+  /* Retour MAV du 27/10 : des colonnes à la largeur du BO Bubble, en pixels ;
+     les commentaires prennent le reste, sans descendre sous 120 px. */
+  const pixels = (c: ColKey) => COLONNES[c].px ?? Math.round(poids(c) * 14);
+  const libres = colonnes.filter((c) => LIBRES.has(c));
+  const largeurMini = 22 + colonnes.filter((c) => !LIBRES.has(c)).reduce((t, c) => t + pixels(c), 0) + libres.length * 120;
+  /* Quand la place manque (écran de portable), les colonnes rétrécissent
+     toutes dans les mêmes proportions plutôt que de déborder. */
+  const fixe = dispo >= largeurMini;
+  const largeurCol = (c: ColKey) => fixe
+    ? (LIBRES.has(c) ? undefined : pixels(c))
+    : `${((LIBRES.has(c) ? 120 : pixels(c)) / largeurMini) * 100}%`;
 
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
 
@@ -1248,9 +1291,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   /** Une case de nombre, avec son unité à droite. */
   const nombre = (c: ColKey, r: Row, champ: keyof Row, unite?: string) => (
     <td key={c} className={cls(c, "na")}>
-      <input className="lcell num" value={r[champ] as string}
+      <CaseNombre value={r[champ] as string}
         onFocus={() => entrer(r, champ)}
-        onChange={(e) => edit(r.id, champ, e.target.value)} />
+        onChange={(v) => edit(r.id, champ, v)} />
       {unite && <i>{unite}</i>}
     </td>
   );
@@ -1338,7 +1381,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const up = Number.isFinite(n(r.loyer_max)) && n(r.loyer_max) > (Number.isFinite(n(r.loyer)) ? n(r.loyer) : 0);
         return (
           <td key={c} className={cls(c, "na", up && "up")}>
-            <input className="lcell num" value={r.loyer_max} onChange={(e) => edit(r.id, "loyer_max", e.target.value)} />
+            <CaseNombre value={r.loyer_max} onChange={(v) => edit(r.id, "loyer_max", v)} />
             <i>€</i>
           </td>
         );
@@ -1564,7 +1607,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
               renormalisées sur les seules colonnes affichées (retour #52). */}
           <colgroup>
             <col style={{ width: 22 }} />
-            {colonnes.map((c) => <col key={c} style={{ width: `${largeur(c)}%` }} />)}
+            {colonnes.map((c) => <col key={c} style={{ width: largeurCol(c) }} />)}
           </colgroup>
           <thead>
             <tr>
