@@ -26,6 +26,8 @@
  * Rien n'est aspiré ailleurs.
  */
 
+import { enregistrerRecoupes, lireRecoupe, recouper, type Recoupe } from "@/lib/bo/recoupement";
+
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -231,6 +233,26 @@ export async function ficheDirigeants(siren: string): Promise<FicheDirigeants> {
       dirigeants: f.dirigeants,
       contacts,
     };
+  } catch (e) {
+    return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Les autres sociétés que dirigent les gérants — la porte vers un e-mail
+ * (génération de leads, étape 1). Lu en base si le pilote ou un agent l'a déjà
+ * fait, sinon demandé à l'annuaire et gardé.
+ */
+export async function recoupementSociete(siren: string, dep?: string, forcer = false): Promise<
+  { ok: true; r: Recoupe } | { ok: false; erreur: string }
+> {
+  if (!/^\d{9}$/.test(siren)) return { ok: false, erreur: "SIREN invalide." };
+  try {
+    const deja = forcer ? null : await lireRecoupe(siren);
+    if (deja) return { ok: true, r: deja };
+    const r = await recouper(siren, dep);
+    await enregistrerRecoupes([r]);
+    return { ok: true, r };
   } catch (e) {
     return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
   }
