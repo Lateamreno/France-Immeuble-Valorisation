@@ -5966,7 +5966,7 @@ export async function cloturerOperation(immeubleId: string, operationId: string)
 /* ---------- Questions reçues depuis le site (retour #118) ---------- */
 
 /** Clôture une question, avec la remarque qui explique ce qui a été fait. */
-export async function cloturerQuestion(questionId: string, remarques: string, agentId?: string) {
+export async function cloturerQuestion(questionId: string, remarques: string, agentId?: string, motif?: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_question",
     p_id: questionId,
@@ -5975,8 +5975,42 @@ export async function cloturerQuestion(questionId: string, remarques: string, ag
       date_cloture: new Date().toISOString(),
       remarques_cloture: remarques || null,
       ...(agentId ? { CLOTUROR: agentId } : {}),
+      /* Retour #512 : le motif coché, lisible par les statistiques ; « test »
+         permet de sortir les essais des chiffres. */
+      ...(motif ? { motif_cloture: motif, test: motif === "test" } : {}),
     },
   });
+  if (agentId && motif !== "test") await attribuerAuTraitant(questionId, agentId);
+  revalidatePath("/questions");
+}
+
+/**
+ * Retour #513 : une demande venue du site n'est attribuée à personne ; le
+ * contact (et la recherche née de la demande) va à l'agent qui la traite
+ * réellement, au premier geste — appel, envoi du dossier, refus, clôture.
+ * Un contact déjà suivi par quelqu'un ne change pas de mains.
+ */
+export async function attribuerAuTraitant(questionId: string, agentId: string) {
+  if (!agentId) return;
+  const q = await bqOne("bo_question", questionId);
+  if (!q || !(q.demande_dossier === true || q.nature || String(q.source ?? "").startsWith("Site"))) return;
+  const contactId = typeof q.CONTACT === "string" ? q.CONTACT : undefined;
+  if (contactId) {
+    const c = await bqOne("bo_contact", contactId);
+    if (c && !c.SUIVI) {
+      await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: { SUIVI: agentId, attribue_au_traitement_le: new Date().toISOString() } });
+    }
+  }
+  const rechercheId = typeof q.RECHERCHE === "string" ? q.RECHERCHE : undefined;
+  if (rechercheId) {
+    const r = await bqOne("bo_recherche", rechercheId);
+    if (r && !r.SUIVI) await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: rechercheId, p_patch: { SUIVI: agentId } });
+  }
+}
+
+/** « Envoyer le dossier » vient de partir depuis une demande : celui qui l'a envoyé la traite (#513). */
+export async function demandeTraitee(questionId: string, agentId: string) {
+  await attribuerAuTraitant(questionId, agentId);
   revalidatePath("/questions");
 }
 
@@ -6007,15 +6041,16 @@ export async function noterAppelDemande(questionId: string, notes: string, agent
     },
   });
   await rpc("bo_patch_doc", { p_table: "bo_question", p_id: questionId, p_patch: { appele_le: now, appele_par: agentId } });
+  await attribuerAuTraitant(questionId, agentId);
   revalidatePath("/questions");
   if (immeubleId) refresh(immeubleId);
 }
 
 /** « Refuser » une demande de dossier : elle se clôture avec son motif. */
-export async function refuserDemandeDossier(questionId: string, motif: string, agentId?: string) {
-  if (!motif.trim()) throw new Error("Le motif est obligatoire.");
+export async function refuserDemandeDossier(questionId: string, motif: string, agentId?: string, code?: string) {
+  if (!motif.trim() && !code) throw new Error("Le motif est obligatoire.");
   await rpc("bo_patch_doc", { p_table: "bo_question", p_id: questionId, p_patch: { dossier_refuse: true } });
-  await cloturerQuestion(questionId, `Dossier refusé : ${motif.trim()}`, agentId);
+  await cloturerQuestion(questionId, `Dossier refusé : ${motif.trim() || code}`, agentId, code);
 }
 
 /** Rouvre une question clôturée par erreur. */

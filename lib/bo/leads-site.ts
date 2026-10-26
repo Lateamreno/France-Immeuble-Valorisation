@@ -118,6 +118,10 @@ async function contactDuLead(ref: string, p: {
     const [c] = await lire(`bo_contact?select=id,data&data->>email=ilike.${encodeURIComponent(motif)}&limit=1`);
     if (c) return { id: c.id, nouveau: false };
   }
+  /* Retour #511 : « il a créé un contact alors qu'il y a déjà le numéro de
+     portable associé à quelqu'un ». Après l'e-mail, le téléphone. */
+  const parTel = await contactParTelephone(p.telephone, p.nom);
+  if (parTel) return { id: parTel, nouveau: false };
   const id = `app_site_${ref}_c`;
   if (await existe("bo_contact", id)) return { id, nouveau: false };
   const now = new Date().toISOString();
@@ -138,6 +142,33 @@ async function contactDuLead(ref: string, p: {
     "Modified Date": now,
   });
   return { id, nouveau: true };
+}
+
+/** Les neuf derniers chiffres d'un numéro : « +33 6 12… », « 06.12… » et « 0612… » se rejoignent. */
+const neufChiffres = (v: unknown) => {
+  const d = String(v ?? "").replace(/\D/g, "");
+  return d.length >= 9 ? d.slice(-9) : null;
+};
+
+/**
+ * Un contact qui porte déjà ce numéro (portable ou fixe). La base stocke les
+ * numéros sous toutes les formes : on ramène large sur les quatre derniers
+ * chiffres, puis on compare les neuf derniers. Plusieurs fiches : celle qui
+ * porte le même nom, sinon la plus récemment modifiée.
+ */
+async function contactParTelephone(tel?: string, nom?: string): Promise<string | null> {
+  const cle = neufChiffres(tel);
+  if (!cle) return null;
+  const motif = encodeURIComponent(`*${cle.slice(-4, -2)}*${cle.slice(-2)}`);
+  const candidats = await lire(
+    `bo_contact?select=id,data&or=(data->>portable.ilike.${motif},data->>fixe.ilike.${motif})&limit=300`,
+  );
+  const memes = candidats.filter((c) => c.data.archived !== true && [c.data.portable, c.data.fixe].some((v) => neufChiffres(v) === cle));
+  if (!memes.length) return null;
+  const n = (nom ?? "").trim().toLowerCase();
+  const homonyme = n ? memes.find((c) => String(c.data.nom ?? "").trim().toLowerCase() === n) : undefined;
+  const recent = [...memes].sort((x, y) => String(y.data["Modified Date"] ?? "").localeCompare(String(x.data["Modified Date"] ?? "")))[0];
+  return (homonyme ?? recent).id;
 }
 
 /** La clé d'un compte du site : un UUID, sinon rien. */
@@ -461,20 +492,20 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
   if (!T(b.email) && !T(b.telephone)) throw new LeadInvalide("Ni e-mail ni téléphone.");
   const bienId = T(b.bien, 80);
   const [im] = bienId ? await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(bienId)}`) : [];
-  // La demande va à l'agent du bien ; sans bien reconnu, à l'agent par défaut.
-  const agentId = T(im?.data.AGENT) ?? (await agentParDefaut());
+  /* Retour #513 : la demande n'est attribuée à personne. Le contact (et sa
+     recherche) va à l'agent qui la traite réellement — au premier appel, envoi
+     de dossier, refus ou clôture (voir `attribuerAuTraitant`). */
   const source = "Site - Fiche à vendre";
   const compte = cleCompte(b.compte);
   const contact = await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
-    source, agentId, noteD: true, acheteur: true, compte,
+    source, noteD: true, acheteur: true, compte,
   });
-  const rechercheId = im ? await rechercheDeLaDemande(ref, contact, im, T(b.bienTitre, 200), agentId) : undefined;
+  const rechercheId = im ? await rechercheDeLaDemande(ref, contact, im, T(b.bienTitre, 200), undefined) : undefined;
   const now = new Date().toISOString();
   await inserer("bo_question", questionId, {
     source,
     demande_dossier: true,
-    "suivi par": agentId ? [agentId] : undefined,
     ended: false,
     message: T(b.message, 5000) ?? (T(b.bienTitre) ? `Demande de dossier : ${T(b.bienTitre)}` : "Demande de dossier"),
     email: T(b.email, 200)?.toLowerCase(),
@@ -574,14 +605,12 @@ async function questionCompte(id: string, p: {
   nature: "visite" | "interet" | "prix"; contactId: string; immeubleId: string; message: string; source: string;
 }) {
   if (await existe("bo_question", id)) return;
-  const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(p.immeubleId)}`);
   const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(p.contactId)}`);
-  const agentId = T(im?.data.AGENT) ?? (await agentParDefaut());
+  // Retour #513 : pas d'attribution d'office ; c'est celui qui traite qui la prend.
   const now = new Date().toISOString();
   await inserer("bo_question", id, {
     source: p.source,
     nature: p.nature,
-    "suivi par": agentId ? [agentId] : undefined,
     ended: false,
     message: p.message,
     email: T(c?.data.email),
@@ -779,8 +808,11 @@ export async function demandesDossierOuvertes(agentId: string): Promise<number> 
   const rows = await lire(
     "bo_question?select=id,data&data->>ended=eq.false&or=(data->>demande_dossier.eq.true,data->>nature.not.is.null)&limit=500",
   ).catch(() => []);
+  /* Les demandes ne sont plus attribuées d'office (#513) : une demande sans
+     agent compte pour tout le monde, une demande attribuée pour son agent. */
   return rows.filter((q) => {
     const suivi = q.data["suivi par"];
-    return Array.isArray(suivi) ? suivi.includes(agentId) : suivi === agentId;
+    const liste = Array.isArray(suivi) ? suivi : suivi ? [suivi] : [];
+    return liste.length === 0 || liste.includes(agentId);
   }).length;
 }
