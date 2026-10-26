@@ -16,6 +16,7 @@ import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
 import { Copier, copierTexte } from "@/components/copier";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { reduireImage } from "@/lib/reduire-image";
 import { Modale, useQuestion } from "@/components/modale";
 import { AdresseInput } from "@/components/adresse-input";
 import { urlSeloger } from "@/lib/seloger";
@@ -1131,7 +1132,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
       setErreur(null);
       try {
         const fd = new FormData();
-        fd.set("file", f);
+        fd.set("file", await reduireImage(f));
         setUrl(await uploadPhotoParcelle(immeubleId, fd));
       } catch (e) {
         setErreur(e instanceof Error ? e.message : "envoi impossible");

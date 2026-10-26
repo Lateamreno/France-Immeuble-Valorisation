@@ -24,12 +24,13 @@ const PLURIEL: Record<string, string> = {
   Parking: "Parkings", Cave: "Caves", Logistique: "Entrepôts", Annexe: "Annexes",
 };
 
-/** Étoiles → état, dans les deux formes utilisées par le dossier. */
+/** Étoiles → état, dans les deux formes utilisées par le dossier.
+ *  Retour #518 : cinq étoiles, c'est « rénové ou très bon état », pas « comme neuf ». */
 export const ETATS = {
-  bati: ["À rénover", "Gros travaux", "État d'usage", "Bon état", "Comme neuf"],
-  batiPhrase: ["à rénover entièrement", "avec de gros travaux à prévoir", "en état d'usage", "en bon état", "comme neuf"],
-  lot: ["À rénover", "Gros travaux", "État d'usage", "Bon état", "Comme neufs"],
-  lotPhrase: ["à rénover entièrement", "avec des travaux à prévoir", "en état d'usage", "en bon état", "comme neufs"],
+  bati: ["À rénover", "Gros travaux", "État d'usage", "Bon état", "Rénové ou très bon état"],
+  batiPhrase: ["à rénover entièrement", "avec de gros travaux à prévoir", "en état d'usage", "en bon état", "rénové ou en très bon état"],
+  lot: ["À rénover", "Gros travaux", "État d'usage", "Bon état", "Rénovés ou très bon état"],
+  lotPhrase: ["à rénover entièrement", "avec des travaux à prévoir", "en état d'usage", "en bon état", "rénovés ou en très bon état"],
   emp: ["Emplacement difficile", "Emplacement moyen", "Correctement situé", "Bien situé", "Idéalement situé"],
   empPhrase: ["dans un emplacement difficile", "dans un emplacement moyen", "correctement situé", "bien situé", "idéalement situé"],
 };

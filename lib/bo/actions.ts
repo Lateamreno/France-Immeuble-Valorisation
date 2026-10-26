@@ -2005,7 +2005,9 @@ export async function uploadPhoto(
   }
 
   try {
-    await rpc("bo_insert_doc", {
+    /* #517 : l'enregistrement et la promotion en photo principale ne
+       dépendent pas l'un de l'autre (la vignette est connue) : en parallèle. */
+    await Promise.all([rpc("bo_insert_doc", {
       p_table: "bo_photo",
       p_id: id,
       p_doc: cleanPatch({
@@ -2028,8 +2030,7 @@ export async function uploadPhoto(
         "Created Date": now,
         "Modified Date": now,
       }),
-    });
-    if (type === "Principale") await promouvoir(immeubleId, id, `storage:${base}-min.jpg`);
+    }), type === "Principale" ? promouvoir(immeubleId, id, `storage:${base}-min.jpg`) : null]);
   } catch (e) {
     return {
       ok: false,
@@ -2048,18 +2049,18 @@ export async function rafraichirFiche(immeubleId: string) {
 /** Écrit la photo principale sur l'immeuble et rétrograde l'ancienne. */
 async function promouvoir(immeubleId: string, photoId: string, vignette?: string) {
   const photos = await photosDe(immeubleId);
-  await Promise.all(
-    photos
-      .filter((p) => p.Type === "Principale" && p._id !== photoId)
-      .map((p) => patchPhoto(String(p._id), { Type: "Extérieur" })),
-  );
   const cible = photos.find((p) => p._id === photoId);
   const url = vignette ?? (cible?.compressed as string | undefined) ?? (cible?.image as string | undefined);
-  await rpc("bo_patch_doc", {
-    p_table: "bo_immeuble",
-    p_id: immeubleId,
-    p_patch: cleanPatch({ photo_main_compressed: url, "Modified Date": new Date().toISOString() }),
-  });
+  await Promise.all([
+    ...photos
+      .filter((p) => p.Type === "Principale" && p._id !== photoId)
+      .map((p) => patchPhoto(String(p._id), { Type: "Extérieur" })),
+    rpc("bo_patch_doc", {
+      p_table: "bo_immeuble",
+      p_id: immeubleId,
+      p_patch: cleanPatch({ photo_main_compressed: url, "Modified Date": new Date().toISOString() }),
+    }),
+  ]);
 }
 
 /** Désigne la photo principale (celle qui s'affiche en grand et sur la liste). */

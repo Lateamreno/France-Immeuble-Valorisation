@@ -17,6 +17,7 @@ import { useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
 import { rafraichirFiche, uploadPhoto } from "@/lib/bo/actions";
+import { reduireImage } from "@/lib/reduire-image";
 import {
   compteAuLot, DESTINATIONS, ETATS_LOT as ETATS, TYPES_BAIL, TYPES_DPE as DPES, TYPES_LOT,
 } from "@/lib/referentiels";
@@ -100,7 +101,7 @@ function CarteLot({
     start(async () => {
       try {
         const fd = new FormData();
-        fd.set("file", f);
+        fd.set("file", await reduireImage(f));
         await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
         await rafraichirFiche(String(b.im._id));
       } catch {
@@ -234,7 +235,7 @@ export function LotPleinEcran({
     start(async () => {
       try {
         const fd = new FormData();
-        fd.set("file", f);
+        fd.set("file", await reduireImage(f));
         const res = await uploadPhoto(String(b.im._id), "Lot", r.id, fd, b.photos.length, true);
         if (!res.ok) setPhotoKo(res.message);
         else await rafraichirFiche(String(b.im._id));
