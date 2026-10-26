@@ -1207,7 +1207,10 @@ export async function getBien(id: string): Promise<BienData | null> {
       )
       .map((p) => ({
         id: p._id as string,
-        url: photoProxy(p.compressed ?? p.image),
+        /* Dans les photos venues de Bubble, `compressed` est souvent un
+           booléen (true / false), pas une adresse : le prendre tel quel
+           laissait la vignette sans image. */
+        url: photoProxy(typeof p.compressed === "string" && p.compressed ? p.compressed : p.image),
         urlPleine: photoProxy(p.image ?? p.compressed),
         type: typeof p.Type === "string" ? (p.Type as string) : undefined,
         lotId: typeof p.LOT === "string" ? (p.LOT as string) : undefined,

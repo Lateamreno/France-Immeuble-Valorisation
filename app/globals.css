@@ -8965,3 +8965,42 @@ button.aj-lh:hover { background: #fafafa; }
 .dif-sous-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 22px 0 8px; }
 .dif-sous-h b { font-family: var(--font-title); font-size: 15px; color: var(--slate); }
 .dif-sous-h span { font-size: 12.5px; color: var(--gray-txt); }
+
+/* ==== État locatif, version A (retour #481, choisie par MAV le 26/10) ====
+   Calquée sur l'état locatif du BO Bubble : fond blanc, cadres gras autour
+   de chaque famille de colonnes, pas de trait entre la famille et ses
+   colonnes, aucune ligne grisée une sur deux — la ligne ne se grise qu'au
+   survol, et la case survolée s'encadre. Les deux €/m² sont centrés sur un
+   gris très léger : il y a trop de chiffres pour les lire sans lui. La case
+   à cocher garde sa colonne à part. Police et hauteur de ligne plus grandes
+   sur un grand écran, plus serrées en dessous de 1 700 px. Cette règle
+   remplace l'alternance du #380. */
+.ltable.v2 { --fs: 12.5px; --rh: 36px; font-size: var(--fs); color: #2b2f36; border-right: 2px solid #4a4f55; border-bottom: 2px solid #4a4f55; }
+@media (min-width: 1700px) { .ltable.v2 { --fs: 13.5px; --rh: 43px; } }
+.ltable-wrap:has(> .ltable.v2) { background: #fff; }
+.ltable.v2 tbody tr:nth-child(odd), .ltable.v2 tbody tr:nth-child(even) { background: #fff; height: var(--rh); }
+.ltable.v2 tbody tr:hover { background: #f2f3f4; }
+.ltable.v2 td, .ltable.v2 tbody td { padding: 0; height: var(--rh); border-right: 0; border-bottom: 1px solid #e8e9eb; }
+.ltable.v2 td.na { padding-right: 5px; color: #2b2f36; font-size: var(--fs); }
+.ltable.v2 td.na i { font-size: calc(var(--fs) - 2.5px); color: #9aa0a6; }
+.ltable.v2 .lcell, .ltable.v2 .lcell:hover, .ltable.v2 .lcell:focus {
+  border: 0 !important; border-radius: 0; height: calc(var(--rh) - 1px); padding: 0 5px; font-size: var(--fs); color: #2b2f36;
+}
+.ltable.v2 .lcell:hover { background-color: transparent; box-shadow: inset 0 0 0 1.5px #44525f; }
+.ltable.v2 .lcell:focus { background-color: #fff; box-shadow: inset 0 0 0 2px #44525f; }
+.ltable.v2 .lcell.num, .ltable.v2 td.na { font-variant-numeric: tabular-nums; }
+.ltable.v2 select.lcell.vide { box-shadow: inset 0 0 0 2px var(--red); }
+.ltable.v2 thead th {
+  background: #fff; color: #8a9096; font-weight: 400; font-size: calc(var(--fs) - .5px);
+  text-align: center; border-right: 0; border-bottom: 2px solid #4a4f55;
+}
+.ltable.v2 thead tr:first-child th { height: 32px; border-top: 2px solid #4a4f55; }
+.ltable.v2 thead tr:last-child th { top: 32px; }
+.ltable.v2 th.grp { color: #2b2f36; font-weight: 700; font-size: calc(var(--fs) + 1.5px); letter-spacing: 0; }
+.ltable.v2 thead tr:first-child th.grp:not([rowspan]) { border-bottom: 0; }
+.ltable.v2 .brd { border-left: 2px solid #4a4f55; }
+.ltable.v2 td.c-hcm2, .ltable.v2 td.c-hcmaxm2 { background: rgba(20, 30, 40, .03); text-align: center; padding: 0; }
+.ltable.v2 .pc span { font-weight: 600; font-size: calc(var(--fs) - 1px); }
+/* Bat., Etg, N° : des colonnes étroites, le chiffre centré sans marge. */
+.ltable.v2 td.c-bat .lcell, .ltable.v2 td.c-etg .lcell, .ltable.v2 td.c-num .lcell { padding: 0 1px; text-align: center; }
+.ltable.v2 thead th.c-bat, .ltable.v2 thead th.c-etg, .ltable.v2 thead th.c-num { padding: 0 1px; text-overflow: clip; }
