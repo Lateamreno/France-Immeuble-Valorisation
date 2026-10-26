@@ -33,18 +33,19 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ContactPicker } from "@/components/contact-picker";
-import { Modale } from "@/components/modale";
+import { FenetreAjout, ICA, Ligne, OuiNon, Resume } from "@/components/ajout-rapide";
 import { PastilleStatut } from "@/components/pastille";
 import { FenetreRedaction } from "@/components/mails/redaction";
 import { contexteRedaction } from "@/lib/bo/mails-actions";
 import { ancrePrix, resoudrePrix, type ChampPrix, type Prix } from "@/lib/mandat";
 import { group } from "@/lib/format";
+import { SOURCES_VISITE_BASE, memeSource } from "@/lib/bo/sources";
 import {
   messageCommercialisationPlusieurs, objetCommercialisationPlusieurs,
 } from "@/lib/bo/mail-commercialisation";
 import {
-  addOffre, addVisite, biensPourProposition, chercherImmeubles, creerEtEnvoyerProposition,
-  deposerOffrePdf, deposerPieceJointe, proprietairesPourOffre, traiterAProposer,
+  addOffre, addVisite, ajouterSourceVisite, biensPourProposition, chercherImmeubles, creerEtEnvoyerProposition,
+  deposerOffrePdf, deposerPieceJointe, proprietairesPourOffre, sourcesVisite, traiterAProposer,
   type BienProposition, type ContactTrouve, type ImmeubleTrouve,
 } from "@/lib/bo/actions";
 
@@ -319,18 +320,24 @@ export function ModaleProposition({
           }
         }
         if (surEnvoi) { surEnvoi(); return; }
+        /* Retour #521 : « quoi que je fasse sur la fiche client, j'y reste ».
+           La proposition est créée, la page courante se met à jour. */
         onFermer();
-        router.push("/propositions");
+        router.refresh();
       } catch (e) {
         setErreur(e instanceof Error ? e.message : "L'envoi a échoué.");
       }
     });
 
   return (
-    <Modale
-      titre="Nouvelle proposition" onFermer={onFermer} className="lg" fermeDehors={false}
+    <FenetreAjout
+      icone={ICA.avion} titre="Nouvelle proposition" onFermer={onFermer} large
       pied={
         <>
+          {!bilan && (
+            <OuiNon libelle="Envoyer par e-mail" valeur={mode === "envoyer"}
+              onChange={(v) => setMode(v ? "envoyer" : "deja_envoye")} />
+          )}
           <span style={{ flex: 1 }} />
           <button className="fadd" type="button" onClick={onFermer}>{bilan ? "Fermer" : "Annuler"}</button>
           {!bilan && (
@@ -347,87 +354,95 @@ export function ModaleProposition({
         </>
       }
     >
-      <span className="mlab">Immeuble{biens.length > 1 ? "s" : ""} proposé{biens.length > 1 ? "s" : ""}</span>
-      {biens.length > 0 && (
-        <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
-          {biens.map((b) => (
-            <span key={b.id} className="fchip">
-              {b.libelle}
-              <button type="button" className="arp-x" aria-label={`Retirer ${b.libelle}`}
-                onClick={() => setBiens((l) => l.filter((x) => x.id !== b.id))}>✕</button>
-            </span>
-          ))}
-          {!choix && (
-            <button type="button" className="fadd" onClick={() => setChoix(true)}>+ Ajouter un autre immeuble</button>
-          )}
-        </div>
-      )}
-      {chargement && <div className="fempty">Lecture du bien…</div>}
-      {choix && (
-        <>
-          <ChoixBien onChoisir={ajouterBien} exclure={biens.map((b) => b.id)} />
-          {biens.length > 0 && (
-            <button type="button" className="fadd" style={{ marginTop: 6 }} onClick={() => setChoix(false)}>Annuler l&apos;ajout</button>
-          )}
-        </>
-      )}
-
-      <span className="mlab">Acquéreur(s)</span>
-      <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
-
-      <span className="mlab">Que fait-on ?</span>
-      <div className="mrow">
-        <button type="button" className={`mopt${mode === "envoyer" ? " on" : ""}`}
-          onClick={() => setMode("envoyer")}>Envoyer le dossier</button>
-        <button type="button" className={`mopt${mode === "deja_envoye" ? " on" : ""}`}
-          onClick={() => setMode("deja_envoye")}>Déjà envoyé</button>
-      </div>
-
-      {mode === "envoyer" ? (
-        <>
-          <span className="mlab">Objet</span>
-          <input className="min" value={objet} onChange={(e) => setObjetSaisi(e.target.value)} />
-          <span className="mlab">Message</span>
-          <textarea className="min" rows={12} value={message}
-            onChange={(e) => setMessageSaisi(e.target.value)} />
-          {(objetSaisi !== null || messageSaisi !== null) && (
-            <div className="mrow" style={{ marginTop: 6 }}>
-              <button className="fadd" type="button" onClick={() => { setObjetSaisi(null); setMessageSaisi(null); }}>
-                Régénérer l&apos;objet et le message
-              </button>
-            </div>
-          )}
-
-          <span className="mlab">Pièce{pieces.length > 1 ? "s" : ""} jointe{pieces.length > 1 ? "s" : ""}</span>
-          <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap" }}>
-            {biens.map((b) => b.piece && !piecesRetirees.includes(b.id) && (
-              <ChipPiece key={b.id} p={b.piece} onRetirer={() => setPiecesRetirees((l) => [...l, b.id])} />
+      <Ligne
+        icone={ICA.immeuble}
+        titre={`Immeuble${biens.length > 1 ? "s" : ""} proposé${biens.length > 1 ? "s" : ""}`}
+        manque={biens.length === 0 && !chargement && "Sélectionnez un immeuble"}
+        resume={biens.length === 0 ? <Resume vide>Pas d&apos;immeuble</Resume> : biens.length > 1 ? <Resume>{biens.length} immeubles</Resume> : undefined}
+      >
+        {biens.length > 0 && (
+          <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap", marginBottom: choix ? 8 : 0 }}>
+            {biens.map((b) => (
+              <span key={b.id} className="fchip">
+                {b.libelle}
+                <button type="button" className="arp-x" aria-label={`Retirer ${b.libelle}`}
+                  onClick={() => setBiens((l) => l.filter((x) => x.id !== b.id))}>✕</button>
+              </span>
             ))}
-            {piecesEnPlus.map((p) => (
-              <ChipPiece key={p.path ?? p.nom} p={p} onRetirer={() => setPiecesEnPlus((l) => l.filter((x) => x !== p))} />
-            ))}
-            <input ref={fichier} type="file" accept="application/pdf,image/*,.xlsx,.csv" hidden
-              onChange={(e) => { deposer(e.target.files?.[0]); e.target.value = ""; }} />
-            <button type="button" className="fadd" disabled={biens.length === 0 || pending}
-              onClick={() => fichier.current?.click()}>+ Joindre une autre pièce</button>
+            {!choix && (
+              <button type="button" className="fadd" onClick={() => setChoix(true)}>+ Ajouter un autre immeuble</button>
+            )}
           </div>
-          {sansPiece.length > 0 && (
-            <p className="rm-avert">
-              Pas de dossier PDF sur {sansPiece.map((b) => b.libelle).join(", ")} : l&apos;e-mail partirait sans pièce pour ce bien.
+        )}
+        {chargement && <div className="fempty">Lecture du bien…</div>}
+        {choix && (
+          <>
+            <ChoixBien onChoisir={ajouterBien} exclure={biens.map((b) => b.id)} />
+            {biens.length > 0 && (
+              <button type="button" className="fadd" style={{ marginTop: 6 }} onClick={() => setChoix(false)}>Annuler l&apos;ajout</button>
+            )}
+          </>
+        )}
+      </Ligne>
+
+      <Ligne
+        icone={ICA.personne} titre={`Acquéreur${gens.length > 1 ? "s" : ""}`}
+        manque={gens.length === 0 && "Sélectionnez un ou plusieurs acquéreurs"}
+      >
+        <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
+      </Ligne>
+
+      {/* L'e-mail et ses pièces se rédigent à partir des biens : sans bien, rien à montrer. */}
+      {mode === "envoyer" && biens.length === 0 ? null : mode === "envoyer" ? (
+        <>
+          <Ligne icone={ICA.enveloppe} titre="E-mail de commercialisation" repliable
+            manque={biens.length > 0 && (!objet.trim() || !message.trim()) && "Objet et message attendus"}
+            resume={objet ? <Resume>{objet.length > 46 ? `${objet.slice(0, 46)}…` : objet}</Resume> : undefined}>
+            <span className="mlab">Objet</span>
+            <input className="min" value={objet} onChange={(e) => setObjetSaisi(e.target.value)} />
+            <span className="mlab">Message</span>
+            <textarea className="min" rows={12} value={message}
+              onChange={(e) => setMessageSaisi(e.target.value)} />
+            {(objetSaisi !== null || messageSaisi !== null) && (
+              <div className="mrow" style={{ marginTop: 6 }}>
+                <button className="fadd" type="button" onClick={() => { setObjetSaisi(null); setMessageSaisi(null); }}>
+                  Régénérer l&apos;objet et le message
+                </button>
+              </div>
+            )}
+          </Ligne>
+
+          <Ligne icone={ICA.trombone} titre={`Pièce${pieces.length > 1 ? "s" : ""} jointe${pieces.length > 1 ? "s" : ""}`}
+            resume={<Resume vide={pieces.length === 0}>{pieces.length || "Aucune"}</Resume>}>
+            <div className="mrow" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              {biens.map((b) => b.piece && !piecesRetirees.includes(b.id) && (
+                <ChipPiece key={b.id} p={b.piece} onRetirer={() => setPiecesRetirees((l) => [...l, b.id])} />
+              ))}
+              {piecesEnPlus.map((p) => (
+                <ChipPiece key={p.path ?? p.nom} p={p} onRetirer={() => setPiecesEnPlus((l) => l.filter((x) => x !== p))} />
+              ))}
+              <input ref={fichier} type="file" accept="application/pdf,image/*,.xlsx,.csv" hidden
+                onChange={(e) => { deposer(e.target.files?.[0]); e.target.value = ""; }} />
+              <button type="button" className="fadd" disabled={biens.length === 0 || pending}
+                onClick={() => fichier.current?.click()}>+ Joindre une autre pièce</button>
+            </div>
+            {sansPiece.length > 0 && (
+              <p className="rm-avert">
+                Pas de dossier PDF sur {sansPiece.map((b) => b.libelle).join(", ")} : l&apos;e-mail partirait sans pièce pour ce bien.
+              </p>
+            )}
+            {sansLien.length > 0 && (
+              <p className="rm-avert">
+                Pas de lien transfer.it valable sur {sansLien.map((b) => b.libelle).join(", ")} — à poser sur la fiche (Dossiers).
+              </p>
+            )}
+            <p className="rm-aide">
+              L&apos;e-mail part de votre boîte, à chaque acquéreur, avec les pièces ci-dessus. C&apos;est votre clic qui l&apos;envoie.
             </p>
-          )}
-          {sansLien.length > 0 && (
-            <p className="rm-avert">
-              Pas de lien transfer.it valable sur {sansLien.map((b) => b.libelle).join(", ")} — à poser sur la fiche (Dossiers).
-            </p>
-          )}
-          <p className="rm-aide">
-            L&apos;e-mail part de votre boîte, à chaque acquéreur, avec les pièces ci-dessus. C&apos;est votre clic qui l&apos;envoie.
-          </p>
+          </Ligne>
         </>
       ) : (
-        <>
-          <span className="mlab">A-t-on eu un retour ?</span>
+        <Ligne icone={ICA.bulle} titre="Le dossier est déjà parti : a-t-on eu un retour ?">
           <div className="mrow">
             {([["aucun", "Pas encore"], ["interesse", "Intéressé"], ["refus", "Refus"]] as const)
               .map(([k, l]) => (
@@ -442,20 +457,19 @@ export function ModaleProposition({
                 onChange={(e) => setRetourTexte(e.target.value)} />
             </>
           )}
-        </>
+        </Ligne>
       )}
-      {erreur && <p className="rm-avert">{erreur}</p>}
-      {bilan && <p className="rm-aide"><b>{bilan}</b></p>}
-    </Modale>
+      {(erreur || bilan) && (
+        <div className="aj-lc" style={{ paddingTop: 12 }}>
+          {erreur && <p className="rm-avert">{erreur}</p>}
+          {bilan && <p className="rm-aide"><b>{bilan}</b></p>}
+        </div>
+      )}
+    </FenetreAjout>
   );
 }
 
 /* ---------------------------------- Visite -------------------------------- */
-
-const SOURCES_VISITE = [
-  "Offmarket", "Plein Bail", "SeLoger", "LeBonCoin", "Interagence",
-  "Relationnel", "Prospection", "Autre",
-];
 
 export function ModaleVisite({
   bien, contact, onFermer,
@@ -469,14 +483,22 @@ export function ModaleVisite({
   const [gens, setGens] = useState<Personne[]>(contact ? [contact] : []);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 16));
   const [source, setSource] = useState("");
+  /* Retour #522 : Facebook dans la liste, et « Autre » ouvre une case libre ;
+     ce qu'on y tape devient une source de la liste si on l'accepte. */
+  const [sources, setSources] = useState<string[]>(SOURCES_VISITE_BASE);
+  const [autre, setAutre] = useState("");
+  const [garderAutre, setGarderAutre] = useState(false);
   const [commentaire, setCommentaire] = useState("");
   const [pending, start] = useTransition();
+  useEffect(() => { sourcesVisite().then(setSources).catch(() => undefined); }, []);
 
-  const pret = !!b && !!date;
+  const autreTexte = autre.trim();
+  const dejaListee = !!autreTexte && sources.some((x) => memeSource(x, autreTexte));
+  const pret = !!b && !!date && (source !== "Autre" || !!autreTexte);
 
   return (
-    <Modale
-      titre="Nouvelle visite" onFermer={onFermer} fermeDehors={false}
+    <FenetreAjout
+      icone={ICA.calendrier} titre="Nouvelle visite" onFermer={onFermer}
       pied={
         <>
           <span style={{ flex: 1 }} />
@@ -485,52 +507,77 @@ export function ModaleVisite({
             style={pending || !pret ? { opacity: 0.5 } : undefined}
             onClick={() => start(async () => {
               if (!b) return;
+              const sourceFinale = source === "Autre" ? autreTexte : source;
               await addVisite(b.id, "", {
                 date,
                 visiteur: gens.map((g) => g.nom).join(", ") || undefined,
                 visiteurIds: gens.map((g) => g.id),
                 commentaire_interne: commentaire || undefined,
-                source: source || undefined,
+                source: sourceFinale || undefined,
               });
+              if (source === "Autre" && garderAutre && !dejaListee) await ajouterSourceVisite(autreTexte).catch(() => undefined);
+              // Retour #521 : on reste sur la page d'où l'on vient.
               onFermer();
-              router.push("/visites");
+              router.refresh();
             })}>
             <span className="ch">›</span> {pending ? "Enregistrement…" : "Programmer la visite"}
           </button>
         </>
       }
     >
-      <span className="mlab">Immeuble visité</span>
-      <ChoixBien valeur={b} onChoisir={setB} />
+      <Ligne icone={ICA.immeuble} titre="Immeuble visité" manque={!b && "Sélectionnez un immeuble"}>
+        <ChoixBien valeur={b} onChoisir={setB} />
+      </Ligne>
 
-      <span className="mlab">Visiteur(s)</span>
-      <ChoixPersonnes libelle="Rattacher un visiteur" valeur={gens} onChange={setGens} />
-      <p className="rm-aide">
-        C&apos;est le rattachement qui fait apparaître la visite sur la fiche de
-        l&apos;acquéreur — un nom tapé à la main ne remonte nulle part.
-      </p>
+      <Ligne icone={ICA.personnes} titre={`Visiteur${gens.length > 1 ? "s" : ""}`}
+        resume={gens.length === 0 ? <Resume vide>Personne</Resume> : undefined}>
+        <ChoixPersonnes libelle="Rattacher un visiteur" valeur={gens} onChange={setGens} />
+        <p className="rm-aide">
+          C&apos;est le rattachement qui fait apparaître la visite sur la fiche de
+          l&apos;acquéreur — et le fait passer en B s&apos;il était en C ou D.
+        </p>
+      </Ligne>
 
-      <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
-        <label style={{ flex: 1, minWidth: 200 }}>
-          <span className="mlab">Date et heure</span>
-          <input className="min" type="datetime-local" style={{ width: "100%" }}
-            value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <label style={{ flex: 1, minWidth: 180 }}>
-          <span className="mlab">Source</span>
-          <select className="min" style={{ width: "100%" }} value={source}
-            onChange={(e) => setSource(e.target.value)}>
-            <option value="">Non précisée</option>
-            {SOURCES_VISITE.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </label>
-      </div>
+      <Ligne icone={ICA.calendrier} titre="Rendez-vous">
+        <div className="aj-deux">
+          <label>
+            <span className="mlab">Date et heure</span>
+            <input className={`min${date ? "" : " requis"}`} type="datetime-local"
+              value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label>
+            <span className="mlab">Source</span>
+            <select className="min" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">Non précisée</option>
+              {sources.map((x) => <option key={x}>{x}</option>)}
+              <option>Autre</option>
+            </select>
+          </label>
+        </div>
+        {source === "Autre" && (
+          <>
+            <span className="mlab">Quelle source ?</span>
+            <input className={`min${autreTexte ? "" : " requis"}`} value={autre} autoFocus
+              placeholder="Instagram, panneau, bouche-à-oreille…" onChange={(e) => setAutre(e.target.value)} />
+            {autreTexte && !dejaListee && (
+              <label className="arp-case" style={{ marginTop: 8 }}>
+                <input type="checkbox" checked={garderAutre} onChange={() => setGarderAutre(!garderAutre)} />
+                <span><b>Ajouter « {autreTexte} » à la liste des sources</b>
+                  <em>Elle sera proposée directement aux prochaines visites.</em></span>
+              </label>
+            )}
+            {dejaListee && <p className="rm-aide">« {autreTexte} » est déjà dans la liste : choisissez-la directement.</p>}
+          </>
+        )}
+      </Ligne>
 
-      <span className="mlab">Commentaire interne</span>
-      <textarea className="min" rows={3} value={commentaire}
-        onChange={(e) => setCommentaire(e.target.value)}
-        placeholder="Ce qu'il faut savoir avant d'y aller…" />
-    </Modale>
+      <Ligne icone={ICA.info} titre="Commentaire interne" repliable ouverte={false}
+        resume={commentaire.trim() ? <Resume>Rempli</Resume> : undefined}>
+        <textarea className="min" rows={3} value={commentaire}
+          onChange={(e) => setCommentaire(e.target.value)}
+          placeholder="Ce qu'il faut savoir avant d'y aller…" />
+      </Ligne>
+    </FenetreAjout>
   );
 }
 
@@ -683,7 +730,8 @@ export function ModaleOffre({
         commentaire: commentaire || undefined,
         pdfUrl: pdf?.url,
       });
-      if (!prevenir) { onFermer(); router.push("/offres"); return; }
+      // Retour #521 : on reste sur la page d'où l'on vient.
+      if (!prevenir) { onFermer(); router.refresh(); return; }
 
       /* L'e-mail aux propriétaires : prérédigé, dans la fenêtre flottante,
          l'offre en pièce jointe. Rien ne part sans le clic sur Envoyer. */
@@ -734,95 +782,105 @@ export function ModaleOffre({
         destinataire={mail.destinataire}
         immeuble={mail.immeuble}
         pieces={mail.pieces}
-        onClose={() => { setMail(null); onFermer(); router.push("/offres"); }}
+        onClose={() => { setMail(null); onFermer(); router.refresh(); }}
       />,
       document.body,
     );
   }
 
   return (
-    <Modale
-      titre="Nouvelle offre" onFermer={onFermer} fermeDehors={false} className="lg"
+    <FenetreAjout
+      icone={ICA.euro} titre="Nouvelle offre" onFermer={onFermer} large
       pied={
         <>
+          <OuiNon libelle="Transmettre aux propriétaires par e-mail" valeur={prevenir} onChange={setPrevenir} />
           <span style={{ flex: 1 }} />
           <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
           <button className="kgo" type="button" disabled={pending || !pret}
             style={pending || !pret ? { opacity: 0.5 } : undefined} onClick={enregistrer}>
-            <span className="ch">›</span> {pending ? "Enregistrement…" : prevenir ? "Enregistrer et écrire aux propriétaires" : "Enregistrer l'offre"}
+            <span className="ch">›</span> {pending ? "Enregistrement…" : prevenir ? "Enregistrer et écrire" : "Créer l'offre"}
           </button>
         </>
       }
     >
-      <span className="mlab">Immeuble concerné</span>
       {/* Retour #445 : sous mandat et déjà distribué — rien d'autre. */}
-      <ChoixBien valeur={b} onChoisir={setB} pour="offre" />
+      <Ligne icone={ICA.immeuble} titre="Immeuble objet de l'offre" manque={!b && "Sélectionnez l'immeuble objet de l'offre"}>
+        <ChoixBien valeur={b} onChoisir={setB} pour="offre" />
+      </Ligne>
 
-      <span className="mlab">Acquéreur(s)</span>
-      <ChoixPersonnes libelle="Rattacher un acquéreur" valeur={gens} onChange={setGens} />
+      <Ligne icone={ICA.personnes} titre={`Acheteur${gens.length > 1 ? "s" : ""} ayant formulé l'offre`}
+        resume={gens.length === 0 ? <Resume vide>Aucun acheteur rattaché</Resume> : undefined}>
+        <ChoixPersonnes libelle="Ajouter un acheteur" valeur={gens} onChange={setGens} />
+        <p className="rm-aide">Un acheteur en C ou D passe en B dès que son offre est enregistrée.</p>
+      </Ligne>
 
-      <span className="mlab">Le prix de l&apos;offre</span>
-      <div className="mdt-prix arp-prix-bloc">
-        <CaseMontant label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} onChange={saisir("nv")} fort />
-        <span className="op">+</span>
-        <CaseMontant label="Honoraires TTC" unite="€" v={p.honos} pilote={pilote("honos")} onChange={saisir("honos")} />
-        <span className="op sep">soit</span>
-        <CaseMontant label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} onChange={saisir("taux")} decimal />
-        <span className="op">=</span>
-        <CaseMontant label="Prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} onChange={saisir("hai")} fort />
-      </div>
-      <p className="rm-aide">
-        Saisissez deux montants, le reste se déduit : un net vendeur et des honoraires donnent le HAI ; un HAI et un taux donnent le net vendeur. Un seul montant saisi se complète au barème.
-      </p>
+      <Ligne icone={ICA.euro} titre="Prix de l'offre" manque={!(p.nv && p.nv > 0) && "Indiquez le prix de l'offre"}
+        resume={p.hai ? <Resume>{group(p.hai)} € HAI</Resume> : undefined}>
+        <div className="mdt-prix arp-prix-bloc">
+          <CaseMontant label="Net vendeur" unite="€" v={p.nv} pilote={pilote("nv")} onChange={saisir("nv")} fort />
+          <span className="op">+</span>
+          <CaseMontant label="Honoraires TTC" unite="€" v={p.honos} pilote={pilote("honos")} onChange={saisir("honos")} />
+          <span className="op sep">soit</span>
+          <CaseMontant label="Taux" unite="%" v={p.taux} pilote={pilote("taux")} onChange={saisir("taux")} decimal />
+          <span className="op">=</span>
+          <CaseMontant label="Prix HAI" unite="€" v={p.hai} pilote={pilote("hai")} onChange={saisir("hai")} fort />
+        </div>
+        <p className="rm-aide">
+          Saisissez deux montants, le reste se déduit : un net vendeur et des honoraires donnent le HAI ; un HAI et un taux donnent le net vendeur. Un seul montant saisi se complète au barème.
+        </p>
+      </Ligne>
 
-      <div className="mrow" style={{ gap: 14, flexWrap: "wrap" }}>
-        <label style={{ flex: 1, minWidth: 150 }}>
-          <span className="mlab">Date de l&apos;offre</span>
-          <input className="min" type="date" style={{ width: "100%" }} value={dateOffre}
-            onChange={(e) => changerDate(e.target.value)} />
-        </label>
-        <label style={{ flex: 1, minWidth: 150 }}>
-          <span className="mlab">Validité (jours)</span>
-          <input className="min" inputMode="numeric" style={{ width: "100%" }} value={validite} placeholder="facultatif"
-            onChange={(e) => changerValidite(e.target.value)} />
-        </label>
-        <label style={{ flex: 1, minWidth: 170 }}>
-          <span className="mlab">Valable jusqu&apos;au</span>
-          <input className="min" type="date" style={{ width: "100%" }} value={expiration}
-            onChange={(e) => changerExpiration(e.target.value)} />
-        </label>
-      </div>
+      <Ligne icone={ICA.calendrier} titre="Date et validité de l'offre"
+        resume={<Resume>{dateFr(dateOffre)}{expiration ? ` → ${dateFr(expiration)}` : ""}</Resume>}>
+        <div className="aj-deux" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+          <label>
+            <span className="mlab">Date de l&apos;offre</span>
+            <input className={`min${dateOffre ? "" : " requis"}`} type="date" value={dateOffre}
+              onChange={(e) => changerDate(e.target.value)} />
+          </label>
+          <label>
+            <span className="mlab">Validité (jours)</span>
+            <input className="min" inputMode="numeric" value={validite} placeholder="facultatif"
+              onChange={(e) => changerValidite(e.target.value)} />
+          </label>
+          <label>
+            <span className="mlab">Valable jusqu&apos;au</span>
+            <input className="min" type="date" value={expiration}
+              onChange={(e) => changerExpiration(e.target.value)} />
+          </label>
+        </div>
+      </Ligne>
 
       {/* Retour #335 : le PDF de l'offre se dépose ici, dans le coffre du
           bien. L'offre signée est la pièce qui compte. */}
-      <span className="mlab">Offre en PDF</span>
-      <div className="mrow" style={{ alignItems: "center" }}>
-        <input ref={fichier} type="file" accept="application/pdf,image/*" hidden
-          onChange={(e) => deposer(e.target.files?.[0])} />
-        <button type="button" className="fadd" disabled={!b || pending}
-          title={b ? undefined : "Choisissez d'abord l'immeuble"}
-          onClick={() => fichier.current?.click()}>
-          {pdf ? "Remplacer le PDF" : "+ Joindre l'offre en PDF"}
-        </button>
-        {pdf && <ChipPiece p={{ nom: pdf.nom, path: pdf.url.replace(/^storage:/, "") }} />}
-      </div>
-      {envoiErr && <p className="rm-avert">{envoiErr}</p>}
+      <Ligne icone={ICA.pdf} titre="Offre en PDF" resume={pdf ? undefined : <Resume vide>Aucun PDF</Resume>}>
+        <div className="mrow" style={{ alignItems: "center" }}>
+          <input ref={fichier} type="file" accept="application/pdf,image/*" hidden
+            onChange={(e) => deposer(e.target.files?.[0])} />
+          <button type="button" className="fadd" disabled={!b || pending}
+            title={b ? undefined : "Choisissez d'abord l'immeuble"}
+            onClick={() => fichier.current?.click()}>
+            {pdf ? "Remplacer le PDF" : "+ Joindre l'offre en PDF"}
+          </button>
+          {pdf && <ChipPiece p={{ nom: pdf.nom, path: pdf.url.replace(/^storage:/, "") }} />}
+        </div>
+        {envoiErr && <p className="rm-avert">{envoiErr}</p>}
+      </Ligne>
 
-      <span className="mlab">Commentaire</span>
-      <textarea className="min" rows={3} value={commentaire}
-        onChange={(e) => setCommentaire(e.target.value)}
-        placeholder="Conditions, financement, délais…" />
-
-      <label className="arp-case">
-        <input type="checkbox" checked={prevenir} onChange={() => setPrevenir(!prevenir)} />
-        <span>
-          <b>Écrire aux propriétaires pour leur transmettre l&apos;offre</b>
-          <em>
-            L&apos;offre est enregistrée, puis la fenêtre d&apos;e-mail s&apos;ouvre, prérédigée,
+      <Ligne icone={ICA.info} titre="Informations et remarques" repliable ouverte={!!commentaire}
+        resume={commentaire.trim() ? <Resume>Rempli</Resume> : undefined}>
+        <textarea className="min" rows={3} value={commentaire}
+          onChange={(e) => setCommentaire(e.target.value)}
+          placeholder="Conditions, financement, délais…" />
+      </Ligne>
+      {prevenir && (
+        <div className="aj-lc" style={{ paddingTop: 12 }}>
+          <p className="rm-aide">
+            L&apos;offre est enregistrée, puis la fenêtre d&apos;e-mail aux propriétaires s&apos;ouvre, prérédigée,
             {pdf ? " l'offre en pièce jointe" : " avec l'offre en pièce jointe si vous la joignez"}. Rien ne part sans vous.
-          </em>
-        </span>
-      </label>
-    </Modale>
+          </p>
+        </div>
+      )}
+    </FenetreAjout>
   );
 }

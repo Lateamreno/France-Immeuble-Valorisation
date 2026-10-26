@@ -9,7 +9,7 @@ import { contactParEmail, createContact, createImmeuble, type ContactTrouve } fr
 import { DoublonContact } from "@/components/doublon-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
-import { Modale } from "@/components/modale";
+import { FenetreAjout, ICA, Ligne, Resume } from "@/components/ajout-rapide";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
 import { FenetreRedaction } from "@/components/mails/redaction";
@@ -99,67 +99,84 @@ function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const completContact = !!nom.trim() && emailOk;
 
+  const nomAgent = agents.find((a) => a.slug === agent)?.name;
   return (
-    <Modale
-      titre="Nouveau contact" onFermer={onClose} fermeDehors={false}
+    <FenetreAjout
+      icone={ICA.personne} titre="Nouveau contact" onFermer={onClose}
       pied={
-        <button
-          className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
-          disabled={pending || !completContact}
-          title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
-          onClick={() =>
-            start(async () => {
-              /* Retour #248 : l'adresse est-elle déjà connue ? On demande
-                 avant d'écrire — un doublon créé se rattrape mal, les mails
-                 entrants s'y accrochent aussitôt. */
-              const dejaLa = await contactParEmail(email).catch(() => null);
-              if (dejaLa) { setDoublon(dejaLa); return; }
-              const id = await createContact({
-                "Civilité": civ, "prénom": prenom || undefined, nom,
-                email: email || undefined, portable: portable || undefined,
-                acheteur, vendeur,
-                agentId: agents.find((a) => a.slug === agent)?.id,
-              });
-              onClose();
-              router.push(`/contact/${id}`);
-            })
-          }
-        ><span className="ch">›</span> Créer le contact</button>
+        <>
+          <span style={{ flex: 1 }} />
+          <button className="fadd" type="button" onClick={onClose}>Annuler</button>
+          <button
+            className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
+            disabled={pending || !completContact}
+            style={pending || !completContact ? { opacity: 0.5 } : undefined}
+            title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
+            onClick={() =>
+              start(async () => {
+                /* Retour #248 : l'adresse est-elle déjà connue ? On demande
+                   avant d'écrire — un doublon créé se rattrape mal, les mails
+                   entrants s'y accrochent aussitôt. */
+                const dejaLa = await contactParEmail(email).catch(() => null);
+                if (dejaLa) { setDoublon(dejaLa); return; }
+                const id = await createContact({
+                  "Civilité": civ, "prénom": prenom || undefined, nom,
+                  email: email || undefined, portable: portable || undefined,
+                  acheteur, vendeur,
+                  agentId: agents.find((a) => a.slug === agent)?.id,
+                });
+                onClose();
+                router.push(`/contact/${id}`);
+              })
+            }
+          ><span className="ch">›</span> Créer le contact</button>
+        </>
       }
     >
       {doublon && (
-        <DoublonContact
-          existant={doublon}
-          onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
-          onChanger={() => setDoublon(null)}
-        />
+        <div className="aj-lc" style={{ paddingTop: 12, paddingLeft: 18 }}>
+          <DoublonContact
+            existant={doublon}
+            onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
+            onChanger={() => setDoublon(null)}
+          />
+        </div>
       )}
-      <div className="mrow" style={{ alignItems: "center" }}>
-        <select className="min" style={{ width: 110 }} value={civ} onChange={(e) => setCiv(e.target.value)}>
-          <option>Monsieur</option><option>Madame</option>
-        </select>
-        <input className="min" style={{ width: 130 }} placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
-        <input className={`min${!nom.trim() ? " requis" : ""}`} style={{ width: 150 }}
-          placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
-      </div>
-      <div className="mrow" style={{ marginTop: 6 }}>
-        <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
-          style={{ width: 200 }} placeholder="E-mail (obligatoire)" value={email}
-          onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
-        <input className="min" style={{ width: 140 }} placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
-      </div>
-      <span className="mlab">Projet</span>
-      <div className="mrow">
-        <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
-        <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
-      </div>
-      <span className="mlab">Suivi par</span>
-      <div className="mrow">
-        {agents.map((a) => (
-          <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
-        ))}
-      </div>
-    </Modale>
+      <Ligne icone={ICA.personne} titre="Identité" manque={!nom.trim() && "Indiquez le nom du contact"}>
+        <div className="mrow" style={{ alignItems: "center", flexWrap: "nowrap" }}>
+          <select className="min" style={{ width: 120, flex: "none" }} value={civ} onChange={(e) => setCiv(e.target.value)}>
+            <option>Monsieur</option><option>Madame</option>
+          </select>
+          <input className="min" placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+          <input className={`min${!nom.trim() ? " requis" : ""}`}
+            placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
+        </div>
+      </Ligne>
+      <Ligne icone={ICA.enveloppe} titre="Coordonnées"
+        manque={!emailOk && (email.trim() ? "Cette adresse e-mail n'est pas valide" : "Indiquez une adresse e-mail")}>
+        <div className="aj-deux">
+          <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
+            placeholder="E-mail (obligatoire)" value={email}
+            onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
+          <input className="min" placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
+        </div>
+      </Ligne>
+      <Ligne icone={ICA.cible} titre="Projet"
+        resume={!acheteur && !vendeur ? <Resume vide>Non précisé</Resume> : undefined}>
+        <div className="mrow">
+          <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
+          <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
+        </div>
+      </Ligne>
+      <Ligne icone={ICA.agent} titre="Suivi par" repliable ouverte={false}
+        resume={nomAgent ? <Resume>{nomAgent}</Resume> : undefined}>
+        <div className="mrow">
+          {agents.map((a) => (
+            <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
+          ))}
+        </div>
+      </Ligne>
+    </FenetreAjout>
   );
 }
 
@@ -183,71 +200,73 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
 
   const pret = !!adresse?.ville && !!source;
 
+  const nomAgent = agents.find((a) => a.slug === agent)?.name;
   return (
-    <Modale
-      titre="Créer un nouvel immeuble" onFermer={onClose} fermeDehors={false}
+    <FenetreAjout
+      icone={ICA.immeuble} titre="Créer un nouvel immeuble" onFermer={onClose}
       pied={
-        <button
-          className="kgo" type="button" disabled={pending || !pret}
-          style={pending || !pret ? { opacity: 0.5 } : undefined}
-          onClick={() =>
-            start(async () => {
-              if (!adresse) return;
-              const id = await createImmeuble({
-                agentId: agents.find((a) => a.slug === agent)?.id ?? "",
-                ville: adresse.ville ?? "", zipcode: adresse.cp,
-                rue: adresse.rue, numero_rue: adresse.numero,
-                proprietaireId: proprio?.id,
-                source,
-                geo: adresse.lat !== undefined && adresse.lon !== undefined
-                  ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
-                  : undefined,
-              });
-              onClose();
-              router.push(`/bien/${id}`);
-            })
-          }
-        ><span className="ch">›</span> Créer l&apos;immeuble</button>
+        <>
+          <span style={{ flex: 1 }} />
+          <button className="fadd" type="button" onClick={onClose}>Annuler</button>
+          <button
+            className="kgo" type="button" disabled={pending || !pret}
+            style={pending || !pret ? { opacity: 0.5 } : undefined}
+            onClick={() =>
+              start(async () => {
+                if (!adresse) return;
+                const id = await createImmeuble({
+                  agentId: agents.find((a) => a.slug === agent)?.id ?? "",
+                  ville: adresse.ville ?? "", zipcode: adresse.cp,
+                  rue: adresse.rue, numero_rue: adresse.numero,
+                  proprietaireId: proprio?.id,
+                  source,
+                  geo: adresse.lat !== undefined && adresse.lon !== undefined
+                    ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
+                    : undefined,
+                });
+                onClose();
+                router.push(`/bien/${id}`);
+              })
+            }
+          ><span className="ch">›</span> Créer l&apos;immeuble</button>
+        </>
       }
     >
-      <div className="mrow" style={{ alignItems: "flex-start", gap: 14 }}>
-        <label style={{ flex: 1 }}>
-          <span className="mlab">Source</span>
-          <select className={`min${source ? "" : " vide"}`} style={{ width: "100%" }} value={source} onChange={(e) => setSource(e.target.value)}>
-            <option value="" />
-            {SOURCES_IMMEUBLE.map((s2) => <option key={s2}>{s2}</option>)}
-          </select>
-        </label>
-        <label style={{ flex: 1 }}>
-          <span className="mlab">Suivi par</span>
-          <select className="min" style={{ width: "100%" }} value={agent} onChange={(e) => setAgent(e.target.value)}>
-            {agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}
-          </select>
-        </label>
-      </div>
-
-      <span className="mlab">Propriétaire</span>
-      <div className="mrow" style={{ alignItems: "center" }}>
-        {proprio ? (
-          <>
-            <span className="fchip">{proprio.nom}</span>
-            <button type="button" className="fadd" onClick={() => setPicker(true)}>Changer</button>
-            <button type="button" className="fadd" onClick={() => setProprio(null)}>Retirer</button>
-          </>
-        ) : (
-          <button type="button" className="fadd" onClick={() => setPicker(true)}>
-            + Sélectionner ou créer un propriétaire
-          </button>
+      <Ligne icone={ICA.repere} titre="Adresse" manque={!adresse?.ville && "Indiquez l'adresse de l'immeuble"}>
+        <AdresseInput autoFocus onChoisir={setAdresse} />
+        {adresse && (
+          <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4 }}>✓ {adresse.label}</div>
         )}
-      </div>
-
-      <span className="mlab">Adresse</span>
-      <AdresseInput autoFocus onChoisir={setAdresse} />
-      {adresse && (
-        <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4 }}>✓ {adresse.label}</div>
-      )}
-
-      <div style={{ fontSize: 12, color: "var(--gray-txt)", marginTop: 10 }}>
+      </Ligne>
+      <Ligne icone={ICA.etiquette} titre="Source" manque={!source && "Choisissez la source"}
+        resume={source ? <Resume>{source}</Resume> : undefined}>
+        <select className={`min${source ? "" : " vide"}`} value={source} onChange={(e) => setSource(e.target.value)}>
+          <option value="" />
+          {SOURCES_IMMEUBLE.map((s2) => <option key={s2}>{s2}</option>)}
+        </select>
+      </Ligne>
+      <Ligne icone={ICA.personne} titre="Propriétaire"
+        resume={proprio ? <Resume>{proprio.nom}</Resume> : <Resume vide>Aucun</Resume>}>
+        <div className="mrow" style={{ alignItems: "center" }}>
+          {proprio ? (
+            <>
+              <button type="button" className="fadd" onClick={() => setPicker(true)}>Changer</button>
+              <button type="button" className="fadd" onClick={() => setProprio(null)}>Retirer</button>
+            </>
+          ) : (
+            <button type="button" className="fadd" onClick={() => setPicker(true)}>
+              + Sélectionner ou créer un propriétaire
+            </button>
+          )}
+        </div>
+      </Ligne>
+      <Ligne icone={ICA.agent} titre="Suivi par" repliable ouverte={false}
+        resume={nomAgent ? <Resume>{nomAgent}</Resume> : undefined}>
+        <select className="min" value={agent} onChange={(e) => setAgent(e.target.value)}>
+          {agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}
+        </select>
+      </Ligne>
+      <div className="aj-lc" style={{ paddingTop: 12, paddingLeft: 18, fontSize: 12, color: "var(--gray-txt)" }}>
         L&apos;immeuble est créé dans « Immeubles à estimer » ; lots et suivi se
         complètent ensuite sur la fiche.
       </div>
@@ -259,6 +278,6 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
           onValider={(c) => { setProprio({ id: c.id, nom: c.nom }); setPicker(false); }}
         />
       )}
-    </Modale>
+    </FenetreAjout>
   );
 }

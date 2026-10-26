@@ -25,6 +25,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ContactPicker } from "@/components/contact-picker";
 import { DESTINATIONS, ModaleAttenteRecherche } from "@/components/carte-recherche";
+import { ICA } from "@/components/ajout-rapide";
 import { Modale, useQuestion } from "@/components/modale";
 import { Champ } from "@/components/champ";
 import { Copier } from "@/components/copier";
@@ -444,9 +445,13 @@ export function ModaleRechercheEdition({
           reçoit pas la fermeture : Échap doit refermer le sélecteur, pas la
           recherche en cours de saisie. */}
       <Modale
-        titre={creation ? "Nouvelle recherche" : "Modifier la recherche"}
+        titre={
+          /* Retour #527 : le bandeau des fenêtres d'ajout, comme l'ancien BO. */
+          <span className="aj-titre"><svg viewBox="0 0 24 24" aria-hidden>{ICA.loupe}</svg>
+            {creation ? "Nouvelle recherche" : "Modifier la recherche"}</span>
+        }
         onFermer={picker ? undefined : onFermer}
-        className="rmod"
+        className="rmod aj-tete"
         fermeDehors={false}
         brut
         pied={
