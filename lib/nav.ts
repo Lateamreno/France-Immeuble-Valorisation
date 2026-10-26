@@ -21,7 +21,7 @@ export const NAV: NavItem[] = [
   { href: "/immeubles", label: "Immeubles" },
   // La diffusion est un métier à part : ce qui est en ligne, et ce que ça
   // rapporte. Elle se pilote depuis les fiches, elle se surveille d'ici.
-  { href: "/diffusion", label: "Diffusion" },
+  { href: "/diffusion", label: "Diffusions" },
   /* Les ventes réalisées, telles que le site les raconte (lot 2 du contrat
      site) : l'autre bout de la diffusion, celui qui prouve le savoir-faire. */
   { href: "/ventes-site", label: "Biens vendus" },
