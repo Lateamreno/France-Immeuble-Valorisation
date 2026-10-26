@@ -3365,6 +3365,21 @@ export async function chercherImmeublesBO(q: string, opts: { sousMandat?: boolea
     return candidats.filter((im) => vivants.has(String(im._id)));
   };
 
+  /* Retour #519 : « dans l'ordre, les dossiers en cours de commercialisation,
+     du plus récent au plus ancien ; les biens encore en estimation polluent ».
+     D'abord ce qui est en vente (commercialisé, puis sous offre), ensuite ce
+     qui va plus loin (compromis, acte), et les biens pas encore en vente en
+     dernier. Dans chaque groupe, la mise en commercialisation la plus récente
+     d'abord. */
+  const groupe = (im: Record<string, unknown>) => {
+    const r = statutOf(im);
+    return r >= 5 && r <= 6 ? 0 : r === 7 ? 1 : r > 7 ? 2 : 3;
+  };
+  const recence = (im: Record<string, unknown>) =>
+    String(im.date_com_start ?? im.date_last_dossier ?? im["Modified Date"] ?? "");
+  const ranger = (l: Record<string, unknown>[]) =>
+    [...l].sort((a, b) => groupe(a) - groupe(b) || recence(b).localeCompare(recence(a)));
+
   if (mots.length === 0) {
     const ims = await fetchAll(
       "immeuble",
@@ -3372,11 +3387,12 @@ export async function chercherImmeublesBO(q: string, opts: { sousMandat?: boolea
       600,
       { field: "Modified Date", desc: true },
     ).catch(() => [] as Record<string, unknown>[]);
-    return (await retenir(ims.filter(enVente).slice(0, 40))).slice(0, 25).map(carte);
+    return (await retenir(ranger(ims.filter(enVente)).slice(0, 40))).slice(0, 25).map(carte);
   }
 
   if (!USE_SB) return [];
-  const p = new URLSearchParams({ select: "data", limit: opts.sousMandat ? "80" : "25" });
+  // Large, puis rangé (#519) : les 25 premiers bruts pouvaient laisser de côté les biens en vente.
+  const p = new URLSearchParams({ select: "data", limit: "80" });
   const f = filtreMots(["searchfield"], mots);
   if (f) p.append(f[0], f[1]);
   const res = await fetch(`${SB_URL}/rest/v1/bo_immeuble?${p}`, {
@@ -3385,7 +3401,7 @@ export async function chercherImmeublesBO(q: string, opts: { sousMandat?: boolea
   }).catch(() => null);
   if (!res?.ok) return [];
   const trouves = ((await res.json()) as { data: Record<string, unknown> }[]).map((r) => r.data).filter(Boolean);
-  return (await retenir(trouves)).slice(0, 25).map(carte);
+  return ranger(await retenir(trouves)).slice(0, 25).map(carte);
 }
 
 /* ------------------- Les biens à proposer à une recherche ------------------

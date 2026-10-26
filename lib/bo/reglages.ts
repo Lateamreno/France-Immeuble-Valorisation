@@ -35,6 +35,8 @@ export type Reglages = {
   bareme: Tranche[];
   /** Remise consentie au vendeur en cas de vente directe au locataire, en %. */
   remiseLocataire: number;
+  /** Sources de visite ajoutées depuis « Autre » (retour #522). */
+  sourcesVisite: string[];
 };
 
 /** Ce que le code sait faire sans qu'on ait rien réglé. */
@@ -53,6 +55,7 @@ export const REGLAGES_DEFAUT: Reglages = {
   },
   bareme: BAREME,
   remiseLocataire: 20,
+  sourcesVisite: [],
 };
 
 const fusion = (v: Partial<Reglages> | null): Reglages => ({
@@ -62,6 +65,9 @@ const fusion = (v: Partial<Reglages> | null): Reglages => ({
     typeof v?.remiseLocataire === "number" && v.remiseLocataire >= 0 && v.remiseLocataire <= 100
       ? v.remiseLocataire
       : REGLAGES_DEFAUT.remiseLocataire,
+  sourcesVisite: Array.isArray(v?.sourcesVisite)
+    ? v.sourcesVisite.filter((x): x is string => typeof x === "string" && !!x.trim())
+    : [],
 });
 
 /**

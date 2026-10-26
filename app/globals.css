@@ -8702,7 +8702,10 @@ button { font-weight: 700; }
    La vignette garde le format des photos (16/9) et prend presque toute la
    hauteur de la case : 182 × 102 px. Sur une colonne étroite, elle rétrécit
    sans se déformer plutôt que d'écraser le texte. */
-.kthumb { width: clamp(124px, 38%, 182px); height: auto; min-height: 0; aspect-ratio: 16 / 9; align-self: flex-start; }
+/* Revirement de MAV (26/10) : « on reste sur le carré, les infos sont bien
+   plus lisibles et ça évite d'avoir des blancs partout ». La vignette
+   redevient carrée, à la hauteur du haut de la carte. */
+.kthumb { width: clamp(104px, 28%, 128px); height: auto; min-height: 0; aspect-ratio: 1 / 1; align-self: flex-start; }
 /* Avec la vignette en 16/9, le corps de la carte est plus étroit :
    - le motif de la frise ne passe plus sous les dates, il se coupe en « … »
      (le texte entier reste au survol et au clic) ;
@@ -8715,7 +8718,7 @@ button { font-weight: 700; }
 /* Carte étroite (écran de portable) : une requête de largeur d'écran et non
    de conteneur, pour la raison dite plus haut (#514). */
 @media (max-width: 1700px) {
-  .kthumb { width: 30%; }
+  .kthumb { width: clamp(104px, 30%, 128px); }
   .krow1 .kt { font-size: 15px; }
 }
 /* Même hauteur pour toutes les cartes, vignette 16/9 comprise : la ville
@@ -8740,3 +8743,61 @@ button { font-weight: 700; }
 
 @keyframes savebar-monte { from { transform: translateY(100%); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .savebar { animation: none; } }
+
+/* ==== Fenêtres d'ajout rapide, au dessin du BO (retours #520, #526, #527) ====
+   Bandeau sombre et titre centré, lignes à icône séparées d'un filet, rouge
+   tant qu'il manque l'essentiel, pied gris clair avec la question oui / non. */
+.modal.aj { padding: 0; overflow: visible; border-radius: 6px; max-width: 640px; }
+.modal.aj.lg { max-width: 760px; }
+/* `aj-tete` : le bandeau seul, pour une fenêtre qui garde son propre corps
+   (la recherche, déjà construite en sections). */
+.modal:is(.aj, .aj-tete) .modal-h {
+  position: relative; justify-content: center;
+  background: var(--dark); color: #fff; border-bottom: 0;
+  border-radius: 6px 6px 0 0; padding: 12px 44px;
+}
+.modal:is(.aj, .aj-tete) .modal-h .modal-t { font-size: 17px; font-weight: 600; color: #fff; }
+.modal:is(.aj, .aj-tete) .modal-h > button { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #fff; opacity: .75; font-size: 16px; }
+.modal:is(.aj, .aj-tete) .modal-h > button:hover { opacity: 1; }
+.aj-titre { display: inline-flex; align-items: center; gap: 9px; }
+.aj-titre svg { width: 19px; height: 19px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.modal.aj .modal-b { padding: 0; }
+.aj-l { border-bottom: 1px solid var(--line-lt); }
+.aj-l:last-child { border-bottom: 0; }
+.aj-lh {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 13px 18px; min-height: 48px;
+  background: none; border: 0; text-align: left; font: inherit; color: inherit;
+}
+button.aj-lh { cursor: pointer; }
+button.aj-lh:hover { background: #fafafa; }
+.aj-ic { width: 17px; height: 17px; flex: none; fill: none; stroke: var(--gold-bo); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.aj-lt { font-family: var(--font-title); font-size: 14px; font-weight: 500; color: var(--gray-txt); flex: 1; min-width: 0; }
+.aj-lr { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.aj-chev { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--gray-txt); stroke-width: 2; transition: transform .15s; }
+.aj-chev.on { transform: rotate(180deg); }
+.aj-l.manque .aj-ic { stroke: var(--red); }
+.aj-l.manque .aj-lt { color: var(--red); font-weight: 600; }
+.aj-l.manque > .aj-lh { background: #fffafa; }
+.aj-lc { padding: 0 18px 14px 45px; }
+.aj-lc > .mlab:first-child { margin-top: 2px; }
+.aj-res {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 3px 8px; font-family: var(--font-title); font-size: 12px; font-weight: 600; color: var(--slate);
+}
+.aj-res.vide { color: var(--gray-lt); font-weight: 500; }
+.aj-res b { background: var(--slate); color: #fff; border-radius: 3px; padding: 0 5px; font-size: 11px; }
+.aj-res b.n-A, .aj-res b.n-B { background: var(--green); }
+.aj-res b.n-C { background: var(--orange); }
+.aj-res b.n-D { background: var(--gray-lt); }
+.modal:is(.aj, .aj-tete) .modal-f { background: #f5f5f5; gap: 10px; flex-wrap: wrap; }
+.aj-on { display: inline-flex; align-items: center; gap: 14px; font-size: 13px; color: var(--slate-2); }
+.aj-on button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 0; }
+.aj-on i { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--gray-lt); background: #fff; display: inline-grid; place-items: center; }
+.aj-on button.on i { border-color: var(--gold-bo); }
+.aj-on button.on i::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gold-bo); }
+/* Les champs d'une fenêtre d'ajout gardent la règle du BO : un cadre rouge
+   tant qu'un champ obligatoire est vide (déjà porté par `.requis`). */
+.aj-deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+@media (max-width: 560px) { .aj-deux { grid-template-columns: 1fr; } .aj-lc { padding-left: 18px; } }

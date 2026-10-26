@@ -2735,6 +2735,23 @@ export async function deleteDocument(immeubleId: string, documentId: string) {
 /* ---------- Commercialisation : visites & offres ---------- */
 
 /** Programme une visite. */
+/**
+ * Retours #523 à #525 : « un client qui visite passe automatiquement en B »,
+ * « dès qu'un client fait une offre il passe automatiquement en B ». On ne fait
+ * que monter : un A reste A, un B reste B ; C, D et « sans note » passent en B.
+ */
+async function passerEnB(contactIds: string[] | undefined, motif: "visite" | "offre") {
+  for (const id of contactIds ?? []) {
+    const c = await bqOne("bo_contact", id).catch(() => null);
+    if (!c || c.Note === "A" || c.Note === "B") continue;
+    await rpc("bo_patch_doc", {
+      p_table: "bo_contact",
+      p_id: id,
+      p_patch: { Note: "B", note_auto: { de: c.Note ?? null, motif, le: new Date().toISOString() } },
+    });
+  }
+}
+
 export async function addVisite(
   immeubleId: string,
   agentId: string,
@@ -2765,6 +2782,7 @@ export async function addVisite(
       "Modified Date": now,
     }),
   });
+  await passerEnB(input.visiteurIds, "visite");
   for (const c of input.visiteurIds ?? []) revalidatePath(`/contact/${c}`);
   revalidatePath("/visites");
   refresh(immeubleId);
@@ -2840,6 +2858,7 @@ export async function addOffre(
       "Modified Date": now,
     }),
   });
+  await passerEnB(input.acheteurIds, "offre");
   for (const c of input.acheteurIds ?? []) revalidatePath(`/contact/${c}`);
   revalidatePath("/offres");
   refresh(immeubleId);
@@ -6286,6 +6305,32 @@ export async function capturerFacadesManquantes(paquet = 40): Promise<{
  * fermera le jour où la connexion existera — d'ici là, qui a l'URL a l'accès.
  * Le code à six chiffres demandé par MAV viendra avec cette même livraison.
  */
+/** Les sources de visite : la base, puis celles ajoutées depuis « Autre » (#522). */
+export async function sourcesVisite(): Promise<string[]> {
+  const { lireReglages } = await import("./reglages");
+  const { SOURCES_VISITE_BASE, memeSource } = await import("./sources");
+  const ajoutees = (await lireReglages()).sourcesVisite;
+  return [...SOURCES_VISITE_BASE, ...ajoutees.filter((a) => !SOURCES_VISITE_BASE.some((b) => memeSource(a, b)))];
+}
+
+/**
+ * Retour #522 : « s'il y a Autre, la possibilité de noter, et ça devient un
+ * item si j'accepte ». On relit la ligne des réglages et on n'y ajoute que la
+ * source — le reste des réglages n'est pas réécrit.
+ */
+export async function ajouterSourceVisite(nom: string) {
+  const propre = nom.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (!propre || !SB_KEY) return;
+  const { memeSource } = await import("./sources");
+  if ((await sourcesVisite()).some((s) => memeSource(s, propre))) return;
+  const res = await fetch(`${SB_URL}/rest/v1/fi_reglages?cle=eq.agence&select=valeurs&limit=1`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+  });
+  const valeurs = (((await res.json()) as { valeurs: Record<string, unknown> }[])[0]?.valeurs) ?? {};
+  const avant = Array.isArray(valeurs.sourcesVisite) ? (valeurs.sourcesVisite as string[]) : [];
+  await majReglages({ ...valeurs, sourcesVisite: [...avant, propre] });
+}
+
 export async function majReglages(valeurs: Record<string, unknown>) {
   if (!SB_KEY) return { ok: false as const, message: "SUPABASE_SERVICE_ROLE_KEY absente" };
   const res = await fetch(`${SB_URL}/rest/v1/fi_reglages?cle=eq.agence`, {
