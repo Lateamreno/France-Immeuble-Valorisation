@@ -29,6 +29,24 @@ export const PICTOS_DEST: Record<string, ReactNode> = {
 };
 
 /**
+ * Les mêmes, en plein (retour MAV du 26/10 sur l'état locatif : « les pictos
+ * en plein plutôt qu'en trait pour le type de lot », comme le BO Bubble).
+ * À dessiner dans un `.destic.plein` : le fond prend la couleur, les détails
+ * (anse, poignée, lettre P) gardent leur trait ou se découpent en blanc.
+ */
+const DETAIL = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+const ENCRE = { fill: "none", stroke: "#fff", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+export const PICTOS_DEST_PLEIN: Record<string, ReactNode> = {
+  Logement: <path d="M12 3.2 2.6 11.4h2.6V21h5.2v-5.6h3.2V21h5.2v-9.6h2.6z" />,
+  Commerce: <><path d="M3 10h18l-1.9 9.7A1.7 1.7 0 0 1 17.4 21H6.6a1.7 1.7 0 0 1-1.7-1.3z" /><path d="M8 10 12 4l4 6" {...DETAIL} /></>,
+  Bureau: <><rect x="2.5" y="8" width="19" height="12.5" rx="2" /><path d="M9 8V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2" {...DETAIL} /><path d="M2.5 13.5h19" {...ENCRE} /></>,
+  Logistique: <><path d="M2.5 20.5V9l5 3V9l5 3V9l5 3V4.5h3v16z" /></>,
+  Cave: <path fillRule="evenodd" d="M3.5 21V12a8.5 8.5 0 0 1 17 0v9zM9 21v-8.5a3 3 0 0 1 6 0V21z" />,
+  Parking: <><circle cx="12" cy="12" r="9.5" /><path d="M10 16.5v-9h3a2.6 2.6 0 0 1 0 5.2h-3" {...ENCRE} /></>,
+  Annexe: <><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" /><path d="M8.5 12h7" {...ENCRE} /></>,
+};
+
+/**
  * Les quatre destinations qu'une recherche vise, dans l'ordre de MAV. Les
  * parkings « ne font pas partie des critères de recherche de toute façon ».
  */
