@@ -7976,7 +7976,13 @@ button { font-family: var(--font-title); letter-spacing: .01em; }
   font-family: var(--font-title); font-size: 15px; font-weight: 700; color: var(--slate);
 }
 .poi-min-in::placeholder { color: var(--gray-lt); font-weight: 400; }
-.poi.place .poi-l:hover .poi-min-in, .poi-min-in:focus { background: #fff8c9; border-color: #e6cd58; outline: 0; }
+/* Retours #538 et #539 : plus de jaune. Au survol, la case montre son cadre ;
+   à la saisie, le cadre fonce et le texte quitte le gras — c'est ce
+   changement de police qui dit « vous êtes en train de modifier ». Même
+   règle pour le nom du point d'intérêt. */
+.poi.place .poi-l:hover .poi-min-in { background: #fff; border-color: var(--line); outline: 0; }
+.poi-min-in:focus { background: #fff; border-color: var(--slate-2); outline: 0; font-weight: 400; }
+.poi-nom:focus, .poi.place .poi-nom:focus { font-weight: 400; }
 .poi-go {
   display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none;
   border-radius: 4px; color: var(--gray-lt); opacity: 0; transition: opacity .12s;

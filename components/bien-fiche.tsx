@@ -482,7 +482,7 @@ export function BienFiche({
                   onFermer={() => { fermerEst(); if (sect === "encours") setSect("estimations"); }}
                   /* #395 — un manque du dossier renvoie à la section qui le
                      comble ; l'estimation reste montée, on y revient par le rail. */
-                  onAller={(s) => setSect(s)}
+                  onAller={(s, onglet) => { if (onglet) majSous(s)(onglet); setSect(s); }}
                 />
               )}
             </div>

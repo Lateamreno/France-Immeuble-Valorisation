@@ -189,7 +189,7 @@ type ManqueDossier = {
    *  ou le dépôt d'une photo sur place. Rien quand la case est sous les yeux. */
   action?:
     | { etape: number; label: string }
-    | { section: SectionFiche; label: string }
+    | { section: SectionFiche; label: string; onglet?: string }
     | { photo: true };
 };
 
@@ -238,7 +238,8 @@ export function EstimationWizard({
   onFermer?: () => void;
   /** #395 — ouvre une section de la fiche pour combler un manque (l'écran
    *  reste monté : on y revient par le rail). */
-  onAller?: (section: SectionFiche) => void;
+  /** `onglet` ouvre un sous-onglet de la section (les Charges de l'état locatif). */
+  onAller?: (section: SectionFiche, onglet?: string) => void;
 }) {
   const router = useRouter();
   const im = b.im;
@@ -369,7 +370,12 @@ export function EstimationWizard({
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
   const chAut0 = b.charges.filter((c) => !String(c.Type_charge ?? "").startsWith("Taxe"))
     .reduce((s, c) => s + (num(c.non_recup_an) ?? num(c.total_an) ?? 0), 0);
-  const [chTf, setChTf] = useMemServi("chTf", chTf0 ? String(chTf0) : "");
+  /* Retour #541 : une taxe foncière entièrement refacturée aux locataires
+     laisse 0 € à la charge du propriétaire. C'est une valeur, pas un manque :
+     dès qu'une ligne de taxe existe, la case vaut ce reste, zéro compris. */
+  const tfConnue = b.charges.some((c) => String(c.Type_charge ?? "").startsWith("Taxe")
+    && ((num(c.total_an) ?? 0) > 0 || num(c.non_recup_an) !== undefined));
+  const [chTf, setChTf] = useMemServi("chTf", tfConnue ? String(chTf0) : "");
   const [chAutres, setChAutres] = useMemServi("chAutres", chAut0 ? String(chAut0) : "");
   const tvxBati0 = b.travaux.filter((t) => Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
@@ -667,7 +673,9 @@ export function EstimationWizard({
     if (!okCharges) {
       out.push({
         cle: "charges", libelle: "La taxe foncière", ou: "page 5, rendement net",
-        bloquant: true, action: { etape: 0, label: "Aller à Immeuble" },
+        /* Retour #540 : elle se saisit dans les Charges de l'état locatif,
+           pas à l'étape Immeuble. */
+        bloquant: true, action: { section: "locatif", onglet: "charges", label: "Ouvrir les charges" },
       });
     }
     if (!okSecteur) {
@@ -1381,7 +1389,7 @@ export function EstimationWizard({
                         <button type="button" className="fadd" onClick={() => allerA(a.etape)}>{a.label}</button>
                       )}
                       {a && "section" in a && onAller && (
-                        <button type="button" className="fadd" onClick={() => onAller(a.section)}>{a.label}</button>
+                        <button type="button" className="fadd" onClick={() => onAller(a.section, a.onglet)}>{a.label}</button>
                       )}
                     </li>
                   );
