@@ -775,21 +775,43 @@ body.nav-etroite .ltools.v2, body.nav-etroite .savebar { left: 0; right: 0; }
 /* Barre des lots compacte : Ajouter, Supprimer, Plus, Enregistrer. Les
    options de bureau (Dupliquer, Matrice, Importer, Télécharger, DPE ADEME,
    Annuler) passent dans le menu « Plus », rendu au-dessus de la barre. */
-.ltb.plus, .ltools-menu, .ltools-voile { display: none; }
+.ltb.plus { display: none; }
+/* Le menu et son voile ne sont rendus que quand « Plus » est ouvert, et
+   « Plus » ne se montre que quand la barre est repliée : ils n'ont pas
+   besoin d'attendre la classe du corps (retour #537). */
+.ltools-voile { display: block; position: fixed; inset: 0; z-index: 26; }
+.ltools-menu {
+  display: flex; flex-direction: column; gap: 2px;
+  position: fixed; right: calc(var(--brail-w) + 8px); bottom: calc(var(--bottbar-h) + 54px); z-index: 27;
+  min-width: 228px; padding: 6px;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+}
+/* Retour #537 — « quand je dézoome ça déborde ». Toutes options dehors, la
+   barre demande environ 1 250 px ; entre 1 100 et 1 700 px de fenêtre,
+   rail compris, elle sortait sous le rail de droite. Elle se replie
+   désormais sur SA largeur, pas sur celle de l'écran : Ajouter, Supprimer,
+   Plus, Enregistrer — le reste passe dans le menu. */
+.ltools.v2 { container-type: inline-size; }
+/* Premier cran : tout reste en vue, sans icônes et plus serré. */
+@container (max-width: 1280px) {
+  .ltools.v2 .ltb.lbl svg { display: none; }
+  .ltools.v2 .ltb.lbl { padding: 0 9px; font-size: 12px; }
+  .ltools.v2 .kgo { padding: 0 12px; }
+}
+/* Second cran : le reste passe dans « Plus ». */
+@container (max-width: 1000px) {
+  .ltools.v2 .opt, .ltools.v2 .ltb.annul, .ltools.v2 .sp { display: none; }
+  .ltools.v2 .ltb.plus { display: inline-flex; margin-left: auto; }
+  .ltools.v2 .ltb.lbl svg { display: inline; }
+}
 body.nav-etroite .ltools.v2 { padding: 7px 8px; gap: 6px; }
 body.nav-etroite .ltools.v2 .opt, body.nav-etroite .ltools.v2 .ltb.annul, body.nav-etroite .ltools.v2 .sp { display: none; }
 body.nav-etroite .ltools.v2 .ltb.lbl { padding: 0 10px; font-size: 12.5px; gap: 6px; }
 body.nav-etroite .ltools.v2 .ltb.plus { display: inline-flex; margin-left: auto; }
 body.nav-etroite .ltools.v2 .kgo { padding: 0 11px; font-size: 13px; }
 body.nav-etroite .ltools.v2 .kgo .ch { display: none; }
-body.nav-etroite .ltools-voile { display: block; position: fixed; inset: 0; z-index: 26; }
-body.nav-etroite .ltools-menu {
-  display: flex; flex-direction: column; gap: 2px;
-  position: fixed; right: 8px; bottom: calc(var(--bottbar-h) + 54px); z-index: 27;
-  min-width: 228px; padding: 6px;
-  background: #fff; border: 1px solid var(--line); border-radius: 6px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
-}
+body.nav-etroite .ltools-menu { right: 8px; }
 .ltools-menu .ltb.lbl.ltm {
   width: 100%; height: 42px; justify-content: flex-start; gap: 10px; padding: 0 12px;
   border: 0; background: none; color: var(--slate); font-size: 13.5px;
