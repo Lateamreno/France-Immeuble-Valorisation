@@ -13,7 +13,7 @@ import "server-only";
  */
 
 import { fetchAll, getAgents, proprietairesDe } from "@/lib/bubble/server";
-import { lireMandants } from "@/lib/mandat";
+import { adresseImmeuble, lireMandants } from "@/lib/mandat";
 import { boiteDe } from "@/lib/mails/boites";
 import { chercherEchanges, type Entete } from "@/lib/mails/client";
 
@@ -24,20 +24,53 @@ const RANG_OFFRE: Record<string, number> = {
   "Acceptée": 1, "Compromis programmé": 2, "Compromis signé": 3, "Vente prévue": 4, "Vendu": 5,
 };
 
-export type RolePartie = "vendeur" | "acquereur" | "notaire_vendeur" | "notaire_acquereur";
+export type RolePartie =
+  | "vendeur" | "acquereur"
+  | "notaire_vendeur" | "notaire_acquereur"
+  | "clerc_vendeur" | "clerc_acquereur"
+  | "gestionnaire";
 export const LIBELLE_ROLE: Record<RolePartie, string> = {
   vendeur: "Vendeur", acquereur: "Acquéreur",
   notaire_vendeur: "Notaire du vendeur", notaire_acquereur: "Notaire de l'acquéreur",
+  clerc_vendeur: "Clerc du vendeur", clerc_acquereur: "Clerc de l'acquéreur",
+  gestionnaire: "Gestionnaire",
+};
+
+/** Les intervenants que l'agent choisit lui-même, et la clé de la fiche bien
+ *  qui garde chacun (retour #568 : un clerc par côté, et un gestionnaire). */
+export const POSTES = {
+  notaire_vendeur: "vente_notaire_vendeur",
+  notaire_acquereur: "vente_notaire_acquereur",
+  clerc_vendeur: "vente_clerc_vendeur",
+  clerc_acquereur: "vente_clerc_acquereur",
+  gestionnaire: "vente_gestionnaire",
+} as const;
+export type Poste = keyof typeof POSTES;
+/** Le profil que prend le contact choisi, dans le fichier du BO. */
+export const PROFIL_DU_POSTE: Record<Poste, string> = {
+  notaire_vendeur: "Notaire", notaire_acquereur: "Notaire",
+  clerc_vendeur: "Clerc de notaire", clerc_acquereur: "Clerc de notaire",
+  gestionnaire: "Gestionnaire",
 };
 
 export type Partie = {
   role: RolePartie;
   contactId?: string;
   nom: string;
+  /** Pour s'adresser à lui : « Maître DUPONT », « Madame MARTIN ». */
+  civilite?: string;
+  prenom?: string;
+  nomFamille?: string;
   societe?: string;
   email?: string;
   tel?: string;
+  /** Notaire ou clerc : est-ce lui qui suit le dossier pour son côté ? L'autre
+   *  est mis en copie de chaque e-mail (#568). */
+  enCharge?: boolean;
 };
+
+/** Un lien de pièces envoyé aux notaires, et ce qu'il contenait (#570). */
+export type LienPieces = { id: string; url: string; date: string; pieces: string[] };
 
 export type DonneesVente = {
   /** La section a-t-elle quelque chose à suivre ? Mandat signé ou offre retenue. */
@@ -50,6 +83,11 @@ export type DonneesVente = {
   };
   parties: Partie[];
   notaires: { vendeur?: string; acquereur?: string };
+  /** De chaque côté, qui suit le dossier : le notaire (par défaut) ou le clerc. */
+  enCharge: { vendeur: "notaire" | "clerc"; acquereur: "notaire" | "clerc" };
+  liens: LienPieces[];
+  /** Ce que le premier e-mail aux notaires rappelle du dossier. */
+  bien: { adresse: string; chargeVendeur: boolean };
 };
 
 function partieDe(role: RolePartie, c: Record<string, unknown> | undefined, repli?: string): Partie | undefined {
@@ -58,9 +96,12 @@ function partieDe(role: RolePartie, c: Record<string, unknown> | undefined, repl
   return {
     role, nom,
     contactId: c ? String(c._id) : undefined,
+    civilite: c ? S(c["Civilité"]) : undefined,
+    prenom: c ? S(c["prénom"]) : undefined,
+    nomFamille: c ? S(c.nom) : undefined,
     societe: c ? S(c.entreprise_nom) : undefined,
     email: c ? S(c.email)?.toLowerCase() : undefined,
-    tel: c ? S(c.portable_formatted) ?? S(c.portable) : undefined,
+    tel: c ? S(c.portable_formatted) ?? S(c.portable) ?? S(c.fixe_formatted) ?? S(c.fixe) : undefined,
   };
 }
 
@@ -71,7 +112,12 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
     fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: immeubleId }], 50).catch(() => []),
   ]);
   const im = ims[0];
-  if (!im) return { ouverte: false, parties: [], notaires: {} };
+  if (!im) {
+    return {
+      ouverte: false, parties: [], notaires: {}, enCharge: { vendeur: "notaire", acquereur: "notaire" },
+      liens: [], bien: { adresse: "", chargeVendeur: false },
+    };
+  }
 
   const signe = mandats
     .filter((m) => S(m.date_signature) || S(m.pdf_signed))
@@ -87,9 +133,11 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
   const mandants = signe ? lireMandants(signe) : [];
   for (const m of mandants) if (m.contactId && !idsVendeurs.includes(m.contactId)) idsVendeurs.push(m.contactId);
   const idsAcquereurs = retenue && Array.isArray(retenue.ACHETEURs) ? (retenue.ACHETEURs as unknown[]).map(String) : [];
-  const notaireV = S(im.vente_notaire_vendeur);
-  const notaireA = S(im.vente_notaire_acquereur);
-  const ids = [...new Set([...idsVendeurs, ...idsAcquereurs, notaireV, notaireA].filter((x): x is string => !!x))];
+  const poste = (k: Poste) => S(im[POSTES[k]]);
+  const notaireV = poste("notaire_vendeur");
+  const notaireA = poste("notaire_acquereur");
+  const intervenants = (Object.keys(POSTES) as Poste[]).map(poste);
+  const ids = [...new Set([...idsVendeurs, ...idsAcquereurs, ...intervenants].filter((x): x is string => !!x))];
   const contacts = ids.length
     ? await fetchAll("contact", [{ key: "_id", constraint_type: "in", value: ids }], 40).catch(() => [])
     : [];
@@ -113,10 +161,22 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
   } else if (retenue && S(retenue.acheteur_nom)) {
     parties.push({ role: "acquereur", nom: S(retenue.acheteur_nom)! });
   }
-  const nv = partieDe("notaire_vendeur", notaireV ? par.get(notaireV) : undefined);
-  const na = partieDe("notaire_acquereur", notaireA ? par.get(notaireA) : undefined);
-  if (nv) parties.push(nv);
-  if (na) parties.push(na);
+  const charge = (cote: "vendeur" | "acquereur"): "notaire" | "clerc" =>
+    S(im[`vente_charge_${cote}`]) === "clerc" && poste(`clerc_${cote}`) ? "clerc" : "notaire";
+  const enCharge = { vendeur: charge("vendeur"), acquereur: charge("acquereur") };
+  for (const k of ["notaire_vendeur", "clerc_vendeur", "notaire_acquereur", "clerc_acquereur", "gestionnaire"] as Poste[]) {
+    const id = poste(k);
+    const p = partieDe(k, id ? par.get(id) : undefined);
+    if (!p) continue;
+    if (k !== "gestionnaire") {
+      const [quoi, cote] = k.split("_") as ["notaire" | "clerc", "vendeur" | "acquereur"];
+      p.enCharge = enCharge[cote] === quoi;
+    }
+    parties.push(p);
+  }
+  const liens: LienPieces[] = Array.isArray(im.vente_liens)
+    ? (im.vente_liens as LienPieces[]).filter((l) => l && typeof l.url === "string")
+    : [];
 
   const num = (v: unknown) => (typeof v === "number" ? v : undefined);
   return {
@@ -131,6 +191,12 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
     } : undefined,
     parties,
     notaires: { vendeur: notaireV, acquereur: notaireA },
+    enCharge,
+    liens,
+    bien: {
+      adresse: adresseImmeuble(im),
+      chargeVendeur: (S(signe?.Charge_hono) ?? S(im.prix_Charge_honos)) === "Vendeur",
+    },
   };
 }
 

@@ -184,7 +184,7 @@ export const CIBLES = ["Investisseur", "Marchand de biens", "Patrimonial", "Prom
  *  dans l'ordre de fréquence : c'est la liste que propose le BO. */
 export const PROFILS_CONTACT = [
   "Investisseur", "Marchand", "Promoteur", "Foncière", "Agent immobilier",
-  "Gestionnaire", "Exploitant", "Apporteur", "Partenaire", "Notaire",
+  "Gestionnaire", "Exploitant", "Apporteur", "Partenaire", "Notaire", "Clerc de notaire",
   "Banquier", "Avocat", "Architecte", "Lotisseur", "Technicien", "Locataire",
 ];
 
