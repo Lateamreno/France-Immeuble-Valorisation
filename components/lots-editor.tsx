@@ -11,7 +11,10 @@
 // des VUES du même tableau. Une ligne = un lot, avec son bail et son
 // locataire ; la vue choisie dit seulement quelles colonnes on regarde, et
 // une seule barre enregistre tout.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
+import {
+  cloneElement, isValidElement, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition,
+  type ReactElement, type ReactNode,
+} from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
 import {
@@ -30,6 +33,7 @@ import {
 import { typesFor } from "@/lib/typologies";
 import { ModaleDpe } from "@/components/dpe-modale";
 import { Modale } from "@/components/modale";
+import { ClaudeDrive } from "@/components/claude-drive";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -364,6 +368,27 @@ const N = (s: string) => {
   return Number.isFinite(v) ? v : undefined;
 };
 
+/** Deux valeurs de case égales, « 977,86 » valant « 977.86 ». */
+const egalValeur = (x: string, y: string) => x === y || (N(x) !== undefined && N(x) === N(y));
+
+/** Les cases d'une ligne de matrice, aux noms du tableau ; une case vide reste vide. */
+function champsMatrice(o: Record<string, string>, bail: Record<string, string>, loc: Record<string, string>): Partial<Row> {
+  return {
+    batiment: o.batiment ?? "", etage: o.etage ?? "", numero: o.numero ?? "",
+    Destination: o.Destination ?? "", Type_lot: o.Type_lot ?? "",
+    surface_carrez: o.surface_carrez ?? "", surface_sol: o.surface_sol ?? "",
+    Type_bail: o.Type_bail ?? "", loyer: o.loyer ?? "", loyer_max: o.loyer_max ?? "",
+    Etat: o.Etat ?? "", Type_dpe: o.Type_dpe ?? "", renov_year: o.renov_year ?? "", commentaire: o.commentaire ?? "",
+    b_loyer: bail.loyer_initial ?? "", b_dg: bail.depot_garantie ?? "",
+    b_entree: dateMatrice(bail.date_entree ?? ""), b_indice: bail.indice ?? "",
+    b_i0: bail.indice_signature ?? "", b_i1: bail.indice_actuel ?? "",
+    b_statut: bail.statut ? statutBail(bail.statut) : "", b_com: bail.commentaire ?? "",
+    l_pm: /^(oui|o|x|vrai|true|1)$/i.test((loc.societe ?? "").trim()) ? "oui" : "",
+    l_civ: loc.civilite ?? "", l_prenom: loc.prenom ?? "", l_nom: loc.nom ?? "",
+    l_phone: loc.telephone ?? "", l_email: loc.email ?? "", l_com: loc.commentaire ?? "",
+  };
+}
+
 /** « 1 180 », « 57,91 » : le nombre à la française, hors saisie. */
 const enFrancais = (s: string) => {
   const v = N(s);
@@ -548,6 +573,16 @@ type Colonne = {
 };
 
 /** Les colonnes de texte libre, qui prennent la largeur restante. */
+/** Le champ de la ligne que montre chaque colonne (pour signaler une case changée). */
+const CHAMP_DE: Partial<Record<ColKey, keyof Row>> = {
+  bat: "batiment", etg: "etage", num: "numero", dest: "Destination", type: "Type_lot",
+  carrez: "surface_carrez", sol: "surface_sol", bail: "Type_bail", hc: "loyer", hcmax: "loyer_max",
+  etat: "Etat", dpe: "Type_dpe", renov: "renov_year", commentaire: "commentaire",
+  b_loyer: "b_loyer", b_dg: "b_dg", b_entree: "b_entree", b_indice: "b_indice", b_i0: "b_i0", b_i1: "b_i1",
+  b_statut: "b_statut", b_com: "b_com", l_pm: "l_pm", l_civ: "l_civ", l_prenom: "l_prenom", l_nom: "l_nom",
+  l_phone: "l_phone", l_email: "l_email", l_com: "l_com",
+};
+
 const LIBRES = new Set<ColKey>(["commentaire", "b_com", "l_com"]);
 
 export const COLONNES: Record<ColKey, Colonne> = {
@@ -1122,12 +1157,14 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         ...r, isNew: false, travaux: "", travaux_objet: "", travaux_urgence: "",
       }));
       setImporte(null);
+      setProposes(new Map());
       setDirty(new Set());
     });
 
   /* Annuler (#85) : on revient à la dernière version enregistrée, les lots
      créés et pas encore validés disparaissent. */
   const annuler = () => {
+    setProposes(new Map());
     setRows(enregistre.current);
     setDirty(new Set());
     setSel(new Set());
@@ -1225,6 +1262,16 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       ),
     },
     {
+      /* Claude lit le dossier Drive du bien et propose l'état locatif (MAV, 27/10). */
+      cle: "drive",
+      rendre: (classe) => (
+        <button key="drive" className={classe} type="button" onClick={() => { setPlus(false); setClaudeOuvert(true); }}
+          title="Claude lit le dossier Drive du bien et propose les lots, baux et locataires">
+          <svg viewBox="0 0 24 24"><path d="M8 3h8l5 9-4 7H7l-4-7z" /><path d="M8 3l9 16M16 3 7 19M3 12h18" /></svg> Depuis le Drive
+        </button>
+      ),
+    },
+    {
       cle: "telecharger",
       rendre: (classe) => (
         <button key="telecharger" className={classe} type="button" onClick={() => { setPlus(false); exporter(); }}>
@@ -1253,36 +1300,88 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       }
       const nouveaux: Row[] = [];
       let baux = 0, locataires = 0;
-      for (const { lot: o, bail, locataire } of lues) {
-        const id = `new_${Date.now()}_${nouveaux.length}`;
+      for (const { lot, bail, locataire } of lues) {
         if (rempli(bail)) baux++;
         if (locataire.nom.trim()) locataires++;
-        /* Le bail et le locataire de la matrice prennent leurs colonnes dans
-           la ligne (#379) : ils se relisent dans les vues Baux et Locataires
-           avant d'être enregistrés, comme le reste. */
-        nouveaux.push({
-          id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
-          batiment: o.batiment, etage: o.etage, numero: o.numero,
-          Destination: o.Destination || "Logement", Type_lot: o.Type_lot,
-          surface_carrez: o.surface_carrez, surface_sol: o.surface_sol,
-          Type_bail: o.Type_bail || "Vide", loyer: o.loyer, loyer_max: o.loyer_max,
-          lot_rattache: "",
-          Etat: o.Etat || "n.c.", Type_dpe: o.Type_dpe || "n.c.",
-          renov_year: o.renov_year, commentaire: o.commentaire,
-          b_loyer: bail.loyer_initial ?? "", b_dg: bail.depot_garantie ?? "",
-          b_entree: dateMatrice(bail.date_entree ?? ""), b_indice: bail.indice ?? "",
-          b_i0: bail.indice_signature ?? "", b_i1: bail.indice_actuel ?? "",
-          b_statut: statutBail(bail.statut ?? ""), b_com: bail.commentaire ?? "",
-          l_pm: /^(oui|o|x|vrai|true|1)$/i.test((locataire.societe ?? "").trim()) ? "oui" : "",
-          l_civ: locataire.civilite ?? "", l_prenom: locataire.prenom ?? "", l_nom: locataire.nom ?? "",
-          l_phone: locataire.telephone ?? "", l_email: locataire.email ?? "", l_com: locataire.commentaire ?? "",
-        });
+        nouveaux.push(nouvelleLigne(`new_${Date.now()}_${nouveaux.length}`, champsMatrice(lot, bail, locataire)));
       }
       setRows((rs) => [...rs, ...nouveaux]);
       setDirty((d) => { const n = new Set(d); nouveaux.forEach((r) => n.add(r.id)); return n; });
       setImporte({ lots: nouveaux.length, baux, locataires });
     };
     reader.readAsText(file, "utf-8");
+  };
+
+  /* Une ligne neuve depuis la matrice. Le bail et le locataire prennent leurs
+     colonnes dans la ligne (#379) : ils se relisent dans les vues Baux et
+     Locataires avant d'être enregistrés, comme le reste. */
+  const nouvelleLigne = (id: string, m: Partial<Row>): Row => ({
+    id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
+    batiment: "", etage: "", numero: "", Type_lot: "", surface_carrez: "", surface_sol: "",
+    loyer: "", loyer_max: "", lot_rattache: "", renov_year: "", commentaire: "",
+    ...VIDE_BAIL_LOC,
+    ...m,
+    Destination: m.Destination || "Logement", Type_bail: m.Type_bail || "Vide",
+    Etat: m.Etat || "n.c.", Type_dpe: m.Type_dpe || "n.c.",
+    b_statut: m.b_statut || "en_cours",
+  });
+
+  /* Les cases qu'une proposition de Claude change, avec ce qu'elles valaient :
+     encadrées dans le tableau, l'ancienne valeur au survol. */
+  const [proposes, setProposes] = useState<Map<string, Record<string, string>>>(new Map());
+  const [claudeOuvert, setClaudeOuvert] = useState(false);
+
+  /**
+   * Charge la proposition de Claude (MAV, 27/10). Un lot déjà saisi est
+   * retrouvé par son bâtiment et son numéro, et seules les cases que Claude
+   * remplit ET qui changent sont reprises — une case laissée vide par Claude
+   * n'efface rien. Un lot inconnu arrive en ligne neuve. Rien n'est écrit :
+   * tout attend Enregistrer, et Annuler défait tout.
+   */
+  const chargerProposition = (matrice: string) => {
+    const lues = lireMatrice(matrice);
+    const cle = (b: string, n: string) => `${b.trim().toUpperCase()}|${(N(n) ?? n.trim()).toString()}`;
+    const parCle = new Map(rows.map((r) => [cle(r.batiment, r.numero), r]));
+    const parNumero = new Map<string, Row[]>();
+    for (const r of rows) {
+      const k = (N(r.numero) ?? r.numero.trim()).toString();
+      parNumero.set(k, [...(parNumero.get(k) ?? []), r]);
+    }
+    const majs = new Map<string, Partial<Row>>();
+    const marques = new Map(proposes);
+    const nouveaux: Row[] = [];
+    for (const { lot, bail, locataire } of lues) {
+      const m = champsMatrice(lot, bail, locataire);
+      const num = (N(m.numero ?? "") ?? (m.numero ?? "").trim()).toString();
+      const homonymes = parNumero.get(num) ?? [];
+      const r = parCle.get(cle(m.batiment ?? "", m.numero ?? "")) ?? (homonymes.length === 1 ? homonymes[0] : undefined);
+      if (!r || !num) {
+        nouveaux.push(nouvelleLigne(`new_${Date.now()}_${nouveaux.length}`, m));
+        continue;
+      }
+      const patch: Partial<Row> = {};
+      const avant: Record<string, string> = { ...(marques.get(r.id) ?? {}) };
+      for (const [k, v] of Object.entries(m) as [keyof Row, string][]) {
+        if (!v || egalValeur(r[k] as string, v)) continue;
+        (patch as Record<string, string>)[k] = v;
+        avant[k] ??= r[k] as string;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      majs.set(r.id, patch);
+      marques.set(r.id, avant);
+    }
+    setRows((rs) => [...rs.map((r) => (majs.has(r.id) ? { ...r, ...majs.get(r.id) } : r)), ...nouveaux]);
+    setDirty((d) => { const n = new Set(d); majs.forEach((_, id) => n.add(id)); nouveaux.forEach((r) => n.add(r.id)); return n; });
+    setProposes(marques);
+    /* Ce qui change, par rubrique : la plupart des ajouts (locataires, baux)
+       vivent dans des vues que l'écran ne montre pas d'emblée. */
+    const rubrique = (k: string) => (k.startsWith("l_") ? "Locataire" : k.startsWith("b_") ? "Bail"
+      : COLONNES[(Object.entries(CHAMP_DE).find(([, f]) => f === k)?.[0] ?? "") as ColKey]?.label ?? k);
+    const champs: Record<string, number> = {};
+    for (const p of majs.values()) {
+      for (const r of new Set(Object.keys(p).map(rubrique))) champs[r] = (champs[r] ?? 0) + 1;
+    }
+    return { maj: majs.size, nouveaux: nouveaux.length, champs };
   };
 
   /* €/m² et écart vs loyer de marché du secteur (comme le BO). */
@@ -1386,6 +1485,19 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       }
     }
     return cases;
+  };
+
+  /* Une case que la proposition de Claude change : encadrée, avec l'ancienne
+     valeur au survol, jusqu'à l'enregistrement ou l'annulation. */
+  const marquer = (c: ColKey, r: Row, el: ReactNode) => {
+    const champ = CHAMP_DE[c];
+    const avant = champ ? proposes.get(r.id)?.[champ] : undefined;
+    if (avant === undefined || !isValidElement(el)) return el;
+    const e = el as ReactElement<{ className?: string; title?: string }>;
+    return cloneElement(e, {
+      className: [e.props.className, "claude"].filter(Boolean).join(" "),
+      title: `Proposé par Claude — avant : ${avant === "" ? "vide" : avant}`,
+    });
   };
 
   /** La cellule d'une colonne pour une ligne. */
@@ -1717,7 +1829,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
             {visibles.map((r) => (
               <tr key={r.id} className={dirty.has(r.id) ? "modif" : undefined}>
                 <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
-                {colonnes.map((c) => cellule(c, r))}
+                {colonnes.map((c) => marquer(c, r, cellule(c, r)))}
               </tr>
             ))}
             {visibles.length === 0 && (
@@ -1762,6 +1874,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           <button type="button" onClick={() => setImporte(null)} aria-label="Fermer">✕</button>
         </div>
       )}
+
+      <ClaudeDrive immeubleId={immeubleId} dossier={S(b.im.drive_dossier) || undefined}
+        ouvert={claudeOuvert} onFermer={() => setClaudeOuvert(false)} onCharger={chargerProposition} />
 
       {/* Barre d'outils sticky, libellés visibles, import/export.
 

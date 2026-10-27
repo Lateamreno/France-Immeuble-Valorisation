@@ -7365,6 +7365,45 @@ a.cfc-doc:hover { border-color: var(--slate); }
   color: inherit; font-size: 15px; line-height: 1; padding: 2px 4px;
 }
 
+/* Les propositions de Claude (« Depuis le Drive », MAV 27/10). Le bandeau de
+   suivi reprend la forme de l'avis d'import ; la proposition prête est une
+   carte qui dit d'où viennent les chiffres avant qu'on les charge. Les cases
+   changées par Claude sont encadrées d'or, l'ancienne valeur au survol. */
+.claude-avis {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  margin: 10px 0 0; padding: 9px 12px;
+  border: 1px solid #e3d9b4; border-radius: 6px;
+  background: #fbf8ee; color: #5f5222; font-size: 13px;
+}
+.claude-avis.ok { border-color: #b7e2ae; background: #f2faf0; color: #2f5c25; }
+.claude-avis.ko { border-color: #e8c9a0; background: #fdf6ec; color: #8a5a12; }
+.claude-avis b { font-weight: 600; }
+.claude-avis a { color: inherit; font-weight: 600; }
+.claude-avis button {
+  margin-left: auto; border: 0; background: none; cursor: pointer;
+  color: inherit; font-size: 15px; line-height: 1; padding: 2px 4px;
+}
+.claude-pt { width: 8px; height: 8px; border-radius: 50%; background: var(--gold-bo); animation: claude-pt 1.2s ease-in-out infinite; }
+@keyframes claude-pt { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .claude-pt { animation: none; } }
+.claude-prop {
+  margin: 10px 0 0; padding: 12px 14px;
+  border: 1px solid #e3d9b4; border-radius: 6px; background: #fff; font-size: 13px; color: var(--slate);
+}
+.claude-prop-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.claude-prop-t b { font-family: var(--font-title); font-weight: 600; }
+.claude-prop-t a { color: var(--slate); font-weight: 600; }
+.claude-prop-q { margin-left: auto; color: var(--gray-txt); font-size: 12px; }
+.claude-prop p { margin: 6px 0 0; max-width: 90ch; }
+.claude-alertes { margin: 8px 0 0; padding-left: 18px; color: #8a5a12; }
+.claude-alertes li { margin-bottom: 2px; }
+.claude-prop details { margin-top: 8px; color: var(--gray-txt); }
+.claude-prop details ul { margin: 6px 0 0; padding-left: 18px; }
+.claude-prop details a { color: var(--slate); }
+.claude-prop-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.claude-err { margin: 8px 0 0; color: var(--red); font-size: 13px; }
+.ltable td.claude { box-shadow: inset 0 0 0 2px var(--gold-bo); }
+
 /* ============================================================
    Espace propriétaire (tâche #56)
    La seule page du site qui s'adresse à un vendeur, pas à un agent.
