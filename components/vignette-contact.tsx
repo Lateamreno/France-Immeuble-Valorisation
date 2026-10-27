@@ -231,7 +231,7 @@ export function CarteContact({ v, href }: { v: VignetteData; href: string }) {
 }
 
 export function VignetteContact({
-  v, nom, prefixe, badge, immeuble,
+  v, nom, prefixe, badge, immeuble, telAuSurvol,
 }: {
   /** La fiche du contact ; absente, la vignette n'est qu'un libellé. */
   v?: VignetteData;
@@ -243,6 +243,8 @@ export function VignetteContact({
   badge?: React.ReactNode;
   /** L'immeuble dont on parle, pour le champ de fusion {{immeuble}} (#371). */
   immeuble?: string;
+  /** Au survol, le numéro remplace le nom (#545, colonne « À transformer »). */
+  telAuSurvol?: boolean;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const boite = useRef<HTMLSpanElement>(null);
@@ -299,7 +301,7 @@ export function VignetteContact({
   const isoler = (e: React.SyntheticEvent) => { e.stopPropagation(); if ("preventDefault" in e && (e.target as HTMLElement).tagName !== "A") e.preventDefault(); };
 
   return (
-    <span className="vgn" ref={boite}>
+    <span className={`vgn${telAuSurvol && v.tel ? " tel-survol" : ""}`} ref={boite}>
       {prefixe && <i className="vgn-pre">{prefixe}</i>}
       <button
         type="button" className={`vgn-chip${ouvert ? " on" : ""}${v.estAgent ? " agent" : ""}`}
@@ -309,7 +311,9 @@ export function VignetteContact({
         <svg viewBox="0 0 24 24" aria-hidden>{picto}</svg>
         {/* Dans une span : un nom très long peut alors se couper en « … »
             (carte du tableau de bord, 26/10) sans emporter l'insigne. */}
-        <span className="vgn-n">{libelle}</span>
+        <span className="vgn-n">
+          {telAuSurvol && v.tel ? <><i className="vgn-nom">{libelle}</i><i className="vgn-tel">{v.tel}</i></> : libelle}
+        </span>
         {insigne}
       </button>
 

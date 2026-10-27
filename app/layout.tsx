@@ -72,6 +72,7 @@ export default async function RootLayout({
     agentSlug: moi?.slug,
     nom: moi?.name,
     email: compte?.email,
+    outrepasser: await peutReviser(),
   };
 
   return (
@@ -88,7 +89,7 @@ export default async function RootLayout({
               {children}
               <QuickCreate agents={agents.filter((a) => a.actif)} />
             </div>
-            {await peutReviser() && <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />}
+            {session.outrepasser && <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />}
             <PastilleSalve />
           </div>
         </SalveRelancesProvider>

@@ -22,6 +22,7 @@ import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
+import { adresseComplete, villeArrondissement } from "@/lib/ville";
 import { lireSociete, nommerSocietes, societesDeContact, societesDeContacts } from "@/lib/bo/societes-lecture";
 import type { SocieteNommee } from "@/lib/societes";
 import { cache } from "react";
@@ -726,8 +727,9 @@ export async function getDashboardLive(
     const card: KCard = {
       id,
       ville,
-      villeNom: String(im.adresse_ville ?? "") || "Ville inconnue",
-      dpt: String(im.adresse_dpt ?? "") || undefined,
+      /* #551 : « Paris 11ème » plutôt que « Paris (75) » ; l'adresse au survol. */
+      villeNom: villeArrondissement(im.adresse_ville, im.adresse_zipcode) ?? (String(im.adresse_ville ?? "") || "Ville inconnue"),
+      dpt: villeArrondissement(im.adresse_ville, im.adresse_zipcode) ? undefined : String(im.adresse_dpt ?? "") || undefined,
       contact: contactLabel(contacts.get(im.PROPRIETAIRE as string)),
       adresse,
       photo,
@@ -857,7 +859,10 @@ export async function getDashboardLive(
          loyers » ; les charges, dès qu'aucune n'est chiffrée. */
       card.manque = [
         ...(!loyers || !surf ? ["État locatif"] : []),
-        ...(!nb(im.fin_charges_total) ? ["Charges"] : []),
+        /* #542 : des charges toutes refacturées aux locataires laissent 0 €
+           non récupérable — c'est une valeur, pas un manque. Il ne manque
+           que quand aucune ligne de charge n'existe. */
+        ...(!nb(im.fin_charges_total) && !(Array.isArray(im.CHARGEs) && im.CHARGEs.length > 0) ? ["Charges"] : []),
       ];
     }
 
@@ -1053,6 +1058,8 @@ export type BienData = {
   im: Record<string, unknown>;
   ville: string;
   adresse: string;
+  /** Numéro, rue, code postal et ville : le survol de la ville (#551). */
+  adresseComplete: string;
   photoUrl?: string;
   /** La photo principale est une capture Street View, à remplacer. */
   facadeRue?: boolean;
@@ -1208,8 +1215,10 @@ export async function getBien(id: string): Promise<BienData | null> {
 
   return {
     im,
-    ville: `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? im.adresse_dpt ?? ""})`,
+    ville: villeArrondissement(im.adresse_ville, im.adresse_zipcode)
+      ?? `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? im.adresse_dpt ?? ""})`,
     adresse: [im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" "),
+    adresseComplete: adresseComplete(im.adresse_numero_rue, im.adresse_rue, im.adresse_zipcode, im.adresse_ville),
     photoUrl: photoProxy(im.photo_main_compressed),
     facadeRue: estFacadeRue(im.photo_main_compressed),
     prix: euros(im.prix_hai),

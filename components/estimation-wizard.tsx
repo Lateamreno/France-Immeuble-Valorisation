@@ -376,7 +376,11 @@ export function EstimationWizard({
   const tfConnue = b.charges.some((c) => String(c.Type_charge ?? "").startsWith("Taxe")
     && ((num(c.total_an) ?? 0) > 0 || num(c.non_recup_an) !== undefined));
   const [chTf, setChTf] = useMemServi("chTf", tfConnue ? String(chTf0) : "");
-  const [chAutres, setChAutres] = useMemServi("chAutres", chAut0 ? String(chAut0) : "");
+  /* #542 : les autres charges suivent la même règle que la taxe foncière —
+     une ligne chiffrée dont tout est refacturé vaut 0, pas « vide ». */
+  const autresConnues = b.charges.some((c) => !String(c.Type_charge ?? "").startsWith("Taxe")
+    && ((num(c.total_an) ?? 0) > 0 || num(c.non_recup_an) !== undefined));
+  const [chAutres, setChAutres] = useMemServi("chAutres", autresConnues ? String(chAut0) : "");
   const tvxBati0 = b.travaux.filter((t) => Array.isArray(t.COMPOSANTs) && (t.COMPOSANTs as unknown[]).length > 0)
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
   const tvxLots0 = b.travaux.filter((t) => Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0)

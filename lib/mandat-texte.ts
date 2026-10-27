@@ -145,7 +145,7 @@ export function redigerMandat(e: EntreeMandat): MandatRedige {
      charge acquéreur en bloc multi-locataires — l'immense majorité des mandats
      — et charge vendeur seulement quand un locataire peut préempter, c'est-à-
      dire à la découpe ou sur un immeuble mono-locataire. */
-  const regime = regimeHonoraires(lots, modeVente(m), S(m.Charge_hono));
+  const regime = regimeHonoraires(lots, modeVente(m), S(m.Charge_hono), m.Charge_forcee === true);
   const preemptable = regime.clauseLocataire;
   const chargeVendeur = regime.charge === "Vendeur";
   /* Ce que devient le prix si le locataire achète en direct : la remise de

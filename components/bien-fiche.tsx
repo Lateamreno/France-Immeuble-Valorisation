@@ -571,7 +571,7 @@ export function BienFiche({
             <span className="rv">{b.agentInitials}</span>
           </div>
           <div className="bh">
-            <div className="bt">{b.ville}</div>
+            <div className="bt" title={b.adresseComplete || undefined}>{b.ville}</div>
             <div><span className="bst">{b.statut}</span></div>
             {b.prix && <div className="bp">{b.prix}</div>}
           </div>

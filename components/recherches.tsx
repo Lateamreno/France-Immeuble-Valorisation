@@ -14,6 +14,7 @@ import { chargerToutesRecherches } from "@/lib/bo/recherches-actions";
 import { CarteRecherche, DESTINATIONS, ModaleRecherche } from "@/components/carte-recherche";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
 import { PanneauAProposer } from "@/components/a-proposer";
+import { DEPARTEMENTS, libelleDepartement } from "@/lib/geo-fr";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -54,6 +55,12 @@ export function EcranRecherches({
   const [nonSuivies, setNonSuivies] = useState(false);
   const [avecContact, setAvecContact] = useState(false);
   const [aProposerSeul, setAProposerSeul] = useState(false);
+  /* #546 : « savoir d'un coup d'œil si un client recherche spécifiquement
+     dans une zone », et pouvoir écarter ceux qui cherchent toute la France. */
+  const [lieu, setLieu] = useState("");
+  const [sansFrance, setSansFrance] = useState(false);
+  /* Et, dans le même esprit, qui peut acheter un bien à ce prix-là. */
+  const [budget, setBudget] = useState("");
   const [tri, setTri] = useState("modif");
   const [page, setPage] = useState(1);
   const [taille, setTaille] = useState(10);
@@ -97,6 +104,17 @@ export function EcranRecherches({
       if (nonSuivies && r.agent !== "FI") return false;
       if (avecContact && !r.contact) return false;
       if (aProposerSeul && r.aProposer === 0) return false;
+      const france = r.lieux.length === 1 && r.lieux[0] === "France entière";
+      if (sansFrance && france) return false;
+      /* Une zone choisie garde ceux qui la visent ; « France entière » la
+         couvre aussi, sauf si on vient de l'écarter. */
+      if (lieu && !france && !r.lieux.some((x) => x.toLowerCase() === lieu.toLowerCase())) return false;
+      if (lieu && france && sansFrance) return false;
+      const px = Number(budget.replace(/[^\d]/g, ""));
+      if (px > 0) {
+        if (r.brut.prixMin !== undefined && px < r.brut.prixMin * 0.9) return false;
+        if (r.brut.prixMax !== undefined && px > r.brut.prixMax * 1.1) return false;
+      }
       return true;
     });
     const d = (r: RechercheCard) => String(r.date ?? "");
@@ -106,19 +124,30 @@ export function EcranRecherches({
       case "note": return [...gardees].sort((a, b) => (a.contact?.note ?? "Z").localeCompare(b.contact?.note ?? "Z"));
       default: return [...gardees].sort((a, b) => d(b).localeCompare(d(a)));
     }
-  }, [rows, vue, q, agent, cible, destination, note, nonSuivies, avecContact, aProposerSeul, tri]);
+  }, [rows, vue, q, agent, cible, destination, note, nonSuivies, avecContact, aProposerSeul, lieu, sansFrance, budget, tri]);
 
   const pages = Math.max(1, Math.ceil(filtrees.length / taille));
   const cur = Math.min(page, pages);
   const tranche = filtrees.slice((cur - 1) * taille, cur * taille);
 
   const cibles = [...new Set(rows.map((r) => r.cible).filter(Boolean) as string[])].sort();
+  /* Les zones réellement visées par au moins une recherche : départements
+     d'abord (dans l'ordre des codes), puis villes. */
+  const zones = useMemo(() => {
+    const tous = new Set(rows.flatMap((r) => r.lieux).filter((x) => x !== "France entière"));
+    const codes = new Set(DEPARTEMENTS.map((d) => d.code));
+    const dpts = [...tous].filter((x) => codes.has(x.toUpperCase())).sort((a, b) => a.localeCompare(b, "fr", { numeric: true }));
+    const villes = [...tous].filter((x) => !codes.has(x.toUpperCase())).sort((a, b) => a.localeCompare(b, "fr"));
+    return { dpts, villes };
+  }, [rows]);
   const raz = () => {
     setAgent(""); setCible(""); setDestination(""); setNote("");
     setNonSuivies(false); setAvecContact(false); setAProposerSeul(false);
+    setLieu(""); setSansFrance(false); setBudget("");
     setTri("modif"); setPage(1);
   };
-  const filtreActif = !!(agent || cible || destination || note || nonSuivies || avecContact || aProposerSeul || tri !== "modif");
+  const filtreActif = !!(agent || cible || destination || note || nonSuivies || avecContact || aProposerSeul
+    || lieu || sansFrance || budget || tri !== "modif");
 
   const cocher = (id: string) =>
     setChoisies((s) => {
@@ -167,6 +196,36 @@ export function EcranRecherches({
               <option value="">Tous</option>
               {cibles.map((c) => <option key={c}>{c}</option>)}
             </select>
+          </label>
+
+          <label className="fltr-l">
+            <span><svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.3" /></svg> Localisation</span>
+            <select value={lieu} onChange={(e) => { setLieu(e.target.value); setPage(1); }}>
+              <option value="">Toutes les zones</option>
+              {zones.dpts.length > 0 && (
+                <optgroup label="Départements">
+                  {zones.dpts.map((d) => <option key={d} value={d}>{libelleDepartement(d)}</option>)}
+                </optgroup>
+              )}
+              {zones.villes.length > 0 && (
+                <optgroup label="Villes">
+                  {zones.villes.map((v) => <option key={v} value={v}>{v}</option>)}
+                </optgroup>
+              )}
+            </select>
+          </label>
+
+          <label className="fltr-l">
+            <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z" /></svg> Exclure « France entière »</span>
+            <select value={sansFrance ? "oui" : "non"} onChange={(e) => { setSansFrance(e.target.value === "oui"); setPage(1); }}>
+              <option value="non">Non</option><option value="oui">Oui</option>
+            </select>
+          </label>
+
+          <label className="fltr-l">
+            <span><svg viewBox="0 0 24 24"><path d="M17 6.5A7 7 0 1 0 17 17.5M4 10h9M4 14h9" /></svg> Budget compatible avec</span>
+            <input className="fltr-in" value={budget} inputMode="numeric" placeholder="Prix du bien, en €"
+              onChange={(e) => { setBudget(e.target.value.replace(/[^\d\s]/g, "")); setPage(1); }} />
           </label>
 
           <label className="fltr-l">

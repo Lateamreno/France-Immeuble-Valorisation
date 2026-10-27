@@ -17,10 +17,11 @@ import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group, jourIso, S } from "@/lib/format";
 import { baremeTexte, plafondTaux, type Tranche } from "@/lib/bareme";
-import { IRREVOC_DEFAUT, regimeDe } from "@/lib/bo/mandat-doc";
+import { IRREVOC_DEFAUT, IRREVOC_MAX, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { Champ } from "@/components/champ";
+import { useSession } from "@/components/session";
 import { Modale, useQuestion } from "@/components/modale";
 import { ContactPicker } from "@/components/contact-picker";
 import { VignetteContact, type VignetteData } from "@/components/vignette-contact";
@@ -145,6 +146,16 @@ function dureeDepuis(
   const jours = Math.round((b.getTime() - a.getTime()) / 86400000);
   return jours > 0 ? { n: String(jours), unite: "jours" } : { n: "3", unite: "mois" };
 }
+
+/* #559 : une durée stockée en jours se relit en mois quand elle tombe juste
+   (90 → 3 mois) ; un mois compte trente jours, comme le plafond légal. */
+type Unite = "jours" | "mois";
+const depuisJours = (j: number): { n: string; u: Unite } =>
+  j >= 30 && j % 30 === 0 ? { n: String(j / 30), u: "mois" } : { n: String(j), u: "jours" };
+const versJours = (n: string, u: Unite): number | undefined => {
+  const v = parse(n);
+  return v === undefined ? undefined : u === "mois" ? v * 30 : v;
+};
 
 const TABS = ["Mandants", "Objet", "Prix", "Conditions", "Envoi"] as const;
 type Tab = (typeof TABS)[number];
@@ -1661,16 +1672,20 @@ function OngletPrix({
   const [pilotes, setPilotes] = useState<ChampPrix[]>(["hai"]);
   const [charge, setCharge] = useMemoire(`${memo}:charge`, S(m.Charge_hono) || "Acheteur");
   const [mode, setMode] = useMemoire<Mode>(`${memo}:mode`, modeVente(m));
-  const { modifie, valider } = useModifie(JSON.stringify([p, charge, mode]));
+  /* #558 : MAV peut passer outre la charge imposée ; le mandat le garde. */
+  const [force, setForce] = useMemoire(`${memo}:force`, m.Charge_forcee === true);
+  const { outrepasser } = useSession();
+  const { modifie, valider } = useModifie(JSON.stringify([p, charge, mode, force]));
   const annuler = () => {
     oublier(`${memo}:`);
     setP({ nv: num(m.prix_nv), hai: num(m.prix_hai), taux: num(m.honos_taux), honos: num(m.honos_ttc) });
     setCharge(S(m.Charge_hono) || "Acheteur");
     setMode(modeVente(m));
+    setForce(m.Charge_forcee === true);
     setPilotes(["hai"]);
   };
   const s = useMemo(() => synthese(lots), [lots]);
-  const regime = useMemo(() => regimeHonoraires(lots, mode, charge), [lots, mode, charge]);
+  const regime = useMemo(() => regimeHonoraires(lots, mode, charge, force), [lots, mode, charge, force]);
   const remise = useMemo(() => venteDirecteLocataire(p), [p]);
 
   const saisir = (cle: ChampPrix) => (v: string) => {
@@ -1684,6 +1699,7 @@ function OngletPrix({
       await updateMandat(mandatId, immeubleId, {
         prix_nv: p.nv, prix_hai: p.hai, honos_taux: p.taux, honos_ttc: p.honos,
         Charge_hono: regime.charge,
+        Charge_forcee: !!regime.force,
         vente_mode: mode,
       } as MandatPatch);
       oublier(`${memo}:`);
@@ -1763,8 +1779,20 @@ function OngletPrix({
           </>
         ) : (
           <>
-            <b>Charge libre.</b> {regime.motif}
+            <b>{regime.force ? "Charge forcée." : "Charge libre."}</b> {regime.motif}
           </>
+        )}
+        {/* #558 — « sur ma session admin tu devrais me laisser un overright ».
+            Le bouton n'existe que pour MAV ; le serveur le revérifie. */}
+        {outrepasser && !locked && regime.impose && (
+          <button type="button" className="mdt-outre" onClick={() => { setForce(true); setCharge("Acheteur"); }}>
+            Passer outre : charge acquéreur (décision de la direction)
+          </button>
+        )}
+        {outrepasser && !locked && regime.force && (
+          <button type="button" className="mdt-outre" onClick={() => { setForce(false); setCharge("Vendeur"); }}>
+            Revenir à la charge vendeur
+          </button>
         )}
       </div>
 
@@ -2097,8 +2125,14 @@ function OngletConditions({
   const [debut, setDebut] = useMemoire(`${memo}:debut`, dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
   const [duree, setDuree] = useMemoire(`${memo}:duree`, S(num(m["durée_tot_month"]) ?? 12));
   const [exclu, setExclu] = useMemoire(`${memo}:exclu`, S(m.Type_exclu) || "Simple");
-  const [dExclu, setDExclu] = useMemoire(`${memo}:dexclu`, S(num(m["durée_exclu_jours"]) ?? 90));
-  const [irrevoc, setIrrevoc] = useMemoire(`${memo}:irrevoc`, S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
+  /* #559 : « l'irrévocabilité habituellement est de trois mois » — jours ou
+     mois au choix, comme l'exclusivité, et trois mois par défaut pour les deux. */
+  const dEx0 = depuisJours(num(m["durée_exclu_jours"]) ?? 90);
+  const [dExclu, setDExclu] = useMemoire(`${memo}:dexclu`, dEx0.n);
+  const [dExcluU, setDExcluU] = useMemoire<Unite>(`${memo}:dexcluU`, dEx0.u);
+  const irr0 = depuisJours(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]);
+  const [irrevoc, setIrrevoc] = useMemoire(`${memo}:irrevoc`, irr0.n);
+  const [irrevocU, setIrrevocU] = useMemoire<Unite>(`${memo}:irrevocU`, irr0.u);
   /* Retour #297 — « L'exclusivité révocable à compter du : mieux vaut écrire
      durée de l'exclusivité, et donner l'option d'écrire un nombre de jours
      (max 90) et un nombre de mois (max 3). »
@@ -2112,15 +2146,15 @@ function OngletConditions({
   const [revocU, setRevocU] = useMemoire<"jours" | "mois">(`${memo}:revocU`, revoc0.unite);
   const [web, setWeb] = useMemoire(`${memo}:web`, publicationWeb(m));
   const { modifie, valider } = useModifie(
-    JSON.stringify([debut, duree, exclu, dExclu, irrevoc, revocN, revocU, web]),
+    JSON.stringify([debut, duree, exclu, dExclu, dExcluU, irrevoc, irrevocU, revocN, revocU, web]),
   );
   const annuler = () => {
     oublier(`${memo}:`);
     setDebut(dateInput(m.date_effet) || new Date().toISOString().slice(0, 10));
     setDuree(S(num(m["durée_tot_month"]) ?? 12));
     setExclu(S(m.Type_exclu) || "Simple");
-    setDExclu(S(num(m["durée_exclu_jours"]) ?? 90));
-    setIrrevoc(S(num(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regimeDe(m.Type_exclu)]));
+    setDExclu(dEx0.n); setDExcluU(dEx0.u);
+    setIrrevoc(irr0.n); setIrrevocU(irr0.u);
     setRevocN(revoc0.n);
     setRevocU(revoc0.unite);
     setWeb(publicationWeb(m));
@@ -2153,10 +2187,11 @@ function OngletConditions({
         date_effet: debut ? new Date(debut).toISOString() : undefined,
         "durée_tot_month": parse(duree),
         Type_exclu: exclu,
-        "durée_exclu_jours": exclu === "Semi-exclusif" ? parse(dExclu) : undefined,
+        "durée_exclu_jours": exclu === "Semi-exclusif" ? versJours(dExclu, dExcluU) : undefined,
         // La date de révocation de la seule exclusivité ne vaut qu'en exclusif.
         date_revoc_exclu: exclu === "Exclusif" && revocDate ? revocDate.toISOString() : undefined,
-        "durée_irrevoc_days": parse(irrevoc),
+        /* Le plafond légal : quatre-vingt-dix jours. */
+        "durée_irrevoc_days": (() => { const j = versJours(irrevoc, irrevocU); return j === undefined ? undefined : Math.min(IRREVOC_MAX, j); })(),
         publication_web_yn: web,
       });
       oublier(`${memo}:`);
@@ -2188,22 +2223,38 @@ function OngletConditions({
       </div>
 
       <div className="mdt-sub">Durées</div>
-      <div className="mdt-grid">
+      {/* #559 : toutes les cases sur la même ligne de base — l'aide qui
+          pendait sous l'exclusivité passe sous la grille. */}
+      <div className="mdt-grid mdt-durees">
         <Champ libelle="Prise d'effet" className="mdt-ch" htmlFor="mdt-cond-debut">
           <input id="mdt-cond-debut" className="mi" type="date" value={debut} disabled={locked} onChange={(e) => setDebut(e.target.value)} />
         </Champ>
         <Champ libelle="Durée totale (mois)" className="mdt-ch" htmlFor="mdt-cond-duree">
           <input id="mdt-cond-duree" className="mi" value={duree} disabled={locked} inputMode="numeric" onChange={(e) => setDuree(e.target.value)} />
         </Champ>
-        <Champ libelle="Irrévocabilité (jours)" className="mdt-ch" htmlFor="mdt-cond-irrevoc">
-          <input id="mdt-cond-irrevoc" className="mi" value={irrevoc} disabled={locked} inputMode="numeric" onChange={(e) => setIrrevoc(e.target.value)} />
+        <Champ libelle="Irrévocabilité" className="mdt-ch" htmlFor="mdt-cond-irrevoc">
+          <span className="mdt-duo">
+            <input id="mdt-cond-irrevoc" className="mi" value={irrevoc} disabled={locked} inputMode="numeric"
+              onChange={(e) => setIrrevoc(e.target.value.replace(/[^\d]/g, ""))} />
+            <select className="mi" value={irrevocU} disabled={locked} onChange={(e) => setIrrevocU(e.target.value as Unite)}>
+              <option value="jours">jours</option>
+              <option value="mois">mois</option>
+            </select>
+          </span>
         </Champ>
         {exclu === "Semi-exclusif" && (
           /* Retour #194 : ce champ porte la DURÉE D'EXCLUSIVITÉ, au terme de
              laquelle elle s'éteint d'elle-même et le mandat se poursuit en
              mandat simple. « Délai de présentation » désignait autre chose. */
-          <Champ libelle="Durée de l'exclusivité (jours)" className="mdt-ch" htmlFor="mdt-cond-dexclu">
-            <input id="mdt-cond-dexclu" className="mi" value={dExclu} disabled={locked} inputMode="numeric" onChange={(e) => setDExclu(e.target.value)} />
+          <Champ libelle="Durée de l'exclusivité" className="mdt-ch" htmlFor="mdt-cond-dexclu">
+            <span className="mdt-duo">
+              <input id="mdt-cond-dexclu" className="mi" value={dExclu} disabled={locked} inputMode="numeric"
+                onChange={(e) => setDExclu(e.target.value.replace(/[^\d]/g, ""))} />
+              <select className="mi" value={dExcluU} disabled={locked} onChange={(e) => setDExcluU(e.target.value as Unite)}>
+                <option value="jours">jours</option>
+                <option value="mois">mois</option>
+              </select>
+            </span>
           </Champ>
         )}
         {exclu === "Exclusif" && (
@@ -2223,17 +2274,20 @@ function OngletConditions({
                 <option value="mois">mois</option>
               </select>
             </span>
-            <i className="mdt-aide">
-              Période pendant laquelle l&apos;exclusivité ne peut pas être révoquée —
-              {revocU === "mois" ? " 3 mois maximum." : " 90 jours maximum."}
-              {revocDate && ` Révocable à compter du ${revocDate.toLocaleDateString("fr-FR")}.`}
-            </i>
           </Champ>
         )}
         <Champ libelle="Fin du mandat" className="mdt-ch" htmlFor="mdt-cond-fin">
           <input id="mdt-cond-fin" className="mi gris" readOnly value={fin ? fin.toLocaleDateString("fr-FR") : "—"} />
         </Champ>
       </div>
+      <p className="mdt-aide mdt-durees-aide">
+        Irrévocabilité : 90 jours (3 mois) au plus.
+        {exclu === "Exclusif" && <>
+          {" "}Exclusivité : période pendant laquelle elle ne peut pas être révoquée —
+          {revocU === "mois" ? " 3 mois maximum." : " 90 jours maximum."}
+          {revocDate && ` Révocable à compter du ${revocDate.toLocaleDateString("fr-FR")}.`}
+        </>}
+      </p>
 
       <div className="mdt-sub">Publication en ligne</div>
       <button type="button" className={`mdt-web${web ? " on" : ""}`} disabled={locked} onClick={() => setWeb((v) => !v)}>
