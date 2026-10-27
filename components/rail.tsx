@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV, NAV_DECOUPE } from "@/lib/nav";
 import { changerMode } from "@/lib/bo/mode";
+import { deconnecter } from "@/lib/auth/actions";
 import type { Mode } from "@/lib/decoupe";
 import { useTransition } from "react";
 
@@ -37,7 +38,16 @@ export const IC: Record<string, React.ReactNode> = {
   "#mailing": <path d="M3 5.5h18c.6 0 1 .4 1 1v.4l-10 6-10-6v-.4c0-.6.4-1 1-1zm-1 3.8 9.5 5.7c.3.2.7.2 1 0L22 9.3v8.2c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1V9.3z" />,
 };
 
-export function Rail({ mode = "bloc" }: { mode?: Mode }) {
+/** Les écrans réservés à la direction (MAV, 27/10) : réglages et chiffres de l'agence. */
+const DIRECTION_SEULE = new Set(["/reglages", "/analytics"]);
+
+export function Rail({ mode = "bloc", direction = true, nom, connecte = false }: {
+  mode?: Mode;
+  /** Faux pour un agent : les entrées de direction disparaissent du menu. */
+  direction?: boolean;
+  nom?: string;
+  connecte?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -71,7 +81,7 @@ export function Rail({ mode = "bloc" }: { mode?: Mode }) {
       </div>
       <div className="modelab">{decoupe ? "Opérations de découpe" : "Vente en bloc"}</div>
 
-      {(decoupe ? NAV_DECOUPE : NAV).map((it) => {
+      {(decoupe ? NAV_DECOUPE : NAV).filter((it) => direction || !DIRECTION_SEULE.has(it.href)).map((it) => {
         if (it.tool === "switch-onoff") {
           return (
             <div className="srow" key={it.href}>
@@ -102,6 +112,14 @@ export function Rail({ mode = "bloc" }: { mode?: Mode }) {
           <a key={it.href} href={undefined} role="button">{inner}</a>
         );
       })}
+
+      {/* Qui est connecté, et la porte de sortie (MAV, 27/10). */}
+      {connecte && (
+        <form action={deconnecter} className="rail-moi">
+          <span title={nom}>{nom ?? "Connecté"}</span>
+          <button type="submit">Se déconnecter</button>
+        </form>
+      )}
     </aside>
   );
 }

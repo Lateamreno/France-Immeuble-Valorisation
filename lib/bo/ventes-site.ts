@@ -80,6 +80,8 @@ export type LigneVente = {
   etat: EtatSiteVente;
   /** Pour une vente neuve : depuis quand elle attend MAV. */
   attendDepuis?: string;
+  /** Un agent a demandé la publication : la direction doit relire. */
+  relecture?: { le: string; par: string };
   slug?: string;
 };
 
@@ -125,6 +127,8 @@ export async function listeVentes(): Promise<{ aPublier: LigneVente[]; passees: 
         : s.recit && s.recit_valide_le ? "avec_recit" : "sans_recit",
       attendDepuis: !s ? S(v.data["Created Date"]) : undefined,
       slug: s?.slug,
+      relecture: v.data.site_publication_demandee && typeof v.data.site_publication_demandee === "object"
+        ? v.data.site_publication_demandee as { le: string; par: string } : undefined,
     };
   };
   const toutes = ventes.map(ligne);
@@ -327,9 +331,10 @@ async function journaliser(venteId: string, geste: string, agent?: string) {
 
 /** Garde les faits corrigés et le texte en cours, sans rien publier. */
 export async function enregistrerBrouillon(venteId: string, faits: FaitsVente, texte: Recit, agent?: string) {
-  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
-  const { estAdmin, REFUS_ADMIN } = await import("./admin");
-  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  /* Les agents écrivent et corrigent les récits (MAV, 27/10) ; la mise en
+     ligne, elle, passe par la direction (voir demanderPublication). */
+  const { peutDiffuser, REFUS_ADMIN } = await import("./admin");
+  if (!(await peutDiffuser(agent))) return REFUS_ADMIN;
   await rpcBo("bo_patch_doc", {
     p_table: "bo_vente",
     p_id: venteId,
@@ -508,13 +513,64 @@ async function deposer(venteId: string, faits: FaitsVente, texte: Recit | null) 
 }
 
 /**
+ * Un agent a écrit ou corrigé le récit et demande sa mise en ligne (MAV, 27/10 :
+ * « une notif m'est envoyée pour vérification avant publication sur le site,
+ * afin que je puisse lire et vérifier »). Le texte est gardé en brouillon, la
+ * vente est marquée « relecture demandée », et la direction reçoit un e-mail.
+ * Rien ne part sur le site.
+ */
+async function demanderPublication(venteId: string, faits: FaitsVente, texte: Recit | null, agent?: string) {
+  try {
+    if (texte) {
+      const r = await enregistrerBrouillon(venteId, faits, texte, agent);
+      if (!r.ok) return r;
+    } else {
+      await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_faits: faits } });
+    }
+    const { compteCourant, tousLesComptes } = await import("@/lib/auth/comptes");
+    const moi = await compteCourant();
+    const qui = moi?.email ?? agent ?? "un agent";
+    await rpcBo("bo_patch_doc", {
+      p_table: "bo_vente", p_id: venteId,
+      p_patch: { site_publication_demandee: { le: new Date().toISOString(), par: qui, recit: !!texte } },
+    });
+    await journaliser(venteId, texte ? "publication demandée, avec récit" : "publication demandée, sans récit", agent);
+    const [v] = await lireBo(`bo_vente?select=id,data&id=eq.${encodeURIComponent(venteId)}`);
+    const direction = (await tousLesComptes()).filter((c) => c.actif && c.role === "direction").map((c) => c.email);
+    if (direction.length) {
+      const { envoyerMail } = await import("@/lib/bo/mail");
+      const { headers } = await import("next/headers");
+      const h = await headers();
+      const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+      const lien = hote ? `${h.get("x-forwarded-proto") ?? "https"}://${hote}/ventes-site/${encodeURIComponent(venteId)}` : "";
+      await envoyerMail({
+        to: direction.join(", "),
+        subject: `À relire : vente de ${S(v?.data.ville) ?? "?"} avant publication sur le site`,
+        text: [
+          `${qui} demande la publication de la vente de ${S(v?.data.ville) ?? "?"} sur le site France Immeuble, ${texte ? "avec son récit" : "sans récit"}.`,
+          "",
+          "Rien n'est en ligne : relisez, corrigez si besoin, puis « Valider et publier ».",
+          lien,
+        ].join("\n"),
+      }).catch(() => undefined);
+    }
+    revalidatePath("/ventes-site");
+    return { ok: true as const, message: "Publication demandée : la direction relit le texte avant la mise en ligne. Rien n'est encore sur le site." };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * « Valider et publier ». Le contrôle d'anonymat est refait ICI, côté serveur :
  * un bouton forcé dans le navigateur ne doit pas suffire à le contourner.
  */
 export async function validerEtPublier(venteId: string, faits: FaitsVente, texte: Recit, agent?: string) {
-  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
-  const { estAdmin, REFUS_ADMIN } = await import("./admin");
-  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  /* Ce que le site dit au nom de l'agence, c'est la direction qui le publie ;
+     un agent DEMANDE la publication (MAV, 27/10). */
+  const { estAdmin, peutDiffuser, REFUS_ADMIN } = await import("./admin");
+  if (!(await peutDiffuser(agent))) return REFUS_ADMIN;
+  if (!(await estAdmin(agent))) return demanderPublication(venteId, faits, texte, agent);
   try {
     const [v] = await lireBo(`bo_vente?select=id,data&id=eq.${encodeURIComponent(venteId)}`);
     if (!v) return { ok: false as const, message: "Vente introuvable." };
@@ -524,7 +580,10 @@ export async function validerEtPublier(venteId: string, faits: FaitsVente, texte
     if (nombreDeFaits(faits) < 6) return { ok: false as const, message: "Moins de six faits : pas de récit. Publiez sans récit, ou complétez les faits." };
     await enregistrerBrouillon(venteId, faits, texte, agent);
     const url = await deposer(venteId, faits, texte);
-    await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_valide_le: new Date().toISOString(), site_ecartee: null } });
+    await rpcBo("bo_patch_doc", {
+      p_table: "bo_vente", p_id: venteId,
+      p_patch: { site_valide_le: new Date().toISOString(), site_ecartee: null, site_publication_demandee: null },
+    });
     await journaliser(venteId, "validée et publiée avec son récit", agent);
     revalidatePath("/ventes-site");
     return { ok: true as const, url };
@@ -535,12 +594,15 @@ export async function validerEtPublier(venteId: string, faits: FaitsVente, texte
 
 /** « Publier sans récit » : la fiche existe, le site ne la fait pas indexer. */
 export async function publierSansRecit(venteId: string, faits: FaitsVente, agent?: string) {
-  /* Retour #531 : ce que le site dit, et s'il le dit, c'est l'administrateur. */
-  const { estAdmin, REFUS_ADMIN } = await import("./admin");
-  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  const { estAdmin, peutDiffuser, REFUS_ADMIN } = await import("./admin");
+  if (!(await peutDiffuser(agent))) return REFUS_ADMIN;
+  if (!(await estAdmin(agent))) return demanderPublication(venteId, faits, null, agent);
   try {
     const url = await deposer(venteId, faits, null);
-    await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: venteId, p_patch: { site_faits: faits, site_ecartee: null } });
+    await rpcBo("bo_patch_doc", {
+      p_table: "bo_vente", p_id: venteId,
+      p_patch: { site_faits: faits, site_ecartee: null, site_publication_demandee: null },
+    });
     await journaliser(venteId, "publiée sans récit", agent);
     revalidatePath("/ventes-site");
     return { ok: true as const, url };

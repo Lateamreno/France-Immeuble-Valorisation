@@ -13,20 +13,41 @@
  * pour un besoin d'une ligne. On pose donc le chemin dans un en-tête, et le
  * layout choisit.
  *
- * Ce middleware N'AUTHENTIFIE RIEN et ne doit pas le laisser croire : le BO
- * n'a pas encore de connexion, qui a l'URL a l'accès.
+ * Depuis le 27/10, il garde aussi la porte : toute adresse demande une session
+ * (cookie signé, lib/auth/jeton.ts), sauf la page de connexion et les adresses
+ * des machines, qui ont chacune leur propre clé. Sans session, une page mène à
+ * /connexion ; une adresse /api/ répond 401. Ce contrôle ne regarde que la
+ * signature : le compte est relu en base côté serveur (lib/auth/comptes.ts),
+ * c'est là qu'un accès désactivé est refusé. La porte ne se ferme qu'avec
+ * `BO_AUTH=on` (Vercel) : avant, chacun a le temps de choisir son mot de passe.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { cheminPublic, COOKIE_SESSION, lireSession } from "@/lib/auth/jeton";
 
-export function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  res.headers.set("x-chemin", req.nextUrl.pathname);
+export async function middleware(req: NextRequest) {
+  const chemin = req.nextUrl.pathname;
+  if (process.env.BO_AUTH?.trim().toLowerCase() === "on" && !cheminPublic(chemin)) {
+    const session = await lireSession(req.cookies.get(COOKIE_SESSION)?.value);
+    if (!session) {
+      if (chemin.startsWith("/api/")) return NextResponse.json({ ok: false, message: "Connexion requise." }, { status: 401 });
+      const vers = req.nextUrl.clone();
+      vers.pathname = "/connexion";
+      vers.search = chemin === "/" ? "" : `?suite=${encodeURIComponent(chemin + req.nextUrl.search)}`;
+      return NextResponse.redirect(vers);
+    }
+  }
+  /* Le chemin descend à la mise en page, par l'en-tête de la REQUÊTE : c'est
+     celui que `headers()` relit côté serveur. */
+  const entetes = new Headers(req.headers);
+  entetes.set("x-chemin", chemin);
+  const res = NextResponse.next({ request: { headers: entetes } });
+  res.headers.set("x-chemin", chemin);
   return res;
 }
 
 export const config = {
   /* Tout sauf les fichiers servis tels quels : inutile de traverser le
      middleware pour une image ou un chunk. */
-  matcher: ["/((?!_next/static|_next/image|favicon|icone|.*\\.svg$|.*\\.png$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon|icone|fonts/|.*\\.(?:svg|png|jpe?g|webp|ico|woff2?|ttf|otf|txt|webmanifest)$).*)"],
 };

@@ -10,6 +10,7 @@ import {
   transfererImmeuble,
 } from "@/lib/bo/actions";
 import { SuiviModal } from "@/components/suivi-modal";
+import { Modale } from "@/components/modale";
 import { Facade } from "@/components/facade";
 import { VignetteContact } from "@/components/vignette-contact";
 import {
@@ -53,6 +54,7 @@ function Card({
   const [hist, setHist] = useState(false);
   const [moyen, setMoyen] = useState(false);
   const [transfert, setTransfert] = useState(false);
+  const [refus, setRefus] = useState<string | null>(null);
   const [archivage, setArchivage] = useState(false);
   const [attente, setAttente] = useState(false);
   const [note, setNote] = useState(false);
@@ -440,9 +442,19 @@ function Card({
           onAnnuler={() => setTransfert(false)}
           onTransferer={(agentId, avecProprio) => {
             setTransfert(false);
-            startTransition(() => transfererImmeuble(c.id, agentId, avecProprio ? c.contactId ?? null : null));
+            startTransition(async () => {
+              const r = await transfererImmeuble(c.id, agentId, avecProprio ? c.contactId ?? null : null);
+              if (!r.ok) setRefus(r.message);
+            });
           }}
         />
+      )}
+      {/* Un agent ne transfère que ses propres dossiers (MAV, 27/10). */}
+      {refus && (
+        <Modale titre="Transfert refusé" onFermer={() => setRefus(null)} className="etroit"
+          pied={<button className="kgo" type="button" onClick={() => setRefus(null)}><span className="ch">›</span> Compris</button>}>
+          <p className="mhint">{refus}</p>
+        </Modale>
       )}
 
       {attente && (

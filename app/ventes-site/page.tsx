@@ -18,6 +18,8 @@ export default async function VentesSitePage() {
   const limite = Date.now() - 7 * 86_400_000;
   const avecRecit = passees.filter((v) => v.etat === "avec_recit").length;
   const brouillons = passees.filter((v) => v.etat !== "avec_recit" && v.brouillon).length;
+  /* Les récits qu'un agent a soumis : la direction les relit avant la mise en ligne (MAV, 27/10). */
+  const relectures = [...aPublier, ...passees].filter((v) => v.relecture).length;
 
   return (
     <div className="wrap vs">
@@ -26,6 +28,11 @@ export default async function VentesSitePage() {
         <span className="s">Les ventes affichées sur le site France Immeuble. Rien n&apos;y part sans votre validation.</span>
       </div>
       {!configuree && <div className="vs-msg ko">Le site n&apos;est pas branché ici : lecture seule.</div>}
+      {relectures > 0 && (
+        <div className="vs-msg">
+          {relectures} vente{relectures > 1 ? "s" : ""} à relire : un agent en a demandé la publication. Rien n&apos;est en ligne avant votre validation.
+        </div>
+      )}
 
       <div className="dif-tuiles">
         <div className="dif-tuile"><span className="k">À publier</span><b>{aPublier.length}</b></div>
@@ -65,7 +72,8 @@ function Table({ lignes, limite }: { lignes: LigneVente[]; limite: number }) {
                 <td className="n">{euros(v.prix) ?? "—"}</td>
                 <td className={`n ${v.faits >= 6 ? "" : "pauvre"}`}>{v.faits ? `${v.faits}/13` : "—"}</td>
                 <td>
-                  {v.etat === "retiree" ? <Pastille ton="gris" titre="Retirée du site depuis l'écran Diffusion">Retirée</Pastille>
+                  {v.relecture ? <Pastille ton="orange" titre={`Demandée par ${v.relecture.par} le ${dmy(v.relecture.le) ?? "?"}`}>Relecture demandée</Pastille>
+                    : v.etat === "retiree" ? <Pastille ton="gris" titre="Retirée du site depuis l'écran Diffusion">Retirée</Pastille>
                     : v.etat === "avec_recit" ? <Pastille ton="vert">En ligne</Pastille>
                     : v.brouillon ? <Pastille ton="bleu">À relire</Pastille>
                     : v.etat === "sans_recit" ? <Pastille ton="gris">Sans récit</Pastille>

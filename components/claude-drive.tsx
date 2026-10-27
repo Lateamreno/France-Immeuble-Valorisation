@@ -39,7 +39,11 @@ export function ClaudeDrive({ immeubleId, dossier, ouvert, onFermer, onCharger }
     try { setD(await suivreDemande(immeubleId, "drive_bo")); } catch { /* le bandeau garde son état */ }
   }, [immeubleId]);
 
-  useEffect(() => { void relire(); }, [relire]);
+  useEffect(() => {
+    let vivant = true;
+    suivreDemande(immeubleId, "drive_bo").then((x) => { if (vivant) setD(x); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [immeubleId]);
 
   /* Tant que Claude travaille, on relit toutes les quinze secondes : une tâche
      dure de une à quelques minutes. */

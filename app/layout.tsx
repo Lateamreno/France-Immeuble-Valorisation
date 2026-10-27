@@ -9,6 +9,9 @@ import { RevueButton } from "@/components/revue";
 import { listFeedbackOuverts } from "@/lib/bo/feedback";
 import { lireMode } from "@/lib/bo/mode";
 import { PastilleSalve, SalveRelancesProvider } from "@/components/salve-relances";
+import { redirect } from "next/navigation";
+import { authActive, compteCourant } from "@/lib/auth/comptes";
+import { SessionProvider } from "@/components/session";
 
 /** Un déploiement de recette porte la marque en négatif et le dit dans le
  *  titre : avec le tableau de bord Vercel, la preview et la production
@@ -49,24 +52,47 @@ export default async function RootLayout({
       </html>
     );
   }
+  /* La page de connexion : le BO sans son menu (MAV, 27/10). */
+  if (chemin.startsWith("/connexion")) {
+    return (
+      <html lang="fr">
+        <body className="page-connexion">{children}</body>
+      </html>
+    );
+  }
+
+  /* Le middleware a vérifié la signature du cookie ; ici on relit le compte :
+     un accès coupé par la direction ne passe plus, même avec un cookie valide. */
+  const compte = await compteCourant();
+  if (authActive() && !compte) redirect("/connexion");
+  const agents = await getAgents().catch(() => []);
+  const moi = compte ? agents.find((a) => a.id === compte.agent_id) : undefined;
+  const session = {
+    direction: compte ? compte.role === "direction" : !authActive(),
+    agentSlug: moi?.slug,
+    nom: moi?.name,
+    email: compte?.email,
+  };
 
   return (
     <html lang="fr">
       <body>
         {/* La salve de relances vit ici, au-dessus des pages : on ferme la
             fenêtre, on change de page, elle continue, et sa pastille la suit. */}
+        <SessionProvider value={session}>
         <SalveRelancesProvider>
           <div className="shell">
             <Burger />
-            <Rail mode={await lireMode()} />
+            <Rail mode={await lireMode()} direction={session.direction} nom={session.nom} connecte={!!compte} />
             <div className="main">
               {children}
-              <QuickCreate agents={(await getAgents().catch(() => [])).filter((a) => a.actif)} />
+              <QuickCreate agents={agents.filter((a) => a.actif)} />
             </div>
             <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
             <PastilleSalve />
           </div>
         </SalveRelancesProvider>
+        </SessionProvider>
       </body>
     </html>
   );

@@ -2,19 +2,20 @@
 
 // Les gestes de l'écran Diffusion sur le parc (retours #530 et #531) :
 // retirer un bien de toutes ses destinations, l'y remettre, diffuser un bien
-// qui ne l'est pas encore. Réservés à l'administrateur.
+// qui ne l'est pas encore. Ouverts à tout agent connecté depuis le 27/10
+// (MAV : « pour la publication sur le site […] ils y sont autorisés »).
 //
 // Retirer DÉCOCHE les destinations : un simple retrait serait aussitôt
 // défait par le réconciliateur, qui republie tout bien coché et prêt à chaque
 // écriture sur sa fiche. Remettre recoche puis publie, là où les conditions
 // sont réunies — un clic, jamais un automatisme (doctrine d'envoi du BO).
 import { revalidatePath } from "next/cache";
-import { estAdmin, REFUS_ADMIN } from "./admin";
+import { peutDiffuser, REFUS_ADMIN } from "./admin";
 import { apercuAnnonce, publierAnnonce } from "./diffusion";
 import { apercuSite, cocherDestination, publierSurSite } from "./site-fi";
 
 export async function retirerDuParc(immeubleId: string, agent?: string) {
-  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  if (!(await peutDiffuser(agent))) return REFUS_ADMIN;
   const [pb, site] = [
     await cocherDestination(immeubleId, "pb", false, agent),
     await cocherDestination(immeubleId, "site", false, agent),
@@ -28,7 +29,7 @@ export async function retirerDuParc(immeubleId: string, agent?: string) {
 
 /** Remettre en ligne, ou diffuser pour la première fois : recoche et publie. */
 export async function remettreDansLeParc(immeubleId: string, agent?: string) {
-  if (!(await estAdmin(agent))) return REFUS_ADMIN;
+  if (!(await peutDiffuser(agent))) return REFUS_ADMIN;
   await cocherDestination(immeubleId, "pb", true, agent);
   await cocherDestination(immeubleId, "site", true, agent);
   const [a, s] = await Promise.all([
