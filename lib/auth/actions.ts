@@ -1,9 +1,10 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
+import { adresseBo } from "@/lib/bo/adresse";
 import { COOKIE_SESSION, DUREE_SESSION_MS, signerSession, type Role } from "@/lib/auth/jeton";
 import {
   compteCourant, compteParEmail, compteParId, estDirection, sbComptes, tousLesComptes, type Compte,
@@ -83,12 +84,6 @@ export async function deconnecter() {
   redirect("/connexion");
 }
 
-async function origine() {
-  const h = await headers();
-  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${hote}`;
-}
 
 /**
  * Envoie le lien qui permet de choisir son mot de passe. Crée l'utilisateur
@@ -107,7 +102,7 @@ async function envoyerLien(compte: Compte, accueil: boolean): Promise<void> {
   const { data, error } = await sb.auth.admin.generateLink({ type: "recovery", email: compte.email });
   const t = data?.properties?.hashed_token;
   if (error || !t) throw new Error("Lien impossible à générer.");
-  const lien = `${await origine()}/connexion/mot-de-passe?t=${encodeURIComponent(t)}`;
+  const lien = `${await adresseBo()}/connexion/mot-de-passe?t=${encodeURIComponent(t)}`;
   const { envoyerMail } = await import("@/lib/bo/mail");
   await envoyerMail({
     to: compte.email,
