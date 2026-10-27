@@ -55,7 +55,7 @@ export function salutation(a: Partie[]): string {
 
 /** L'objet de tous les e-mails de la vente : « VENTE CISSOKHO / TAL CORPORATE ». */
 export function objetVente(d: DonneesVente): string {
-  const nomDe = (p: Partie) => (p.societe ?? p.nomFamille ?? p.nom).toUpperCase();
+  const nomDe = (p: Partie) => (p.entite?.nom ?? p.nomFamille ?? p.nom).toUpperCase();
   const v = d.parties.filter((p) => p.role === "vendeur").map(nomDe);
   const a = d.parties.filter((p) => p.role === "acquereur").map(nomDe);
   return `VENTE ${[...new Set(v)].join(" - ") || "VENDEUR"} / ${[...new Set(a)].join(" - ") || d.offre?.acheteurNom?.toUpperCase() || "ACQUÉREUR"}`;
@@ -65,8 +65,10 @@ const fem = (p?: Partie) => p?.civilite === "Madame";
 
 /** Le bloc de coordonnées d'une personne, une information par ligne. */
 function coordonnees(p: Partie): string[] {
-  const tete = p.societe && (p.role === "vendeur" || p.role === "acquereur")
-    ? [p.societe, `Représentée par ${p.civilite ? `${p.civilite.toLowerCase()} ` : ""}${prenomNom(p)}`]
+  /* Retour #571 : le client parle au nom de l'entité de facturation choisie
+     sur sa carte — la société d'abord, son représentant ensuite. */
+  const tete = p.entite
+    ? [p.entite.nom, `Représentée par ${p.civilite ? `${p.civilite.toLowerCase()} ` : ""}${prenomNom(p)}${p.entite.fonction ? `, ${p.entite.fonction.toLowerCase()}` : ""}`]
     : [estNotaire(p) ? designer(p) : prenomNom(p)];
   return [...tete, p.email, p.tel].filter((x): x is string => !!x);
 }
@@ -83,7 +85,7 @@ function cote(d: DonneesVente, c: "vendeur" | "acquereur"): string[] {
   const clerc = d.parties.find((p) => p.role === `clerc_${c}`);
   if (notaire) {
     const accord = pluriel ? "Représentés par leur notaire :"
-      : fem(clients[0]) || clients[0]?.societe ? "Représentée par son notaire :" : "Représenté par son notaire :";
+      : fem(clients[0]) || clients[0]?.entite ? "Représentée par son notaire :" : "Représenté par son notaire :";
     blocs.push(accord, "", ...coordonnees(notaire), "");
   }
   if (clerc) {
@@ -117,7 +119,7 @@ function signature(s: Signature): string[] {
 export function mailMiseEnRelation(d: DonneesVente, a: Partie[], s: Signature, lien?: LienPieces): string {
   /* Une société se nomme d'abord, son représentant ensuite (« TAL CORPORATE
      (représentée par Monsieur Daniel SABBAH) »). */
-  const nommer = (p: Partie) => (p.societe ? `${p.societe} (représentée par ${designer(p)})` : designer(p));
+  const nommer = (p: Partie) => (p.entite ? `${p.entite.nom} (représentée par ${designer(p)})` : designer(p));
   const vendeurs = d.parties.filter((p) => p.role === "vendeur").map(nommer);
   const acquereurs = d.parties.filter((p) => p.role === "acquereur");
   const qui = acquereurs.length ? acquereurs.map(nommer) : d.offre?.acheteurNom ? [d.offre.acheteurNom] : [];
@@ -169,6 +171,48 @@ export function mailMiseEnRelation(d: DonneesVente, a: Partie[], s: Signature, l
   return lignes.join("\n");
 }
 
+/**
+ * La version « clients » de la mise en relation (#571) : le mail aux notaires
+ * porte les coordonnées de tous et des pièces confidentielles ; chaque client
+ * reçoit, à part, un mot qui dit que les notaires sont en relation et, en
+ * gros, ce qui leur a été transmis. Un message par côté : le vendeur ne voit
+ * jamais l'adresse de l'acquéreur, ni l'inverse.
+ */
+export function mailInformationClient(
+  d: DonneesVente, c: "vendeur" | "acquereur", a: Partie[], s: Signature, lien?: LienPieces,
+): string {
+  const autre = c === "vendeur" ? "acquereur" : "vendeur";
+  const notaire = (x: "vendeur" | "acquereur") => d.parties.find((p) => p.role === `notaire_${x}`);
+  const clerc = (x: "vendeur" | "acquereur") => d.parties.find((p) => p.role === `clerc_${x}`);
+  const lui = notaire(c);
+  const lAutre = notaire(autre);
+  const pluriel = a.length > 1 || d.parties.filter((p) => p.role === c).length > 1;
+  const quiAutre = autre === "vendeur" ? "du vendeur" : "de l'acquéreur";
+  const relation = lui && lAutre
+    ? `j'ai mis en relation votre notaire, ${designer(lui)}, et celui ${quiAutre}, ${designer(lAutre)}, afin qu'ils préparent la promesse de vente`
+    : lAutre
+      ? `j'ai pris contact avec le notaire ${quiAutre}, ${designer(lAutre)}, afin de préparer la promesse de vente`
+      : lui
+        ? `j'ai pris contact avec votre notaire, ${designer(lui)}, afin de préparer la promesse de vente`
+        : "j'ai mis les notaires en relation afin qu'ils préparent la promesse de vente";
+  const suivi = clerc(c);
+  const transmis = [
+    "les coordonnées des parties",
+    "les conditions de la vente (prix et honoraires)",
+    ...(lien ? [`un premier lien contenant ${lien.pieces.map((x) => x.charAt(0).toLowerCase() + x.slice(1)).join(", ").replace(/, ([^,]*)$/, " et $1")}`] : []),
+  ];
+  return [
+    salutation(a), "",
+    `Je vous informe que ${relation}.`, "",
+    `Je leur ai transmis ${transmis.slice(0, -1).join(", ")}${transmis.length > 1 ? (/^[aeiouyéh]/i.test(transmis[transmis.length - 1]) ? " ainsi qu'" : " ainsi que ") : ""}${transmis[transmis.length - 1]}.`
+      + (suivi ? ` Chez votre notaire, le dossier est suivi par ${designer(suivi)}.` : ""),
+    "",
+    `Votre notaire pourra revenir vers vous pour compléter le dossier ; je reste à votre disposition pour réunir les pièces avec vous et vous tiendrai informé${pluriel ? "s" : a.some(fem) ? "e" : ""} de l'avancement.`,
+    "",
+    ...signature(s),
+  ].join("\n");
+}
+
 /** Un message libre : la formule d'appel, la place pour écrire, la signature. */
 export function mailLibre(a: Partie[], s: Signature, lien?: LienPieces): string {
   return [
@@ -179,12 +223,36 @@ export function mailLibre(a: Partie[], s: Signature, lien?: LienPieces): string 
   ].join("\n");
 }
 
-/** Par défaut, de chaque côté, celui qui suit le dossier en « À », l'autre en copie. */
-export function destinatairesParDefaut(d: DonneesVente): Record<string, "a" | "cc"> {
+export type ModeleVente = "notaires" | "client_vendeur" | "client_acquereur" | "libre";
+
+/**
+ * Les destinataires par défaut d'un modèle. Aux notaires : de chaque côté,
+ * celui qui suit le dossier en « À », l'autre en copie. À un client : les
+ * clients de ce côté-là, et eux seuls.
+ */
+export function destinatairesParDefaut(d: DonneesVente, m: ModeleVente = "notaires"): Record<string, "a" | "cc"> {
   const out: Record<string, "a" | "cc"> = {};
   for (const p of d.parties) {
-    if (!p.email || !(estNotaire(p) || estClerc(p))) continue;
-    out[p.email] = p.enCharge ? "a" : "cc";
+    if (!p.email) continue;
+    if (m === "client_vendeur" || m === "client_acquereur") {
+      if (p.role === (m === "client_vendeur" ? "vendeur" : "acquereur")) out[p.email] = "a";
+    } else if (estNotaire(p) || estClerc(p)) {
+      out[p.email] = p.enCharge ? "a" : "cc";
+    }
   }
   return out;
+}
+
+/**
+ * Le garde-fou de confidentialité (#571) : la version notaires ne part pas à
+ * un client, et la version d'un client ne part pas à l'autre côté. Rend la
+ * raison du refus, ou rien.
+ */
+export function destinataireInterdit(m: ModeleVente, p: Partie): string | undefined {
+  if (m === "notaires" && (p.role === "vendeur" || p.role === "acquereur")) {
+    return "la version notaires contient les coordonnées de tous les clients et le lien vers les pièces : utilisez « Information du vendeur / de l'acquéreur » pour les clients";
+  }
+  if (m === "client_vendeur" && p.role === "acquereur") return "l'acquéreur reçoit sa propre version";
+  if (m === "client_acquereur" && p.role === "vendeur") return "le vendeur reçoit sa propre version";
+  return undefined;
 }

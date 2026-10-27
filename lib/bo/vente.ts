@@ -16,6 +16,7 @@ import { fetchAll, getAgents, proprietairesDe } from "@/lib/bubble/server";
 import { adresseImmeuble, lireMandants } from "@/lib/mandat";
 import { boiteDe } from "@/lib/mails/boites";
 import { chercherEchanges, type Entete } from "@/lib/mails/client";
+import { societesDeContact } from "@/lib/bo/societes-lecture";
 
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
@@ -67,7 +68,15 @@ export type Partie = {
   /** Notaire ou clerc : est-ce lui qui suit le dossier pour son côté ? L'autre
    *  est mis en copie de chaque e-mail (#568). */
   enCharge?: boolean;
+  /** Vendeur ou acquéreur : les sociétés qu'il peut engager (#571). */
+  entites?: Entite[];
+  /** L'entité de facturation retenue — rien : en nom propre. */
+  entite?: Entite;
 };
+
+/** Une entité de facturation : une fiche société du BO, ou la société écrite
+ *  sur la fiche contact. `cle` est ce que la fiche bien retient. */
+export type Entite = { cle: string; nom: string; fonction?: string };
 
 /** Un lien de pièces envoyé aux notaires, et ce qu'il contenait (#570). */
 export type LienPieces = { id: string; url: string; date: string; pieces: string[] };
@@ -143,10 +152,36 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
     : [];
   const par = new Map(contacts.map((c) => [String(c._id), c]));
 
+  /* Retour #571 : l'entité de facturation de chaque client — la société qu'il
+     engage, ou lui-même. Par défaut, le vendeur engage la société propriétaire
+     de l'immeuble quand il en est associé ; l'acquéreur achète en nom propre
+     tant qu'on n'a rien choisi. */
+  const choixEntites = (im.vente_entites && typeof im.vente_entites === "object" ? im.vente_entites : {}) as Record<string, string>;
+  const societeProprio = S(im.SOCIETE_PROPRIETAIRE);
+  const clients = [...new Set([...idsVendeurs, ...idsAcquereurs])];
+  const societesPar = new Map(await Promise.all(clients.map(async (id) =>
+    [id, await societesDeContact(id).catch(() => [])] as const)));
+  const doterEntites = (p: Partie, vendeur: boolean) => {
+    if (!p.contactId) return;
+    const soc = societesPar.get(p.contactId) ?? [];
+    const entites: Entite[] = soc.map((x) => ({
+      cle: `soc:${x.id}`, nom: x.nom,
+      fonction: x.associes.find((a) => a.contactId === p.contactId)?.fonction,
+    }));
+    if (p.societe && !entites.some((e) => e.nom.toLowerCase() === p.societe!.toLowerCase())) {
+      entites.push({ cle: `nom:${p.societe}`, nom: p.societe });
+    }
+    p.entites = entites;
+    const choix = choixEntites[p.contactId];
+    const cle = choix !== undefined ? choix
+      : vendeur && societeProprio && soc.some((x) => x.id === societeProprio) ? `soc:${societeProprio}` : "";
+    p.entite = entites.find((e) => e.cle === cle);
+  };
+
   const parties: Partie[] = [];
   for (const id of idsVendeurs) {
     const p = partieDe("vendeur", par.get(id));
-    if (p) parties.push(p);
+    if (p) { doterEntites(p, true); parties.push(p); }
   }
   /* Un mandant sans fiche contact garde son nom et son e-mail du mandat. */
   for (const m of mandants) {
@@ -156,7 +191,7 @@ export async function donneesVente(immeubleId: string): Promise<DonneesVente> {
   if (idsAcquereurs.length) {
     for (const id of idsAcquereurs) {
       const p = partieDe("acquereur", par.get(id));
-      if (p) parties.push(p);
+      if (p) { doterEntites(p, false); parties.push(p); }
     }
   } else if (retenue && S(retenue.acheteur_nom)) {
     parties.push({ role: "acquereur", nom: S(retenue.acheteur_nom)! });

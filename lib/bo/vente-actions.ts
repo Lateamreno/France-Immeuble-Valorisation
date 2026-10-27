@@ -9,6 +9,7 @@ import {
   type DonneesVente, type Echange, type LienPieces, type Poste,
 } from "@/lib/bo/vente";
 import { envoyerPourAgent } from "@/lib/bo/mail";
+import { destinataireInterdit, type ModeleVente } from "@/lib/vente-mail";
 import { lireMessage, messageClair, type MessageComplet } from "@/lib/mails/client";
 import { boiteDe } from "@/lib/mails/boites";
 import { getAgents } from "@/lib/bubble/server";
@@ -86,6 +87,24 @@ export async function choisirIntervenant(
   return { ok: true, message: contactId ? "Enregistré." : "Retiré." };
 }
 
+/** L'entité de facturation d'un client (#571) : `soc:<id>`, `nom:<société>`, ou rien (nom propre). */
+export async function choisirEntite(
+  immeubleId: string, contactId: string, cle: string,
+): Promise<{ ok: boolean; message: string }> {
+  if (!ID.test(immeubleId) || !ID.test(contactId) || !/^(|soc:[\w-]+|nom:.{1,200})$/.test(cle)) {
+    return { ok: false, message: "Choix invalide." };
+  }
+  const res = await fetch(`${SB_URL}/rest/v1/bo_immeuble?select=data&id=eq.${encodeURIComponent(immeubleId)}`, {
+    headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+  }).catch(() => null);
+  const vu = res?.ok ? (((await res.json()) as { data: { vente_entites?: unknown } }[])[0]?.data?.vente_entites) : undefined;
+  const entites = vu && typeof vu === "object" ? { ...(vu as Record<string, string>) } : {};
+  entites[contactId] = cle;
+  await patch("bo_immeuble", immeubleId, { vente_entites: entites });
+  revalidatePath(`/bien/${immeubleId}`);
+  return { ok: true, message: "Enregistré." };
+}
+
 /** Qui suit le dossier pour un côté : le notaire ou le clerc. L'autre est en copie. */
 export async function choisirEnCharge(
   immeubleId: string, cote: "vendeur" | "acquereur", quoi: "notaire" | "clerc",
@@ -150,6 +169,8 @@ export async function retirerLien(immeubleId: string, lienId: string): Promise<{
  */
 export async function envoyerMailVente(immeubleId: string, m: {
   a: string[]; cc: string[]; objet: string; corps: string;
+  /** Le modèle employé : la version notaires ne part jamais à un client (#571). */
+  modele?: ModeleVente;
 }): Promise<{ ok: boolean; message: string }> {
   if (!ID.test(immeubleId)) return { ok: false, message: "Bien introuvable." };
   if (!m.objet.trim() || !m.corps.trim()) return { ok: false, message: "Il faut un objet et un texte." };
@@ -161,6 +182,11 @@ export async function envoyerMailVente(immeubleId: string, m: {
   if (a.length === 0) return { ok: false, message: "Choisissez au moins un destinataire." };
   const inconnue = [...a, ...cc].find((x) => !connues.has(x));
   if (inconnue) return { ok: false, message: `${inconnue} n'est pas une partie de cette vente.` };
+  for (const x of [...a, ...cc]) {
+    const p = d.parties.find((q) => q.email === x);
+    const raison = p && destinataireInterdit(m.modele ?? "libre", p);
+    if (raison) return { ok: false, message: `${p!.nom} : ${raison}.` };
+  }
   try {
     const r = await envoyerPourAgent(moi?.agent_id ?? d.agentId, {
       to: a.join(", "), cc: cc.length ? cc.join(", ") : undefined,
