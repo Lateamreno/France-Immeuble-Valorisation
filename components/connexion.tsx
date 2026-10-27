@@ -7,7 +7,7 @@
  * Auth ; le BO ne le garde nulle part.
  */
 import { useActionState, useState } from "react";
-import { connecter, definirMotDePasse, demanderLien, type Retour } from "@/lib/auth/actions";
+import { changerMonMotDePasse, connecter, definirMotDePasse, demanderLien, type Retour } from "@/lib/auth/actions";
 
 function Cadre({ children, sous }: { children: React.ReactNode; sous: string }) {
   return (
@@ -83,5 +83,24 @@ export function ChoixMotDePasse({ jeton }: { jeton: string }) {
         {r && !r.ok && <p className="cnx-err" role="alert">{r.message}</p>}
       </form>
     </Cadre>
+  );
+}
+
+/** « Mon mot de passe » : chacun change le sien, dans le BO, quand il veut. */
+export function ChangerMotDePasse() {
+  const [r, changer, enCours] = useActionState<Retour | null, FormData>(changerMonMotDePasse, null);
+  return (
+    <form action={changer} className="cnx-form mdp-page" key={r?.ok ? "fait" : "saisie"}>
+      <label htmlFor="actuel">Mot de passe actuel</label>
+      <input id="actuel" name="actuel" type="password" autoComplete="current-password" required />
+      <label htmlFor="mdp">Nouveau mot de passe (dix caractères au moins)</label>
+      <input id="mdp" name="mdp" type="password" autoComplete="new-password" minLength={10} required />
+      <label htmlFor="mdp2">Le même, une seconde fois</label>
+      <input id="mdp2" name="mdp2" type="password" autoComplete="new-password" minLength={10} required />
+      <button type="submit" className="kgo" disabled={enCours}>
+        <span className="ch">›</span> {enCours ? "Enregistrement…" : "Changer mon mot de passe"}
+      </button>
+      {r && <p className={r.ok ? "cnx-ok" : "cnx-err"} role="status">{r.message}</p>}
+    </form>
   );
 }

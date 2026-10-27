@@ -117,6 +117,7 @@ export function Rail({ mode = "bloc", direction = true, nom, connecte = false }:
       {connecte && (
         <form action={deconnecter} className="rail-moi">
           <span title={nom}>{nom ?? "Connecté"}</span>
+          <Link href="/mot-de-passe">Mon mot de passe</Link>
           <button type="submit">Se déconnecter</button>
         </form>
       )}

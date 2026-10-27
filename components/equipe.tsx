@@ -4,14 +4,17 @@
  * L'équipe et ses accès au BO (MAV, 27/10 : « séparer la partie admin gérée
  * par moi avec les menus permettant de créer les agents »).
  *
- * La direction ouvre un accès : l'agent reçoit un lien et choisit lui-même son
- * mot de passe — personne d'autre ne le connaît. Couper un accès le ferme tout
- * de suite, même sur un poste resté connecté.
+ * La direction ouvre un accès de trois façons, dans la fenêtre « Mot de passe » :
+ * elle définit un premier mot de passe et le transmet (MAV, 27/10 : les liens
+ * se perdaient), elle copie un lien à passer par SMS, ou elle l'envoie par
+ * e-mail. Chacun change ensuite le sien quand il veut. Couper un accès le
+ * ferme tout de suite, même sur un poste resté connecté.
  */
 import { useState, useTransition } from "react";
 import { Modale } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
-import { changerActif, changerRole, creerAgent, inviterAgent } from "@/lib/auth/actions";
+import { Copier } from "@/components/copier";
+import { changerActif, changerRole, creerAgent, inviterAgent, lienAgent, poserMotDePasse } from "@/lib/auth/actions";
 import type { Role } from "@/lib/auth/jeton";
 
 export type LigneEquipe = {
@@ -36,6 +39,7 @@ export function Equipe({ lignes }: { lignes: LigneEquipe[] }) {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [nouveau, setNouveau] = useState(false);
   const [anciens, setAnciens] = useState(false);
+  const [acces, setAcces] = useState<LigneEquipe | null>(null);
   const [pending, start] = useTransition();
   const agir = (f: () => Promise<{ ok: boolean; message: string }>) => start(async () => {
     setMsg(null);
@@ -52,7 +56,8 @@ export function Equipe({ lignes }: { lignes: LigneEquipe[] }) {
         <button type="button" className="kgo" onClick={() => setNouveau(true)}><span className="ch">›</span> Nouvel agent</button>
       </div>
       <p className="rgl-aide">
-        Chacun a son mot de passe, qu&apos;il choisit lui-même depuis le lien reçu par e-mail. La{" "}
+        Chacun a son mot de passe : vous en définissez un premier (ou vous lui faites choisir le sien par un
+        lien), et il le change quand il veut. La{" "}
         <b>direction</b> voit et règle tout ; un <b>agent</b>{" "}travaille sur tous les dossiers, mais ne
         transfère que les siens, n&apos;annule que ses propres mandats, n&apos;exporte rien et soumet les récits
         de vente à votre relecture.
@@ -87,13 +92,10 @@ export function Equipe({ lignes }: { lignes: LigneEquipe[] }) {
                   </td>
                   <td>{c ? date(c.derniere) : "—"}</td>
                   <td className="eqp-a">
-                    {!c && l.actifBo && (
-                      <button type="button" className="fadd" disabled={pending} onClick={() => agir(() => inviterAgent(l.agentId))}>Ouvrir l&apos;accès</button>
-                    )}
-                    {c && c.actif && (
-                      <button type="button" className="fadd" disabled={pending} onClick={() => agir(() => inviterAgent(l.agentId))}
-                        title="Envoie un lien pour choisir (ou rechoisir) son mot de passe">
-                        {c.active ? "Renvoyer un lien" : c.invite ? "Renvoyer l'invitation" : "Envoyer l'invitation"}
+                    {(c ? c.actif : l.actifBo) && (
+                      <button type="button" className="fadd" disabled={pending} onClick={() => { setMsg(null); setAcces(l); }}
+                        title="Définir son mot de passe, copier un lien ou l'envoyer par e-mail">
+                        {c ? "Mot de passe" : "Ouvrir l'accès"}
                       </button>
                     )}
                     {c && !c.moi && (
@@ -114,6 +116,7 @@ export function Equipe({ lignes }: { lignes: LigneEquipe[] }) {
       </label>
       {msg && <div className={`vs-msg${msg.ok ? "" : " ko"}`}>{msg.t}</div>}
 
+      {acces && <Acces ligne={acces} onFermer={() => setAcces(null)} onFait={(t) => { setAcces(null); setMsg({ ok: true, t }); }} />}
       {nouveau && <NouvelAgent onFermer={() => setNouveau(false)} onFait={(t) => { setNouveau(false); setMsg({ ok: true, t }); }} />}
     </section>
   );
@@ -155,6 +158,60 @@ function NouvelAgent({ onFermer, onFait }: { onFermer: () => void; onFait: (mess
         <option value="direction">Direction</option>
       </select>
       <p className="mhint">L&apos;agent reçoit un e-mail avec un lien pour choisir son mot de passe. Le lien vaut une heure.</p>
+      {err && <p className="claude-err">{err}</p>}
+    </Modale>
+  );
+}
+
+/** Un mot de passe lisible à dicter : sans 0/O ni 1/l/I, en trois groupes. */
+function proposer(): string {
+  const a = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const v = crypto.getRandomValues(new Uint32Array(12));
+  const t = Array.from(v, (x) => a[x % a.length]).join("");
+  return `${t.slice(0, 4)}-${t.slice(4, 8)}-${t.slice(8)}`;
+}
+
+function Acces({ ligne, onFermer, onFait }: { ligne: LigneEquipe; onFermer: () => void; onFait: (message: string) => void }) {
+  const [mdp, setMdp] = useState("");
+  const [lien, setLien] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const lancer = (f: () => Promise<{ ok: boolean; message: string; lien?: string }>, fin: boolean) => start(async () => {
+    setErr(null); setInfo(null);
+    const r = await f().catch(() => ({ ok: false, message: "Le BO n'a pas répondu.", lien: undefined }));
+    if (!r.ok) setErr(r.message);
+    else if (r.lien) { setLien(r.lien); setInfo(r.message); }
+    else if (fin) onFait(r.message);
+  });
+  return (
+    <Modale titre={`Accès de ${ligne.nom}`} onFermer={onFermer} className="etroit" fermeDehors={false}
+      pied={<button type="button" className="ltb annul" onClick={onFermer}>Fermer</button>}>
+      <span className="mlab">Définir son mot de passe</span>
+      <div className="eqp-mdp">
+        <input className="min" type="text" value={mdp} autoComplete="off" spellCheck={false}
+          placeholder="Dix caractères au moins" onChange={(e) => setMdp(e.target.value)} />
+        <button type="button" className="fadd" onClick={() => setMdp(proposer())}>Proposer</button>
+        <Copier valeur={mdp} titre="Copier le mot de passe" />
+      </div>
+      <button type="button" className="kgo" disabled={pending || mdp.length < 10}
+        onClick={() => lancer(() => poserMotDePasse(ligne.agentId, mdp), true)}>
+        <span className="ch">›</span> Enregistrer ce mot de passe
+      </button>
+      <p className="mhint">Transmettez-le de vive voix ou par SMS. Il le changera quand il veut, dans « Mon mot de passe » en bas du menu.</p>
+
+      <span className="mlab">Ou lui faire choisir le sien</span>
+      <div className="eqp-mdp">
+        <button type="button" className="fadd" disabled={pending} onClick={() => lancer(() => lienAgent(ligne.agentId), false)}>Fabriquer un lien</button>
+        <button type="button" className="fadd" disabled={pending} onClick={() => lancer(() => inviterAgent(ligne.agentId), true)}>Envoyer par e-mail</button>
+      </div>
+      {lien && (
+        <div className="eqp-mdp">
+          <input className="min" type="text" readOnly value={lien} onFocus={(e) => e.target.select()} />
+          <Copier valeur={lien} titre="Copier le lien">Copier le lien</Copier>
+        </div>
+      )}
+      {info && <p className="mhint">{info}</p>}
       {err && <p className="claude-err">{err}</p>}
     </Modale>
   );

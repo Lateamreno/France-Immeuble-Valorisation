@@ -5,9 +5,14 @@
 
 ## Connexion
 
-- Chacun se connecte avec son e-mail professionnel et **son** mot de passe,
-  choisi depuis un lien reçu par e-mail (première connexion comme oubli).
-  Personne d'autre ne le connaît ; il vit dans Supabase Auth, jamais dans le BO.
+- Chacun se connecte avec son e-mail professionnel et **son** mot de passe.
+  Il vit dans Supabase Auth, jamais dans le BO.
+- Premier mot de passe : la direction le **définit** et le transmet (revirement
+  de MAV le 27/10 : les liens par e-mail se perdaient), ou elle fait choisir le
+  sien à l'agent par un lien — envoyé par e-mail, ou copié et passé par SMS.
+  Chacun le change ensuite quand il veut (« Mon mot de passe », bas du menu).
+- Un lien ne sert qu'une fois, vaut une heure, et chaque nouveau lien annule
+  les précédents.
 - Session de 30 jours (cookie signé). Couper un accès agit **tout de suite**,
   même sur un poste resté connecté.
 - La connexion n'est **imposée** qu'avec `BO_AUTH=on` dans Vercel ; sans elle (ou avec `off`), le BO reste ouvert comme avant. C'est ce qui permet à chacun de choisir son mot de passe avant que la porte se ferme, et de la rouvrir en secours.
