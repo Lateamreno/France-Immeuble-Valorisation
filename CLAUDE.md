@@ -513,8 +513,13 @@ complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
   pas écrire `AGENT` ou `SUIVI` par un autre chemin.
 - L'« agent aux commandes » d'un poste, c'est la personne connectée
   (`components/session.tsx`), plus un choix.
-- Les comptes se gèrent dans Réglages › Équipe (direction). Personne ne choisit
-  le mot de passe d'un autre : on envoie un lien.
+- Les comptes se gèrent dans Réglages › Équipe (direction). Revirement de MAV
+  le 27/10 : la direction peut **définir** le premier mot de passe d'un agent
+  (ou copier un lien, ou l'envoyer par e-mail) ; chacun le change ensuite dans
+  « Mon mot de passe ». Un lien ne vaut qu'une fois et le dernier annule les
+  précédents.
+- L'outil de correction (`bo_feedback`, « Signaler un écart », `/revue`) n'est
+  visible et utilisable que par ma.voci@france-immeuble.fr (`peutReviser`).
 - La porte ne se ferme qu'avec `BO_AUTH=on` (Vercel) ; `off` ou absent = BO ouvert, en secours.
 
 ## 11. À trancher plus tard (non bloquant pour M1)

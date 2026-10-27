@@ -18,9 +18,11 @@ import {
  * aucun journal. Une fois le mot de passe vérifié, le BO pose son propre cookie
  * signé (lib/auth/jeton.ts).
  *
- * Personne ne choisit le mot de passe d'un autre : la direction INVITE, l'agent
- * reçoit un lien par e-mail et choisit le sien. Le même lien sert au mot de
- * passe oublié.
+ * Deux façons d'ouvrir un accès. La direction INVITE (l'agent reçoit un lien et
+ * choisit son mot de passe), ou — revirement de MAV le 27/10, les liens se
+ * perdaient — elle DÉFINIT elle-même un premier mot de passe et le transmet ;
+ * chacun le change ensuite quand il veut (« Mon mot de passe »). Le lien sert
+ * aussi au mot de passe oublié.
  */
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -89,20 +91,31 @@ export async function deconnecter() {
  * Envoie le lien qui permet de choisir son mot de passe. Crée l'utilisateur
  * Supabase s'il n'existe pas encore (première connexion).
  */
-async function envoyerLien(compte: Compte, accueil: boolean): Promise<void> {
+async function assurerUtilisateur(compte: Compte, password?: string): Promise<string> {
   const sb = admin();
-  if (!compte.user_id) {
-    const { data } = await sb.auth.admin.createUser({ email: compte.email, email_confirm: true });
-    if (data.user) {
-      await sbComptes(`bo_compte?id=eq.${compte.id}`, {
-        method: "PATCH", body: JSON.stringify({ user_id: data.user.id, maj_le: new Date().toISOString() }),
-      });
-    }
-  }
-  const { data, error } = await sb.auth.admin.generateLink({ type: "recovery", email: compte.email });
+  if (compte.user_id) return compte.user_id;
+  const { data, error } = await sb.auth.admin.createUser({ email: compte.email, email_confirm: true, ...(password ? { password } : {}) });
+  if (error || !data.user) throw new Error("Utilisateur impossible à créer.");
+  await sbComptes(`bo_compte?id=eq.${compte.id}`, {
+    method: "PATCH", body: JSON.stringify({ user_id: data.user.id, maj_le: new Date().toISOString() }),
+  });
+  return data.user.id;
+}
+
+/**
+ * Un lien pour choisir son mot de passe. Il ne sert qu'une fois, vaut une
+ * heure, et chaque nouveau lien annule le précédent : seul le dernier marche.
+ */
+async function fabriquerLien(compte: Compte): Promise<string> {
+  await assurerUtilisateur(compte);
+  const { data, error } = await admin().auth.admin.generateLink({ type: "recovery", email: compte.email });
   const t = data?.properties?.hashed_token;
   if (error || !t) throw new Error("Lien impossible à générer.");
-  const lien = `${await adresseBo()}/connexion/mot-de-passe?t=${encodeURIComponent(t)}`;
+  return `${await adresseBo()}/connexion/mot-de-passe?t=${encodeURIComponent(t)}`;
+}
+
+async function envoyerLien(compte: Compte, accueil: boolean): Promise<void> {
+  const lien = await fabriquerLien(compte);
   const { envoyerMail } = await import("@/lib/bo/mail");
   await envoyerMail({
     to: compte.email,
@@ -152,7 +165,7 @@ export async function definirMotDePasse(_: Retour | null, fd: FormData): Promise
   const sb = admin();
   const { data, error } = await sb.auth.verifyOtp({ token_hash: t, type: "recovery" });
   if (error || !data.user?.email) {
-    return { ok: false, message: "Ce lien a déjà servi ou a expiré. Demandez-en un nouveau depuis la page de connexion." };
+    return { ok: false, message: "Ce lien a déjà servi, a expiré, ou un lien plus récent l'a remplacé : seul le dernier reçu fonctionne. Demandez-en un nouveau depuis la page de connexion." };
   }
   const compte = await compteParEmail(data.user.email).catch(() => null);
   if (!compte || !compte.actif) return { ok: false, message: "Cet accès a été désactivé. Voyez avec la direction." };
@@ -171,8 +184,8 @@ export async function definirMotDePasse(_: Retour | null, fd: FormData): Promise
 const REFUS = { ok: false, message: "Réservé à la direction." } as const;
 
 /** Ouvre l'accès d'un agent (ou le renvoie) : crée son compte au besoin, puis lui envoie le lien. */
-export async function inviterAgent(agentId: string, role: Role = "agent"): Promise<Retour> {
-  if (!(await estDirection())) return REFUS;
+/** Le compte d'un agent, créé depuis sa fiche s'il n'existe pas encore. */
+async function assurerCompte(agentId: string, role: Role = "agent"): Promise<Compte | Retour> {
   let compte = (await tousLesComptes()).find((c) => c.agent_id === agentId) ?? null;
   if (!compte) {
     const r = await sbComptes(`bo_agentfi?id=eq.${encodeURIComponent(agentId)}&select=data`);
@@ -187,6 +200,13 @@ export async function inviterAgent(agentId: string, role: Role = "agent"): Promi
     compte = ((await ins.json()) as Compte[])[0];
   }
   if (!compte.actif) return { ok: false, message: "Ce compte est désactivé : réactivez-le d'abord." };
+  return compte;
+}
+
+export async function inviterAgent(agentId: string, role: Role = "agent"): Promise<Retour> {
+  if (!(await estDirection())) return REFUS;
+  const compte = await assurerCompte(agentId, role);
+  if ("ok" in compte) return compte;
   try {
     await envoyerLien(compte, !compte.user_id);
   } catch {
@@ -194,6 +214,61 @@ export async function inviterAgent(agentId: string, role: Role = "agent"): Promi
   }
   revalidatePath("/reglages");
   return { ok: true, message: `Lien envoyé à ${compte.email}.` };
+}
+
+/**
+ * Le lien de choix du mot de passe, à transmettre soi-même (SMS, WhatsApp)
+ * quand l'e-mail se perd. Rien n'est envoyé.
+ */
+export async function lienAgent(agentId: string): Promise<Retour & { lien?: string }> {
+  if (!(await estDirection())) return REFUS;
+  const compte = await assurerCompte(agentId);
+  if ("ok" in compte) return compte;
+  try {
+    const lien = await fabriquerLien(compte);
+    revalidatePath("/reglages");
+    return { ok: true, message: "Transmettez-le par SMS ou WhatsApp. Il ne sert qu'une fois, vaut une heure, et annule les liens envoyés avant.", lien };
+  } catch {
+    return { ok: false, message: "Lien impossible à fabriquer." };
+  }
+}
+
+/** Un premier mot de passe posé par la direction ; l'agent le change ensuite quand il veut. */
+export async function poserMotDePasse(agentId: string, mdp: string): Promise<Retour> {
+  if (!(await estDirection())) return REFUS;
+  if (mdp.length < 10) return { ok: false, message: "Dix caractères au moins." };
+  const compte = await assurerCompte(agentId);
+  if ("ok" in compte) return compte;
+  try {
+    const sb = admin();
+    if (compte.user_id) {
+      const { error } = await sb.auth.admin.updateUserById(compte.user_id, { password: mdp });
+      if (error) return { ok: false, message: "Mot de passe refusé : choisissez-en un plus long ou moins courant." };
+    } else {
+      await assurerUtilisateur(compte, mdp);
+    }
+  } catch {
+    return { ok: false, message: "Mot de passe impossible à enregistrer." };
+  }
+  revalidatePath("/reglages");
+  return { ok: true, message: `Mot de passe enregistré pour ${compte.email}. Transmettez-le de vive voix ou par SMS ; il pourra le changer dans « Mon mot de passe ».` };
+}
+
+/** Chacun change le sien, en redonnant l'actuel. */
+export async function changerMonMotDePasse(_: Retour | null, fd: FormData): Promise<Retour> {
+  const c = await compteCourant();
+  if (!c || !c.user_id) return { ok: false, message: "Connectez-vous d'abord." };
+  const actuel = String(fd.get("actuel") ?? "");
+  const mdp = String(fd.get("mdp") ?? "");
+  if (mdp.length < 10) return { ok: false, message: "Dix caractères au moins." };
+  if (mdp !== String(fd.get("mdp2") ?? "")) return { ok: false, message: "Les deux saisies ne sont pas identiques." };
+  if (tropDEssais(`m:${c.id}`, 8, 15 * 60_000)) return { ok: false, message: "Trop d'essais : réessayez dans un quart d'heure." };
+  const sb = admin();
+  const { data, error } = await sb.auth.signInWithPassword({ email: c.email, password: actuel });
+  if (error || data.user?.id !== c.user_id) return { ok: false, message: "Le mot de passe actuel n'est pas le bon." };
+  const maj = await sb.auth.admin.updateUserById(c.user_id, { password: mdp });
+  if (maj.error) return { ok: false, message: "Mot de passe refusé : choisissez-en un plus long ou moins courant." };
+  return { ok: true, message: "C'est fait : votre nouveau mot de passe vaut dès la prochaine connexion." };
 }
 
 async function directionsActives(): Promise<number> {
