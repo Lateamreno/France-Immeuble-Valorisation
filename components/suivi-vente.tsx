@@ -14,11 +14,12 @@ import { Pastille } from "@/components/pastille";
 import type { DonneesVente, Echange, LienPieces, Partie, Poste, RolePartie } from "@/lib/bo/vente";
 import type { MessageComplet } from "@/lib/mails/client";
 import {
-  chargerEchanges, chargerVente, choisirEnCharge, choisirIntervenant, enregistrerJalons, enregistrerLien,
+  chargerEchanges, chargerVente, choisirEnCharge, choisirEntite, choisirIntervenant, enregistrerJalons, enregistrerLien,
   envoyerMailVente, ouvrirEchange, poserCivilite, retirerLien, signatureCourante,
 } from "@/lib/bo/vente-actions";
 import {
-  destinatairesParDefaut, mailLibre, mailMiseEnRelation, objetVente, PIECES_LIEN, type Signature,
+  destinataireInterdit, destinatairesParDefaut, mailInformationClient, mailLibre, mailMiseEnRelation, objetVente,
+  PIECES_LIEN, type ModeleVente, type Signature,
 } from "@/lib/vente-mail";
 
 const LIBELLE: Record<RolePartie, string> = {
@@ -130,12 +131,24 @@ function Jalons({ d, immeubleId, onFait }: { d: DonneesVente; immeubleId: string
 
 /* ------------------------------------------------------------ Les parties */
 
-function CartePartie({ p }: { p: Partie }) {
+function CartePartie({ p, pending, onEntite }: { p: Partie; pending?: boolean; onEntite?: (cle: string) => void }) {
   return (
     <div className="sv2-p">
       <span className="sv2-role">{LIBELLE[p.role]}</span>
       <b>{p.contactId ? <a href={`/contact/${p.contactId}`}>{p.nom}</a> : p.nom}</b>
-      {p.societe && p.societe !== p.nom && <span>{p.societe}</span>}
+      {/* Retour #571 : l'entité de facturation — la société qu'il engage
+          (propriétaire pour le vendeur, acquéreuse pour l'acquéreur), ou
+          lui-même. C'est elle que nomment les e-mails aux notaires. */}
+      {p.contactId && onEntite ? (
+        <label className="sv2-ent">
+          <span>Entité de facturation</span>
+          <select className="min" value={p.entite?.cle ?? ""} disabled={pending} onChange={(e) => onEntite(e.target.value)}>
+            <option value="">En nom propre</option>
+            {(p.entites ?? []).map((e) => <option key={e.cle} value={e.cle}>{e.nom}{e.fonction ? ` (${e.fonction.toLowerCase()})` : ""}</option>)}
+          </select>
+          {(p.entites ?? []).length === 0 && <i className="mhint">Aucune société sur sa fiche : à rattacher depuis la fiche contact.</i>}
+        </label>
+      ) : p.societe && p.societe !== p.nom && <span>{p.societe}</span>}
       {p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : <span className="mhint">Pas d&apos;e-mail : ses échanges ne peuvent pas être retrouvés.</span>}
       {p.tel && <a href={`tel:${p.tel.replace(/[^\d+]/g, "")}`}>{p.tel}</a>}
     </div>
@@ -224,13 +237,13 @@ function Parties({ d, immeubleId, onFait }: { d: DonneesVente; immeubleId: strin
       <h3 className="fsub">Les parties</h3>
       <div className="sv2-parties">
         <div className="sv2-col">
-          {de("vendeur").length ? de("vendeur").map((p, i) => <CartePartie key={`v${i}`} p={p} />)
+          {de("vendeur").length ? de("vendeur").map((p, i) => <CartePartie key={`v${i}`} p={p} pending={pending} onEntite={(cle) => geste(() => choisirEntite(immeubleId, p.contactId!, cle))} />)
             : <div className="sv2-p vide"><span className="sv2-role">Vendeur</span><span className="mhint">Aucun propriétaire sur la fiche.</span></div>}
           {intervenant("notaire_vendeur")}
           {intervenant("clerc_vendeur")}
         </div>
         <div className="sv2-col">
-          {de("acquereur").length ? de("acquereur").map((p, i) => <CartePartie key={`a${i}`} p={p} />)
+          {de("acquereur").length ? de("acquereur").map((p, i) => <CartePartie key={`a${i}`} p={p} pending={pending} onEntite={(cle) => geste(() => choisirEntite(immeubleId, p.contactId!, cle))} />)
             : <div className="sv2-p vide"><span className="sv2-role">Acquéreur</span><span className="mhint">Il apparaît dès qu&apos;une offre est acceptée.</span></div>}
           {intervenant("notaire_acquereur")}
           {intervenant("clerc_acquereur")}
@@ -347,7 +360,13 @@ function Liens({ d, immeubleId, onFait }: { d: DonneesVente; immeubleId: string;
 
 /* ------------------------------------------------------------- Écrire */
 
-type Modele = "relation" | "libre";
+/** Les modèles de la fenêtre, dans l'ordre où ils servent. */
+const MODELES: [ModeleVente, string][] = [
+  ["notaires", "Mise en relation · notaires"],
+  ["client_vendeur", "Information du vendeur"],
+  ["client_acquereur", "Information de l'acquéreur"],
+  ["libre", "Message libre"],
+];
 
 /**
  * La fenêtre « Écrire » (#568, #570). L'objet est toujours « VENTE VENDEUR /
@@ -358,8 +377,8 @@ type Modele = "relation" | "libre";
 function Ecrire({ d, immeubleId, onFait, onFermer }: {
   d: DonneesVente; immeubleId: string; onFait: () => void; onFermer: (envoye: boolean) => void;
 }) {
-  const [modele, setModele] = useState<Modele>("relation");
-  const [choix, setChoix] = useState<Record<string, "a" | "cc" | "">>(() => destinatairesParDefaut(d));
+  const [modele, setModele] = useState<ModeleVente>("notaires");
+  const [choix, setChoix] = useState<Record<string, "a" | "cc" | "">>(() => destinatairesParDefaut(d, "notaires"));
   const [lienId, setLienId] = useState(d.liens[d.liens.length - 1]?.id ?? "");
   const [nouveauLien, setNouveauLien] = useState(false);
   const [objet, setObjet] = useState(() => objetVente(d));
@@ -378,7 +397,14 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
   const lien = d.liens.find((l) => l.id === lienId);
   /* Recalculé à chaque rendu — c'est du texte — tant que l'agent n'a pas
      retouché le message ; « Reprendre le modèle » y revient. */
-  const auto = modele === "relation" ? mailMiseEnRelation(d, a, sig, lien) : mailLibre(a, sig, lien);
+  const auto = modele === "notaires" ? mailMiseEnRelation(d, a, sig, lien)
+    : modele === "libre" ? mailLibre(a, sig, lien)
+    : mailInformationClient(d, modele === "client_vendeur" ? "vendeur" : "acquereur", a, sig, lien);
+  /* Le garde-fou de confidentialité (#571), vérifié avant d'envoyer. */
+  const interdits = avecEmail
+    .filter((p) => choix[p.email!] === "a" || choix[p.email!] === "cc")
+    .map((p) => ({ p, raison: destinataireInterdit(modele, p) }))
+    .filter((x) => x.raison);
   const corps = corpsEcrit ?? auto;
   const sansEmail = d.parties.filter((p) => !p.email && p.role !== "vendeur" && p.role !== "acquereur");
 
@@ -387,7 +413,7 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
     const r = await envoyerMailVente(immeubleId, {
       a: a.map((p) => p.email!),
       cc: avecEmail.filter((p) => choix[p.email!] === "cc").map((p) => p.email!),
-      objet, corps,
+      objet, corps, modele,
     }).catch(() => ({ ok: false, message: "Le BO n'a pas répondu." }));
     setMsg({ ok: r.ok, texte: r.message });
     if (r.ok) setTimeout(() => onFermer(true), 1200);
@@ -400,18 +426,24 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
           <button type="button" className="vf-annuler" onClick={() => onFermer(false)}>Annuler</button>
           <span style={{ flex: 1 }} />
           {msg && <span className={msg.ok ? "mhint" : "dif-avis"}>{msg.texte}</span>}
-          <button type="button" className="vf-go" disabled={pending || a.length === 0 || !objet.trim() || !corps.trim()} onClick={envoyer}>
+          <button type="button" className="vf-go" disabled={pending || a.length === 0 || interdits.length > 0 || !objet.trim() || !corps.trim()} onClick={envoyer}>
             <span className="ch">›</span> {pending ? "Envoi…" : "Envoyer"}
           </button>
         </>
       )}>
       <div className="sv2-ecr">
-        <div className="seg">
-          <button type="button" className={modele === "relation" ? "on" : undefined}
-            onClick={() => { setModele("relation"); setCorpsEcrit(null); }}>Mise en relation des notaires</button>
-          <button type="button" className={modele === "libre" ? "on" : undefined}
-            onClick={() => { setModele("libre"); setCorpsEcrit(null); }}>Message libre</button>
+        <div className="seg sv2-modeles">
+          {MODELES.map(([k, l]) => (
+            <button key={k} type="button" className={modele === k ? "on" : undefined}
+              onClick={() => { setModele(k); setChoix(destinatairesParDefaut(d, k)); setCorpsEcrit(null); }}>{l}</button>
+          ))}
         </div>
+        {modele === "notaires" && (
+          <span className="mhint">
+            Version complète : coordonnées de tous les clients, prix, honoraires et lien vers les pièces. Réservée aux notaires et aux clercs ;
+            chaque client reçoit ensuite sa version courte.
+          </span>
+        )}
 
         <div className="sv2-dest">
           <span className="sv2-lbl">Destinataires</span>
@@ -427,6 +459,9 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
               <b>{p.nom}</b>
               <i>{p.email}</i>
             </label>
+          ))}
+          {interdits.map(({ p, raison }) => (
+            <span key={p.email} className="dif-avis">{p.nom} : {raison}.</span>
           ))}
           {sansEmail.length > 0 && (
             <span className="mhint">Sans adresse e-mail : {sansEmail.map((p) => p.nom).join(", ")}.</span>
