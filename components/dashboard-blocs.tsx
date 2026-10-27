@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,7 +39,9 @@ const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
 /** « 9,6 % » — la précision des pastilles de rendement. */
 const pct = (v: number) => `${v.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
 
-function Card({
+/* Retour #561 : la carte est aussi celle de l'écran Immeubles — un seul
+   objet, modifié ici, partout. */
+export function Card({
   c, mock, agents = [], peutTransferer = true,
 }: {
   c: KCard; mock?: boolean;
@@ -504,6 +506,19 @@ function Card({
 /** Vrai quand le dashboard est en mode téléphone (classe posée par Burger). */
 const estTel = () => typeof document !== "undefined" && document.body.classList.contains("ecran-tel");
 
+/* Retour #562 : « quand je passe de portrait à paysage les menus se
+   replient ». Le pli par défaut suivait la largeur EN DIRECT : 640 px de
+   large en paysage, 372 en portrait, et chaque rotation repliait ou dépliait
+   toutes les colonnes qu'on n'avait pas touchées. Le défaut se lit donc une
+   seule fois, à l'ouverture de la page (même seuil que Burger), puis il ne
+   bouge plus — tourner le téléphone ne change rien à ce qu'on a sous les yeux. */
+let telAuChargement: boolean | null = null;
+const lireTelAuChargement = () => {
+  if (telAuChargement === null) telAuChargement = window.innerWidth < 640;
+  return telAuChargement;
+};
+const sansAbonnement = () => () => {};
+
 
 /**
  * La vignette d'une carte du dashboard.
@@ -540,8 +555,12 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
      clignotement, aucune alerte d'hydratation. */
   const [plies, setPlies] = useState<Set<string>>(new Set());
   const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  /* `null` au rendu serveur : le CSS décide, comme avant. Ensuite, chaque
+     colonne porte son état explicitement, et la rotation ne le change plus. */
+  const telDepart = useSyncExternalStore(sansAbonnement, lireTelAuChargement, () => null);
+  const ouverte = (cle: string) => deplies.has(cle) || (!plies.has(cle) && !(telDepart ?? estTel()));
   const basculerCol = (cle: string) => {
-    const ouverteMaintenant = deplies.has(cle) || (!plies.has(cle) && !estTel());
+    const ouverteMaintenant = ouverte(cle);
     setPlies((s) => { const n = new Set(s); if (ouverteMaintenant) n.add(cle); else n.delete(cle); return n; });
     setDeplies((s) => { const n = new Set(s); if (ouverteMaintenant) n.delete(cle); else n.add(cle); return n; });
   };
@@ -573,7 +592,9 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
         <div className="cols">
           {b.cols.map((col) => (
             <div
-              className={`col${plies.has(col.key) ? " plie" : ""}${deplies.has(col.key) ? " deplie" : ""}`}
+              className={`col${telDepart === null
+                ? `${plies.has(col.key) ? " plie" : ""}${deplies.has(col.key) ? " deplie" : ""}`
+                : ouverte(col.key) ? " deplie" : " plie"}`}
               key={col.key}
             >
               <button type="button" className="col-head" onClick={() => basculerCol(col.key)}>

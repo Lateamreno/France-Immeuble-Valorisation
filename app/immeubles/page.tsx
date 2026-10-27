@@ -1,11 +1,17 @@
-import { listImmeubles } from "@/lib/bubble/server";
+import { cartesDuParc, getAgents, listImmeubles } from "@/lib/bubble/server";
 import { ListeShell } from "@/components/liste";
 import { RattrapageFacades } from "@/components/facades-rattrapage";
 
 export const dynamic = "force-dynamic";
 
 export default async function ImmeublesPage() {
-  const rows = await listImmeubles().catch(() => []);
+  const [liste, cartes, agents] = await Promise.all([
+    listImmeubles().catch(() => []),
+    cartesDuParc().catch(() => ({} as Awaited<ReturnType<typeof cartesDuParc>>)),
+    getAgents().catch(() => []),
+  ]);
+  /* Retour #561 : la vignette d'un bien est sa carte du tableau de bord. */
+  const rows = liste.map((r) => (cartes[r.id] ? { ...r, carte: cartes[r.id] } : r));
   /* Le stock d'avant la capture de façade : ces fiches n'ont ni photo ni
      repère visuel. Le bouton les rattrape par paquets, une fois pour toutes.
      Les archives sont hors du compte — on ne dépense pas d'appel d'API pour
@@ -20,6 +26,8 @@ export default async function ImmeublesPage() {
       /* Façade et Street View : sans la photo, une liste d'immeubles ne dit
          rien de ce qu'elle liste (retour #122). */
       vignettes
+      cartes
+      agents={agents.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))}
       titre="Immeubles"
       actions={<RattrapageFacades manquantes={manquantes} />}
       rows={rows}

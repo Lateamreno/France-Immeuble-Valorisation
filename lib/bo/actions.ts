@@ -2918,8 +2918,24 @@ export async function setOffreStatut(
       ...(statut === "Vendu" ? { date_cloture: new Date().toISOString() } : {}),
     }),
   });
+  /* Retour #563 : « j'ai accepté une offre, il devrait passer à l'étape
+     suivante ». L'offre fait avancer le bien — jamais reculer : refuser une
+     contre-offre ne ramène pas un bien sous compromis en commercialisation. */
+  const cible = ETAPE_DU_BIEN[statut];
+  if (cible) {
+    const im = await bqOne("bo_immeuble", immeubleId);
+    const actuel = parseInt(String(im?.Statut ?? ""), 10);
+    if (!Number.isFinite(actuel) || actuel < cible) {
+      await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { Statut: STATUTS[cible] } });
+    }
+  }
   refresh(immeubleId);
 }
+
+/** L'étape du bien qu'entraîne chaque étape de l'offre (#563). */
+const ETAPE_DU_BIEN: Partial<Record<string, number>> = {
+  "Acceptée": 7, "Compromis programmé": 8, "Compromis signé": 9, "Vente prévue": 10, "Vendu": 11,
+};
 
 /* ---------- Dossiers de commercialisation (versionnés) ---------- */
 

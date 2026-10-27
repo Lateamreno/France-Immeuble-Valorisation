@@ -499,6 +499,11 @@ button { font-family: inherit; cursor: pointer; }
   .pills::-webkit-scrollbar { display: none; }
   .pill { flex: none; }
   .agentbtn { display: none; }
+  /* La pastille rejoint le titre, à droite ; les compteurs passent dessous.
+     `.topbar` en tête : la règle de base, plus bas dans ce fichier, la
+     cacherait sinon à spécificité égale. */
+  .topbar .agentmini { display: inline-flex; order: 1; margin-left: auto; }
+  .topbar .pills { order: 2; }
 }
 
 /* ===================================================================
@@ -9258,3 +9263,17 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .sv2-pj { font-size: 12px; color: var(--gray-txt); }
 .sv2-corps { padding: 0 12px 12px 44px; display: flex; flex-direction: column; gap: 6px; }
 .sv2-corps pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 12.5px; line-height: 1.5; max-height: 380px; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
+
+/* #560 : le choix du portefeuille sur téléphone — initiales, menu natif dessus. */
+.agentmini {
+  display: none; position: relative; flex: none; align-items: center; gap: 4px;
+  height: 34px; padding: 0 10px; border-radius: 4px; background: var(--orange); color: #fff;
+  font-family: var(--font-title); font-size: 13px; font-weight: 700;
+}
+.agentmini svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; }
+.agentmini select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; font-size: 16px; }
+/* #561 : l'écran Immeubles affiche la carte du tableau de bord. */
+.lcartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; align-items: start; margin-bottom: 10px; }
+@media (max-width: 760px) { .lcartes { grid-template-columns: 1fr; } }
+.lcartes .lrow { margin: 0; align-self: stretch; }
+.lcarte { min-width: 0; }
