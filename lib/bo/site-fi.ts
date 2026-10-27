@@ -535,6 +535,67 @@ export async function deposerOffmarket() {
   }
 }
 
+/* ------------------------------------------------------------- Chiffres */
+
+/** Un compte exact dans la base du BO, sans rapatrier une ligne. */
+async function compterBo(table: string, filtre: string): Promise<number> {
+  if (!BO_KEY) throw new Error("Base du BO indisponible.");
+  const res = await fetch(`${BO_URL}/rest/v1/${table}?select=id&${filtre}`, {
+    method: "HEAD",
+    headers: { apikey: BO_KEY, Authorization: `Bearer ${BO_KEY}`, Prefer: "count=exact", Range: "0-0" },
+    cache: "no-store",
+  });
+  const total = res.headers.get("content-range")?.split("/")[1];
+  if (!res.ok && res.status !== 206) throw new Error(`BO ${res.status} sur ${table}`);
+  if (!total || total === "*") throw new Error(`Compte illisible sur ${table}`);
+  return parseInt(total, 10);
+}
+
+/**
+ * Les chiffres de la page d'accueil du site (table `chiffres`), à 9 h et
+ * 19 h. Ce sont des comptes, pas des estimations : aucun ne sort du BO sans
+ * qu'il soit vrai à l'heure du dépôt.
+ *   · immeubles_traites : les immeubles allés au moins jusqu'à l'estimation —
+ *     un formulaire reçu n'est pas un immeuble traité ;
+ *   · investisseurs : les contacts acquéreurs ;
+ *   · recherches_* : les recherches actives, par cible.
+ */
+export async function calculerChiffres(): Promise<Record<string, number>> {
+  const actives = "or=(data->>archived.is.null,data->>archived.eq.false)";
+  const cible = (c: string) => compterBo("bo_recherche", `${actives}&data->>Cible=eq.${encodeURIComponent(c)}`);
+  const [immeubles, investisseurs, patrimonial, investisseur, marchand] = await Promise.all([
+    compterBo("bo_immeuble", `data->>Statut=not.like.${encodeURIComponent("0 *")}&data->>Statut=not.like.${encodeURIComponent("1 *")}&data->>Statut=not.is.null`),
+    compterBo("bo_contact", "data->>acheteur=eq.true"),
+    cible("Patrimonial"),
+    cible("Investisseur"),
+    cible("Marchand de biens"),
+  ]);
+  return {
+    immeubles_traites: immeubles,
+    investisseurs,
+    recherches_patrimonial: patrimonial,
+    recherches_investisseur: investisseur,
+    recherches_marchand: marchand,
+  };
+}
+
+export async function deposerChiffres() {
+  const c = config();
+  if (!c) return { ok: false as const, message: "Le site n'est pas branché." };
+  try {
+    const chiffres = await calculerChiffres();
+    const maj_le = new Date().toISOString();
+    await site(c, "/rest/v1/chiffres?on_conflict=cle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(Object.entries(chiffres).map(([cle, valeur]) => ({ cle, valeur, maj_le }))),
+    });
+    return { ok: true as const, ...chiffres };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /* ---------------------------------------------------------- Rapprochement */
 
 /**
