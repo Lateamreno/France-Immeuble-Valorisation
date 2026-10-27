@@ -11,7 +11,7 @@
 // des VUES du même tableau. Une ligne = un lot, avec son bail et son
 // locataire ; la vue choisie dit seulement quelles colonnes on regarde, et
 // une seule barre enregistre tout.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
 import {
@@ -1283,6 +1283,65 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     </td>
   );
 
+  /**
+   * La ligne de total (retour #505, complétée par MAV le 27/10) :
+   *  · sous Dest. et Type, les pictos des lots principaux et leur nombre ;
+   *  · les surfaces ; les loyers, suivis de « HC/mois » dans la case €/m² ;
+   *  · sous État et Travaux, le total des travaux ;
+   *  · sous DPE et Date réno., la fourchette des DPE (« DPE D à F »).
+   * Deux colonnes voisines se partagent une case quand le total le demande ;
+   * une colonne masquée par le menu Colonnes garde le reste en place.
+   */
+  const piedDeTableau = () => {
+    const vis = colonnes.slice(tete);
+    const cases: ReactNode[] = [];
+    const principaux = new Map<string, number>();
+    for (const r of visibles) {
+      if (r.Destination && !compteAuLot(r.Destination)) principaux.set(r.Destination, (principaux.get(r.Destination) ?? 0) + 1);
+    }
+    const travaux = visibles.reduce((t, r) => t + (N(r.travaux) ?? 0), 0);
+    const dpes = visibles.map((r) => r.Type_dpe).filter((d) => /^[A-G]\+?$/.test(d)).sort();
+    const fourchette = dpes.length === 0 ? ""
+      : dpes[0] === dpes[dpes.length - 1] ? `DPE ${dpes[0]}` : `DPE ${dpes[0]} à ${dpes[dpes.length - 1]}`;
+    for (let i = 0; i < vis.length; i++) {
+      const c = vis[i], suivante = vis[i + 1];
+      const avec = (b: ColKey) => (suivante === b ? 2 : 1);
+      if (c === "dest" || c === "type") {
+        const n = c === "dest" ? avec("type") : 1;
+        cases.push(
+          <td key={c} className={cls(c, "ltot-dest")} colSpan={n}>
+            {[...principaux].map(([d, k]) => (
+              <span key={d} className="ltot-pic" title={`${k} ${d.toLowerCase()}${k > 1 ? "s" : ""}`}>
+                <svg viewBox="0 0 24 24">{PICTOS_DEST_PLEIN[d] ?? PICTOS_DEST_PLEIN.Annexe}</svg>{k}
+              </span>
+            ))}
+          </td>,
+        );
+        i += n - 1;
+      } else if (c === "hc" || c === "hcmax") {
+        const v = euros(Math.round((c === "hc" ? totaux.loyersAn : totaux.maxAn) / 12)) ?? "0 €";
+        const m2 = c === "hc" ? "hcm2" : "hcmaxm2";
+        if (suivante === m2) {
+          cases.push(<td key={c} className={cls(c, "na")}>{v}</td>, <td key={m2} className={cls(m2, "ltot-u")}>HC/mois</td>);
+          i++;
+        } else cases.push(<td key={c} className={cls(c, "na")}>{v} HC/mois</td>);
+      } else if (c === "etat" || c === "travaux") {
+        const n = c === "etat" ? avec("travaux") : 1;
+        cases.push(<td key={c} className={cls(c, "na")} colSpan={n}>{travaux > 0 ? `Travaux : ${euros(travaux)}` : "Pas de travaux"}</td>);
+        i += n - 1;
+      } else if (c === "dpe" || c === "renov") {
+        const n = c === "dpe" ? avec("renov") : 1;
+        cases.push(<td key={c} className={cls(c, "ltot-dpe")} colSpan={n}>{fourchette}</td>);
+        i += n - 1;
+      } else {
+        const v = c === "carrez" ? `${Math.round(totaux.carrez).toLocaleString("fr-FR")} m²`
+          : c === "sol" ? `${Math.round(totaux.sol).toLocaleString("fr-FR")} m²` : "";
+        cases.push(<td key={c} className={cls(c, v ? "na" : undefined)}>{v}</td>);
+      }
+    }
+    return cases;
+  };
+
   /** La cellule d'une colonne pour une ligne. */
   const cellule = (c: ColKey, r: Row) => {
     switch (c) {
@@ -1623,16 +1682,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
             <tfoot>
               <tr className="ltotal">
                 {/* Le libellé prend la case à cocher et les colonnes de repère
-                    (bâtiment, étage, n°) : seul, il n'y tiendrait pas. */}
-                <td className="brd" colSpan={1 + tete}>Total</td>
-                {colonnes.slice(tete).map((c) => {
-                  const v = c === "carrez" ? `${Math.round(totaux.carrez).toLocaleString("fr-FR")} m²`
-                    : c === "sol" ? `${Math.round(totaux.sol).toLocaleString("fr-FR")} m²`
-                    : c === "hc" ? euros(Math.round(totaux.loyersAn / 12)) ?? "0 €"
-                    : c === "hcmax" ? euros(Math.round(totaux.maxAn / 12)) ?? "0 €"
-                    : "";
-                  return <td key={c} className={cls(c, v ? "na" : undefined)}>{v}</td>;
-                })}
+                    (bâtiment, étage, n°), calé à droite (MAV, 27/10). */}
+                <td className="brd ltot-lib" colSpan={1 + tete}>Total</td>
+                {piedDeTableau()}
               </tr>
             </tfoot>
           )}
