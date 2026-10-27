@@ -8869,12 +8869,11 @@ button.aj-lh:hover { background: #fafafa; }
 .kbody.k26 { display: flex; flex-direction: column; justify-content: space-between; gap: 5px; min-height: var(--kh); }
 .k26 .krow1 { align-items: center; gap: 6px; min-width: 0; }
 .k26 .krow1 .kt { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kdpt {
-  flex: none; font-family: var(--font-title); font-size: 11px; font-weight: 600; line-height: 17px;
-  border: 1px solid #d5d9dd; border-radius: 4px; padding: 0 5px; color: var(--gray-txt); background: #f6f7f8;
-}
+/* Le département suit la ville en texte, sans pastille (MAV, 27/10) ; c'est
+   la ville qui se coupe, jamais le département ni le statut. */
+.k26 .krow1 .kt-dpt { flex: none; margin-left: -2px; overflow: visible; }
 .kpast {
-  margin-left: auto; flex: 0 1 auto; min-width: 0; max-width: 42%;
+  margin-left: auto; flex: none; max-width: 48%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-family: var(--font-title); font-size: 11px; font-weight: 600; line-height: 18px;
   border-radius: 4px; padding: 0 7px; background: var(--puce-fond); color: var(--slate-2);
@@ -8893,7 +8892,8 @@ button.aj-lh:hover { background: #fafafa; }
 .ktel svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; }
 .ktel:hover { text-decoration: underline; }
 .ktel:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 2px; }
-.krowp .vgn { margin-left: auto; min-width: 0; flex: 0 1 auto; }
+.krowp .vgn { min-width: 0; flex: 0 1 auto; }
+.krowp .ktel, .krowp .kprix { margin-left: auto; }
 .krowp .vgn-chip {
   max-width: 100%; min-width: 0;
   background: #fff; border: 1px solid #d5d9de; border-radius: 999px; box-shadow: 0 1px 2px rgba(0, 0, 0, .06);

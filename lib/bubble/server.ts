@@ -416,6 +416,49 @@ import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
  * dans la troisième colonne prospect. » Les estimations faites avant que
  * l'avancement soit automatique se rangent donc bien, sans réécrire la base.
  */
+/**
+ * Le statut en haut à droite de chaque carte du tableau de bord : ce qu'il
+ * reste à faire sur le bien, pour qu'aucune carte n'ait ce coin vide (MAV,
+ * 27/10). Les biens en attente gardent le motif de leur mise en attente,
+ * posé ailleurs.
+ */
+function statutCarte(st: number, x: {
+  echange?: Record<string, unknown>; recuRetard?: boolean; manque?: string[];
+  derniereActivite?: string; mandat?: string; dossier: boolean;
+  counts?: { prop: number; vis: number; off: number };
+}): { texte: string; ton?: "vert" | "or" | "rouge" } | undefined {
+  /* Après une estimation, sept jours sans nouvelle : on relance. */
+  const jours = x.derniereActivite ? (Date.now() - new Date(x.derniereActivite).getTime()) / 86_400_000 : Infinity;
+  /* Le mandat, tant qu'il n'est pas signé (« En cours » au BO Bubble). */
+  const mandat = () => {
+    if (x.mandat === "Expiré") return { texte: "Mandat expiré", ton: "rouge" as const };
+    if (x.mandat === "Attente signature" || x.mandat === "A signer") return { texte: "Signer mandat", ton: "or" as const };
+    if (x.mandat !== "En cours" && x.mandat !== "Vendu") return { texte: "Préparer mandat", ton: "or" as const };
+    return undefined;
+  };
+  switch (st) {
+    case 1: return x.echange ? { texte: "À relancer", ton: "or" } : { texte: "À appeler", ton: x.recuRetard ? "rouge" : "vert" };
+    case 2: return x.manque && x.manque.length === 0 ? { texte: "Prêt à estimer", ton: "vert" } : { texte: "Demander docs", ton: "or" };
+    case 3: return jours > 7 ? { texte: "À relancer", ton: "rouge" } : { texte: "Estimé", ton: "vert" };
+    case 4: return mandat() ?? (x.dossier ? { texte: "Prêt à diffuser", ton: "vert" } : { texte: "Préparer dossier", ton: "or" });
+    case 5: case 6: {
+      const m = mandat();
+      if (m) return m;
+      const c = x.counts;
+      if (c?.off) return { texte: c.off > 1 ? `${c.off} offres` : "1 offre", ton: "vert" };
+      if (c?.vis) return { texte: "En visites", ton: "vert" };
+      if (c?.prop) return { texte: "En diffusion" };
+      return { texte: "À diffuser", ton: "or" };
+    }
+    case 7: return { texte: "Programmer le compromis", ton: "or" };
+    case 8: return { texte: "Compromis programmé", ton: "vert" };
+    case 9: return { texte: "Programmer l'acte", ton: "or" };
+    case 10: return { texte: "Acte programmé", ton: "vert" };
+    case 11: return { texte: "Vendu", ton: "vert" };
+    default: return undefined;
+  }
+}
+
 const statutOf = (im: Record<string, unknown>) => {
   const n = parseInt(String(im.Statut ?? "").split(" ")[0], 10) || 0;
   const estime = typeof im.prix_hai_estim === "number"
@@ -460,7 +503,7 @@ export async function getDashboardLive(
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
   /* Perf n° 1 (24/09) : chaque lecture ne demande que les clés que ce
      tableau de bord lit vraiment. Ajouter une clé ici avant de la lire. */
-  const [imsAll, suivis, offres, mandats] = await Promise.all([
+  const [imsAll, suivis, offres, mandats, dossiers] = await Promise.all([
     fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, [
       "AGENT", "PROPRIETAIRE", "Modified Date", "Created Date", "Statut", "prix_hai_estim", "date_last_est",
       "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
@@ -474,7 +517,10 @@ export async function getDashboardLive(
       "IMMEUBLEs", "CONTACT", "notes", "Created Date", "date_start", "date_relance", "Type", "Motif_standby",
     ]).catch(() => []),
     fetchAll("offre", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "honos_ht"]),
-    fetchAll("mandat", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date"]),
+    /* « Statut » manquait : le statut du mandat (à rédiger, à signer, expiré)
+       ne pouvait donc jamais s'afficher sur les cartes. */
+    fetchAll("mandat", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "Statut"]),
+    fetchAll("dossier", undefined, 2000, undefined, ["IMMEUBLE"]).catch(() => []),
   ]);
 
   const imsAgent = imsAll
@@ -520,6 +566,9 @@ export async function getDashboardLive(
       if (!mandatByIm.has(id)) mandatByIm.set(id, m);
     }
   }
+
+  // Les immeubles qui ont déjà un dossier de vente (statut « Préparer dossier »).
+  const avecDossier = new Set(dossiers.map((d) => String(d.IMMEUBLE ?? "")).filter(Boolean));
 
   // Contacts propriétaires des immeubles affichés.
   const ownerIds = [...new Set(ims.map((i) => i.PROPRIETAIRE).filter(Boolean))] as string[];
@@ -798,7 +847,6 @@ export async function getDashboardLive(
       const r = ilYa(im.date_contact_form ?? form?.date_start ?? form?.["Created Date"] ?? im["Created Date"]);
       if (r) card.recu = { texte: r.texte, retard: r.heures > 48 };
       if (typeof form?.notes === "string" && form.notes.trim()) card.descriptif = form.notes.trim();
-      if (r && r.heures <= 48 && !echangeByIm.has(id)) card.pastille = { texte: "Nouveau", ton: "vert" };
     }
     if (st === 2) {
       const loyers = nb(im.fin_loyers_an) ?? nb(im.fin_loyers_an_max);
@@ -811,7 +859,6 @@ export async function getDashboardLive(
         ...(!loyers || !surf ? ["État locatif"] : []),
         ...(!nb(im.fin_charges_total) ? ["Charges"] : []),
       ];
-      if (card.manque.length === 0) card.pastille = { texte: "Prêt à estimer", ton: "vert" };
     }
 
     if (enAttente && suivi) {
@@ -866,7 +913,6 @@ export async function getDashboardLive(
       if (ms === "Expiré") card.statusMandat = "Mandat expiré";
       else if (ms === "Attente signature" || ms === "A signer") card.statusMandat = "Mandat à signer";
       else if (ms === "A rédiger") card.statusMandat = "Mandat à rédiger";
-      if (card.statusMandat) card.pastille = { texte: card.statusMandat, ton: "rouge" };
     }
 
     if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);
@@ -877,6 +923,17 @@ export async function getDashboardLive(
       card.fee = keur(offre?.honos_ht);
       card.prix = euros(offre?.prix_hai ?? im.prix_hai);
     }
+
+    card.pastille = statutCarte(st, {
+      echange: echangeByIm.get(id),
+      recuRetard: card.recu?.retard,
+      manque: card.manque,
+      derniereActivite: [echangeByIm.get(id)?.date_start ?? echangeByIm.get(id)?.["Created Date"], im.date_last_est]
+        .map((v) => (typeof v === "string" ? v : "")).sort().pop() || undefined,
+      mandat: mandat ? String(mandat.Statut ?? "") : undefined,
+      dossier: avecDossier.has(id),
+      counts: card.counts,
+    });
 
     if (st === 1) card.action = { label: "Contacté", next: 2 };
     else if (st === 2) card.action = { label: "Estimer", next: 3 };

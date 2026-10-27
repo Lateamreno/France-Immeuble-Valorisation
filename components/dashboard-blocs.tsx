@@ -146,25 +146,18 @@ function Card({
         <Vignette c={c} />
         <div className="kbody k26">
           <div className="krow1">
+            {/* Le département entre parenthèses, en texte, comme avant la
+                carte du 26/10 (MAV, 27/10 : pas de pastille). */}
             <span className="kt" title={c.ville}>{c.villeNom ?? c.ville}</span>
-            {c.dpt && <span className="kdpt">{c.dpt}</span>}
+            {c.dpt && <span className="kt kt-dpt">({c.dpt})</span>}
             {c.pastille && <span className={`kpast ${c.pastille.ton ?? ""}`} title={c.pastille.texte}>{c.pastille.texte}</span>}
           </div>
 
           <div className="krowp">
-            {etape <= 2 ? (
-              c.tel ? (
-                <span className="ktel" role="link" tabIndex={0} title={`Appeler le ${c.tel}`}
-                  onClick={appeler} onKeyDown={(e) => { if (e.key === "Enter") appeler(e); }}>
-                  <svg viewBox="0 0 24 24" aria-hidden><path d="M6.6 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.1 6.1l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z" /></svg>
-                  {c.tel}
-                </span>
-              ) : <span className="kprix vide">Pas de numéro</span>
-            ) : (
-              <span className="kprix">{c.prix ?? "—"}{c.fee && <small>{c.fee}</small>}</span>
-            )}
-            {/* La vignette partagée (retour du 24/09 : la même fiche contact
-                partout, tableau de bord compris). NOM puis prénom (26/10). */}
+            {/* Le propriétaire à gauche, le numéro (Formulaires, À estimer) ou
+                le prix à droite (MAV, 27/10). La vignette est la partagée
+                (retour du 24/09 : la même fiche contact partout, tableau de
+                bord compris), NOM puis prénom (26/10). */}
             <VignetteContact
               nom={c.contact}
               immeuble={c.objet}
@@ -176,6 +169,17 @@ function Card({
                 agent: c.contactInfo.initiales ? { initiales: c.contactInfo.initiales, couleur: c.contactInfo.initialesCouleur } : undefined,
               } : undefined}
             />
+            {etape <= 2 ? (
+              c.tel ? (
+                <span className="ktel" role="link" tabIndex={0} title={`Appeler le ${c.tel}`}
+                  onClick={appeler} onKeyDown={(e) => { if (e.key === "Enter") appeler(e); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden><path d="M6.6 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.1 6.1l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z" /></svg>
+                  {c.tel}
+                </span>
+              ) : <span className="kprix vide">Pas de numéro</span>
+            ) : (
+              <span className="kprix">{c.prix ?? "—"}{c.fee && <small>{c.fee}</small>}</span>
+            )}
           </div>
 
           {etape === 1 ? (
