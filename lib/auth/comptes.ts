@@ -91,6 +91,19 @@ export async function estDirection(): Promise<boolean> {
   return !authActive();
 }
 
+/**
+ * L'outil de correction (bouton « Signaler un écart », page /revue) est à MAV
+ * seul (27/10 : « pour pas que les salariés puissent modifier le BO ») — pas à
+ * la direction en général : c'est par lui que les retours arrivent à Claude.
+ */
+const COMPTE_REVUE = "ma.voci@france-immeuble.fr";
+
+export async function peutReviser(): Promise<boolean> {
+  const c = await compteCourant();
+  if (c) return c.email.toLowerCase() === COMPTE_REVUE;
+  return !authActive();
+}
+
 /** Pour les pages réservées à la direction : un agent revient au tableau de bord. */
 export async function exigerDirection() {
   if (!(await estDirection())) redirect("/");

@@ -1,7 +1,9 @@
 // Synthèse des retours de recette (mode Revue) : liste par écran, statut,
 // capture jointe. C'est la « todo » de fidélité au BO.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listFeedback } from "@/lib/bo/feedback";
+import { peutReviser } from "@/lib/auth/comptes";
 import { FeedbackActions } from "@/components/revue-actions";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,7 @@ export default async function RevuePage({
 }: {
   searchParams: Promise<{ statut?: string }>;
 }) {
+  if (!(await peutReviser())) redirect("/");
   const { statut = "ouvert" } = await searchParams;
   const all = await listFeedback().catch(() => []);
   const rows = all.filter((f) => (statut === "tous" ? true : f.statut === statut));
