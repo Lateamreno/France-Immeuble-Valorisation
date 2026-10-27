@@ -474,15 +474,42 @@ function ModaleSupprimer({ photo, onClose, onOk }: { photo: Photo; onClose: () =
 /* ------------------------------------------------ vignettes d'un lot (#95) --- */
 
 /** Les photos d'un lot, telles qu'elles apparaissent dans l'état locatif. */
-export function PhotosDuLot({ b, lotId }: { b: BienData; lotId: string }) {
+export function PhotosDuLot({ b, lotId, nouveau }: { b: BienData; lotId: string; nouveau?: boolean }) {
+  /* Retour MAV du 27/10 : dans l'état locatif, la case Photos n'est pas plus
+     large que « Bat. » — un appareil et le nombre de photos (un clic les
+     montre), ou un « + » quand le lot n'en a pas (un clic en ajoute une). */
   const [ouvert, setOuvert] = useState(false);
+  const [envoi, start] = useTransition();
+  const fichier = useRef<HTMLInputElement>(null);
   const photos = b.photos.filter((p) => p.type === "Lot" && p.lotId === lotId);
-  if (photos.length === 0) return <span className="phc phc-0">0</span>;
+  const appareil = <svg viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>;
+  const ajouter = (fs: FileList | null) => {
+    const f = fs?.[0];
+    if (!f) return;
+    start(async () => {
+      const fd = new FormData();
+      fd.set("file", await reduireImage(f));
+      await uploadPhoto(String(b.im._id), "Lot", lotId, fd, b.photos.length, true).catch(() => null);
+      await rafraichirFiche(String(b.im._id));
+      if (fichier.current) fichier.current.value = "";
+    });
+  };
+  if (photos.length === 0) {
+    return (
+      <>
+        <button type="button" className="phc phc-0" disabled={nouveau || envoi}
+          title={nouveau ? "Enregistrez le lot avant d'y ajouter une photo" : "Ajouter une photo du lot"}
+          onClick={() => fichier.current?.click()}>
+          {appareil}{envoi ? "…" : "+"}
+        </button>
+        <input ref={fichier} type="file" accept="image/*" hidden onChange={(e) => ajouter(e.target.files)} />
+      </>
+    );
+  }
   return (
     <>
       <button type="button" className="phc on" onClick={() => setOuvert(true)} title="Voir les photos du lot">
-        <svg viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>
-        {photos.length}
+        {appareil}{photos.length}
       </button>
       {ouvert && (
         <Modale titre="Photos du lot" onFermer={() => setOuvert(false)} largeur={720}>

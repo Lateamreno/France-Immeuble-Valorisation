@@ -9042,3 +9042,14 @@ button.aj-lh:hover { background: #fafafa; }
 .ltot-pic { display: inline-flex; align-items: center; gap: 3px; margin-right: 10px; color: #44525f; }
 .ltot-pic svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
 .ltable.v2 tfoot .ltotal td.ltot-u { font-size: 10.5px; padding: 0 2px; text-overflow: clip; }
+/* Case Photos étroite (MAV, 27/10) : l'appareil et le nombre, ou « + ». */
+.ltable.v2 td.c-photos { text-align: center; }
+.ltable.v2 td.c-photos .phc { gap: 1px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.ltable.v2 td.c-photos .phc svg { width: 12px; height: 12px; }
+.ltable.v2 td.c-photos .phc-0 { color: #a7adb3; }
+.ltable.v2 td.c-photos .phc-0:hover:not(:disabled) { color: #44525f; }
+.ltable.v2 td.c-photos .phc:disabled { cursor: default; opacity: .5; }
+/* Une ligne modifiée et pas encore enregistrée : un gris plus foncé
+   (MAV, 27/10 — l'or des #85 se confondait avec le doré du thème). */
+.ltable.v2 tbody tr.modif, .ltable.v2 tbody tr.modif:hover { background: #e4e7eb; }
+.ltable.v2 th .th-photo { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; vertical-align: -2px; }

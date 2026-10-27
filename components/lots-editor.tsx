@@ -365,10 +365,17 @@ const N = (s: string) => {
 };
 
 /** « 1 180 », « 57,91 » : le nombre à la française, hors saisie. */
-const enFrancais = (s: string) => {
+const enFrancais = (s: string, kilo = false) => {
   const v = N(s);
-  return v === undefined ? s : v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  if (v === undefined) return s;
+  /* Un montant rond se lit en milliers : « 12 k » (l'unité suit). */
+  if (kilo && v >= 1000 && v % 1000 === 0) return `${(v / 1000).toLocaleString("fr-FR")} k`;
+  return v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 };
+/** « 12 500 € », ou « 12 k€ » quand le montant est rond (retour MAV du 27/10). */
+const montant = (v: number) => (v >= 1000 && v % 1000 === 0
+  ? `${(v / 1000).toLocaleString("fr-FR")} k€`
+  : `${Math.round(v).toLocaleString("fr-FR")} €`);
 
 /**
  * Une case de nombre (retour MAV du 27/10 : « passe au format français »).
@@ -376,12 +383,16 @@ const enFrancais = (s: string) => {
  * remplace le point et rien d'autre ne bouge. La base reçoit ce qui est tapé,
  * que `nb` sait lire (virgule, espaces).
  */
-function CaseNombre({ value, onChange, onFocus }: { value: string; onChange: (v: string) => void; onFocus?: () => void }) {
+function CaseNombre({ value, onChange, onFocus, onBlur, kilo, placeholder }: {
+  value: string; onChange: (v: string) => void; onFocus?: () => void; onBlur?: () => void;
+  /** Les montants ronds en milliers (« 12 k »). */
+  kilo?: boolean; placeholder?: string;
+}) {
   const [saisie, setSaisie] = useState(false);
   return (
-    <input className="lcell num" value={saisie ? value.replace(".", ",") : enFrancais(value)}
+    <input className="lcell num" placeholder={placeholder} value={saisie ? value.replace(".", ",") : enFrancais(value, kilo)}
       onFocus={() => { setSaisie(true); onFocus?.(); }}
-      onBlur={() => setSaisie(false)}
+      onBlur={() => { setSaisie(false); onBlur?.(); }}
       onChange={(e) => onChange(e.target.value)} />
   );
 }
@@ -583,7 +594,7 @@ export const COLONNES: Record<ColKey, Colonne> = {
   l_email: { label: "E-mail", poids: 9.0 },
   l_com: { label: "Comm. locataire", menu: "Commentaire du locataire", poids: 10, large: true },
   commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 9.0 },
-  photos: { label: "Photos", poids: 2.9, px: 54, large: true },
+  photos: { label: "Photos", poids: 2.9, px: 30, large: true },
 };
 
 /** Les groupes de l'en-tête, dans l'ordre du tableau. */
@@ -765,7 +776,22 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const enregistre = useRef<Row[]>(initial);
   const [rows, setRows] = useState<Row[]>(initial);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [dirty, setDirty] = useState<Set<string>>(new Set());
+  /* Les lignes touchées. Retour MAV du 27/10 : une ligne revenue à sa valeur
+     enregistrée n'a plus rien à enregistrer ni à annuler — `dirty` ne garde
+     que celles qui diffèrent encore de la dernière version enregistrée. */
+  const [touches, setDirty] = useState<Set<string>>(new Set());
+  const dirty = useMemo(() => {
+    const avant = new Map(enregistre.current.map((r) => [r.id, r]));
+    /* « 977,86 » retapé vaut « 977.86 » enregistré : les nombres se
+       comparent par leur valeur. */
+    const meme = (x: unknown, y: unknown) => x === y
+      || (typeof x === "string" && typeof y === "string" && N(x) !== undefined && N(x) === N(y));
+    const egal = (a: Row, b: Row) => (Object.keys(a) as (keyof Row)[]).every((k) => k === "isNew" || meme(a[k], b[k]));
+    return new Set([...touches].filter((id) => {
+      const r = rows.find((x) => x.id === id), o = avant.get(id);
+      return !r || !o || !egal(r, o);
+    }));
+  }, [touches, rows]);
   const [pending, start] = useTransition();
   const [destOff, setDestOff] = useState<Set<string>>(new Set());
 
@@ -841,8 +867,17 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   /* Quand la place manque (écran de portable), les colonnes rétrécissent
      toutes dans les mêmes proportions plutôt que de déborder. */
   const fixe = dispo >= largeurMini;
+  /* Retour MAV du 27/10 : le commentaire cède 10 % de sa place aux autres
+     colonnes — sauf la case à cocher et les repères (Bat., Etg, N°), qui
+     gardent leur largeur. */
+  const REPERES: ColKey[] = ["bat", "etg", "num"];
+  const elastiques = colonnes.filter((c) => !LIBRES.has(c) && !REPERES.includes(c));
+  const sommeElastiques = elastiques.reduce((t, c) => t + pixels(c), 0);
+  const cede = fixe && libres.length > 0 ? (dispo - (largeurMini - libres.length * 120)) * 0.1 : 0;
+  const elargi = (c: ColKey) => (elastiques.includes(c) && sommeElastiques > 0
+    ? Math.round(pixels(c) * (1 + cede / sommeElastiques)) : pixels(c));
   const largeurCol = (c: ColKey) => fixe
-    ? (LIBRES.has(c) ? undefined : pixels(c))
+    ? (LIBRES.has(c) ? undefined : elargi(c))
     : `${((LIBRES.has(c) ? 120 : pixels(c)) / largeurMini) * 100}%`;
 
   const visibles = rows.filter((r) => !destOff.has(r.Destination || "Annexe"));
@@ -1327,7 +1362,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         } else cases.push(<td key={c} className={cls(c, "na")}>{v} HC/mois</td>);
       } else if (c === "etat" || c === "travaux") {
         const n = c === "etat" ? avec("travaux") : 1;
-        cases.push(<td key={c} className={cls(c, "na")} colSpan={n}>{travaux > 0 ? `Travaux : ${euros(travaux)}` : "Pas de travaux"}</td>);
+        cases.push(<td key={c} className={cls(c, "na")} colSpan={n}>{travaux > 0 ? `Travaux : ${montant(travaux)}` : "Pas de travaux"}</td>);
         i += n - 1;
       } else if (c === "dpe" || c === "renov") {
         const n = c === "dpe" ? avec("renov") : 1;
@@ -1438,9 +1473,9 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
                   quoi ça correspond ». Elle s'ouvre en quittant la case, pas à
                   chaque frappe, et seulement si le montant a bougé vers du
                   positif. */}
-              <input
-                className="lcell num" value={r.travaux} placeholder="0"
-                onChange={(e) => edit(r.id, "travaux", e.target.value)}
+              <CaseNombre
+                value={r.travaux} placeholder="0" kilo
+                onChange={(v) => edit(r.id, "travaux", v)}
                 onBlur={() => {
                   const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
                   const avant = travauxDuLot.get(r.id) ?? 0;
@@ -1546,7 +1581,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       case "commentaire": return texte(c, r, "commentaire");
       case "photos":
         /* Les photos associées au lot dans l'écran Photos (#95). */
-        return <td key={c} className={cls(c, "na")}><PhotosDuLot b={b} lotId={r.id} /></td>;
+        return <td key={c} className={cls(c)}><PhotosDuLot b={b} lotId={r.id} nouveau={r.isNew} /></td>;
     }
   };
 
@@ -1659,12 +1694,17 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
               ))}
             </tr>
             <tr>
-              {colonnes.map((c) => <th key={c} className={cls(c)}>{COLONNES[c].label}</th>)}
+              {/* « Photos » ne tient pas dans sa colonne étroite : l'appareil la nomme. */}
+              {colonnes.map((c) => <th key={c} className={cls(c)} title={c === "photos" ? "Photos" : undefined}>
+                {c === "photos"
+                  ? <svg className="th-photo" viewBox="0 0 24 24"><path d="M3 7h4l1.5-2h7L17 7h4v13H3z" /><circle cx="12" cy="13" r="3.4" /></svg>
+                  : COLONNES[c].label}
+              </th>)}
             </tr>
           </thead>
           <tbody>
             {visibles.map((r) => (
-              <tr key={r.id} style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}>
+              <tr key={r.id} className={dirty.has(r.id) ? "modif" : undefined}>
                 <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
                 {colonnes.map((c) => cellule(c, r))}
               </tr>
@@ -1809,7 +1849,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const fermer = () => setObjetDe(null);
         return (
           <Modale
-            titre={<>Travaux du {libelleLot(r).toLowerCase()}</>}
+            titre={<>Travaux du {libelleLot(r).replace(/^Lot/, "lot")}</>}
             onFermer={fermer}
             className="etroit"
             pied={
@@ -1819,7 +1859,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
             }
           >
             <p className="mhint">
-              {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi"}
+              {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi "}
               correspondent-ils ? Ce que vous écrivez ici s&apos;affiche dans l&apos;onglet Travaux
               et sur le dossier, à la place de « Travaux lot {r.numero || "?"} ».
             </p>
