@@ -201,6 +201,8 @@ export function assemblerVivier(
   contacts: Record<string, unknown>[],
   immeubles: Record<string, unknown>[],
   recherches: Record<string, unknown>[],
+  /** Les adresses désinscrites par le lien des campagnes (fi_desabonnement). */
+  refus: Set<string> = new Set(),
 ): Vivier {
   /* Index des immeubles par propriétaire et des recherches par acquéreur :
      42 000 contacts × parcours de liste serait quadratique. */
@@ -274,7 +276,7 @@ export function assemblerVivier(
       acquereur: c.acheteur === true || mesRech.length > 0,
       /* `notif_email = false` est un refus explicite : Bubble le pose quand le
          contact se désabonne. L'absence de valeur n'est pas un refus. */
-      desabonne: c.notif_email === false || c.archived === true,
+      desabonne: c.notif_email === false || c.archived === true || refus.has(email.trim().toLowerCase()),
       villes: [...new Set(villes)],
       departements: [...new Set(departements)],
       destinations: [...new Set(dest)],

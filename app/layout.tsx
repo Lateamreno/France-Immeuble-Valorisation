@@ -53,7 +53,7 @@ export default async function RootLayout({
     );
   }
   /* La page de connexion : le BO sans son menu (MAV, 27/10). */
-  if (chemin.startsWith("/connexion")) {
+  if (chemin.startsWith("/connexion") || chemin.startsWith("/desabonnement")) {
     return (
       <html lang="fr">
         <body className="page-connexion">{children}</body>

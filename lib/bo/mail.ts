@@ -261,6 +261,11 @@ export async function envoyerEnMasse(m: {
    * confirmation à l'écran le dit avant le clic.
    */
   differeA?: number;
+  /** Identifiant imposé : il porte le jeton d'une campagne (lib/bo/campagnes.ts),
+   *  qu'une réponse citera dans In-Reply-To. */
+  messageId?: string;
+  /** La page de désinscription du destinataire (campagnes). */
+  desabonnementUrl?: string;
 }) {
   const c = MASSE();
   if (!masseConfiguree()) {
@@ -285,7 +290,8 @@ export async function envoyerEnMasse(m: {
      MAV tranche pour la conversation : l'en-tête ne part plus, sauf à poser
      MASSE_DESABONNEMENT=1 sur Vercel le jour où le volume l'imposera. */
   if (desabo && process.env.MASSE_DESABONNEMENT === "1") {
-    entetes["List-Unsubscribe"] = `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`;
+    entetes["List-Unsubscribe"] = (m.desabonnementUrl ? `<${m.desabonnementUrl}>, ` : "")
+      + `<mailto:${String(desabo).replace(/.*<|>.*/g, "")}?subject=Desabonnement>`;
     /* Dit aux messageries que le désabonnement est traité sans que le
        destinataire ait à écrire quoi que ce soit d'autre. */
     entetes["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
@@ -319,6 +325,7 @@ export async function envoyerEnMasse(m: {
         contentType: p.type,
       })),
       headers: Object.keys(entetes).length ? entetes : undefined,
+      messageId: m.messageId,
     });
     return String(info.messageId ?? "");
   } catch (e) {
