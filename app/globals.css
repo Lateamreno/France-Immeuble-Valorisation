@@ -772,9 +772,10 @@ body.nav-etroite .ltable-wrap.bord-a-bord { margin-left: -14px; margin-right: -1
 body.nav-etroite .bottbar { left: 0; }
 body.nav-etroite .ltools.v2, body.nav-etroite .savebar { left: 0; right: 0; }
 
-/* Barre des lots compacte : Ajouter, Supprimer, Plus, Enregistrer. Les
-   options de bureau (Dupliquer, Matrice, Importer, Télécharger, DPE ADEME,
-   Annuler) passent dans le menu « Plus », rendu au-dessus de la barre. */
+/* Barre des lots compacte : Ajouter, Supprimer, Plus, Annuler, Enregistrer.
+   Les options de bureau (Dupliquer, Matrice, Importer, Télécharger, DPE
+   ADEME) passent dans le menu « Plus », rendu au-dessus de la barre. Annuler
+   reste en vue, toujours à gauche d'Enregistrer (MAV, 27/10). */
 .ltb.plus { display: none; }
 /* Le menu et son voile ne sont rendus que quand « Plus » est ouvert, et
    « Plus » ne se montre que quand la barre est repliée : ils n'ont pas
@@ -801,12 +802,12 @@ body.nav-etroite .ltools.v2, body.nav-etroite .savebar { left: 0; right: 0; }
 }
 /* Second cran : le reste passe dans « Plus ». */
 @container (max-width: 1000px) {
-  .ltools.v2 .opt, .ltools.v2 .ltb.annul, .ltools.v2 .sp { display: none; }
+  .ltools.v2 .opt, .ltools.v2 .sp { display: none; }
   .ltools.v2 .ltb.plus { display: inline-flex; margin-left: auto; }
   .ltools.v2 .ltb.lbl svg { display: inline; }
 }
 body.nav-etroite .ltools.v2 { padding: 7px 8px; gap: 6px; }
-body.nav-etroite .ltools.v2 .opt, body.nav-etroite .ltools.v2 .ltb.annul, body.nav-etroite .ltools.v2 .sp { display: none; }
+body.nav-etroite .ltools.v2 .opt, body.nav-etroite .ltools.v2 .sp { display: none; }
 body.nav-etroite .ltools.v2 .ltb.lbl { padding: 0 10px; font-size: 12.5px; gap: 6px; }
 body.nav-etroite .ltools.v2 .ltb.plus { display: inline-flex; margin-left: auto; }
 body.nav-etroite .ltools.v2 .kgo { padding: 0 11px; font-size: 13px; }
@@ -825,6 +826,7 @@ body.ecran-tel .ltools.v2 .ltb.plus span { display: none; }
 body.ecran-tel .ltools.v2 .ltb.plus { padding: 0 8px; }
 body.ecran-tel .ltools.v2 .ltb.lbl { padding: 0 8px; font-size: 12px; gap: 5px; }
 body.ecran-tel .ltools.v2 .kgo { padding: 0 8px; font-size: 12px; }
+body.ecran-tel .ltools.v2 .ltb.annul { padding: 0 4px; font-size: 12px; }
 /* Menu ouvert : les pastilles s'effacent, elles couvraient sa dernière ligne. */
 body:has(.ltools-menu) .rv-fab { display: none; }
 
