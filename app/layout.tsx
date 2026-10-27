@@ -10,7 +10,7 @@ import { listFeedbackOuverts } from "@/lib/bo/feedback";
 import { lireMode } from "@/lib/bo/mode";
 import { PastilleSalve, SalveRelancesProvider } from "@/components/salve-relances";
 import { redirect } from "next/navigation";
-import { authActive, compteCourant } from "@/lib/auth/comptes";
+import { authActive, compteCourant, peutReviser } from "@/lib/auth/comptes";
 import { SessionProvider } from "@/components/session";
 
 /** Un déploiement de recette porte la marque en négatif et le dit dans le
@@ -88,7 +88,7 @@ export default async function RootLayout({
               {children}
               <QuickCreate agents={agents.filter((a) => a.actif)} />
             </div>
-            <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />
+            {await peutReviser() && <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />}
             <PastilleSalve />
           </div>
         </SalveRelancesProvider>

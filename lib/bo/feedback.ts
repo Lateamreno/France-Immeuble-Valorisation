@@ -3,6 +3,7 @@
 // Mode Revue — retours de recette posés directement sur les écrans.
 // Stockage dans le projet Supabase dédié (table bo_feedback + bucket bo-files).
 import { revalidatePath } from "next/cache";
+import { peutReviser } from "@/lib/auth/comptes";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -46,6 +47,11 @@ async function sb(path: string, init?: RequestInit) {
   return res;
 }
 
+/** Toute écriture passe par ici : l'outil n'est qu'à MAV (lib/auth/comptes.ts). */
+async function exigerRevue() {
+  if (!(await peutReviser())) throw new Error("L'outil de correction est réservé à Marc-Antoine.");
+}
+
 /** Dépose une capture dans le coffre et rend son chemin. */
 async function deposerCapture(f: File): Promise<string> {
   if (f.size > 10 * 1024 * 1024) throw new Error(`« ${f.name || "capture"} » dépasse 10 Mo.`);
@@ -73,6 +79,7 @@ async function deposerCapture(f: File): Promise<string> {
  * enregistrés continuent de s'afficher sans reprise.
  */
 export async function addFeedback(fd: FormData) {
+  await exigerRevue();
   const fichiers = fd.getAll("capture").filter((c): c is File => c instanceof File && c.size > 0);
   // Déposées ensemble : trois captures ne doivent pas coûter trois attentes.
   const captures = await Promise.all(fichiers.map(deposerCapture));
@@ -111,7 +118,7 @@ export async function addFeedback(fd: FormData) {
 
 /** Liste les retours (tous, ou d'une page). */
 export async function listFeedback(url?: string): Promise<Feedback[]> {
-  if (!SB_KEY) return [];
+  if (!SB_KEY || !(await peutReviser())) return [];
   const q = new URLSearchParams({ select: "*", order: "created_at.desc", limit: "500" });
   if (url) q.append("url", `eq.${url}`);
   const res = await sb(`bo_feedback?${q}`).catch(() => null);
@@ -129,7 +136,7 @@ export async function listFeedback(url?: string): Promise<Feedback[]> {
  * que les colonnes qu'il dessine.
  */
 export async function listFeedbackOuverts(): Promise<Feedback[]> {
-  if (!SB_KEY) return [];
+  if (!SB_KEY || !(await peutReviser())) return [];
   const q = new URLSearchParams({
     select: "id,url,statut,gravite,commentaire,x_pct,y_pct,w_pct,h_pct",
     statut: "eq.ouvert",
@@ -146,6 +153,7 @@ export async function setFeedbackStatut(
   statut: "ouvert" | "corrige" | "ecarte",
   reponse?: string,
 ) {
+  await exigerRevue();
   await sb(`bo_feedback?id=eq.${id}`, {
     method: "PATCH",
     body: JSON.stringify({
@@ -166,6 +174,7 @@ export async function setFeedbackStatut(
  * déposées ne sont jamais remplacées à l'aveugle.
  */
 export async function modifierFeedback(fd: FormData) {
+  await exigerRevue();
   const id = Number(fd.get("id"));
   if (!Number.isFinite(id)) throw new Error("Retour introuvable.");
 
@@ -194,6 +203,7 @@ export async function modifierFeedback(fd: FormData) {
 
 /** Supprime un retour (erreur de saisie). */
 export async function deleteFeedback(id: number) {
+  await exigerRevue();
   await sb(`bo_feedback?id=eq.${id}`, { method: "DELETE" });
   revalidatePath("/revue");
 }
