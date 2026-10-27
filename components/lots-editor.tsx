@@ -1756,8 +1756,8 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
 
           Sous 1 100 px (téléphone, tablette — la mise en page à burgers), la
           barre ne garde que ce qu'on fait en visite : Ajouter, Supprimer,
-          Enregistrer, à portée de pouce. Le reste — Dupliquer, Matrice,
-          Importer, Télécharger, DPE ADEME, Annuler — se replie derrière un
+          Annuler, Enregistrer, à portée de pouce. Le reste — Dupliquer, Matrice,
+          Importer, Télécharger, DPE ADEME — se replie derrière un
           bouton « Plus » (MAV, 30/09 : « sur mobile je n'ai pas la possibilité
           d'enregistrer les lots que j'ai créés »). Les mêmes options sont
           rendues une fois en ligne (bureau) et une fois dans le menu ; c'est le
@@ -1780,12 +1780,14 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
             dans la colonne DPE. */}
         {optionsBarre.slice(1).map((o) => o.rendre("ltb lbl gold opt"))}
         <span className="sp" style={{ flex: 1 }} />
-        <button className="ltb annul" type="button" onClick={annuler} disabled={dirty.size === 0 || pending}>
-          Annuler
-        </button>
         <button className="ltb lbl plus" type="button" aria-label="Autres actions" aria-expanded={plus}
           onClick={() => setPlus((v) => !v)}>
           <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg><span>Plus</span>
+        </button>
+        {/* Annuler toujours juste à gauche d'Enregistrer, barre repliée ou non
+            (MAV, 27/10) : « Plus » passe avant lui. */}
+        <button className="ltb annul" type="button" onClick={annuler} disabled={dirty.size === 0 || pending}>
+          Annuler
         </button>
         <button className="kgo" type="button" onClick={save} disabled={dirty.size === 0 || pending}
           style={pending || dirty.size === 0 ? { opacity: 0.5 } : undefined}>
@@ -1797,9 +1799,6 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           <div className="ltools-voile" onClick={() => setPlus(false)} />
           <div className="ltools-menu" role="menu">
             {optionsBarre.map((o) => o.rendre("ltb lbl ltm"))}
-            <button className="ltb lbl ltm" type="button" onClick={() => { setPlus(false); annuler(); }} disabled={dirty.size === 0 || pending}>
-              <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-4" /></svg> Annuler les modifications
-            </button>
           </div>
         </>
       )}
