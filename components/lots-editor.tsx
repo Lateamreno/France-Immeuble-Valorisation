@@ -1088,25 +1088,10 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
     reordonne.current = false;
   };
 
-  /* Glisser-déposer des lignes (#82). Le rang est un champ à part : les
-     numéros de lot, eux, ne bougent pas — ils désignent la copropriété. */
+  /* Le glisser-déposer des lignes (#82) est retiré : MAV, 27/10 — « les …
+     au survol des numéros de lot, ça sert à rien ». Le rang enregistré reste
+     lu et écrit tel quel. */
   const reordonne = useRef(false);
-  const [glisse, setGlisse] = useState<string | null>(null);
-  const deposer = (cibleId: string) => {
-    const src = glisse;
-    setGlisse(null);
-    if (!src || src === cibleId) return;
-    setRows((rs) => {
-      const de = rs.findIndex((r) => r.id === src);
-      const vers = rs.findIndex((r) => r.id === cibleId);
-      if (de < 0 || vers < 0) return rs;
-      const copie = [...rs];
-      copie.splice(vers, 0, ...copie.splice(de, 1));
-      return copie.map((r, i) => ({ ...r, ordre: i }));
-    });
-    reordonne.current = true;
-    setDirty(new Set(rows.map((r) => r.id)));
-  };
 
   /** Le lot dont on demande l'objet des travaux (retour #254). */
   const [objetDe, setObjetDe] = useState<string | null>(null);
@@ -1304,20 +1289,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       case "bat": return texte(c, r, "batiment");
       case "etg": return texte(c, r, "etage");
       case "num":
-        /* La poignée se glisse sous le numéro : ni colonne en plus, ni ligne
-           plus haute (#82). */
-        return (
-          <td key={c} className={cls(c, "poi")}>
-            <input className="lcell" value={r.numero} onChange={(e) => edit(r.id, "numero", e.target.value)} />
-            <span
-              className="grip" draggable title="Glisser pour déplacer la ligne"
-              onDragStart={() => setGlisse(r.id)}
-              onDragEnd={() => setGlisse(null)}
-            >
-              <svg viewBox="0 0 16 6"><circle cx="4" cy="3" r="1.1" /><circle cx="8" cy="3" r="1.1" /><circle cx="12" cy="3" r="1.1" /></svg>
-            </span>
-          </td>
-        );
+        return texte(c, r, "numero");
       case "dest":
         return (
           <td key={c} className={cls(c, "dest")} title={r.Destination}>
@@ -1633,13 +1605,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           </thead>
           <tbody>
             {visibles.map((r) => (
-              <tr
-                key={r.id}
-                className={glisse === r.id ? "glisse" : undefined}
-                style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}
-                onDragOver={(e) => { if (glisse) e.preventDefault(); }}
-                onDrop={(e) => { e.preventDefault(); deposer(r.id); }}
-              >
+              <tr key={r.id} style={dirty.has(r.id) ? { background: "#fffbea" } : undefined}>
                 <td className="brd"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} /></td>
                 {colonnes.map((c) => cellule(c, r))}
               </tr>
