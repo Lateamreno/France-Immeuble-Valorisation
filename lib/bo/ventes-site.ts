@@ -539,10 +539,8 @@ async function demanderPublication(venteId: string, faits: FaitsVente, texte: Re
     const direction = (await tousLesComptes()).filter((c) => c.actif && c.role === "direction").map((c) => c.email);
     if (direction.length) {
       const { envoyerMail } = await import("@/lib/bo/mail");
-      const { headers } = await import("next/headers");
-      const h = await headers();
-      const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "";
-      const lien = hote ? `${h.get("x-forwarded-proto") ?? "https"}://${hote}/ventes-site/${encodeURIComponent(venteId)}` : "";
+      const { adresseBo } = await import("@/lib/bo/adresse");
+      const lien = `${await adresseBo()}/ventes-site/${encodeURIComponent(venteId)}`;
       await envoyerMail({
         to: direction.join(", "),
         subject: `À relire : vente de ${S(v?.data.ville) ?? "?"} avant publication sur le site`,
