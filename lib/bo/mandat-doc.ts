@@ -77,6 +77,12 @@ const ajouteJours = (d: Date, jours: number) => {
   r.setDate(r.getDate() + jours);
   return r;
 };
+/* MAV, 27/10 : « compte l'irrévocabilité en mois de calendrier ». La base
+   stocke des jours, et l'écran enregistre « 3 mois » comme 90 : un multiple de
+   trente se relit donc en mois pleins — signé le 27/10, trois mois mènent au
+   27/01, pas au 25/01. Le reste, saisi en jours, se compte en jours. */
+const ajouteDuree = (d: Date, jours: number) =>
+  jours > 0 && jours % 30 === 0 ? ajouteMois(d, jours / 30) : ajouteJours(d, jours);
 
 /**
  * Une durée en jours, écrite comme le mandat l'écrit.
@@ -288,7 +294,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
   const dureeMois = N(m["durée_tot_month"]) ?? 12;
   const fin = ajouteMois(signature, dureeMois);
   const irrevocJours = Math.min(IRREVOC_MAX, N(m["durée_irrevoc_days"]) ?? IRREVOC_DEFAUT[regime]);
-  const finIrrevoc = ajouteJours(signature, irrevocJours);
+  const finIrrevoc = ajouteDuree(signature, irrevocJours);
   const irrevoc = dureeJours(irrevocJours);
 
   /* L'exclusivité de l'exclusif court sur toute la durée du mandat ; celle du
@@ -297,7 +303,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
   const exclusiviteJours = exclusifTotal
     ? Math.round(dureeMois * 30)
     : N(m["durée_exclu_jours"]) ?? 90;
-  const finExclu = exclusifTotal ? fin : ajouteJours(signature, exclusiviteJours);
+  const finExclu = exclusifTotal ? fin : ajouteDuree(signature, exclusiviteJours);
   const exclu = exclusifTotal
     ? { texte: dureeEnLettres(dureeMois, "mois"), court: `${dureeMois} mois`, mois: dureeMois }
     : dureeJours(exclusiviteJours);
@@ -700,30 +706,25 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
         { k: "Date de naissance", v: dateCivile(x.dateNaissance) || A_COMPLETER },
         { k: "Lieu de naissance", v: S(x.lieuNaissance) || A_COMPLETER },
         { k: "Adresse", v: req(S(x.adresse), trous, `l'adresse du mandant ${i + 1}`) },
-        /* Retour #566 : la qualité de chacun, toujours sous l'adresse —
-           « nu-propriétaire du 2ème », « usufruitière du RDC »… La phrase
-           d'introduction ne la porte plus (#567). */
-        { k: "Qualité", v: S(x.fonction) || "Propriétaire" },
+        /* Retour #566 : la qualité de chacun, sous l'adresse — « nu-
+           propriétaire du 2ème », « usufruitière du RDC »… MAV, 27/10 : elle
+           n'a de sens qu'à plusieurs signataires (une société, elle, dit la
+           fonction de son représentant). Un mandant seul n'en porte pas. */
+        ...(e.mandants.length > 1 ? [{ k: "Qualité", v: S(x.fonction) || "Propriétaire" }] : []),
       ],
       qualiteSignature: S(x.fonction) || "Personne physique",
     };
   });
   if (mandants.length === 0) trous.push("au moins un mandant");
 
-  /* La phrase d'introduction dépend du nombre de mandants et de leur qualité :
-     un mandant seul ne « s'oblige pas solidairement » avec personne. */
-  /* La qualité collective : « copropriétaires », « indivisaires »… Elle vient
-     de la qualité au mandat, jamais de la civilité, et retombe sur
-     « propriétaire » quand elle n'est pas renseignée — un mandant l'est
-     toujours, à défaut d'être autre chose. */
-  const brute = S(e.mandants[0]?.fonction).toLowerCase();
-  const qualite = brute && brute.length > 3 ? brute : "propriétaire";
-  /* Retour #567 : à plusieurs, la phrase ne dit plus la qualité — celle du
+  /* Retour #567 : la phrase d'introduction ne dit plus de qualité — celle du
      premier mandant y passait pour celle de tous (« copropriétaire - nu
-     propriétaire du 2ème… »). Chacun a désormais la sienne sur sa carte. */
+     propriétaire du 2ème… »). À plusieurs, chacun a la sienne sur sa carte ;
+     seul, il n'y a pas de phrase : un mandant seul ne « s'oblige pas
+     solidairement » avec personne, et sa qualité ne se dit pas (MAV, 27/10). */
   const introMandants = mandants.length > 1
     ? "Les mandants ci-dessous agissent conjointement et s'obligent solidairement."
-    : `Le mandant ci-dessous est ${qualite === "propriétaire" ? "le propriétaire" : `${qualite}`} du bien désigné à l'article ${art.bien}.`;
+    : "";
 
   /* --- Signatures --- */
   const signataires = [

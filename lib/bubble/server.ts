@@ -474,6 +474,8 @@ export type DashboardLive = {
   agentName: string;
   enCours: number;
   enAttente: number;
+  /** Vue « parc » seulement : la carte de chaque bien, colonnes ou non. */
+  cartes?: KCard[];
 };
 
 /** Un bien est « en attente » tant que la date de relance n'est pas atteinte :
@@ -495,20 +497,16 @@ export const TOUS_AGENTS = "tous";
  * attente : la carte d'un bien est la même aux deux endroits.
  */
 export async function cartesDuParc(): Promise<Record<string, KCard>> {
-  const [cours, attente] = await Promise.all([
-    getDashboardLive(TOUS_AGENTS, "cours").catch(() => null),
-    getDashboardLive(TOUS_AGENTS, "attente").catch(() => null),
-  ]);
-  const out: Record<string, KCard> = {};
-  for (const live of [cours, attente]) {
-    for (const b of live?.blocs ?? []) for (const col of b.cols) for (const c of col.cards) out[c.id] = c;
-  }
-  return out;
+  /* MAV, 27/10 : les biens archivés ou retirés ont aussi la carte. Une seule
+     lecture « parc » sert tout l'écran — actifs et archivés récents, en cours
+     comme en attente — au lieu d'un tableau de bord par vue. */
+  const live = await getDashboardLive(TOUS_AGENTS, "parc").catch(() => null);
+  return Object.fromEntries((live?.cartes ?? []).map((c) => [c.id, c]));
 }
 
 export async function getDashboardLive(
   agentSlug: string,
-  vue: "cours" | "attente" = "cours",
+  vue: "cours" | "attente" | "parc" = "cours",
 ): Promise<DashboardLive | null> {
   if (!TOKEN && !USE_SB) return null;
   const all = await agents();
@@ -523,14 +521,21 @@ export async function getDashboardLive(
   // Immeubles actifs (188 ≈ 2 requêtes) + suivis récents + offres + mandats.
   /* Perf n° 1 (24/09) : chaque lecture ne demande que les clés que ce
      tableau de bord lit vraiment. Ajouter une clé ici avant de la lire. */
-  const [imsAll, suivis, offres, mandats, dossiers] = await Promise.all([
-    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, [
-      "AGENT", "PROPRIETAIRE", "Modified Date", "Created Date", "Statut", "prix_hai_estim", "date_last_est",
-      "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
-      "adresse_zipcode", "fin_renta_ba", "fin_renta_bm", "fin_loyers_an", "fin_loyers_an_max", "occupation_lots",
-      "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
-      "date_contact_form", "fin_charges_total", "CHARGEs",
-    ]),
+  const clesIm = [
+    "AGENT", "PROPRIETAIRE", "Modified Date", "Created Date", "Statut", "prix_hai_estim", "date_last_est",
+    "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
+    "adresse_zipcode", "fin_renta_ba", "fin_renta_bm", "fin_loyers_an", "fin_loyers_an_max", "occupation_lots",
+    "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
+    "date_contact_form", "fin_charges_total", "CHARGEs",
+  ];
+  const [imsActifs, imsArchives, suivis, offres, mandats, dossiers] = await Promise.all([
+    fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, clesIm),
+    /* La vue « parc » (écran Immeubles) ajoute les cent archivés les plus
+       récents — ceux que la liste affiche. */
+    vue === "parc"
+      ? fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "true" }], 100,
+        { field: "Modified Date", desc: true }, clesIm).catch(() => [])
+      : Promise.resolve([] as Record<string, unknown>[]),
     // Tous les suivis : en n'en chargeant que 600, les immeubles au suivi
     // ancien perdaient leur historique sur le dashboard (retour MAV #23).
     fetchAll("suivi", undefined, 20000, { field: "Created Date", desc: true }, [
@@ -543,7 +548,7 @@ export async function getDashboardLive(
     fetchAll("dossier", undefined, 2000, undefined, ["IMMEUBLE"]).catch(() => []),
   ]);
 
-  const imsAgent = imsAll
+  const imsAgent = [...imsActifs, ...imsArchives]
     .filter((i) => tous || i.AGENT === agent.id)
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
@@ -569,7 +574,9 @@ export async function getDashboardLive(
   const enAttenteIds = new Set(
     imsAgent.filter((i) => attenteEnCours(i, suiviByIm.get(i._id as string))).map((i) => i._id as string),
   );
-  const ims = imsAgent.filter((i) => enAttenteIds.has(i._id as string) === (vue === "attente"));
+  const ims = vue === "parc"
+    ? imsAgent
+    : imsAgent.filter((i) => enAttenteIds.has(i._id as string) === (vue === "attente"));
 
   // Offre la plus récente par immeuble (pour les k€ HT des VENTES).
   const offreByIm = new Map<string, Record<string, unknown>>();
@@ -1050,6 +1057,7 @@ export async function getDashboardLive(
       (i) => String(i.standby_Statut ?? "Traité") !== "Traité" && !enAttenteIds.has(i._id as string),
     ).length,
     enAttente: enAttenteIds.size,
+    cartes: vue === "parc" ? ims.map(mkCard) : undefined,
   };
 }
 
