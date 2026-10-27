@@ -25,7 +25,7 @@ export function TopBar({
   agent?: string;
   agentSlug?: string;
   /** Agents réels du BO (table agentfi), avec leur couleur `color_main`. */
-  agents?: { slug: string; name: string; couleur?: string }[];
+  agents?: { slug: string; name: string; couleur?: string; initiales?: string }[];
   /** Ce qui filtre déjà le dashboard, pour que la case le montre (#306). */
   recherche?: string;
 }) {
@@ -112,6 +112,26 @@ export function TopBar({
           </option>
         ))}
       </select>
+      {/* Retour #560 : sur téléphone, le grand bouton n'avait pas la place et
+          disparaissait — on ne pouvait plus changer de portefeuille. Une
+          pastille aux initiales (ou « Tous ») porte le même menu déroulant,
+          posé dessus, transparent. */}
+      <label className="agentmini" style={couleurAgent ? { background: couleurAgent } : undefined}>
+        <span>{agents.find((a) => a.slug === agentSlug)?.initiales ?? "?"}</span>
+        <svg viewBox="0 0 24 24" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+        <select
+          value={agentSlug}
+          aria-label="Filtrer par agent"
+          onChange={(e) => router.push(
+            `/?agent=${e.target.value}${vue === "attente" ? "&vue=attente" : ""}`
+            + `${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`,
+          )}
+        >
+          {agents.map(({ slug, name }) => (
+            <option key={slug} value={slug}>Immeubles suivis par {name}</option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }

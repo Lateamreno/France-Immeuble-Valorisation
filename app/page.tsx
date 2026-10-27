@@ -62,10 +62,10 @@ export default async function DashboardPage({
       <TopBar title="Dashboard" enCours={enCours} enAttente={enAttente} vue={onglet}
         agent={agentName} agentSlug={slug} recherche={q}
         agents={[
-          ...agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color })),
+          ...agentList.filter((a) => a.actif).map((a) => ({ slug: a.slug, name: a.name.split(' ')[0], couleur: a.color, initiales: a.initials })),
           /* Retour #509 : la vue de tous les portefeuilles, la seule où les
              vignettes portent les initiales de l'agent. */
-          { slug: TOUS_AGENTS, name: "tous les agents" },
+          { slug: TOUS_AGENTS, name: "tous les agents", initiales: "Tous" },
         ]} />
       {liveError && (
         <div style={{ margin: "10px 26px -6px", fontSize: 12, color: "var(--late, #a85a3a)", fontWeight: 700 }}>{liveError}</div>

@@ -487,6 +487,25 @@ function attenteEnCours(im: Record<string, unknown>, suivi?: Record<string, unkn
 /** Le slug de la vue qui mélange tous les portefeuilles (retour #509). */
 export const TOUS_AGENTS = "tous";
 
+/**
+ * Les cartes du tableau de bord, pour tout le parc (retour #561 : « dans le
+ * menu Immeubles j'aimerais que les vignettes soient une copie conforme de
+ * celles du dashboard ; si on modifie celles du dashboard, celles-ci se
+ * modifient également »). Même fabrique, vue « tous », en cours et en
+ * attente : la carte d'un bien est la même aux deux endroits.
+ */
+export async function cartesDuParc(): Promise<Record<string, KCard>> {
+  const [cours, attente] = await Promise.all([
+    getDashboardLive(TOUS_AGENTS, "cours").catch(() => null),
+    getDashboardLive(TOUS_AGENTS, "attente").catch(() => null),
+  ]);
+  const out: Record<string, KCard> = {};
+  for (const live of [cours, attente]) {
+    for (const b of live?.blocs ?? []) for (const col of b.cols) for (const c of col.cards) out[c.id] = c;
+  }
+  return out;
+}
+
 export async function getDashboardLive(
   agentSlug: string,
   vue: "cours" | "attente" = "cours",
@@ -1486,6 +1505,8 @@ export type ListCard = {
   /** Clé d'onglet (en_cours / termines / archives…). */
   group: string;
   date?: string;
+  /** La carte du tableau de bord du bien, quand il y figure (#561). */
+  carte?: KCard;
 };
 
 const premier = (v: unknown) => (Array.isArray(v) ? String((v as unknown[])[0] ?? "") : typeof v === "string" ? v : "");

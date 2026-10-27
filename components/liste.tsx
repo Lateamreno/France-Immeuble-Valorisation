@@ -10,6 +10,7 @@ import { Facade } from "@/components/facade";
 import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import { Avatar } from "@/components/avatar";
 import { Pastille } from "@/components/pastille";
+import { Card } from "@/components/dashboard-blocs";
 
 const TAILLES = [10, 25, 50, 100];
 
@@ -52,6 +53,8 @@ export function ListeShell({
   vignettes = false,
   titre,
   actions,
+  cartes = false,
+  agents = [],
 }: {
   rows: ListCard[];
   tabs: { key: string; label: string }[];
@@ -63,6 +66,12 @@ export function ListeShell({
   titre?: string;
   /** Action propre à l'écran, posée à droite de la barre du haut. */
   actions?: React.ReactNode;
+  /** Retour #561 : les biens s'affichent avec la carte du tableau de bord
+   *  (le même composant), et la ligne d'avant ne sert qu'à ceux qui n'y
+   *  figurent pas — archivés, retirés. */
+  cartes?: boolean;
+  /** Pour le transfert depuis la carte. */
+  agents?: { id: string; name: string }[];
 }) {
   /* Où l'on en est dans la liste — onglet, recherche, page, taille, filtres —
      vit dans l'adresse. Sans ça, revenir d'une fiche par « Précédent »
@@ -150,7 +159,11 @@ export function ListeShell({
         </div>
       )}
 
+      <div className={cartes ? "lcartes" : "lrows"}>
       {slice.map((r) => {
+        if (cartes && r.carte) {
+          return <div key={r.id} className="lcarte"><Card c={r.carte} agents={agents} /></div>;
+        }
         const inner = (
           <>
             {/* La façade, quand on l'a : une liste d'immeubles sans photo, « on
@@ -219,6 +232,7 @@ export function ListeShell({
           <div key={r.id} className="lrow">{inner}</div>
         );
       })}
+      </div>
       {slice.length === 0 && <div className="fempty">Aucun résultat.</div>}
 
       {/* Barre de pagination du BO : résultats à gauche, navigation au centre,
