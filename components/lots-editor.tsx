@@ -365,17 +365,12 @@ const N = (s: string) => {
 };
 
 /** « 1 180 », « 57,91 » : le nombre à la française, hors saisie. */
-const enFrancais = (s: string, kilo = false) => {
+const enFrancais = (s: string) => {
   const v = N(s);
-  if (v === undefined) return s;
-  /* Un montant rond se lit en milliers : « 12 k » (l'unité suit). */
-  if (kilo && v >= 1000 && v % 1000 === 0) return `${(v / 1000).toLocaleString("fr-FR")} k`;
-  return v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  return v === undefined ? s : v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 };
-/** « 12 500 € », ou « 12 k€ » quand le montant est rond (retour MAV du 27/10). */
-const montant = (v: number) => (v >= 1000 && v % 1000 === 0
-  ? `${(v / 1000).toLocaleString("fr-FR")} k€`
-  : `${Math.round(v).toLocaleString("fr-FR")} €`);
+/** « 15 000 € », toujours en entier (MAV, 27/10 : « oublie les k€ »). */
+const montant = (v: number) => `${Math.round(v).toLocaleString("fr-FR")} €`;
 
 /**
  * Une case de nombre (retour MAV du 27/10 : « passe au format français »).
@@ -383,14 +378,13 @@ const montant = (v: number) => (v >= 1000 && v % 1000 === 0
  * remplace le point et rien d'autre ne bouge. La base reçoit ce qui est tapé,
  * que `nb` sait lire (virgule, espaces).
  */
-function CaseNombre({ value, onChange, onFocus, onBlur, kilo, placeholder }: {
+function CaseNombre({ value, onChange, onFocus, onBlur, placeholder }: {
   value: string; onChange: (v: string) => void; onFocus?: () => void; onBlur?: () => void;
-  /** Les montants ronds en milliers (« 12 k »). */
-  kilo?: boolean; placeholder?: string;
+  placeholder?: string;
 }) {
   const [saisie, setSaisie] = useState(false);
   return (
-    <input className="lcell num" placeholder={placeholder} value={saisie ? value.replace(".", ",") : enFrancais(value, kilo)}
+    <input className="lcell num" placeholder={placeholder} value={saisie ? value.replace(".", ",") : enFrancais(value)}
       onFocus={() => { setSaisie(true); onFocus?.(); }}
       onBlur={() => { setSaisie(false); onBlur?.(); }}
       onChange={(e) => onChange(e.target.value)} />
@@ -750,14 +744,31 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const [dpe, setDpe] = useState(false);
   /* Le montant des travaux du lot est une valeur de la ligne comme une autre :
      il attend le bouton Enregistrer, il ne part plus tout seul (#90). */
+  /* Une ligne de travaux commune à plusieurs lots (Gennevilliers : 150 000 €
+     de rénovation énergétique sur 23 lots) se répartit au prorata de la
+     surface au sol, comme le faisait Bubble — à parts égales si une surface
+     manque. Chaque lot affichait la ligne entière : 23 × 150 000 € au total,
+     et une saisie de 15 000 € sur un lot ne s'enregistrait pas (MAV, 27/10). */
   const travauxDuLot = useMemo(() => {
     const m = new Map<string, number>();
+    const sol = new Map(b.lots.map((l) => { const v = Number(l.surface_sol); return [String(l._id), Number.isFinite(v) ? v : 0]; }));
     for (const t of b.travaux) {
-      if (!Array.isArray(t.LOTs)) continue;
-      for (const id of t.LOTs as string[]) m.set(id, (m.get(id) ?? 0) + (typeof t.montant === "number" ? t.montant : 0));
+      if (!Array.isArray(t.LOTs) || typeof t.montant !== "number") continue;
+      const ids = t.LOTs as string[];
+      const total = ids.reduce((s, id) => s + (sol.get(id) ?? 0), 0);
+      const parSurface = ids.every((id) => (sol.get(id) ?? 0) > 0);
+      /* Les parts arrondies à l'euro ; le reste d'arrondi va au dernier lot,
+         pour que la somme retombe sur le montant de la ligne. */
+      let reparti = 0;
+      ids.forEach((id, i) => {
+        const part = i === ids.length - 1 ? t.montant as number - reparti
+          : Math.round(parSurface ? (t.montant as number) * (sol.get(id) as number) / total : (t.montant as number) / ids.length);
+        reparti += part;
+        m.set(id, (m.get(id) ?? 0) + part);
+      });
     }
     return m;
-  }, [b.travaux]);
+  }, [b.travaux, b.lots]);
   /* Le bail et le locataire de chaque lot, tels qu'ils sont en base (#379). */
   const bailDe = (lotId: string) =>
     b.baux.find((x) => Array.isArray(x.LOTs) && (x.LOTs as string[]).includes(lotId));
@@ -1474,7 +1485,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
                   chaque frappe, et seulement si le montant a bougé vers du
                   positif. */}
               <CaseNombre
-                value={r.travaux} placeholder="0" kilo
+                value={r.travaux} placeholder="0"
                 onChange={(v) => edit(r.id, "travaux", v)}
                 onBlur={() => {
                   const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
