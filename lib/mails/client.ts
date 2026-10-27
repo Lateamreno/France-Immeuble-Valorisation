@@ -403,6 +403,54 @@ function versTexte(octets: Buffer, charset?: string): string {
 /** Un texte déjà abîmé — « dâ€™Argenteuil », « mÂ² » — remis d'aplomb : il a
  *  été lu en Latin-1 alors qu'il était en UTF-8. On ne touche qu'aux textes
  *  qui portent la signature de cette erreur, jamais aux autres. */
+/**
+ * Les messages d'un dossier échangés avec une liste d'adresses — de l'une
+ * d'elles, ou adressés à l'une d'elles —, les plus récents d'abord. Sert au
+ * suivi de la vente (MAV, 27/10) : notaires, vendeurs et acquéreurs, à
+ * l'envoi comme à la réception. La recherche se fait sur le serveur : rien
+ * n'est descendu d'autre que les en-têtes des messages trouvés.
+ */
+export async function chercherEchanges(
+  b: Boite,
+  role: RoleDossier,
+  adresses: string[],
+  depuis?: Date,
+  combien = 60,
+): Promise<Entete[]> {
+  const liste = [...new Set(adresses.map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")))];
+  if (liste.length === 0) return [];
+  return avec(b, async (c) => {
+    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    await c.mailboxOpen(ch, { readOnly: true });
+    const critere = { or: liste.flatMap((a) => [{ from: a }, { to: a }, { cc: a }]) };
+    const uids = (await c.search(depuis ? { ...critere, since: depuis } : critere, { uid: true })) || [];
+    const derniers = [...uids].sort((x, y) => x - y).slice(-combien);
+    if (derniers.length === 0) return [];
+    const out: Entete[] = [];
+    for await (const m of c.fetch(derniers.join(","), {
+      uid: true, flags: true, envelope: true, bodyStructure: true, bodyParts: ["1", "1.1", "1.2"],
+    }, { uid: true })) {
+      const flags = m.flags ?? new Set<string>();
+      const env = m.envelope;
+      out.push({
+        uid: m.uid,
+        messageId: env?.messageId,
+        de: env?.from?.[0]?.address?.toLowerCase() ?? "",
+        deNom: demojibake(env?.from?.[0]?.name || "") || undefined,
+        pour: [...(env?.to ?? []), ...(env?.cc ?? [])].map((x) => x.address?.toLowerCase() ?? "").filter(Boolean),
+        objet: demojibake(env?.subject || "") || "(sans objet)",
+        date: env?.date ? new Date(env.date).toISOString() : undefined,
+        extrait: extraitDe(m.bodyStructure, m.bodyParts),
+        lu: flags.has("\\Seen"),
+        repondu: flags.has("\\Answered"),
+        drapeau: flags.has("\\Flagged"),
+        pj: compterPJ(m.bodyStructure),
+      });
+    }
+    return out.sort((x, y) => String(y.date ?? "").localeCompare(String(x.date ?? "")));
+  });
+}
+
 export function demojibake(s: string): string {
   if (!/[ÃÂ][\u0080-\u00bf]|â€/.test(s)) return s;
   /* Windows-1252, pas Latin-1 : le « € » de « â€™ » n'existe pas en Latin-1. */
