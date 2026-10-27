@@ -131,7 +131,9 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
             <p className="pty-foot">Le Mandataire ne reçoit aucun fonds, effet ou valeur au titre des présentes.</p>
           </article>
 
-          <p className="intro" style={{ fontSize: "7.4pt", margin: "2mm 0 2.5mm" }}>{d.introMandants}</p>
+          {d.introMandants
+            ? <p className="intro" style={{ fontSize: "7.4pt", margin: "2mm 0 2.5mm" }}>{d.introMandants}</p>
+            : <div style={{ height: "2.5mm" }} />}
 
           {/* Un mandant seul occupe toute la largeur ; à partir de deux, deux
               colonnes à hauteurs égalisées. */}
