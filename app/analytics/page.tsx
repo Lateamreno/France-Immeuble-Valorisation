@@ -3,10 +3,13 @@
 // conversion, et état du portefeuille.
 import { getDatas } from "@/lib/bubble/server";
 import { euros } from "@/lib/format";
+import { exigerDirection } from "@/lib/auth/comptes";
 
 export const dynamic = "force-dynamic";
 
 export default async function DatasPage() {
+  /* Les chiffres de toute l'agence : réservés à la direction (MAV, 27/10). */
+  await exigerDirection();
   const d = await getDatas().catch(() => null);
   if (!d) {
     return (

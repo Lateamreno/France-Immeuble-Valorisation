@@ -489,13 +489,33 @@ arbitrage de MAV, ne pas y revenir sans lui.
 
 **Reste à faire.**
 1. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
-   connaît le chemin : tant que le BO n'a pas d'authentification, c'est une
-   porte ouverte à refermer.
+   connaît le chemin. Le BO a désormais une connexion (§10 ter), mais ce
+   relais reste ouvert parce que Plein Bail, le site et les dossiers envoyés
+   s'en servent : à refermer par des liens signés.
 2. Pièces du propriétaire (lot 5, contrat §10) : livré côté BO le 22/10. Le
    site pose la pièce dans son seau privé, le BO la range au coffre de
    l'immeuble puis l'efface du site — **le site n'en garde jamais de copie**.
    Le chemin ne peut viser que le dossier du compte, l'immeuble est vérifié
    par le BO sur ses propres fiches. En attente des tables et du seau du site.
+
+## 10 ter. Connexion et rôles — depuis le 27/10/26
+
+Chacun se connecte avec **son** mot de passe (Supabase Auth sur la base du BO,
+cookie signé `fi_session`). Deux rôles, **direction** et **agent** ; la règle
+complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
+
+- Un agent travaille sur **tous** les dossiers, voit le tableau de bord des
+  collègues et la vue « tous ». Il ne transfère que **ses** dossiers, n'annule
+  que **ses** mandats, n'exporte rien, et **demande** la publication d'un récit
+  de vente (la direction reçoit un e-mail et relit).
+- Toute règle se vérifie côté serveur. Les transferts sont gardés au point de
+  passage unique des écritures (`gardeTransfert`, `lib/bo/actions.ts`) : ne
+  pas écrire `AGENT` ou `SUIVI` par un autre chemin.
+- L'« agent aux commandes » d'un poste, c'est la personne connectée
+  (`components/session.tsx`), plus un choix.
+- Les comptes se gèrent dans Réglages › Équipe (direction). Personne ne choisit
+  le mot de passe d'un autre : on envoie un lien.
+- La porte ne se ferme qu'avec `BO_AUTH=on` (Vercel) ; `off` ou absent = BO ouvert, en secours.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).

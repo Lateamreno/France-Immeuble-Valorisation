@@ -96,7 +96,8 @@ export function EcranVente({ vente }: { vente: VenteOuverte }) {
       setMsg(null);
       type R = { ok: boolean; message?: string; url?: string };
       const r: R = await fn().catch((e): R => ({ ok: false, message: e instanceof Error ? e.message : String(e) }));
-      setMsg(r.ok ? { ok: true, t: succes + (r.url ? `\n${r.url}` : "") } : { ok: false, t: r.message ?? "Échec." });
+      /* Un agent ne publie pas : il demande, et le serveur le dit (MAV, 27/10). */
+      setMsg(r.ok ? { ok: true, t: (r.message ?? succes) + (r.url ? `\n${r.url}` : "") } : { ok: false, t: r.message ?? "Échec." });
       if (r.ok) router.refresh();
     });
 

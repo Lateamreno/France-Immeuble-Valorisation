@@ -2510,6 +2510,7 @@ function ReserveBtn({ mandatId, immeubleId, discret }: {
 function CancelBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: string }) {
   const [open, setOpen] = useState(false);
   const [motif, setMotif] = useState("");
+  const [refus, setRefus] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
     <>
@@ -2522,7 +2523,11 @@ function CancelBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: str
           pied={
             <button className="kgo" type="button" disabled={pending || !motif.trim()}
               style={pending || !motif.trim() ? { opacity: 0.5 } : undefined}
-              onClick={() => start(async () => { await cancelMandat(mandatId, immeubleId, motif); setOpen(false); })}>
+              onClick={() => start(async () => {
+                /* Un agent n'annule que ses propres mandats (MAV, 27/10). */
+                const r = await cancelMandat(mandatId, immeubleId, motif);
+                if (r.ok) setOpen(false); else setRefus(r.message);
+              })}>
               <span className="ch">›</span> Confirmer l&apos;annulation
             </button>
           }
@@ -2530,6 +2535,7 @@ function CancelBtn({ mandatId, immeubleId }: { mandatId: string; immeubleId: str
           <span className="mlab">Motif de l&apos;annulation</span>
           <input className="min" value={motif} onChange={(e) => setMotif(e.target.value)}
             placeholder="ex. Vendeur ne souhaite plus vendre" />
+          {refus && <p className="claude-err">{refus}</p>}
         </Modale>
       )}
     </>

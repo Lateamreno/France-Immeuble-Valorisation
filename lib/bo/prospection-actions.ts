@@ -181,6 +181,10 @@ const PLAFOND_SIEGES = 400;
 export async function exporterCibles(c: CritèresProspection, avecSiege = false): Promise<{
   ok: true; csv: string; lignes: number; sieges: number; manquants: number;
 } | { ok: false; erreur: string }> {
+  /* Les exports sont réservés à la direction : il doit être difficile
+     d'emporter la base (MAV, 27/10). */
+  const { estDirection } = await import("@/lib/auth/comptes");
+  if (!(await estDirection())) return { ok: false, erreur: "Les exports sont réservés à la direction." };
   try {
     const p = requete(c);
     const { rows } = await lire(p, 0, PLAFOND_EXPORT - 1);

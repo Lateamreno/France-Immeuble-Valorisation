@@ -12,6 +12,7 @@
  * c'est-à-dire l'adresse à laquelle on écrit.
  */
 
+import { useSession } from "@/components/session";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
@@ -118,6 +119,8 @@ export function Prospection() {
     return () => document.removeEventListener("mousedown", dehors);
   }, []);
 
+  /* Les exports sont réservés à la direction (MAV, 27/10). */
+  const { direction } = useSession();
   const exporter = (avecSiege: boolean) =>
     start(async () => {
       setExport(null);
@@ -248,6 +251,7 @@ export function Prospection() {
           </span>
           <span style={{ flex: 1 }} />
           {choisis.size > 0 && <span className="pro-sel">{choisis.size} sélectionné{choisis.size > 1 ? "s" : ""}</span>}
+          {direction && <>
           <button type="button" className="fadd" disabled={pending || total === 0}
             onClick={() => exporter(false)}>
             {pending ? "Export en cours…" : "Exporter la liste"}
@@ -260,6 +264,7 @@ export function Prospection() {
             onClick={() => exporter(true)}>
             {pending ? "…" : "Exporter pour un courrier"}
           </button>
+          </>}
         </div>
       )}
       {export_ && <div className="pro-ok">{export_}</div>}

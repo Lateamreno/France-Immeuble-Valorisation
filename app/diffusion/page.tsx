@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { listDiffusables, listDiffusion } from "@/lib/bubble/server";
 import { listeVentes } from "@/lib/bo/ventes-site";
-import { slugsAdmin } from "@/lib/bo/admin";
+import { slugsDiffusion } from "@/lib/bo/admin";
 import { diffusionConfiguree, retombeesAnnonces, testerBranchement } from "@/lib/bo/diffusion";
 import { calculerOffmarket, testerSite } from "@/lib/bo/site-fi";
 import { PanneauSite, ParcDiffusion, type LigneDiffusion } from "@/components/diffusion";
@@ -35,7 +35,7 @@ export default async function DiffusionPage() {
     calculerOffmarket().catch(() => []),
     listDiffusables().catch(() => []),
     listeVentes().catch(() => ({ aPublier: [], passees: [], configuree: false })),
-    slugsAdmin(),
+    slugsDiffusion(),
   ]);
 
   const retombees = await retombeesAnnonces(parc.map((p) => `FI:${p.immeubleId}`)).catch(() => []);

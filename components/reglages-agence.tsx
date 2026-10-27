@@ -32,7 +32,7 @@ const CHAMPS_AGENCE: { cle: keyof Reglages["agence"]; label: string; aide?: stri
   { cle: "site", label: "Site web", aide: "C'est là que le barème est réputé consultable" },
 ];
 
-export function ReglagesAgence({ initial, envois }: { initial: Reglages; envois?: ReactNode }) {
+export function ReglagesAgence({ initial, envois, equipe }: { initial: Reglages; envois?: ReactNode; equipe?: ReactNode }) {
   const [v, setV] = useState<Reglages>(initial);
   const [pending, start] = useTransition();
   const [confirme, setConfirme] = useState(false);
@@ -67,12 +67,9 @@ export function ReglagesAgence({ initial, envois }: { initial: Reglages; envois?
         pas — ils portent les valeurs du jour de leur signature.
       </p>
 
-      <div className="rgl-avert">
-        <b>Accès non restreint pour l&apos;instant.</b> Le back-office n&apos;a pas encore
-        d&apos;authentification : il n&apos;existe donc pas de compte agent à distinguer du vôtre. Cet
-        écran sera réservé à l&apos;admin, et protégé par votre code à six chiffres, le jour où la
-        connexion existera.
-      </div>
+      {/* Réservé à la direction depuis la connexion (MAV, 27/10). L'équipe
+          vient en tête : c'est d'ici qu'on ouvre et coupe les accès. */}
+      {equipe}
 
       <h2 className="fsub">L&apos;agence sur les documents</h2>
       <div className="rgl-grid">

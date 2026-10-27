@@ -35,8 +35,30 @@ const STATUTS: Record<number, string> = {
   11: "11 - VENDU",
 };
 
+/**
+ * Qui suit un dossier ne change que par son agent ou par la direction (MAV,
+ * 27/10 : « Romain peut me transférer un de ses contacts ou un de ses
+ * immeubles mais il ne peut pas […] se transférer un immeuble ou un contact »).
+ * Le contrôle vit ICI, au point de passage de toutes les écritures : il couvre
+ * le bouton « Transférer » comme tout autre chemin qui toucherait `AGENT` (un
+ * immeuble) ou `SUIVI` (un contact).
+ */
+async function gardeTransfert(fn: string, args: Record<string, unknown>) {
+  if (fn !== "bo_patch_doc") return;
+  const champ = args.p_table === "bo_immeuble" ? "AGENT" : args.p_table === "bo_contact" ? "SUIVI" : null;
+  const patch = args.p_patch as Record<string, unknown> | undefined;
+  if (!champ || !patch || !(champ in patch)) return;
+  const avant = await bqOne(String(args.p_table), String(args.p_id)).catch(() => null);
+  const actuel = typeof avant?.[champ] === "string" ? (avant[champ] as string) : null;
+  if (actuel === patch[champ]) return;
+  const { refusChangementAgent } = await import("@/lib/auth/comptes");
+  const refus = await refusChangementAgent(actuel);
+  if (refus) throw new Error(refus);
+}
+
 async function rpc(fn: string, args: Record<string, unknown>) {
   if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : écriture impossible");
+  await gardeTransfert(fn, args);
   const res = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: {
@@ -280,11 +302,18 @@ export async function transfererImmeuble(
    *  contestation d'appartenance du client (retour MAV #29). */
   proprietaireId?: string | null,
 ) {
-  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { AGENT: agentId } });
-  if (proprietaireId) {
-    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: proprietaireId, p_patch: { SUIVI: agentId } });
+  /* Le refus part en clair : en production, Next masque le texte d'une erreur
+     levée par une action serveur. */
+  try {
+    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { AGENT: agentId } });
+    if (proprietaireId) {
+      await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: proprietaireId, p_patch: { SUIVI: agentId } });
+    }
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Transfert impossible." };
   }
   refresh(immeubleId);
+  return { ok: true as const, message: "Dossier transféré." };
 }
 
 /**
@@ -3244,8 +3273,14 @@ export async function mandatInfosRecues(mandatId: string, immeubleId: string) {
   revalidatePath(`/mandat/${mandatId}`);
 }
 
-/** Annule le mandat (le numéro, s'il existe, reste au registre). */
+/** Annule le mandat (le numéro, s'il existe, reste au registre). Un agent
+ *  n'annule que ses propres mandats ; ceux des collègues, la direction
+ *  (MAV, 27/10). */
 export async function cancelMandat(mandatId: string, immeubleId: string, motif: string) {
+  const m = await bqOne("bo_mandat", mandatId).catch(() => null);
+  const { refusChangementAgent } = await import("@/lib/auth/comptes");
+  const refus = await refusChangementAgent(typeof m?.AGENT === "string" ? m.AGENT : null);
+  if (refus) return { ok: false as const, message: "Ce mandat est suivi par un collègue : seul lui, ou la direction, peut l'annuler." };
   await rpc("bo_patch_doc", {
     p_table: "bo_mandat",
     p_id: mandatId,
@@ -3253,6 +3288,7 @@ export async function cancelMandat(mandatId: string, immeubleId: string, motif: 
   });
   refresh(immeubleId);
   revalidatePath(`/mandat/${mandatId}`);
+  return { ok: true as const, message: "Mandat annulé." };
 }
 
 /**
