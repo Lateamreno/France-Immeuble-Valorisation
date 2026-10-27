@@ -49,6 +49,7 @@ import { initialesAgentCourant } from "@/lib/bo/agent-courant";
 import { blocsNote, daterNouveauBloc, enTeteNote, triPossible, trierBlocsNote } from "@/lib/bo/notes-datees";
 import { Facade } from "@/components/facade";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { SuiviVente } from "@/components/suivi-vente";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
 import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
@@ -84,6 +85,8 @@ type SectionKey =
      repliés en deux onglets maison ; MAV en a envoyé les dix captures et
      demandé qu'on les reproduise trait pour trait. */
   | "commercialisations" | "propositions" | "visites" | "offres"
+  /* Retour #549 : le suivi de la vente — jalons, notaires, échanges. */
+  | "vente"
   /* Écran greffé sur la fiche (l'estimation, le mandat) : il reste monté
      pendant qu'on visite les autres sections, pour ne rien perdre de la
      saisie (#96, #125). */
@@ -95,7 +98,7 @@ const SECTIONS: readonly SectionKey[] = [
   "suivi", "proprietaire", "emplacement", "locatif", "technique", "prix",
   "photos", "estimations", "mandats", "dossiers", "tous-docs", "diffusion",
   "acheteurs", "notes", "decoupe", "encours",
-  "commercialisations", "propositions", "visites", "offres",
+  "commercialisations", "propositions", "visites", "offres", "vente",
 ];
 
 /**
@@ -394,6 +397,14 @@ export function BienFiche({
   const groupeDocs = CLES_DOCS.includes(sect);
   const groupeAch = CLES_ACH.includes(sect);
   const im = b.im;
+  /* Le suivi de la vente (#549) : son entrée paraît au mandat signé, et
+     annonce l'étape de l'offre la plus avancée. */
+  const ETAPES_VENTE = ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"];
+  const offreVente = b.offres
+    .filter((o) => ETAPES_VENTE.includes(String(o.Statut ?? "")))
+    .sort((x, y) => ETAPES_VENTE.indexOf(String(y.Statut)) - ETAPES_VENTE.indexOf(String(x.Statut)))[0];
+  const mandatSigne = b.mandats.some((m) => !!m.date_signature || !!m.pdf_signed);
+  const etatVente = offreVente ? String(offreVente.Statut) : mandatSigne ? "mandat signé" : null;
 
   /**
    * Les pastilles du rail viennent du MÊME moteur que « ce qui reste à
@@ -558,6 +569,12 @@ export function BienFiche({
               {sect === "propositions" && <EcranPropositions b={b} />}
               {sect === "visites" && <EcranVisites b={b} />}
               {sect === "offres" && <EcranOffres b={b} />}
+              {sect === "vente" && (
+                <>
+                  <SectTitle icon={I.marteau} title="Suivi de la vente" />
+                  <SuiviVente immeubleId={String(b.im._id)} />
+                </>
+              )}
               {sect === "notes" && <NotesSection b={b} />}
             </>
           )}
@@ -706,6 +723,16 @@ export function BienFiche({
               )}
             </span>
           </button>
+          {/* Retour #549 — « ici on va ajouter un menu suivi de la vente (il
+              peut s'activer lorsqu'on accepte une offre) ». Il paraît dès la
+              signature du mandat : notaires et échanges se préparent tôt. */}
+          {etatVente && (
+            <button type="button" className={`srow2${sect === "vente" ? " on" : ""}`} onClick={() => setSect("vente")}>
+              <span className="sic2"><svg viewBox="0 0 24 24">{I.marteau}</svg></span>
+              Suivi de la vente
+              <span className="right"><span className="pill-dec">{etatVente}</span></span>
+            </button>
+          )}
           {/* Retour #455 — « quand on déplie les notes, c'est directement le
               bandeau qui se déplie et qui permet d'écrire des notes à la
               volée ; elles sont directement enregistrées ». Les notes ne sont

@@ -9212,3 +9212,49 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .mlg-dl:last-child { border-bottom: 0; }
 .mlg-dl .nm, .mlg-dl .em { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mlg-dl .em { color: var(--gray-txt); }
+/* ---------- Suivi de la vente (#549) ---------- */
+.sv2 { display: flex; flex-direction: column; gap: 22px; }
+.sv2 .fsub { margin: 0 0 8px; }
+.sv2-frise { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; }
+@media (max-width: 900px) { .sv2-frise { grid-template-columns: 1fr; } }
+.sv2-frise li { position: relative; padding: 18px 10px 0 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sv2-frise li::before { content: ""; position: absolute; top: 5px; left: 0; right: 0; height: 3px; background: #e6e8ea; }
+.sv2-frise li::after { content: ""; position: absolute; top: 0; left: 0; width: 13px; height: 13px; border-radius: 50%; background: #fff; border: 2px solid #c9ced3; box-sizing: border-box; }
+.sv2-frise li.fait::before { background: var(--gold-bo); }
+.sv2-frise li.fait::after { background: var(--gold-bo); border-color: var(--gold-bo); }
+.sv2-frise li.cours::after { border-color: var(--gold-bo); }
+.sv2-frise b { font-family: var(--font-title); font-size: 13px; font-weight: 600; color: var(--slate); }
+.sv2-frise span { font-size: 12px; color: var(--gray-txt); }
+.sv2-frise li:not(.fait):not(.cours) b { color: var(--gray-txt); }
+.sv2-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin-top: 14px; }
+.sv2-dates label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--slate-2); }
+.sv2-dates .mhint { flex-basis: 100%; }
+.sv2-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .sv2-parties { grid-template-columns: 1fr; } }
+.sv2-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sv2-p { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; min-width: 0; }
+.sv2-p.vide { border-style: dashed; background: #fbfbfa; }
+.sv2-p a { color: var(--slate); overflow-wrap: anywhere; }
+.sv2-role { font-family: var(--font-title); font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--gold-bo); }
+.sv2-p .fadd { align-self: flex-start; margin-top: 4px; }
+.sv2-act { display: flex; gap: 6px; }
+.sv2-eh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sv2-eh .fsub { margin: 0; }
+.sv2-ech { background: #fff; border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+.sv2-m { border-bottom: 1px solid #f0f1f2; }
+.sv2-m:last-child { border-bottom: 0; }
+.sv2-m.on { background: #fafaf7; }
+.sv2-ml { display: grid; grid-template-columns: 22px 88px auto minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px 12px; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; color: var(--slate); }
+@media (max-width: 760px) { .sv2-ml { grid-template-columns: 22px minmax(0, 1fr); } .sv2-avec, .sv2-pj { display: none; } }
+.sv2-dir { font-weight: 700; text-align: center; }
+.sv2-dir.reception { color: #2a8a1b; }
+.sv2-dir.envoyes { color: var(--gold-bo); }
+.sv2-dt { font-size: 12px; color: var(--gray-txt); font-variant-numeric: tabular-nums; }
+.sv2-avec { display: flex; gap: 4px; flex-wrap: wrap; }
+.sv2-obj { display: flex; flex-direction: column; min-width: 0; }
+.sv2-obj b, .sv2-obj i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv2-obj b { font-size: 13px; }
+.sv2-obj i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
+.sv2-pj { font-size: 12px; color: var(--gray-txt); }
+.sv2-corps { padding: 0 12px 12px 44px; display: flex; flex-direction: column; gap: 6px; }
+.sv2-corps pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 12.5px; line-height: 1.5; max-height: 380px; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
