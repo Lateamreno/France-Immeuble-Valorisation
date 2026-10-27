@@ -16,7 +16,7 @@
 
 import { dureeEnLettres, entierEnLettres, euroEnLettres, nombreAvecChiffre } from "@/lib/nombre-lettres";
 import { etagesDepuisLots } from "@/lib/bo/etages";
-import { adresseImmeuble, lotOccupe, synthese, type Mandant } from "@/lib/mandat";
+import { adresseImmeuble, descriptifManuscrit, lotOccupe, synthese, type Mandant } from "@/lib/mandat";
 import { dateCivile } from "@/lib/format";
 
 /* ------------------------------------------------------------ Formatage */
@@ -91,6 +91,22 @@ export function dureeJours(jours: number): { texte: string; court: string; mois:
     return { texte: dureeEnLettres(m, "mois"), court: `${m} mois`, mois: m };
   }
   return { texte: dureeEnLettres(jours, "jours"), court: `${jours} jours`, mois: jours / 30 };
+}
+
+/**
+ * La durée entre deux dates, dite comme l'écran la saisit (retour #565) : la
+ * fiche pose la révocation de l'exclusivité à « 3 mois » du début, soit le
+ * même quantième trois mois plus tard — 92 jours d'octobre à janvier. Compter
+ * les jours imprimait « 92 jours » là où le BO dit « 3 mois ».
+ */
+function dureeEntre(debut: Date, fin: Date): { texte: string; court: string; mois: number } {
+  const jour = (d: Date) => d.toISOString().slice(0, 10);
+  for (let mois = 1; mois <= 24; mois++) {
+    if (jour(ajouteMois(debut, mois)) === jour(fin)) {
+      return { texte: dureeEnLettres(mois, "mois"), court: `${mois} mois`, mois };
+    }
+  }
+  return dureeJours(Math.max(0, Math.round((fin.getTime() - debut.getTime()) / 86400000)));
 }
 
 /* -------------------------------------------------------------- Le régime */
@@ -363,6 +379,17 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
     );
   }
 
+  /* Retour #564 : un descriptif écrit à la main dans l'onglet Objet remplace
+     la désignation rédigée — c'est le texte que l'agent a relu et que le
+     mandant signera. Échappé : c'est de la saisie, pas du gabarit. */
+  const manuscrit = descriptifManuscrit(m, im, lots);
+  if (manuscrit) {
+    const echappe = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    designation.splice(0, designation.length, ...manuscrit
+      .split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+      .map((p) => echappe(p).replace(/\n/g, "<br>")));
+  }
+
   /* --- Composition, une ligne par destination --- */
   const avecLoyer = s.occupation !== "libre";
   /* Le regroupement DOIT employer la même clé que `synthese` — `Destination`,
@@ -462,7 +489,10 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
       v: `${irrevoc.court} — jusqu'au ${dateCourte(finIrrevoc)}`,
     },
   ];
-  if (regime !== "simple") {
+  /* Retour #565 : en exclusif, l'exclusivité court sur tout le mandat — la
+     redire avec sa propre échéance n'apprend rien au mandant. Seul le
+     semi-exclusif, dont l'exclusivité s'éteint avant, garde sa ligne. */
+  if (regime === "semi_exclusif") {
     registre.push({
       k: "Durée de l'exclusivité",
       note: exclusifTotal
@@ -523,8 +553,8 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
   const frise: Barre[] = [
     { label: "Mandat", classe: "b-mandat", largeur: 100, duree: `${dureeMois} mois`, echeance: dateCourte(fin), dehors: false },
   ];
-  if (regime !== "simple") {
-    const lExclu = Math.min(100, Math.round((exclusifTotal ? totalJours : exclusiviteJours) / totalJours * 10000) / 100);
+  if (regime === "semi_exclusif") {
+    const lExclu = Math.min(100, Math.round(exclusiviteJours / totalJours * 10000) / 100);
     frise.push({
       label: "Exclusivité", classe: "b-exclu", largeur: lExclu,
       duree: exclu.court, echeance: dateCourte(finExclu), dehors: lExclu < DEHORS,
@@ -549,7 +579,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
     const lRevoc = Math.min(100, Math.round(jRevoc / totalJours * 10000) / 100);
     frise.push({
       label: "Irrévocabilité de l'exclusivité", classe: "b-irr", largeur: lRevoc,
-      duree: dureeJours(jRevoc).court, echeance: dateCourte(revocExclu),
+      duree: dureeEntre(signature, revocExclu).court, echeance: dateCourte(revocExclu),
       dehors: lRevoc < DEHORS,
     });
   }
@@ -670,6 +700,10 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
         { k: "Date de naissance", v: dateCivile(x.dateNaissance) || A_COMPLETER },
         { k: "Lieu de naissance", v: S(x.lieuNaissance) || A_COMPLETER },
         { k: "Adresse", v: req(S(x.adresse), trous, `l'adresse du mandant ${i + 1}`) },
+        /* Retour #566 : la qualité de chacun, toujours sous l'adresse —
+           « nu-propriétaire du 2ème », « usufruitière du RDC »… La phrase
+           d'introduction ne la porte plus (#567). */
+        { k: "Qualité", v: S(x.fonction) || "Propriétaire" },
       ],
       qualiteSignature: S(x.fonction) || "Personne physique",
     };
@@ -684,8 +718,11 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
      toujours, à défaut d'être autre chose. */
   const brute = S(e.mandants[0]?.fonction).toLowerCase();
   const qualite = brute && brute.length > 3 ? brute : "propriétaire";
+  /* Retour #567 : à plusieurs, la phrase ne dit plus la qualité — celle du
+     premier mandant y passait pour celle de tous (« copropriétaire - nu
+     propriétaire du 2ème… »). Chacun a désormais la sienne sur sa carte. */
   const introMandants = mandants.length > 1
-    ? `Les mandants ci-dessous, ${qualite}s du bien désigné à l'article ${art.bien}, agissent conjointement et s'obligent solidairement.`
+    ? "Les mandants ci-dessous agissent conjointement et s'obligent solidairement."
     : `Le mandant ci-dessous est ${qualite === "propriétaire" ? "le propriétaire" : `${qualite}`} du bien désigné à l'article ${art.bien}.`;
 
   /* --- Signatures --- */

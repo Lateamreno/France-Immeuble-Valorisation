@@ -431,6 +431,31 @@ export function descriptifLegal(
   return phrases.join("\n\n");
 }
 
+/**
+ * Le descriptif rédigé à la main dans l'onglet Objet du mandat, ou rien.
+ *
+ * Retour #564 — « la désignation n'indique pas ce que j'ai écrit dans le BO ».
+ * Le mandat imprimé rédigeait toujours sa désignation lui-même, depuis l'état
+ * locatif. Un texte saisi à la main (une répartition du prix entre
+ * indivisaires, par exemple) doit au contraire passer tel quel. On le
+ * reconnaît comme l'écran le reconnaît : ni le texte que le BO rédige, ni le
+ * descriptif commercial que Bubble recopiait à la création (#490).
+ */
+export function descriptifManuscrit(
+  m: Record<string, unknown>,
+  im: Record<string, unknown>,
+  lots: Record<string, unknown>[],
+): string | undefined {
+  const ecrit = S(m.description);
+  if (!ecrit) return undefined;
+  const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+  const auto = descriptifLegal(im, lots, S(m.ref_cadastre), N(m.surface_terrain));
+  if (norm(ecrit) === norm(auto)) return undefined;
+  const fiche = norm(S(im.descriptif) ?? "");
+  if (fiche.length > 40 && (norm(ecrit) === fiche || fiche.startsWith(norm(ecrit).slice(0, 60)))) return undefined;
+  return ecrit;
+}
+
 export function adresseImmeuble(im: Record<string, unknown>): string {
   const rue = [S(im.adresse_numero_rue), S(im.adresse_rue)].filter(Boolean).join(" ");
   const ville = [S(im.adresse_zipcode), S(im.adresse_ville)].filter(Boolean).join(" ");
