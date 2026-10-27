@@ -722,6 +722,10 @@ function PoiVignette({
 
 /* ---------- Parcelles & PLU ---------- */
 
+/** Identifiant d'une parcelle saisie, pas encore enregistrée. */
+let nouvelles = 0;
+const idNouvelle = () => `nouveau-${++nouvelles}`;
+
 /** Parcelle proposée par le cadastre IGN sous le point d'adresse (#80). */
 type ParcelleIGN = { ref: string; superficie?: number; idu?: string; commune?: string };
 
@@ -729,9 +733,6 @@ function ParcellesTab({ b }: { b: BienData }) {
   const im = b.im;
   const immeubleId = String(im._id);
   const [pending, start] = useTransition();
-  const [ref, setRef] = useState("");
-  const [sup, setSup] = useState("");
-  const [fac, setFac] = useState("");
   /* Retour #294 — « quand j'ai ajouté la photo alors que je n'avais pas encore
      enregistré les zone, type de zone, hauteur et emprise, ça m'a retiré ce
      que j'avais mis ; il ne faut pas. »
@@ -752,29 +753,68 @@ function ParcellesTab({ b }: { b: BienData }) {
   ]);
   const pluCourant = JSON.stringify([zone, typeZone, hauteur, emprise]);
   const pluModifie = pluCourant !== pluServi;
+
+  /* Retours #554–#557 : chaque parcelle dans son cadre, modifiable seule ; la
+     façade est UNE pour tout le terrain (les parcelles forment un tout) ; et
+     tout passe par la barre Enregistrer / Annuler, comme le PLU — plus de
+     cadre de saisie toujours ouvert qu'il fallait « ajouter » pour garder ce
+     qu'on y avait tapé. Le brouillon vit dans la mémoire d'écran : déposer le
+     plan pendant la saisie ne l'efface plus (#555). */
+  type Brouillon = { id: string; ref: string; sup: string; idu?: string; nouveau?: boolean };
+  const parcServies: Brouillon[] = b.parcelles.map((p) => ({
+    id: String(p._id), ref: S(p.ref_cadastre), sup: S(num(p.superficie)),
+  }));
+  const [parcs, setParcs] = useMemoireServie<Brouillon[]>(`${cleMem}parcelles`, parcServies);
+  /* Les fiches d'avant portaient une façade par parcelle : leur somme sert de
+     valeur de départ tant que le terrain n'a pas la sienne. */
+  const facParcelles = b.parcelles.reduce((t, p) => t + (num(p.facade) ?? 0), 0);
+  const facadeServie = S(num(im.ter_facade) ?? (facParcelles || undefined));
+  const [facadeT, setFacadeT] = useMemoireServie(`${cleMem}facade`, facadeServie);
+  const parcModifie = JSON.stringify(parcs) !== JSON.stringify(parcServies) || facadeT !== facadeServie;
+  const majParc = (id: string, patch: Partial<Brouillon>) =>
+    setParcs(parcs.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  const ajouterParc = (d?: Partial<Brouillon>) =>
+    setParcs([...parcs, { id: idNouvelle(), ref: "", sup: "", nouveau: true, ...d }]);
+
   /* Retour #454 : Annuler remet ce que la fiche porte. */
   const annulerPlu = () => {
     setZone(S(im.plu_zone)); setTypeZone(S(im.plu_Type_zone));
     setHauteur(S(num(im.plu_hauteur))); setEmprise(S(num(im.plu_emprise)));
+    setParcs(parcServies); setFacadeT(facadeServie);
   };
 
   const savePlu = () =>
     start(async () => {
-      await updateEmplacement(immeubleId, {
-        plu_zone: zone || undefined, plu_Type_zone: typeZone || undefined,
-        plu_hauteur: parse(hauteur), plu_emprise: parse(emprise),
-      });
+      if (pluModifie) {
+        await updateEmplacement(immeubleId, {
+          plu_zone: zone || undefined, plu_Type_zone: typeZone || undefined,
+          plu_hauteur: parse(hauteur), plu_emprise: parse(emprise),
+        });
+      }
+      const gardes = new Set(parcs.map((d) => d.id));
+      for (const p of parcServies) if (!gardes.has(p.id)) await deleteParcelle(immeubleId, p.id);
+      for (const d of parcs) {
+        if (d.nouveau) {
+          if (d.ref.trim()) await addParcelle(immeubleId, { ref_cadastre: d.ref.trim(), superficie: parse(d.sup), idu: d.idu });
+          continue;
+        }
+        const avant = parcServies.find((p) => p.id === d.id);
+        if (avant && (avant.ref !== d.ref || avant.sup !== d.sup)) {
+          await updateParcelle(immeubleId, d.id, { ref_cadastre: d.ref.trim() || undefined, superficie: parse(d.sup) ?? null });
+        }
+      }
+      if (facadeT !== facadeServie) await updateEmplacement(immeubleId, { ter_facade: parse(facadeT) });
       /* La mémoire d'écran a fait son office : une fois enregistré, on la
          vide pour que la fiche redevienne la seule source. */
-      for (const k of ["zone", "type", "hauteur", "emprise"]) oublier(`${cleMem}${k}`);
+      oublier(cleMem);
     });
 
-  /* Encadré or : la surface et la façade du terrain, somme des parcelles.
-     À défaut de parcelles chiffrées, on garde la valeur déjà en fiche. */
-  const totalP = (cle: string) =>
-    b.parcelles.reduce((s, p) => s + (num(p[cle]) ?? 0), 0);
-  const surface = totalP("superficie") || num(im.ter_surface);
-  const facade = totalP("facade") || num(im.ter_facade);
+  /* Encadré or : la surface du terrain est la somme des parcelles ; la
+     façade, celle du terrain. Les chiffres suivent la saisie en cours. */
+  const supSaisie = parcs.reduce((t, d) => t + (parse(d.sup) ?? 0), 0);
+  const surface = supSaisie || num(im.ter_surface);
+  const facade = parse(facadeT);
+  const nbParcelles = parcs.filter((d) => d.ref.trim()).length;
 
   /* Les liens ouvrent directement le bien : le point d'adresse est déjà
      géocodé, on s'en sert pour centrer le cadastre et le Géoportail (#80). */
@@ -843,9 +883,9 @@ function ParcellesTab({ b }: { b: BienData }) {
     const m = brut.match(/^([A-Z]*)0*(\d+)$/);
     return m ? `${m[1]}${parseInt(m[2], 10)}` : brut;
   };
-  const dejaLa = (r: string) => b.parcelles.some((p) => cle(S(p.ref_cadastre)) === cle(r));
+  const dejaLa = (r: string) => parcs.some((d) => cle(d.ref) === cle(r));
 
-  const sansParcelle = b.parcelles.length === 0;
+  const sansParcelle = nbParcelles === 0;
 
   return (
     <>
@@ -872,7 +912,7 @@ function ParcellesTab({ b }: { b: BienData }) {
             Façade <b>{facade !== undefined ? `${fr1(facade)} m` : "—"}</b>
           </span>
           <span className={`fchip${sansParcelle ? " off" : ""}`}>
-            {b.parcelles.length > 1 ? "Parcelles" : "Parcelle"} <b>{b.parcelles.length}</b>
+            {nbParcelles > 1 ? "Parcelles" : "Parcelle"} <b>{nbParcelles}</b>
           </span>
         </div>
       </div>
@@ -900,7 +940,9 @@ function ParcellesTab({ b }: { b: BienData }) {
           mets le bouton en évidence pour qu'on soit tenté de cliquer direct. »
           Il fait gagner la saisie entière : il mérite mieux qu'une option
           grise au bout d'une rangée de liens. */}
-      {lat !== undefined && lon !== undefined && (
+      {/* #554 : une fois les parcelles là, le remplissage automatique n'a
+          plus rien à proposer — il disparaît. */}
+      {lat !== undefined && lon !== undefined && parcServies.length === 0 && parcs.length === 0 && (
         <button type="button" className="terr-auto" disabled={rechCadastre}
           onClick={chercherParcelles}>
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -911,7 +953,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         </button>
       )}
 
-      {proposees !== null && (
+      {proposees !== null && parcServies.length === 0 && (
         <div className="terr-prop">
           {proposees.length === 0 ? (
             <p>Le cadastre ne rend aucune parcelle sous ce point : à saisir à la main.</p>
@@ -923,13 +965,7 @@ function ParcellesTab({ b }: { b: BienData }) {
                   <button
                     key={p.idu ?? p.ref} type="button" className="mopt"
                     disabled={pending || dejaLa(p.ref)}
-                    onClick={() =>
-                      start(async () => {
-                        await addParcelle(immeubleId, {
-                          ref_cadastre: p.ref, superficie: p.superficie, idu: p.idu,
-                        });
-                      })
-                    }
+                    onClick={() => ajouterParc({ ref: p.ref, sup: S(p.superficie), idu: p.idu })}
                   >
                     {dejaLa(p.ref) ? "✓ " : "+ "}{p.ref}
                     {p.superficie !== undefined && ` · ${p.superficie.toLocaleString("fr-FR")} m²`}
@@ -938,7 +974,7 @@ function ParcellesTab({ b }: { b: BienData }) {
               </div>
               <p className="terr-prop-n">
                 Le cadastre ne publie pas la longueur de façade : elle se mesure sur le plan et
-                se saisit ci-dessous, parcelle par parcelle.
+                se saisit ci-dessous, une fois pour tout le terrain.
               </p>
             </>
           )}
@@ -946,43 +982,44 @@ function ParcellesTab({ b }: { b: BienData }) {
       )}
 
       <div className="terr-duo">
-        <div className={`terr-box${sansParcelle ? " manque" : ""}`}>
-          {b.parcelles.map((p) => (
-            <LigneParcelle key={String(p._id)} immeubleId={immeubleId} p={p} />
-          ))}
-          {/* Le cadre de saisie reste ouvert en permanence : c'est lui que MAV
-              décrit (« la possibilité d'ajouter une parcelle qui rouvre le même
-              cadre quand il y en a plusieurs »). */}
-          <div className="terr-saisie">
-            <span className="ic">
-              <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 12h7v7h-7zM4 12h7v7H4z" /></svg>
+        <div className="terr-liste">
+          <label className={`terr-box terr-fac${facade === undefined ? " manque" : ""}`}>
+            <span className="k">Façade sur rue <i>(une pour tout le terrain)</i></span>
+            <span className="terr-fac-v">
+              <input className="min" value={facadeT} placeholder="m" inputMode="decimal"
+                onChange={(e) => setFacadeT(e.target.value)} />
+              <i>m</i>
             </span>
-            <div className="ch">
-              <label>Parcelle
-                <input className="min" value={ref} placeholder="ex. 000 SX 148"
-                  onChange={(e) => setRef(e.target.value)} />
-              </label>
-              <label>Façade
-                <input className="min" value={fac} placeholder="m" inputMode="decimal"
-                  onChange={(e) => setFac(e.target.value)} />
-              </label>
-              <label>Superficie
-                <input className="min" value={sup} placeholder="m²" inputMode="decimal"
-                  onChange={(e) => setSup(e.target.value)} />
-              </label>
+          </label>
+          {parcs.length === 0 && (
+            <div className="terr-box manque terr-vide">
+              Aucune parcelle. Remplissez-les automatiquement, ou ajoutez-les à la main.
             </div>
-          </div>
-          <button
-            className="terr-add" type="button" disabled={pending || !ref.trim()}
-            onClick={() =>
-              start(async () => {
-                await addParcelle(immeubleId, {
-                  ref_cadastre: ref.trim(), superficie: parse(sup), facade: parse(fac),
-                });
-                setRef(""); setSup(""); setFac("");
-              })
-            }
-          >+ Ajouter une parcelle</button>
+          )}
+          {parcs.map((d) => (
+            <div key={d.id} className={`terr-box${d.ref.trim() ? "" : " manque"}`}>
+              <div className="terr-saisie">
+                <span className="ic">
+                  <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 12h7v7h-7zM4 12h7v7H4z" /></svg>
+                </span>
+                <div className="ch">
+                  <label>Parcelle
+                    <input className="min" value={d.ref} placeholder="ex. 000 SX 148"
+                      onChange={(e) => majParc(d.id, { ref: e.target.value })} />
+                  </label>
+                  <label>Superficie
+                    <input className="min" value={d.sup} placeholder="m²" inputMode="decimal"
+                      onChange={(e) => majParc(d.id, { sup: e.target.value })} />
+                  </label>
+                </div>
+                <button className="xdel" type="button" title="Retirer la parcelle (Annuler la remet)"
+                  onClick={() => setParcs(parcs.filter((x) => x.id !== d.id))}>✕</button>
+              </div>
+            </div>
+          ))}
+          <button className="terr-add" type="button" disabled={pending} onClick={() => ajouterParc()}>
+            + Ajouter une parcelle
+          </button>
         </div>
 
         {/* Un seul enfant de grille : `PhotoParcelle` rend un fragment, et ses
@@ -1047,73 +1084,8 @@ function ParcellesTab({ b }: { b: BienData }) {
           <i>%</i>
         </label>
       </div>
-      <BarreEnregistrer modifie={pluModifie} pending={pending} onEnregistrer={savePlu} onAnnuler={annulerPlu} />
+      <BarreEnregistrer modifie={pluModifie || parcModifie} pending={pending} onEnregistrer={savePlu} onAnnuler={annulerPlu} />
     </>
-  );
-}
-
-/**
- * Une parcelle déjà au dossier, corrigeable sur place (retour #295).
- *
- * MAV : « quand je clique sur ajouter les parcelles trouvées, il faut quand
- * même que je puisse ajouter la longueur de façade. » Le cadastre donne la
- * référence et la superficie, jamais la façade : elle se mesure sur le plan.
- * La ligne était en lecture seule — il fallait supprimer la parcelle et la
- * ressaisir, en perdant au passage la superficie officielle.
- */
-function LigneParcelle({ immeubleId, p }: {
-  immeubleId: string; p: Record<string, unknown>;
-}) {
-  const id = String(p._id);
-  const [pending, start] = useTransition();
-  const { confirmer, question } = useQuestion();
-  const [refP, setRefP] = useState(S(p.ref_cadastre));
-  const [supP, setSupP] = useState(S(num(p.superficie)));
-  const [facP, setFacP] = useState(S(num(p.facade)));
-
-  /* Les valeurs suivent la fiche tant que personne ne tape par-dessus : c'est
-     ce qui fait qu'une superficie corrigée ailleurs arrive ici. */
-  const servi = JSON.stringify([S(p.ref_cadastre), S(num(p.superficie)), S(num(p.facade))]);
-  const [vu, setVu] = useState(servi);
-  if (vu !== servi) {
-    setVu(servi);
-    setRefP(S(p.ref_cadastre)); setSupP(S(num(p.superficie))); setFacP(S(num(p.facade)));
-  }
-
-  const enregistrer = () => {
-    if (JSON.stringify([refP, supP, facP]) === servi) return;
-    start(() => updateParcelle(immeubleId, id, {
-      ref_cadastre: refP.trim() || undefined,
-      superficie: parse(supP) ?? null,
-      facade: parse(facP) ?? null,
-    }));
-  };
-
-  return (
-    <div className={`terr-saisie${pending ? " off" : ""}`}>
-      <span className="ic">
-        <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 12h7v7h-7zM4 12h7v7H4z" /></svg>
-      </span>
-      <div className="ch">
-        <label>Parcelle
-          <input className="min" value={refP} onChange={(e) => setRefP(e.target.value)} onBlur={enregistrer} />
-        </label>
-        <label>Façade
-          <input className="min" value={facP} placeholder="m" inputMode="decimal"
-            onChange={(e) => setFacP(e.target.value)} onBlur={enregistrer} />
-        </label>
-        <label>Superficie
-          <input className="min" value={supP} placeholder="m²" inputMode="decimal"
-            onChange={(e) => setSupP(e.target.value)} onBlur={enregistrer} />
-        </label>
-      </div>
-      <button className="xdel" type="button" title="Retirer la parcelle"
-        onClick={async () => {
-          if (!(await confirmer("Retirer cette parcelle ?", { danger: true, oui: "Retirer" }))) return;
-          start(() => deleteParcelle(immeubleId, id));
-        }}>✕</button>
-      {question}
-    </div>
   );
 }
 

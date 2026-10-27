@@ -1070,7 +1070,7 @@ export async function updateEmplacement(immeubleId: string, patch: EmplacementPa
   refresh(immeubleId);
 }
 
-/* Terrain : dans le BO, la surface et la façade de l'encadré or sont la somme
+/* Terrain : dans le BO, la surface de l'encadré or est la somme
    des parcelles. On les recalcule à chaque ajout/retrait pour que l'encadré,
    la description du bien et le dossier de vente racontent la même chose. */
 async function syncTerrain(immeubleId: string) {
@@ -1082,9 +1082,10 @@ async function syncTerrain(immeubleId: string) {
     parcelles.reduce((s, p) => s + (typeof p[cle] === "number" ? (p[cle] as number) : 0), 0);
   // Une somme nulle veut dire « les parcelles ne portent pas l'information »,
   // pas « le terrain fait zéro » : on laisse alors la valeur déjà saisie.
+  /* La façade n'est plus une somme : elle est UNE pour tout le terrain et se
+     saisit sur l'immeuble (retours #554–#557). */
   const patch = cleanPatch({
     ter_surface: somme("superficie") || undefined,
-    ter_facade: somme("facade") || undefined,
   });
   if (Object.keys(patch).length === 0) return;
   await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: patch });
@@ -3031,6 +3032,8 @@ export type MandatPatch = Partial<{
   description: string;
   // Prix
   prix_nv: number; honos_taux: number; honos_ttc: number; prix_hai: number; Charge_hono: string;
+  /** La direction est passée outre la charge imposée (#558) — MAV seul. */
+  Charge_forcee: boolean;
   // Conditions
   date_effet: string; "durée_tot_month": number; "durée_exclu_jours": number;
   "durée_irrevoc_days": number;
@@ -3222,7 +3225,8 @@ export async function createMandat(
       honos_taux: prix.taux,
       "durée_tot_month": (reprise("durée_tot_month") as number | undefined) ?? 12,
       "durée_exclu_jours": (reprise("durée_exclu_jours") as number | undefined) ?? 90,
-      "durée_irrevoc_days": (reprise("durée_irrevoc_days") as number | undefined) ?? 30,
+      /* #559 : trois mois par défaut, comme l'exclusivité. */
+      "durée_irrevoc_days": (reprise("durée_irrevoc_days") as number | undefined) ?? 90,
       // La prise d'effet part d'aujourd'hui (retour #193), et reste modifiable.
       date_effet: now,
       "Created Date": now,
@@ -3237,6 +3241,11 @@ export async function createMandat(
 export async function updateMandat(mandatId: string, immeubleId: string, patch: MandatPatch) {
   const clean = cleanPatch(patch as Record<string, unknown>);
   if (Object.keys(clean).length === 0) return;
+  /* Passer outre la doctrine est réservé à MAV (#558) : vérifié ici, pas
+     seulement par le bouton qui ne s'affiche que pour lui. */
+  if (clean.Charge_forcee === true && !(await (await import("@/lib/auth/comptes")).peutReviser())) {
+    throw new Error("Passer outre la charge imposée est réservé à Marc-Antoine.");
+  }
   /* Prix : l'écran résout lui-même les quatre cases (retour #104) et envoie
      les quatre valeurs. On ne recalcule ici que si l'appelant ne l'a pas fait
      — sinon on écraserait un net vendeur déduit d'un prix HAI saisi. */

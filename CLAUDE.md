@@ -422,6 +422,11 @@ arbitrage de MAV, ne pas y revenir sans lui.
 
 ### 8.2 Doctrine préemption — honoraires charge vendeur
 - Sur tout lot susceptible de préemption (locataire loi 75, commercial Pinel), honoraires **charge vendeur** et prix notifié au locataire = **prix net vendeur non majoré**. Jamais de charge acquéreur sur ces lots (jurisprudence constante). Le module grilles/mandats l'impose par défaut.
+- **Exception décidée par MAV le 27/10 (#558)** : sur **sa** session
+  (ma.voci@france-immeuble.fr) seulement, il peut passer outre la charge
+  vendeur imposée (« comme je suis admin je décide »). Le mandat le garde
+  (`Charge_forcee`), l'écran rappelle ce que la doctrine aurait imposé, et le
+  serveur refuse ce choix à tout autre compte.
 
 ### 8.3 RGPD locataires (risque n°1)
 - **Jamais** de nom de locataire exposé côté public/marketplace : personne morale/physique anonymisée dans `listing_lots` publiées.

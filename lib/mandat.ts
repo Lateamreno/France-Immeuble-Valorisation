@@ -627,9 +627,37 @@ export type RegimeHonoraires = {
   motif: string;
   /** Le mandat porte-t-il la clause préemption locataire (art. 4.3) ? */
   clauseLocataire: boolean;
+  /** La direction est passée outre une charge imposée (#558). */
+  force?: boolean;
+  /** La charge que la doctrine aurait imposée, quand on est passé outre. */
+  doctrine?: "Vendeur";
 };
 
+/**
+ * Retour #558 : « sur ma session admin tu devrais me laisser un overright :
+ * si quelque part on me dit que c'est pas permis, comme je suis admin je
+ * décide ». Quand MAV force la charge acquéreur, la doctrine cède — le mandat
+ * le garde (`Charge_forcee`) et l'écran rappelle ce qu'elle aurait imposé.
+ */
 export function regimeHonoraires(
+  lots: Record<string, unknown>[],
+  mode: Mode,
+  choix: string | undefined,
+  force?: boolean,
+): RegimeHonoraires {
+  const base = regimeDoctrine(lots, mode, choix);
+  if (!force || !base.impose || choix !== "Acheteur") return base;
+  return {
+    impose: null,
+    charge: "Acheteur",
+    clauseLocataire: false,
+    force: true,
+    doctrine: base.impose,
+    motif: `Charge acquéreur décidée par la direction, au-delà de la doctrine. Ce qu'elle disait : ${base.motif}`,
+  };
+}
+
+function regimeDoctrine(
   lots: Record<string, unknown>[],
   mode: Mode,
   choix: string | undefined,

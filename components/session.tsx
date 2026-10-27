@@ -10,7 +10,11 @@
  */
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 
-export type SessionEcran = { direction: boolean; agentSlug?: string; nom?: string; email?: string };
+export type SessionEcran = {
+  direction: boolean; agentSlug?: string; nom?: string; email?: string;
+  /** MAV seul : l'outil de correction et le droit de passer outre (#558). */
+  outrepasser?: boolean;
+};
 
 const Ctx = createContext<SessionEcran>({ direction: true });
 

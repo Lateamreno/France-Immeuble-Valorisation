@@ -107,9 +107,12 @@ function Card({
     e.preventDefault(); e.stopPropagation();
     if (c.tel) window.location.href = `tel:${c.tel.replace(/[^\d+]/g, "")}`;
   };
-  const tuile = (label: string, valeur: string | undefined, ton = "", titre?: string) => (
+  /* #547 : « Rentabilité », « Occupation » en entier ; l'abrégé ne sert que
+     sur une vignette trop étroite (requête de conteneur, globals.css). */
+  const tuile = (label: string | [string, string], valeur: string | undefined, ton = "", titre?: string) => (
     <div className={`ktu-c${valeur === undefined ? " vide" : ""}`} title={titre}>
-      <span>{label}</span><b className={ton}>{valeur ?? "—"}</b>
+      <span>{Array.isArray(label) ? <><i className="long">{label[0]}</i><i className="court">{label[1]}</i></> : label}</span>
+      <b className={ton}>{valeur ?? "—"}</b>
     </div>
   );
   const rentaAff = c.perf?.rentaPot ?? c.perf?.renta;
@@ -117,19 +120,19 @@ function Card({
     <div className="ktu">
       {tuile("Loyer", c.loyerAn)}
       {tuile("Surface", c.surface)}
-      {tuile("Occup.", c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+      {tuile(["Occupation", "Occup."], c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
         c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "")}
     </div>
   ) : (
     <div className="ktu">
-      {tuile("Renta", rentaAff !== undefined ? pct(rentaAff) : undefined,
+      {tuile(["Rentabilité", "Renta"], rentaAff !== undefined ? pct(rentaAff) : undefined,
         c.perf?.rentaEcart ? (c.perf.rentaEcart > 0 ? "v" : "r") : "",
         rentaAff === undefined ? undefined
           : (c.perf!.rentaPot !== undefined
             ? `Renta potentielle ${pct(c.perf!.rentaPot)}` + (c.perf!.renta !== undefined ? ` — actuelle ${pct(c.perf!.renta)}` : "")
             : `Renta actuelle ${pct(c.perf!.renta!)}`)
             + (c.perf!.rentaRef !== undefined ? ` — secteur ${pct(c.perf!.rentaRef)}` : ""))}
-      {tuile("Occup.", c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+      {tuile(["Occupation", "Occup."], c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
         c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "",
         c.perf?.occupation !== undefined ? `Occupation : ${c.perf.occupation} % des lots loués` : undefined)}
       {tuile("Vs secteur", c.perf?.ecartM2 !== undefined ? `${c.perf.ecartM2 > 0 ? "+" : ""}${c.perf.ecartM2} %` : undefined,
@@ -150,7 +153,7 @@ function Card({
           <div className="krow1">
             {/* Le département entre parenthèses, en texte, comme avant la
                 carte du 26/10 (MAV, 27/10 : pas de pastille). */}
-            <span className="kt" title={c.ville}>{c.villeNom ?? c.ville}</span>
+            <span className="kt" title={c.adresseComplete || c.ville}>{c.villeNom ?? c.ville}</span>
             {c.dpt && <span className="kt kt-dpt">({c.dpt})</span>}
             {c.pastille && <span className={`kpast ${c.pastille.ton ?? ""}`} title={c.pastille.texte}>{c.pastille.texte}</span>}
           </div>
@@ -163,6 +166,7 @@ function Card({
             <VignetteContact
               nom={c.contact}
               immeuble={c.objet}
+              telAuSurvol={etape === 3}
               v={c.contactId && c.contactInfo ? {
                 id: c.contactId, nom: c.contact || c.contactInfo.nom, qualite: c.contactInfo.type,
                 tel: c.contactInfo.tel, email: c.contactInfo.email,

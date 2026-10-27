@@ -1176,9 +1176,6 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
      lu et écrit tel quel. */
   const reordonne = useRef(false);
 
-  /** Le lot dont on demande l'objet des travaux (retour #254). */
-  const [objetDe, setObjetDe] = useState<string | null>(null);
-
   /* Suppression (#86) : une vraie fenêtre qui récapitule les lots concernés,
      pas la boîte du navigateur. */
   const [aSupprimer, setASupprimer] = useState(false);
@@ -1591,19 +1588,13 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         return (
           <td key={c} className={cls(c, "na")}>
             <span className={parseFloat(r.travaux) > 0 ? "tvx" : undefined}>
-              {/* Retour #254 : « quand on rentre des travaux ici je veux
-                  qu'on ait une modale qui s'ouvre rapidement pour demander à
-                  quoi ça correspond ». Elle s'ouvre en quittant la case, pas à
-                  chaque frappe, et seulement si le montant a bougé vers du
-                  positif. */}
+              {/* Revirement #550 (27/10) : « quand je remplis les travaux ne
+                  me mets pas de modale, c'est pas pratique ». La fenêtre du
+                  retour #254 ne s'ouvre plus : l'objet des travaux se précise
+                  dans l'onglet Travaux. */}
               <CaseNombre
                 value={r.travaux} placeholder="0"
                 onChange={(v) => edit(r.id, "travaux", v)}
-                onBlur={() => {
-                  const v = parseFloat(r.travaux.replace(/[^\d.,]/g, "").replace(",", "."));
-                  const avant = travauxDuLot.get(r.id) ?? 0;
-                  if (Number.isFinite(v) && v > 0 && v !== avant) setObjetDe(r.id);
-                }}
               />
               <i>€</i>
             </span>
@@ -1965,49 +1956,6 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           onFermer={() => setDpe(false)}
         />
       )}
-
-      {/* Retour #254 — le détail des travaux du lot, demandé au moment où on
-          saisit le montant : c'est le seul moment où l'agent l'a en tête. */}
-      {objetDe && (() => {
-        const r = rows.find((x) => x.id === objetDe);
-        if (!r) return null;
-        const fermer = () => setObjetDe(null);
-        return (
-          <Modale
-            titre={<>Travaux du {libelleLot(r).replace(/^Lot/, "lot")}</>}
-            onFermer={fermer}
-            className="etroit"
-            pied={
-              <button className="kgo" type="button" onClick={fermer}>
-                <span className="ch">›</span> C&apos;est noté
-              </button>
-            }
-          >
-            <p className="mhint">
-              {euros(parseFloat(r.travaux.replace(",", "."))) ?? "Montant à préciser"}{" — à quoi "}
-              correspondent-ils ? Ce que vous écrivez ici s&apos;affiche dans l&apos;onglet Travaux
-              et sur le dossier, à la place de « Travaux lot {r.numero || "?"} ».
-            </p>
-            <span className="mlab">Objet des travaux</span>
-            <input
-              className="min" autoFocus value={r.travaux_objet}
-              placeholder="Réfection de la salle de bains, remise aux normes électriques…"
-              onChange={(e) => edit(r.id, "travaux_objet", e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") fermer(); }}
-            />
-            <span className="mlab">Urgence</span>
-            <div className="mrow">
-              {["Haute", "Moyenne", "Basse"].map((u) => (
-                <button
-                  key={u} type="button"
-                  className={`mopt${r.travaux_urgence === u ? " on" : ""}`}
-                  onClick={() => edit(r.id, "travaux_urgence", r.travaux_urgence === u ? "" : u)}
-                >{u}</button>
-              ))}
-            </div>
-          </Modale>
-        );
-      })()}
 
       {aSupprimer && (
         <Modale

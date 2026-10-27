@@ -94,6 +94,16 @@ export function construireDossier(
   });
   for (const l of lignes) l.cher = !!(l.refLoyer && l.loyerM2 > l.refLoyer);
 
+  /* #543 : l'occupation se lit en SURFACE, sur les lots principaux — ni
+     parkings, ni caves, ni annexes. Le décompte par lots d'avant comptait
+     une place de parking vide comme un appartement vide. Une estimation sans
+     surface garde l'ancien chiffre. */
+  const principales = lignes.filter((l, i) => !AU_LOT.has(l.dest) && l.dest !== "Annexe"
+    && lignes.findIndex((x) => SFX[x.dest] === SFX[l.dest]) === i);
+  const surfPrinc = principales.reduce((t, l) => t + l.surface, 0);
+  const occPrinc = principales.reduce((t, l) => t + l.surfaceOcc, 0);
+  const occupation = surfPrinc > 0 ? (occPrinc / surfPrinc) * 100 : num(e.imm_occupation) ?? 0;
+
   /* --- Moyennes du secteur, pondérées par les surfaces (hors lots secs) --- */
   const pond = (cle: "refLoyer" | "refPrix") => {
     let n = 0, d = 0;
@@ -195,7 +205,7 @@ export function construireDossier(
 
     // Page 1
     carrez, loyers, loyersMax,
-    occupation: num(e.imm_occupation) ?? 0,
+    occupation,
 
     // Page 2
     scores,

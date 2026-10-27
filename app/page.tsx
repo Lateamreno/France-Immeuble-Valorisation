@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getDashboardLive, getAgents, TOUS_AGENTS } from "@/lib/bubble/server";
 import { ventesAPublier } from "@/lib/bo/ventes-site";
 import { demandesDossierOuvertes } from "@/lib/bo/leads-site";
+import { compteCourant } from "@/lib/auth/comptes";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,16 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ agent?: string; vue?: string; q?: string }>;
 }) {
-  const { agent = "marc-antoine", vue, q = "" } = await searchParams;
+  const { agent: demande, vue, q = "" } = await searchParams;
   const onglet = vue === "attente" ? "attente" : "cours";
   const agentList = await getAgents().catch(() => []);
   const actifs = agentList.filter((a) => a.actif);
+  /* MAV, 27/10 : « pour les salariés, je veux que leur dashboard de base soit
+     toujours le leur ». Sans choix dans l'adresse, c'est le tableau de bord de
+     la personne connectée ; celui d'un collègue reste à un clic. */
+  const compte = await compteCourant();
+  const moi = compte ? actifs.find((a) => a.id === compte.agent_id)?.slug : undefined;
+  const agent = demande ?? moi ?? "marc-antoine";
   const slug = agent === TOUS_AGENTS || actifs.some((a) => a.slug === agent) ? agent : (actifs[0]?.slug ?? "marc-antoine");
 
   let blocs = DASHBOARD;

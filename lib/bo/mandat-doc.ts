@@ -108,15 +108,17 @@ export function regimeDe(v: unknown): Regime {
 /**
  * Défauts d'irrévocabilité par régime, en jours.
  *
- * Plus le mandataire s'engage, plus la période d'irrévocabilité se justifie :
- * on ne demande pas trois mois pour un mandat simple. Plafond de quatre-vingt-
+ * Trois mois partout depuis le retour #559 — c'est l'usage de la maison ; on
+ * réduit à la main un mandat simple si le client tique. Plafond de quatre-vingt-
  * dix jours dans tous les cas (article 78 du décret du 20 juillet 1972), dès
  * lors qu'il existe une clause d'exclusivité ou une clause pénale — ce qui est
  * le cas de tous nos mandats.
  */
 export const IRREVOC_DEFAUT: Record<Regime, number> = {
-  simple: 14,
-  semi_exclusif: 30,
+  /* #559 (MAV, 27/10) : « l'irrévocabilité habituellement est de 3 mois » —
+     trois mois pour tous, qu'on réduit à la main si besoin. */
+  simple: 90,
+  semi_exclusif: 90,
   exclusif: 90,
 };
 
@@ -443,7 +445,11 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
     "Les honoraires sont payables au comptant à la signature de l'acte authentique, par prélèvement sur le prix entre les mains du notaire. "
     + (s.occupation === "libre"
       ? "Le bien étant libre de toute occupation, aucun droit de préemption locatif n'est susceptible d'être exercé. Les frais d'acte et droits d'enregistrement s'ajoutent au prix de vente HAI et restent à la charge de l'acquéreur. "
-      : "Le bien comportant des lots loués, cette imputation à la charge du vendeur est retenue afin de préserver la rémunération du Mandataire en cas d'exercice d'un droit de préemption. Les frais d'acte et droits d'enregistrement restent à la charge de l'acquéreur. ")
+      /* #558 : sur un bien loué en charge acquéreur (choix de la direction),
+         la justification de la charge vendeur n'a plus lieu d'être. */
+      : !chargeVendeur
+        ? "Les frais d'acte et droits d'enregistrement s'ajoutent au prix de vente HAI et restent à la charge de l'acquéreur. "
+        : "Le bien comportant des lots loués, cette imputation à la charge du vendeur est retenue afin de préserver la rémunération du Mandataire en cas d'exercice d'un droit de préemption. Les frais d'acte et droits d'enregistrement restent à la charge de l'acquéreur. ")
     + "Le prix net vendeur peut être modifié par avenant, assorti de la modification corrélative des honoraires selon le barème en vigueur consultable sur www.france-immeuble.fr.";
 
   /* --- Registre de la durée --- */

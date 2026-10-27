@@ -1863,14 +1863,14 @@ body:has(.ltools.v2) .salve-pastille, body:has(.savebar) .salve-pastille { botto
   color: var(--gray-txt); flex: none; width: 120px;
 }
 .fltr-l > span svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; flex: none; }
-.fltr-l select, .fltr-r input, .fltr-lieu {
+.fltr-l select, .fltr-r input, .fltr-lieu, .fltr-l .fltr-in {
   border: 1px solid var(--line); border-radius: 4px; background: #fff;
   padding: 6px 8px; font-size: 12.5px; color: var(--slate); width: 100%;
   font-family: inherit;
 }
 .fltr-lieu { text-align: left; cursor: pointer; }
 .fltr-lieu:hover { border-color: var(--slate); }
-.fltr-l select:focus, .fltr-r input:focus { outline: 0; border-color: var(--slate); }
+.fltr-l select:focus, .fltr-r input:focus, .fltr-l .fltr-in:focus { outline: 0; border-color: var(--slate); }
 .fltr-r { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
 .fltr-r input { min-width: 0; }
 .fltr-r i { font-style: normal; font-size: 12px; color: var(--gray-lt); }
@@ -8915,11 +8915,12 @@ button.aj-lh:hover { background: #fafafa; }
   margin-left: auto; flex: none; max-width: 48%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-family: var(--font-title); font-size: 11px; font-weight: 600; line-height: 18px;
-  border-radius: 4px; padding: 0 7px; background: var(--puce-fond); color: var(--slate-2);
+  color: var(--slate-2);
 }
-.kpast.rouge { background: #fde8e8; color: var(--red); }
-.kpast.vert { background: #e7f6e3; color: #2a8a1b; }
-.kpast.or { background: #f7f1dc; color: #8c7a2e; }
+/* #544 : le statut en texte, sans cadre ; la couleur suffit. */
+.kpast.rouge { color: var(--red); }
+.kpast.vert { color: #2a8a1b; }
+.kpast.or { color: #8c7a2e; }
 .krowp { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .kprix { flex: none; font-family: var(--font-title); font-size: 19px; font-weight: 700; color: var(--slate); white-space: nowrap; }
 .kprix small { font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--gray-txt); margin-left: 6px; }
@@ -8941,8 +8942,15 @@ button.aj-lh:hover { background: #fafafa; }
 .vgn-n { min-width: 0; }
 .krowp .vgn-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ktu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.ktu-c { background: #f5f6f7; border-radius: 5px; padding: 3px 8px; min-width: 0; }
-.ktu-c span { display: block; font-size: 11px; line-height: 1.3; color: var(--gray-txt); }
+.ktu-c { background: #f5f6f7; border-radius: 5px; padding: 3px 8px; min-width: 0; container-type: inline-size; }
+.ktu-c span { display: block; font-size: 11px; line-height: 1.3; color: var(--gray-txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #547 : le mot entier, abrégé seulement quand la vignette est trop étroite. */
+.ktu-c span i { font-style: normal; }
+.ktu-c .court { display: none; }
+@container (max-width: 56px) {
+  .ktu-c .long { display: none; }
+  .ktu-c .court { display: inline; }
+}
 .ktu-c b { display: block; font-family: var(--font-title); font-size: 13.5px; font-weight: 600; color: var(--slate); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ktu-c b.v { color: #2a8a1b; }
 .ktu-c b.r { color: var(--red); }
@@ -8955,7 +8963,8 @@ button.aj-lh:hover { background: #fafafa; }
 .kmq { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 12px; }
 .kmq b { font-family: var(--font-title); font-size: 11.5px; font-weight: 600; color: var(--gray-txt); }
 .kmq span { font-weight: 700; border-radius: 4px; padding: 0 7px; }
-.kmq .ko { background: #fde8e8; color: var(--red); }
+/* #548 : ce qui manque en gris, la croix suffit à le dire. */
+.kmq .ko { background: #f0f1f2; color: var(--slate-2); }
 .kmq .ok { background: #e7f6e3; color: #2a8a1b; }
 
 /* Retour #529 : la croix qui vide la recherche d'une liste. */
@@ -9145,3 +9154,23 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .eqp-mdp { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; }
 .eqp-mdp .min { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 .mdp-page { max-width: 420px; }
+/* #545 : dans « À transformer », le numéro prend la place du nom au survol. */
+.vgn-n i { font-style: normal; }
+.vgn .vgn-tel { display: none; }
+.vgn.tel-survol:hover .vgn-nom { display: none; }
+.vgn.tel-survol:hover .vgn-tel { display: inline; font-variant-numeric: tabular-nums; }
+/* Retours #554–#557 : une parcelle par cadre, la façade à part, commune. */
+.terr-liste { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.terr-liste .terr-box { margin: 0; }
+.terr-fac { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.terr-fac .k { font-size: 12.5px; font-weight: 600; color: var(--slate-2); }
+.terr-fac .k i, .terr-fac-v i { font-style: normal; font-weight: 400; font-size: 11.5px; color: var(--gray-lt); }
+.terr-fac-v { display: flex; align-items: center; gap: 6px; width: 120px; flex: none; }
+.terr-fac.manque .min { border-color: var(--red); }
+.terr-vide { font-size: 12.5px; color: var(--gray-txt); }
+/* #558 : passer outre la charge imposée — MAV seul. */
+.mdt-outre { display: block; margin-top: 8px; border: 1px solid currentColor; background: none; border-radius: 4px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; color: inherit; }
+.mdt-outre:hover { background: rgba(0, 0, 0, .04); }
+/* #559 : les durées alignées par le haut, l'aide sous la grille. */
+.mdt-grid.mdt-durees { align-items: start; }
+.mdt-durees-aide { margin: 6px 0 0; }
