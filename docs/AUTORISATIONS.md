@@ -39,6 +39,8 @@
 | Retirer une vente du site, publier tout le parc | ✅ | ❌ |
 | Exports CSV de listes (prospection…) | ✅ | ❌ — il doit être difficile d'emporter la base |
 | Salves e-mail et SMS vers ses acquéreurs | ✅ | ✅ |
+| Mailing : voir les campagnes et leurs réponses | ✅ | ✅ |
+| Mailing : lancer, mettre en pause, arrêter une campagne | ✅ | ❌ — une campagne parle au nom de l'agence à tout le fichier |
 | Prospection (consulter) | ✅ | ✅ (pour l'instant) |
 | Actions Claude (Drive…) | ✅ | ✅ |
 

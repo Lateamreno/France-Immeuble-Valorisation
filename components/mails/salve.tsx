@@ -22,6 +22,8 @@ import { civiliteDe, valeursDe, type RefPrenoms } from "@/lib/mails/fusion";
 import type { MessageType } from "@/lib/mails/serveur";
 import { ZoneRedaction } from "@/components/mails/editeur";
 import { chargerVivier, lancerSalve, preparerSalve, routeDeSalve } from "@/lib/bo/mails-actions";
+import { programmerCampagne } from "@/lib/bo/campagnes-actions";
+import { A_COMPLETER, MODELES_CAMPAGNE } from "@/lib/mails/modeles-campagne";
 
 type Vivier = {
   candidats: Candidat[];
@@ -31,10 +33,14 @@ type Vivier = {
 
 const NOTES = ["A", "B", "C", "D"];
 
-export function FenetreSalve({ agent, modeles, onClose }: {
+export function FenetreSalve({ agent, modeles, onClose, campagne, onProgramme }: {
   agent: { id: string; nom: string; email?: string; telephone?: string };
   modeles: MessageType[];
   onClose: () => void;
+  /** Module Mailing (27/10) : la même fenêtre, mais la salve devient une
+   *  campagne — mise en file, envoyée par le cron, suivie dans /mailing. */
+  campagne?: boolean;
+  onProgramme?: () => void;
 }) {
   const [etape, setEtape] = useState<1 | 2 | 3>(1);
   const [vivier, setVivier] = useState<Vivier | null>(null);
@@ -42,13 +48,14 @@ export function FenetreSalve({ agent, modeles, onClose }: {
   /* Plusieurs cibles à la fois (retour #121) : on écrit souvent la même chose
      aux propriétaires et aux acquéreurs, et refaire deux salves n'a pas de
      sens. */
-  const [cibles, setCibles] = useState<Cible[]>(["acquereurs"]);
+  const [cibles, setCibles] = useState<Cible[]>(campagne ? ["proprietaires", "acquereurs"] : ["acquereurs"]);
   const [f, setF] = useState<Filtres>(FILTRES_VIDES);
   const [objet, setObjet] = useState("");
   const [corps, setCorps] = useState("");
   const [libelle, setLibelle] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [resultat, setResultat] = useState<{ envoyes: number; echecs: number } | null>(null);
+  const [programme, setProgramme] = useState<string | null>(null);
   const [pending, start] = useTransition();
   /* Par où la salve va partir. On le dit AVANT d'envoyer : la question « est-ce
      que ça va saturer ma boîte ? » doit avoir sa réponse à l'écran. */
@@ -131,6 +138,17 @@ export function FenetreSalve({ agent, modeles, onClose }: {
       setErreur(null);
       try {
         if (!vivier) throw new Error("Vivier non chargé.");
+        if (campagne) {
+          const r = await programmerCampagne({
+            libelle: libelle || objet, cibles, filtres: f, objet, corps,
+            destinataires, refPrenoms: vivier.refPrenoms,
+            expediteur: { nom: agent.nom, email: agent.email, telephone: agent.telephone },
+          });
+          if (!r.ok) throw new Error(r.message);
+          setProgramme(r.message);
+          onProgramme?.();
+          return;
+        }
         const id = await preparerSalve({
           libelle: libelle || objet, cibles, filtres: f, objet, corps,
           destinataires: destinataires.map((c) => ({ contactId: c.contactId, email: c.email, nom: c.nom })),
@@ -152,7 +170,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
     <div className="modal-ov">
       <div className="modal salve-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
-          <b>Envoyer une salve</b>
+          <b>{campagne ? "Nouvelle campagne" : "Envoyer une salve"}</b>
           <span className="sv-fil">
             {([[1, "Qui"], [2, "Lesquels"], [3, "Quoi"]] as const).map(([n, l]) => (
               <button key={n} type="button" className={etape === n ? "on" : undefined}
@@ -280,10 +298,22 @@ export function FenetreSalve({ agent, modeles, onClose }: {
           {!chargement && etape === 3 && (
             <>
               <label className="mred-l">
-                <span>Nom de la salve</span>
+                <span>{campagne ? "Nom de la campagne" : "Nom de la salve"}</span>
                 <input value={libelle} onChange={(e) => setLibelle(e.target.value)}
                   placeholder="Ex. « Nouveautés 93 — investisseurs A et B »" />
               </label>
+              {campagne && (
+                <label className="mred-l court" style={{ marginTop: 8 }}>
+                  <span>Brouillon proposé</span>
+                  <select defaultValue="" onChange={(e) => {
+                    const m = MODELES_CAMPAGNE.find((x) => x.cle === e.target.value);
+                    if (m) { setObjet(m.objet); setCorps(m.corps); if (!libelle) setLibelle(m.libelle); }
+                  }}>
+                    <option value="">— Choisir —</option>
+                    {MODELES_CAMPAGNE.map((m) => <option key={m.cle} value={m.cle}>{m.libelle}</option>)}
+                  </select>
+                </label>
+              )}
               {modeles.length > 0 && (
                 <label className="mred-l court" style={{ marginTop: 8 }}>
                   <span>Message type</span>
@@ -299,6 +329,20 @@ export function FenetreSalve({ agent, modeles, onClose }: {
               <ZoneRedaction objet={objet} corps={corps} setObjet={setObjet} setCorps={setCorps}
                 valeursApercu={apercuValeurs} nomApercu={destinataires[0]?.nom} />
 
+              {campagne && (
+                <div className="sv-route">
+                  <b>Ajouté au bas de chaque message</b>
+                  <span>
+                    « Vous recevez ce message parce que vous êtes en relation avec France Immeuble. Pour ne
+                    plus recevoir nos e-mails : <i>lien personnel</i> ». Un e-mail commercial doit toujours
+                    offrir ce moyen de refuser ; ceux qui l&apos;utilisent sortent de toutes les salves.
+                  </span>
+                  {(A_COMPLETER.test(objet) || A_COMPLETER.test(corps)) && (
+                    <span className="sv-alerte">Il reste des passages « [à compléter …] » dans le message.</span>
+                  )}
+                </div>
+              )}
+
               {/* Par où ça part : la réponse est due avant d'appuyer, pas après. */}
               {route && (route.relais ? (
                 <div className="sv-route">
@@ -309,6 +353,11 @@ export function FenetreSalve({ agent, modeles, onClose }: {
                     détail reste dans « Salves envoyées ».
                   </span>
                   {route.alerte && <span className="sv-alerte">{route.alerte}</span>}
+                </div>
+              ) : campagne ? (
+                <div className="dif-avis" style={{ marginTop: 12 }}>
+                  <b>Route d&apos;envoi en masse non configurée.</b> Une campagne ne part que par le
+                  relais dédié (SendGrid), jamais d&apos;une boîte personnelle.
                 </div>
               ) : (
                 <div className="dif-avis" style={{ marginTop: 12 }}>
@@ -326,7 +375,17 @@ export function FenetreSalve({ agent, modeles, onClose }: {
               {/* Le compteur du jour, AVANT d'appuyer. Au-delà de 5 000 par
                   jour, Gmail classe l'expéditeur en « masse » et lui impose
                   ses règles : on s'arrête avant, et on le dit. */}
-              {route && (
+              {route && campagne && (
+                <div className="sv-quota">
+                  <b>{route.quota.envoyes.toLocaleString("fr-FR")}</b>
+                  {` message${route.quota.envoyes > 1 ? "s" : ""} envoyé${route.quota.envoyes > 1 ? "s" : ""} aujourd'hui `}
+                  sur {route.quota.plafond.toLocaleString("fr-FR")}.
+                  {route.quota.reste < destinataires.length
+                    ? ` ${route.quota.reste.toLocaleString("fr-FR")} partiront aujourd'hui, la suite les jours suivants, au fil de la file.`
+                    : " Toute la campagne part aujourd'hui, au rythme du relais (quatre messages par seconde)."}
+                </div>
+              )}
+              {route && !campagne && (
                 <div className={`sv-quota${route.quota.reste < destinataires.length ? " ko" : ""}`}>
                   <b>{route.quota.envoyes.toLocaleString("fr-FR")}</b>
                   {` message${route.quota.envoyes > 1 ? "s" : ""} envoyé${route.quota.envoyes > 1 ? "s" : ""} aujourd'hui `}
@@ -349,6 +408,7 @@ export function FenetreSalve({ agent, modeles, onClose }: {
           )}
 
           {erreur && <div className="dif-avis" style={{ marginTop: 10 }}>{erreur}</div>}
+          {programme && <div className="mred-ok">{programme}</div>}
           {resultat && (
             <div className="mred-ok">
               {resultat.envoyes} message{resultat.envoyes > 1 ? "s" : ""} envoyé{resultat.envoyes > 1 ? "s" : ""}
@@ -378,6 +438,14 @@ export function FenetreSalve({ agent, modeles, onClose }: {
               disabled={etape === 1 && cibles.length === 0}
               onClick={() => setEtape(etape === 1 ? 2 : 3)}>
               <span className="ch">›</span> Suivant
+            </button>
+          ) : campagne ? (
+            <button type="button" className="savebar-go"
+              disabled={pending || !!programme || destinataires.length === 0 || !objet.trim() || !corps.trim()
+                || A_COMPLETER.test(objet) || A_COMPLETER.test(corps) || (route ? !route.relais : true)}
+              onClick={envoyer}>
+              <span className="ch">›</span>
+              {pending ? "Programmation…" : `Programmer pour ${destinataires.length} contact${destinataires.length > 1 ? "s" : ""}`}
             </button>
           ) : (
             <button type="button" className="savebar-go"

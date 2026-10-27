@@ -57,11 +57,16 @@ const PLAFOND_JOUR = Math.max(1, Number(process.env.PLAFOND_JOUR ?? 4000));
 export async function quotaDuJour(): Promise<{ envoyes: number; reste: number; plafond: number }> {
   const debut = new Date();
   debut.setHours(0, 0, 0, 0);
-  const lignes = await lire<{ envoyes: number | null }>(
-    "fi_salve",
-    `select=envoyes&statut=eq.envoyee&envoye_at=gte.${debut.toISOString()}`,
-  ).catch(() => [] as { envoyes: number | null }[]);
-  const envoyes = lignes.reduce((s, l) => s + (l.envoyes ?? 0), 0);
+  /* Les campagnes du module Mailing se comptent message par message (elles
+     partent au fil du cron) ; les salves classiques, par leur total. */
+  const [lignes, campagnes] = await Promise.all([
+    lire<{ envoyes: number | null }>(
+      "fi_salve",
+      `select=envoyes&nature=neq.campagne&statut=eq.envoyee&envoye_at=gte.${debut.toISOString()}`,
+    ).catch(() => [] as { envoyes: number | null }[]),
+    import("@/lib/bo/campagnes").then((m) => m.envoisCampagnesDuJour()).catch(() => 0),
+  ]);
+  const envoyes = lignes.reduce((s, l) => s + (l.envoyes ?? 0), 0) + campagnes;
   return { envoyes, reste: Math.max(0, PLAFOND_JOUR - envoyes), plafond: PLAFOND_JOUR };
 }
 

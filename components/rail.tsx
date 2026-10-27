@@ -37,7 +37,7 @@ export const IC: Record<string, React.ReactNode> = {
   "/ventes-site": <path d="M12 2.8 2.5 10.6l1.3 1.5L5 11.1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8.9l1.2 1 1.3-1.5L12 2.8zm3.6 8.6 1.4 1.4-5.6 5.6-3.3-3.3 1.4-1.4 1.9 1.9 4.2-4.2z" />,
   /* Relances : la flèche qui revient. */
   "/relances": <path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />,
-  "#mailing": <path d="M3 5.5h18c.6 0 1 .4 1 1v.4l-10 6-10-6v-.4c0-.6.4-1 1-1zm-1 3.8 9.5 5.7c.3.2.7.2 1 0L22 9.3v8.2c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1V9.3z" />,
+  "/mailing": <path d="M3 5.5h18c.6 0 1 .4 1 1v.4l-10 6-10-6v-.4c0-.6.4-1 1-1zm-1 3.8 9.5 5.7c.3.2.7.2 1 0L22 9.3v8.2c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1V9.3z" />,
 };
 
 /** Les écrans réservés à la direction (MAV, 27/10) : réglages et chiffres de l'agence. */

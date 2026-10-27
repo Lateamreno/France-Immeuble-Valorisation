@@ -2,10 +2,14 @@
 // cron Vercel chaque minute. Si une salve est en cours et que la page qui l'a
 // lancée est fermée ou suspendue, c'est lui qui la finit.
 //
+// Il vide aussi la file des campagnes du module Mailing (lib/bo/campagnes.ts),
+// sur le temps que les relances lui laissent.
+//
 // Protégé par le secret du cron : sans lui, n'importe qui pourrait faire
 // tourner l'automate en boucle. Même règle que la relève des mails.
 import { NextRequest } from "next/server";
 import { tournerLaFile } from "@/lib/bo/relances-file";
+import { tournerCampagnes } from "@/lib/bo/campagnes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +26,13 @@ function autorise(req: NextRequest) {
 export async function GET(req: NextRequest) {
   if (!autorise(req)) return Response.json({ erreur: "Secret absent ou faux." }, { status: 401 });
   try {
-    const etat = await tournerLaFile(40_000);
-    return Response.json(etat ? { salve: etat.id, statut: etat.statut, mails: etat.mails, sms: etat.sms } : { rien: true });
+    const debut = Date.now();
+    const etat = await tournerLaFile(30_000);
+    const campagne = await tournerCampagnes(50_000 - (Date.now() - debut)).catch((e) => ({ erreur: String(e) }));
+    return Response.json({
+      relances: etat ? { salve: etat.id, statut: etat.statut, mails: etat.mails, sms: etat.sms } : null,
+      campagne,
+    });
   } catch (e) {
     return Response.json({ erreur: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

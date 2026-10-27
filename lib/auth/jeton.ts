@@ -81,6 +81,9 @@ export function cheminPublic(chemin: string): boolean {
     || chemin.startsWith("/api/site/") || chemin.startsWith("/api/claude/")
     || chemin.startsWith("/api/mailingvox/") || chemin === "/api/mails/releve"
     || chemin === "/api/relances/tourner"
+    /* Le lien de désinscription des campagnes : le destinataire n'a pas de
+       compte, son jeton suffit (lib/bo/campagnes-actions.ts). */
+    || chemin === "/desabonnement" || chemin === "/api/desabonnement"
     /* Le relais des photos sert aussi Plein Bail, le site et les dossiers
        envoyés : à refermer par des liens signés (CLAUDE.md §10 bis). */
     || chemin === "/api/photo"

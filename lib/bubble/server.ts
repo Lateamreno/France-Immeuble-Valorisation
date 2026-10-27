@@ -3015,12 +3015,13 @@ export async function listMails(limite = 200): Promise<FilMail[]> {
  *  partagées avec les écrans Contacts et Recherches — cet appel ne coûte donc
  *  rien de plus une fois l'app chaude. */
 export async function vivierMails(): Promise<Vivier> {
-  const [contacts, immeubles, recherches] = await Promise.all([
+  const [contacts, immeubles, recherches, refus] = await Promise.all([
     fetchAll("contact", undefined, 5000).catch(() => []),
     fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 3000).catch(() => []),
     fetchAll("recherche", undefined, 3000).catch(() => []),
+    import("@/lib/bo/campagnes").then((m) => m.adressesDesabonnees()).catch(() => new Set<string>()),
   ]);
-  return assemblerVivier(contacts, immeubles, recherches);
+  return assemblerVivier(contacts, immeubles, recherches, refus);
 }
 
 /** Les échanges d'un contact, pour l'onglet « Échanges » de sa fiche. */

@@ -347,6 +347,19 @@ d'acquéreurs, projets annexes.
   régime normal à partir de la deuxième semaine. C'est le démarrage à froid qui
   se fait signaler, pas le volume.
 
+**Module Mailing (27/10/26)** — les campagnes commerciales (Plein Bail, la
+team réno, bloc ou découpe) à un public choisi dans tout le fichier
+(`/mailing`, `lib/bo/campagnes.ts`). Une campagne est une salve de nature
+« campagne » : chaque message est fusionné d'avance dans `fi_salve_envoi` avec
+un jeton, puis la file est vidée par le cron de chaque minute
+(`/api/relances/tourner`) sous le plafond du jour — fermer la page n'arrête
+rien, le plafond atteint la suite part le lendemain. Le jeton est dans le
+Message-ID : une réponse le cite, la relève (`fi_mail_entrant`) suffit à
+compter les réponses (sinon même adresse dans les 30 jours). Chaque message
+porte un lien de désinscription (obligation de la prospection commerciale) ;
+les refus vont dans `fi_desabonnement` et sortent de **toutes** les salves.
+Lancer une campagne est réservé à la direction.
+
 **Commun aux deux routes :** doctrine héritée du netlinking — **validation
 humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
 automatique, jamais.

@@ -9174,3 +9174,41 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* #559 : les durées alignées par le haut, l'aide sous la grille. */
 .mdt-grid.mdt-durees { align-items: start; }
 .mdt-durees-aide { margin: 6px 0 0; }
+.desabo-t { margin: 0 0 4px; font-size: 14px; line-height: 1.5; color: var(--slate); }
+/* ---------- Mailing (MAV, 27/10) ---------- */
+.mlg-h { display: flex; align-items: center; gap: 12px; }
+.mlg-h .lst-title { margin-bottom: 4px; }
+.mlg .fsub { margin: 22px 0 0; }
+.mlg-kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 4px; }
+@media (max-width: 760px) { .mlg-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mlg-kpi > div { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mlg-kpi span { font-family: var(--font-title); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--gray-txt); }
+.mlg-kpi b { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--slate); font-variant-numeric: tabular-nums; }
+.mlg-kpi i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
+.eqp-table th.r, .eqp-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+.mlg-t td { vertical-align: top; }
+.mlg-t tr.on > td { background: #fafaf7; }
+.mlg-d { white-space: nowrap; color: var(--gray-txt); font-variant-numeric: tabular-nums; }
+.mlg-nom { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font: inherit; color: var(--slate); }
+.mlg-nom b { font-weight: 700; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.mlg-nom span { font-size: 12px; color: var(--gray-txt); }
+.mlg-pub { display: block; font-weight: 600; }
+.mlg-res { display: block; max-width: 260px; font-size: 11.5px; color: var(--gray-txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mlg-av { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mlg-bar { display: block; height: 4px; margin-top: 6px; border-radius: 2px; background: #eceef0; overflow: hidden; }
+.mlg-bar i { display: block; height: 100%; background: var(--gold-bo); }
+.mlg-ko { display: block; margin-top: 4px; font-size: 11.5px; color: var(--red); }
+.mlg-pct { display: block; font-size: 11.5px; color: var(--gray-txt); }
+.mlg-det-l > td { background: #fafaf7; }
+.mlg-det { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; padding: 6px 0 10px; }
+@media (max-width: 900px) { .mlg-det { grid-template-columns: 1fr; } }
+.mlg-msg { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mlg-msg pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 12.5px; line-height: 1.5; background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px; max-height: 320px; overflow: auto; }
+.mlg-dest { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mlg-dest .seg { flex-wrap: wrap; }
+.mlg-dest .seg i { font-style: normal; opacity: .6; margin-left: 3px; }
+.mlg-dest-l { max-height: 360px; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 5px; }
+.mlg-dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f0f1f2; font-size: 12.5px; }
+.mlg-dl:last-child { border-bottom: 0; }
+.mlg-dl .nm, .mlg-dl .em { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mlg-dl .em { color: var(--gray-txt); }
