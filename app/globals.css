@@ -9032,3 +9032,13 @@ button.aj-lh:hover { background: #fafafa; }
 .ltable.v2 thead tr:first-child th { height: 22px; padding: 4px 3px 0; line-height: 18px; vertical-align: bottom; }
 .ltable.v2 thead tr:first-child th[rowspan] { vertical-align: middle; padding: 0 3px; }
 .ltable.v2 thead tr:last-child th { top: 22px; padding: 0 3px 4px; line-height: 16px; color: #5f676f; }
+/* La ligne de total, version A (MAV, 27/10). */
+.ltable.v2 tfoot .ltotal td { background: #f3f4f5; border-top: 2px solid #4a4f55; font-weight: 600; color: #2b2f36; padding: 0 6px; height: 34px; font-size: var(--fs); }
+.ltable.v2 tfoot .ltotal td.na { text-align: right; padding-right: 6px; }
+.ltable.v2 tfoot .ltotal td.ltot-lib { text-align: right; padding-right: 8px; }
+.ltable.v2 tfoot .ltotal td.ltot-u { font-weight: 400; color: #7a828a; font-size: 11px; text-align: left; padding-left: 4px; }
+.ltable.v2 tfoot .ltotal td.ltot-dpe { text-align: center; }
+.ltable.v2 tfoot .ltotal td.ltot-dest { white-space: nowrap; }
+.ltot-pic { display: inline-flex; align-items: center; gap: 3px; margin-right: 10px; color: #44525f; }
+.ltot-pic svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.ltable.v2 tfoot .ltotal td.ltot-u { font-size: 10.5px; padding: 0 2px; text-overflow: clip; }
