@@ -25,7 +25,7 @@ export function ContactPicker({
   const [resultats, setResultats] = useState<ContactTrouve[]>([]);
   const [choisi, setChoisi] = useState<ContactTrouve | null>(null);
   const [creation, setCreation] = useState(false);
-  const [nouveau, setNouveau] = useState({ prenom: "", nom: "", email: "", tel: "" });
+  const [nouveau, setNouveau] = useState({ civilite: "", prenom: "", nom: "", email: "", tel: "", fixe: "" });
   const [err, setErr] = useState<string | null>(null);
   /** Le contact déjà en base qui porte l'adresse saisie (retour #248). */
   const [doublon, setDoublon] = useState<ContactTrouve | null>(null);
@@ -51,16 +51,19 @@ export function ContactPicker({
         const dejaLa = await contactParEmail(nouveau.email).catch(() => null);
         if (dejaLa) { setDoublon(dejaLa); return; }
         const id = await createContact({
+          "Civilité": nouveau.civilite || undefined,
           "prénom": nouveau.prenom.trim() || undefined,
           nom: nouveau.nom.trim() || undefined,
           email: nouveau.email.trim() || undefined,
           portable: nouveau.tel.trim() || undefined,
+          fixe: nouveau.fixe.trim() || undefined,
         });
         onValider({
           id,
           nom: `${nouveau.prenom} ${nouveau.nom}`.trim(),
           email: nouveau.email.trim() || undefined,
-          tel: nouveau.tel.trim() || undefined,
+          tel: nouveau.tel.trim() || nouveau.fixe.trim() || undefined,
+          civilite: nouveau.civilite || undefined,
         });
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
@@ -99,14 +102,24 @@ export function ContactPicker({
         />
       ) : creation ? (
         <div className="cp-form">
+          {/* Retours #568 et #569 : la civilité (« Bonjour Madame… ») et un
+              fixe à côté du portable — une étude de notaire se joint au fixe. */}
+          <select className="min" value={nouveau.civilite} aria-label="Civilité"
+            onChange={(e) => setNouveau({ ...nouveau, civilite: e.target.value })}>
+            <option value="">Civilité</option>
+            <option value="Madame">Madame</option>
+            <option value="Monsieur">Monsieur</option>
+          </select>
           <input className="min" autoFocus placeholder="Prénom" value={nouveau.prenom}
             onChange={(e) => setNouveau({ ...nouveau, prenom: e.target.value })} />
           <input className="min" placeholder="Nom" value={nouveau.nom}
             onChange={(e) => setNouveau({ ...nouveau, nom: e.target.value })} />
           <input className="min" placeholder="E-mail" value={nouveau.email}
             onChange={(e) => { setDoublon(null); setNouveau({ ...nouveau, email: e.target.value }); }} />
-          <input className="min" placeholder="Téléphone" value={nouveau.tel}
+          <input className="min" placeholder="Portable" value={nouveau.tel} inputMode="tel"
             onChange={(e) => setNouveau({ ...nouveau, tel: e.target.value })} />
+          <input className="min" placeholder="Fixe" value={nouveau.fixe} inputMode="tel"
+            onChange={(e) => setNouveau({ ...nouveau, fixe: e.target.value })} />
         </div>
       ) : (
         <>
@@ -114,7 +127,7 @@ export function ContactPicker({
             <input autoFocus placeholder="Recherchez un contact..." value={q}
               onChange={(e) => { setQ(e.target.value); setChoisi(null); }} />
             <button type="button" className="cp-plus" title="Créer un contact"
-              onClick={() => { setCreation(true); const [p, ...r] = q.trim().split(" "); setNouveau({ prenom: p ?? "", nom: r.join(" "), email: "", tel: "" }); }}>
+              onClick={() => { setCreation(true); const [p, ...r] = q.trim().split(" "); setNouveau({ civilite: "", prenom: p ?? "", nom: r.join(" "), email: "", tel: "", fixe: "" }); }}>
               <svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.4" /><path d="M3.5 20c.7-4 3.2-5.6 6.5-5.6M17 12v6M14 15h6" /></svg>
             </button>
             <span className="cp-loupe">
