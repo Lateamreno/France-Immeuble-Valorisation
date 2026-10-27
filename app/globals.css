@@ -9313,3 +9313,15 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .sv2-ent { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 2px; font-size: 11.5px; font-weight: 600; color: var(--slate-2); }
 .sv2-ent select { font-weight: 400; max-width: 100%; }
 .sv2-modeles { flex-wrap: wrap; }
+/* #572 : ajouter un destinataire hors des parties. */
+.sv2-ajout { display: flex; flex-direction: column; gap: 4px; }
+.sv2-ajout-l { display: flex; gap: 6px; }
+.sv2-ajout-l input { flex: 1; min-width: 0; }
+.sv2-sugg { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.sv2-sugg button { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border: 0; border-bottom: 1px solid #f0f1f2; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--slate); cursor: pointer; }
+.sv2-sugg button:last-child { border-bottom: 0; }
+.sv2-sugg button:hover:not(:disabled) { background: #fafaf7; }
+.sv2-sugg button:disabled { opacity: .5; cursor: default; }
+.sv2-sugg i { font-style: normal; color: var(--gray-txt); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv2-retire { margin-left: 8px; border: 0; background: none; color: var(--gray-txt); cursor: pointer; font-size: 12px; }
+.sv2-retire:hover { color: var(--red); }

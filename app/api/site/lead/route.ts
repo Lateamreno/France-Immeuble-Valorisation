@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { LeadInvalide, recevoirLead } from "@/lib/bo/leads-site";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,29 @@ export const maxDuration = 60;
  * formulaire illisible, inutile de le renvoyer tel quel.
  */
 
-/* Débit limité, par adresse IP : trente envois par minute. Tenu en mémoire de
-   l'instance, ce n'est qu'un frein ; le jeton reste la vraie porte. */
+/* Débit limité (contrat §6, exigé par la spec du site) : trente envois par
+   minute et par adresse, cent vingt en tout, trois mille par jour. Compté en
+   base (`site_lead_debit`), pour que toutes les instances Vercel partagent le
+   même compteur ; l'adresse n'y est qu'une empreinte, effacée sous 24 h. Si la
+   base ne répond pas, on retombe sur le compteur de l'instance : un frein
+   plutôt que rien, et le jeton reste la vraie porte. */
+const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+async function debitDepasse(ip: string): Promise<boolean> {
+  if (BO_KEY) {
+    const empreinte = createHash("sha256").update(`fi-site:${ip}`).digest("hex").slice(0, 32);
+    const r = await fetch(`${BO_URL}/rest/v1/rpc/site_lead_debit`, {
+      method: "POST",
+      headers: { apikey: BO_KEY, Authorization: `Bearer ${BO_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_ip: empreinte }),
+      cache: "no-store",
+    }).catch(() => null);
+    if (r?.ok) return (await r.json().catch(() => null)) !== null;
+  }
+  return tropDeDemandes(ip);
+}
+
 const fenetre = new Map<string, number[]>();
 function tropDeDemandes(ip: string): boolean {
   const maintenant = Date.now();
@@ -42,7 +63,7 @@ export async function POST(req: Request) {
   if (!process.env.BO_LEAD_TOKEN) return json(503, { ok: false, message: "BO_LEAD_TOKEN n'est pas posé côté BO." });
   if (!jetonValide(req.headers.get("authorization"))) return json(401, { ok: false, message: "Jeton refusé." });
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "inconnue";
-  if (tropDeDemandes(ip)) return json(429, { ok: false, message: "Trop d'envois, réessayez dans une minute." });
+  if (await debitDepasse(ip)) return json(429, { ok: false, message: "Trop d'envois, réessayez dans une minute." });
 
   const brut = await req.text();
   if (brut.length > 64_000) return json(413, { ok: false, message: "Formulaire trop long." });

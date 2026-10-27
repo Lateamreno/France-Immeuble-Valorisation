@@ -407,6 +407,7 @@ function ilYa(iso: unknown): { texte: string; heures: number } | undefined {
 /* ---------- assemblage du dashboard ---------- */
 
 import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
+import { repartir, type Repartition } from "@/lib/repartition";
 
 /**
  * L'étape du bien dans le pipeline, de 1 (formulaire reçu) à 11 (vendu).
@@ -541,15 +542,92 @@ export async function getDashboardLive(
     fetchAll("suivi", undefined, 20000, { field: "Created Date", desc: true }, [
       "IMMEUBLEs", "CONTACT", "notes", "Created Date", "date_start", "date_relance", "Type", "Motif_standby",
     ]).catch(() => []),
-    fetchAll("offre", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "honos_ht"]),
+    fetchAll("offre", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "honos_ht", "ACHETEURs", "Statut", "date_acte", "date_cloture"]),
     /* « Statut » manquait : le statut du mandat (à rédiger, à signer, expiré)
        ne pouvait donc jamais s'afficher sur les cartes. */
-    fetchAll("mandat", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "Statut"]),
+    fetchAll("mandat", undefined, 2000, undefined, ["IMMEUBLEs", "Created Date", "Statut", "AGENT"]),
     fetchAll("dossier", undefined, 2000, undefined, ["IMMEUBLE"]).catch(() => []),
   ]);
 
+  // Offre la plus récente par immeuble (pour les k€ HT des VENTES).
+  const offreByIm = new Map<string, Record<string, unknown>>();
+  for (const o of [...offres].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
+    for (const id of (o.IMMEUBLEs as string[] | undefined) ?? []) {
+      if (!offreByIm.has(id)) offreByIm.set(id, o);
+    }
+  }
+
+  // Dernier mandat par immeuble (statut « Mandat à signer / expiré »).
+  const mandatByIm = new Map<string, Record<string, unknown>>();
+  for (const m of [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
+    for (const id of (m.IMMEUBLEs as string[] | undefined) ?? []) {
+      if (!mandatByIm.has(id)) mandatByIm.set(id, m);
+    }
+  }
+
+  /* Retour #574 — la part de chaque agent. Une vente a deux apports :
+     l'affaire (l'agent du bien, à défaut celui du mandat) et l'acheteur
+     (l'agent qui suit la fiche de l'acquéreur de l'offre retenue). Le bien
+     paraît dans le tableau de bord des deux, et chacun y lit SES honoraires. */
+  const anneeEnCours = String(new Date().getFullYear());
+  const venduesAnnee = offres.filter((o) => o.Statut === "Vendu"
+    && String(o.date_acte ?? o.date_cloture ?? "").startsWith(anneeEnCours));
+  const enVente = [...imsActifs, ...imsArchives].filter((i) => { const st = statutOf(i); return st >= 7 && st <= 11; });
+  const offresSuivies = [...enVente.map((i) => offreByIm.get(i._id as string)), ...venduesAnnee]
+    .filter((o): o is Record<string, unknown> => !!o);
+  const idsAcheteurs = [...new Set(offresSuivies.map((o) => (o.ACHETEURs as string[] | undefined)?.[0]).filter((x): x is string => !!x))];
+  const idsImsVendus = [...new Set(venduesAnnee.map((o) => (o.IMMEUBLEs as string[] | undefined)?.[0]).filter((x): x is string => !!x))];
+  const connus = new Map([...imsActifs, ...imsArchives].map((i) => [String(i._id), i]));
+  const [acheteursR, imsVendusR, comptesBo] = await Promise.all([
+    idsAcheteurs.length ? parIds("contact", idsAcheteurs, 100, ["SUIVI"]) : Promise.resolve([]),
+    parIds("immeuble", idsImsVendus.filter((id) => !connus.has(id)), 100, ["AGENT"]),
+    import("@/lib/auth/comptes").then((m) => m.tousLesComptes()).catch(() => []),
+  ]);
+  const suiviAcheteur = new Map(acheteursR.map((c) => [String(c._id), typeof c.SUIVI === "string" ? c.SUIVI : undefined]));
+  for (const i of imsVendusR) connus.set(String(i._id), i);
+  const agentsCo = new Set(comptesBo.filter((c) => c.role === "agent").map((c) => c.agent_id));
+  const estAgentCo = (id: string) => agentsCo.has(id);
+  /* L'apport de l'affaire revient à l'agent qui détient le bien (son AGENT) :
+     le mandat porte parfois le nom de la direction qui l'a rédigé pour lui
+     (10 cas sur 358 au 27/10). Le mandat ne sert qu'à défaut. */
+  const agentAffaireDe = (imId: string) => {
+    const m = mandatByIm.get(imId);
+    return (connus.get(imId)?.AGENT as string | undefined) || (typeof m?.AGENT === "string" && m.AGENT) || undefined;
+  };
+  const agentAcheteurDe = (o?: Record<string, unknown>) => {
+    const a = (o?.ACHETEURs as string[] | undefined)?.[0];
+    return a ? suiviAcheteur.get(a) : undefined;
+  };
+  /* Le cumul de l'année civile, vente après vente, dans l'ordre des actes : le
+     taux d'une vente dépend de ce que l'agent avait déjà généré avant elle. */
+  const cumuls = new Map<string, number>();
+  const repartitionVendue = new Map<string, Repartition>();
+  for (const o of [...venduesAnnee].sort((a, b) => String(a.date_acte ?? a.date_cloture).localeCompare(String(b.date_acte ?? b.date_cloture)))) {
+    const imId = (o.IMMEUBLEs as string[] | undefined)?.[0];
+    const honos = typeof o.honos_ht === "number" ? o.honos_ht : 0;
+    if (!imId || !honos) continue;
+    const r = repartir({ honos, agentAffaire: agentAffaireDe(imId), agentAcheteur: agentAcheteurDe(o), estAgentCo, cumuls });
+    repartitionVendue.set(imId, r);
+    for (const [a, ca] of r.generes) cumuls.set(a, (cumuls.get(a) ?? 0) + ca);
+  }
+  /** Ce que celui dont on lit le tableau de bord touche sur cette vente. */
+  const montantVu = (im: Record<string, unknown>): number => {
+    const id = im._id as string;
+    const o = offreByIm.get(id);
+    const honos = typeof o?.honos_ht === "number" ? (o.honos_ht as number) : 0;
+    if (!honos || tous) return honos;
+    const r = (statutOf(im) === 11 && repartitionVendue.get(id))
+      || repartir({ honos, agentAffaire: agentAffaireDe(id), agentAcheteur: agentAcheteurDe(o), estAgentCo, cumuls });
+    return estAgentCo(agent.id) ? (r.parts.get(agent.id) ?? 0) : r.agence;
+  };
+
   const imsAgent = [...imsActifs, ...imsArchives]
-    .filter((i) => tous || i.AGENT === agent.id)
+    .filter((i) => {
+      if (tous || i.AGENT === agent.id) return true;
+      const st = statutOf(i);
+      /* L'agent de l'acquéreur voit aussi la vente dans son tableau de bord. */
+      return st >= 7 && st <= 11 && agentAcheteurDe(offreByIm.get(i._id as string)) === agent.id;
+    })
     .sort((a, b) => String(b["Modified Date"]).localeCompare(String(a["Modified Date"])));
 
   // Dernier suivi par immeuble + historique complet (les récents d'abord).
@@ -577,22 +655,6 @@ export async function getDashboardLive(
   const ims = vue === "parc"
     ? imsAgent
     : imsAgent.filter((i) => enAttenteIds.has(i._id as string) === (vue === "attente"));
-
-  // Offre la plus récente par immeuble (pour les k€ HT des VENTES).
-  const offreByIm = new Map<string, Record<string, unknown>>();
-  for (const o of [...offres].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
-    for (const id of (o.IMMEUBLEs as string[] | undefined) ?? []) {
-      if (!offreByIm.has(id)) offreByIm.set(id, o);
-    }
-  }
-
-  // Dernier mandat par immeuble (statut « Mandat à signer / expiré »).
-  const mandatByIm = new Map<string, Record<string, unknown>>();
-  for (const m of [...mandats].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"])))) {
-    for (const id of (m.IMMEUBLEs as string[] | undefined) ?? []) {
-      if (!mandatByIm.has(id)) mandatByIm.set(id, m);
-    }
-  }
 
   // Les immeubles qui ont déjà un dossier de vente (statut « Préparer dossier »).
   const avecDossier = new Set(dossiers.map((d) => String(d.IMMEUBLE ?? "")).filter(Boolean));
@@ -948,7 +1010,12 @@ export async function getDashboardLive(
 
     if (st >= 3 && st <= 11) card.prix = euros(im.prix_hai);
 
-    if ([5, 6, 7].includes(st)) card.counts = countsByIm.get(id) ?? { prop: 0, vis: 0, off: 0 };
+    /* Les compteurs propositions / visites / offres servent la
+       commercialisation (5-6). Sous offre, la carte n'a plus que ses boutons,
+       le suivi et « Programmer le compromis » (#573) ; ils comptent encore
+       pour la pastille. */
+    const compteurs = [5, 6, 7].includes(st) ? countsByIm.get(id) ?? { prop: 0, vis: 0, off: 0 } : undefined;
+    if (st === 5 || st === 6) card.counts = compteurs;
 
     if (st >= 7 && st <= 10) {
       card.fee = keur(offre?.honos_ht);
@@ -963,7 +1030,7 @@ export async function getDashboardLive(
         .map((v) => (typeof v === "string" ? v : "")).sort().pop() || undefined,
       mandat: mandat ? String(mandat.Statut ?? "") : undefined,
       dossier: avecDossier.has(id),
-      counts: card.counts,
+      counts: compteurs,
     });
 
     if (st === 1) card.action = { label: "Contacté", next: 2 };
@@ -989,11 +1056,10 @@ export async function getDashboardLive(
     };
   };
 
-  const honosOf = (sts: number[]) =>
-    byStatut(sts).reduce((s, im) => {
-      const o = offreByIm.get(im._id as string);
-      return s + (typeof o?.honos_ht === "number" ? (o.honos_ht as number) : 0);
-    }, 0);
+  /* La pastille des colonnes et le récapitulatif de VENTES : la part de celui
+     dont on lit le tableau de bord (#574). La pastille à côté du prix, sur la
+     carte, garde les honoraires de l'affaire entière. */
+  const honosOf = (sts: number[]) => byStatut(sts).reduce((s, im) => s + montantVu(im), 0);
 
   const honosPipeline = honosOf([7, 8, 9, 10]);
   const honosVendus = honosOf([11]);
