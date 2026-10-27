@@ -171,6 +171,9 @@ export async function envoyerMailVente(immeubleId: string, m: {
   a: string[]; cc: string[]; objet: string; corps: string;
   /** Le modèle employé : la version notaires ne part jamais à un client (#571). */
   modele?: ModeleVente;
+  /** Les adresses ajoutées à la main dans la fenêtre (#572) : un contact du
+   *  fichier ou une simple adresse, hors des parties de la vente. */
+  ajoutes?: string[];
 }): Promise<{ ok: boolean; message: string }> {
   if (!ID.test(immeubleId)) return { ok: false, message: "Bien introuvable." };
   if (!m.objet.trim() || !m.corps.trim()) return { ok: false, message: "Il faut un objet et un texte." };
@@ -180,8 +183,11 @@ export async function envoyerMailVente(immeubleId: string, m: {
   const a = propre(m.a);
   const cc = propre(m.cc).filter((x) => !a.includes(x));
   if (a.length === 0) return { ok: false, message: "Choisissez au moins un destinataire." };
-  const inconnue = [...a, ...cc].find((x) => !connues.has(x));
-  if (inconnue) return { ok: false, message: `${inconnue} n'est pas une partie de cette vente.` };
+  /* Garde-fou : une adresse qui n'est pas une partie n'est acceptée que si
+     l'agent l'a ajoutée lui-même, et qu'elle a la forme d'une adresse. */
+  const ajoutes = new Set(propre(m.ajoutes ?? []).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(x)));
+  const inconnue = [...a, ...cc].find((x) => !connues.has(x) && !ajoutes.has(x));
+  if (inconnue) return { ok: false, message: `${inconnue} n'est ni une partie de cette vente, ni une adresse ajoutée.` };
   for (const x of [...a, ...cc]) {
     const p = d.parties.find((q) => q.email === x);
     const raison = p && destinataireInterdit(m.modele ?? "libre", p);

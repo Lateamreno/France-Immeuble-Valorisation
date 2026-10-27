@@ -13,6 +13,7 @@ import { Modale } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
 import type { DonneesVente, Echange, LienPieces, Partie, Poste, RolePartie } from "@/lib/bo/vente";
 import type { MessageComplet } from "@/lib/mails/client";
+import { chercherContacts, type ContactTrouve } from "@/lib/bo/actions";
 import {
   chargerEchanges, chargerVente, choisirEnCharge, choisirEntite, choisirIntervenant, enregistrerJalons, enregistrerLien,
   envoyerMailVente, ouvrirEchange, poserCivilite, retirerLien, signatureCourante,
@@ -360,6 +361,51 @@ function Liens({ d, immeubleId, onFait }: { d: DonneesVente; immeubleId: string;
 
 /* ------------------------------------------------------------- Écrire */
 
+type Ajoute = { email: string; nom?: string; mode: "a" | "cc" };
+const ADRESSE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * Retour #572 : un destinataire de plus — un contact du fichier, cherché par
+ * son nom, ou une simple adresse tapée telle quelle.
+ */
+function AjouterDestinataire({ deja, onAjouter }: { deja: string[]; onAjouter: (a: Omit<Ajoute, "mode">) => void }) {
+  const [q, setQ] = useState("");
+  const [trouves, setTrouves] = useState<ContactTrouve[]>([]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (q.trim().length < 2 || ADRESSE.test(q.trim())) { setTrouves([]); return; }
+      chercherContacts(q).then((r) => setTrouves(r.filter((c) => c.email))).catch(() => setTrouves([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const ajouter = (email: string, nom?: string) => {
+    const e = email.trim().toLowerCase();
+    if (!ADRESSE.test(e) || deja.includes(e)) return;
+    onAjouter({ email: e, nom });
+    setQ(""); setTrouves([]);
+  };
+  const adresse = ADRESSE.test(q.trim());
+  return (
+    <div className="sv2-ajout">
+      <span className="sv2-ajout-l">
+        <input className="min" placeholder="Ajouter un destinataire : nom d'un contact ou adresse e-mail…" value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && adresse) { e.preventDefault(); ajouter(q); } }} />
+        <button type="button" className="fadd" disabled={!adresse} onClick={() => ajouter(q)}>Ajouter</button>
+      </span>
+      {trouves.length > 0 && (
+        <div className="sv2-sugg">
+          {trouves.slice(0, 6).map((c) => (
+            <button key={c.id} type="button" disabled={deja.includes(c.email!.toLowerCase())} onClick={() => ajouter(c.email!, c.nom)}>
+              <b>{c.nom}</b><i>{[c.type, c.email].filter(Boolean).join(" · ")}</i>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Les modèles de la fenêtre, dans l'ordre où ils servent. */
 const MODELES: [ModeleVente, string][] = [
   ["notaires", "Mise en relation · notaires"],
@@ -385,6 +431,7 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
   const [corpsEcrit, setCorpsEcrit] = useState<string | null>(null);
   const [sig, setSig] = useState<Signature>({ nom: "" });
   const [msg, setMsg] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [ajoutes, setAjoutes] = useState<Ajoute[]>([]);
   const [pending, start] = useTransition();
   useEffect(() => {
     let vivant = true;
@@ -411,9 +458,9 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
   const envoyer = () => start(async () => {
     setMsg(null);
     const r = await envoyerMailVente(immeubleId, {
-      a: a.map((p) => p.email!),
-      cc: avecEmail.filter((p) => choix[p.email!] === "cc").map((p) => p.email!),
-      objet, corps, modele,
+      a: [...a.map((p) => p.email!), ...ajoutes.filter((x) => x.mode === "a").map((x) => x.email)],
+      cc: [...avecEmail.filter((p) => choix[p.email!] === "cc").map((p) => p.email!), ...ajoutes.filter((x) => x.mode === "cc").map((x) => x.email)],
+      objet, corps, modele, ajoutes: ajoutes.map((x) => x.email),
     }).catch(() => ({ ok: false, message: "Le BO n'a pas répondu." }));
     setMsg({ ok: r.ok, texte: r.message });
     if (r.ok) setTimeout(() => onFermer(true), 1200);
@@ -426,7 +473,7 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
           <button type="button" className="vf-annuler" onClick={() => onFermer(false)}>Annuler</button>
           <span style={{ flex: 1 }} />
           {msg && <span className={msg.ok ? "mhint" : "dif-avis"}>{msg.texte}</span>}
-          <button type="button" className="vf-go" disabled={pending || a.length === 0 || interdits.length > 0 || !objet.trim() || !corps.trim()} onClick={envoyer}>
+          <button type="button" className="vf-go" disabled={pending || (a.length === 0 && !ajoutes.some((x) => x.mode === "a")) || interdits.length > 0 || !objet.trim() || !corps.trim()} onClick={envoyer}>
             <span className="ch">›</span> {pending ? "Envoi…" : "Envoyer"}
           </button>
         </>
@@ -460,6 +507,25 @@ function Ecrire({ d, immeubleId, onFait, onFermer }: {
               <i>{p.email}</i>
             </label>
           ))}
+          {ajoutes.map((x) => (
+            <label key={x.email} className="sv2-d">
+              <select className="min" value={x.mode}
+                onChange={(e) => setAjoutes(ajoutes.map((y) => (y.email === x.email ? { ...y, mode: e.target.value as "a" | "cc" } : y)))}>
+                <option value="a">À</option>
+                <option value="cc">Cc</option>
+              </select>
+              <Pastille ton="gris">Ajouté</Pastille>
+              <b>{x.nom ?? x.email}</b>
+              <i>
+                {x.nom ? x.email : ""}
+                <button type="button" className="sv2-retire" aria-label={`Retirer ${x.email}`}
+                  onClick={() => setAjoutes(ajoutes.filter((y) => y.email !== x.email))}>✕</button>
+              </i>
+            </label>
+          ))}
+          <AjouterDestinataire
+            deja={[...avecEmail.map((p) => p.email!), ...ajoutes.map((x) => x.email)]}
+            onAjouter={(x) => setAjoutes([...ajoutes, { ...x, mode: "cc" }])} />
           {interdits.map(({ p, raison }) => (
             <span key={p.email} className="dif-avis">{p.nom} : {raison}.</span>
           ))}
