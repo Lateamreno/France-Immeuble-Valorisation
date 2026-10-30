@@ -223,7 +223,8 @@ envoyer le dossier. »
   des biens à vendre (même la rue) ; nom, coordonnées, société ou motif du
   vendeur ; nom de l'acquéreur, des locataires, du notaire ; numéro de mandat,
   honoraires internes, notes ; identifiant d'un contact du BO ; nom de l'agent
-  qui a validé ; nom de fichier d'origine d'une photo.
+  qui a validé ; nom de fichier d'origine d'une photo. Seule exception : une
+  offre transmise par l'agent à SON propriétaire (§12.1).
 - Vers le BO : rien d'autre que les formulaires.
 
 ## 8. Robustesse
@@ -500,3 +501,145 @@ de l'estimation) **à la place** de `bien`. `compte` est alors facultatif ; le
 change pas : la pièce est rangée au coffre de l'immeuble, puis effacée du seau
 du site. 503 si l'estimation n'est pas encore arrivée ; 422 si son immeuble a
 été supprimé dans le BO.
+
+Décision de MAV le 30/10 : les **photos** (catégorie `photos`, format image)
+vont directement dans l'onglet Photos de l'immeuble — redressées, réduites,
+converties en JPEG, « à classer » et hors du dossier de vente tant que l'agent
+ne les a pas regardées. Un PDF étiqueté `photos` reste une pièce du coffre.
+
+## 12. Compte client V2 : offres et messages (MAV, 30/10)
+
+Deux nouvelles tables à créer **côté site**, même forme que les tables
+`compte_*` du §9 (clé `(compte, cle)`, lecture réservée au titulaire du
+compte, écriture réservée à la clé secrète du BO), et un seau privé. Tant
+qu'elles n'existent pas, le BO les saute sans erreur : rien à coordonner.
+
+### 12.1 `compte_offres` — les offres reçues par un vendeur
+
+Revirement assumé du §7 : **pour le propriétaire seulement**, et seulement
+pour une offre que l'agent lui a **transmise** (bouton « Transmettre au
+vendeur » de la fiche bien — validation humaine, rien ne part seul), le site
+montre ce que l'agence lui enverrait de toute façon avec le document d'offre.
+Un acquéreur ne voit toujours ni nom ni montant d'offre.
+
+| Colonne | Type | Contenu |
+|---|---|---|
+| `compte`, `cle` | uuid | comme partout |
+| `bien_cle` | uuid | l'immeuble, clé de `compte_biens` |
+| `acquereur` | text | le nom porté sur l'offre (la société d'abord) |
+| `recue_le` | date | date de l'offre |
+| `valable_jours` | int, nullable | validité en jours, quand l'offre la dit ainsi |
+| `valable_jusqu_au` | date, nullable | date limite (donnée, ou date + jours) |
+| `prix_hai` | numeric | prix honoraires inclus |
+| `net_vendeur` | numeric | net vendeur |
+| `honoraires` | numeric | honoraires TTC |
+| `statut` | text | `en_cours`, `contre_offre`, `acceptee`, `refusee`, `compromis`, `vendu` |
+| `document` | text, nullable | chemin du PDF dans le seau `documents-clients` |
+| `transmise_le` | date | le jour où l'agent l'a transmise |
+| `maj_le` | timestamptz | dépôt |
+
+**Seau `documents-clients`** (privé) : le BO y dépose le PDF de l'offre sous
+`<compte>/offres/<cle>.pdf`, une fois. Le site le sert au titulaire du compte
+par un lien signé de courte durée, jamais par une adresse publique. Si l'agent
+retire l'offre, la ligne disparaît au dépôt suivant ; le site peut effacer le
+fichier orphelin.
+
+### 12.2 `compte_messages` — la messagerie agent ↔ client
+
+| Colonne | Type | Contenu |
+|---|---|---|
+| `compte`, `cle` | uuid | comme partout |
+| `conversation` | uuid | la conversation, telle que le site l'a créée (ou le BO, si l'agent en ouvre une) |
+| `titre` | text, nullable | le titre de la conversation, répété sur chaque ligne |
+| `bien_cle` | uuid, nullable | l'immeuble du propriétaire concerné, s'il y en a un |
+| `pieces` | text[] | noms des pièces jointes du message (rangées au BO, pas renvoyées) |
+| `de` | text | `client` ou `agent` |
+| `auteur` | text, nullable | prénom et nom de l'agent (null pour le client) |
+| `texte` | text | 5 000 caractères au plus |
+| `envoye_le` | timestamptz | |
+| `maj_le` | timestamptz | dépôt |
+
+Le fil complet est déposé, messages du client compris : c'est la source
+qui fait foi. Le site peut afficher un message du client « en cours d'envoi »
+tant qu'il n'est pas revenu dans la table. **Prévenir le client** d'une
+réponse (e-mail « Vous avez un nouveau message ») est l'affaire du site, qui
+voit arriver la ligne `de = 'agent'` ; le BO n'écrit pas au client.
+
+### 12.3 Type `message` (site → BO)
+
+```json
+{ "type": "message", "ref": "<uuid>", "compte": "<uuid>",
+  "conversation": "<uuid>", "titre": "Relevé de charges",
+  "texte": "…", "bien": "<cle de compte_biens, facultatif>",
+  "proposition": "<cle de compte_propositions, facultatif>",
+  "pieces": [{ "chemin": "<compte>/<fichier>", "nom": "releve.pdf" }] }
+```
+
+Plusieurs conversations par client : `conversation` est l'UUID que le site
+tire à la création (sans lui, le message ouvre une conversation dont la clé
+est sa `ref`). `titre` n'est utile que sur le premier message. Pièces jointes :
+cinq au plus, 25 Mo chacune, mêmes formats et même seau que le §10 (chemin
+sous `<compte>/`) ; le BO les range (au coffre de l'immeuble s'il y en a un)
+puis les efface du seau. L'e-mail « avec l'historique » envoyé au client et à
+l'agence part du site, comme vous l'avez prévu.
+
+`bien` ou `proposition` dit de quel bien parle le client ; le BO vérifie qu'il
+est bien à lui (422 sinon). 503 tant que le compte n'est pas rattaché. Côté BO
+le message entre au suivi du contact, dans les notes de l'immeuble (pour un
+propriétaire) et dans les Questions de l'agent jusqu'à sa réponse.
+
+
+### 12.4 `compte_agent` — l'agent attitré et « appelé » (point 4 du 30/10)
+
+Une ligne par compte. `appele` est vrai dès qu'un agent a appelé le client
+(sa fiche n'est plus notée D et un agent la suit) : c'est lui qui ouvre les
+biens off-market. **La lettre ne part jamais.** Tant que `appele` est faux,
+les champs de l'agent sont nuls.
+
+| Colonne | Type | Contenu |
+|---|---|---|
+| `compte`, `cle` | uuid | comme partout |
+| `appele` | bool | |
+| `agent_nom`, `agent_poste` | text, nullable | |
+| `agent_tel` | text, nullable | sa ligne directe (portable) |
+| `agent_email` | text, nullable | |
+| `agent_photo` | text, nullable | adresse https de sa photo, quand la fiche agent en a une |
+| `maj_le` | timestamptz | dépôt |
+
+## 13. Formats proposés pour les prochains envois du site (30/10, pas encore lus par le BO)
+
+Tant que le BO ne les lit pas, il répond **503** (règle du §11.1) : le site
+peut les coder et les mettre en file sans rien perdre.
+
+```json
+{ "type": "rendez_vous", "ref": "<uuid>", "compte": "<uuid>",
+  "date": "2026-11-04", "creneau": "matin | apres_midi | soir | 14:30",
+  "objet": "visite | estimation | signature | autre", "texte": "…",
+  "bien": "<cle de compte_biens, facultatif>",
+  "proposition": "<cle de compte_propositions, facultatif>" }
+```
+Une demande : elle entre dans les Questions de l'agent attitré (à défaut, de
+tous) ; la confirmation revient par le dépôt (`compte_rendez_vous` : date,
+créneau, objet, `etat` = `demande` / `confirme` / `annule`).
+
+```json
+{ "type": "offre_acquereur", "ref": "<uuid>", "compte": "<uuid>",
+  "proposition": "<cle de compte_propositions>",
+  "montant": 480000, "conditions": "Sous condition suspensive de prêt…",
+  "financement": "comptant | pret | mixte", "apport": 120000,
+  "validite_jours": 10,
+  "pieces": [{ "chemin": "<compte>/offre.pdf", "nom": "offre.pdf" }] }
+```
+Le bien est désigné par la proposition (un acquéreur ne connaît pas
+l'immeuble autrement). Le BO crée l'offre « En cours » sur la fiche, la
+rattache au contact, et le profil investisseur déjà reçu l'accompagne.
+
+```json
+{ "type": "profil_investisseur", "ref": "<uuid>", "compte": "<uuid>",
+  "achat_en": "nom_propre | societe", "societe": "SCI Exemple", "siren": "123456789",
+  "immeubles_detenus": 3, "budget": 1500000, "apport": 300000,
+  "financement": "comptant | pret | mixte", "presentation": "…",
+  "pieces": [{ "chemin": "<compte>/presentation.pdf", "nom": "presentation.pdf" }] }
+```
+Rangé sur la fiche contact (la société créée ou retrouvée par son SIREN) ;
+un nouvel envoi remplace le précédent.

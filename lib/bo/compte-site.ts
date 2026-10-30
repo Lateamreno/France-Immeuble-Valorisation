@@ -6,6 +6,12 @@
 // que le BO tire une fois et garde sur sa fiche (`site_cle`). Jamais un
 // identifiant du BO, jamais un nom d'acquéreur, jamais un montant d'offre.
 //
+// Revirement de MAV le 30/10 (V2) : une offre que l'agent TRANSMET au
+// propriétaire lui est montrée telle qu'on la lui enverrait — nom de
+// l'acquéreur, date, validité, HAI, net vendeur, honoraires, et le document.
+// Rien ne part sans ce geste. Les acquéreurs, eux, ne voient toujours ni nom ni
+// montant d'offre.
+//
 // Un dépôt est une photographie complète du client : ce qui n'y est plus est
 // effacé. On le rejoue à volonté (rattachement, proposition, réponse,
 // changement d'étape d'un bien, reprise de nuit).
@@ -73,7 +79,11 @@ async function cleDe(table: string, d: Doc): Promise<string> {
   return cle;
 }
 
-export const TABLES_COMPTE = ["compte_recherches", "compte_propositions", "compte_demandes", "compte_biens", "compte_estimations", "compte_documents"] as const;
+export const TABLES_COMPTE = [
+  "compte_recherches", "compte_propositions", "compte_demandes", "compte_biens", "compte_estimations", "compte_documents",
+  /* V2 (30/10) : tant que le site ne les a pas créées, on les saute sans bruit. */
+  "compte_offres", "compte_messages", "compte_agent",
+] as const;
 export type TableCompte = (typeof TABLES_COMPTE)[number];
 export type LignesCompte = Record<TableCompte, Record<string, unknown>[]>;
 
@@ -185,6 +195,8 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
   const lb: Record<string, unknown>[] = [];
   const lpieces: Record<string, unknown>[] = [];
   const le: Record<string, unknown>[] = [];
+  const lo: Record<string, unknown>[] = [];
+  const clesBiens = new Map<string, string>();
   for (const im of immeubles) {
     const st = statutNum(im.data.Statut);
     if (im.data.archived === true && st !== 11) continue;
@@ -192,10 +204,11 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     const c = await carte(im.id);
     if (!c) continue;
     const cle = await cleDe("bo_immeuble", im);
+    clesBiens.set(im.id, cle);
     const [props, visites, offres, estimations, pieces] = await Promise.all([
       lireBo(`bo_proposition?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=5000`),
       lireBo(`bo_visite?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=1000`),
-      lireBo(`bo_offre?select=id&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([im.id]))}&limit=500`),
+      lireBo(`bo_offre?select=id,data&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([im.id]))}&limit=500`),
       lireBo(`bo_estimation?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=50`),
       /* Les pièces que CE compte a déposées sur cet immeuble (lot 5) — jamais
          le reste du coffre : un co-indivisaire ne voit pas ce qu'a déposé
@@ -221,6 +234,24 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       bien: c.bien,
       maj_le,
     });
+    /* Les offres que l'agent a transmises au propriétaire (V2, 30/10). */
+    for (const o of offres.filter((x) => S(x.data.site_transmise_le))) {
+      const ocle = await cleDe("bo_offre", o);
+      lo.push({
+        compte, cle: ocle, bien_cle: cle,
+        acquereur: await acquereurDe(o),
+        recue_le: jour(o.data.date ?? o.data["Created Date"]),
+        valable_jours: N(o.data.validite_jours) ?? null,
+        valable_jusqu_au: jour(o.data.date_expiration) ?? finValidite(o.data.date, N(o.data.validite_jours)),
+        prix_hai: N(o.data.prix_hai) ?? null,
+        net_vendeur: N(o.data.prix_nv) ?? null,
+        honoraires: N(o.data.honos_ttc) ?? null,
+        statut: STATUT_OFFRE[S(o.data.Statut) ?? ""] ?? "en_cours",
+        document: S(o.data.pdf) ? await deposerDocumentClient(compte, `offres/${ocle}.pdf`, S(o.data.pdf)!) : null,
+        transmise_le: jour(o.data.site_transmise_le),
+        maj_le,
+      });
+    }
     /* Une estimation n'apparaît que lorsqu'un agent l'a envoyée au propriétaire :
        jamais un chiffre calculé sans un humain (§7.1). */
     for (const e of estimations.filter((x) => String(x.data.Statut ?? "").startsWith("3") && N(x.data.prix_hai))) {
@@ -237,10 +268,120 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     }
   }
 
-  return { compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le, compte_documents: lpieces };
+  /* La messagerie (V2, 30/10) : ce que le client a écrit depuis son compte et
+     ce que les agents lui ont répondu, dans l'ordre. */
+  const messages = await lireBo(`bo_suivi?select=id,data&data->>CONTACT=eq.${cid}&data->>site_message=not.is.null&order=id.asc&limit=500`);
+  const lm: Record<string, unknown>[] = [];
+  /* Le titre d'une conversation est porté par le message qui l'ouvre ; on le
+     répète sur chaque ligne. */
+  const titres = new Map<string, string>();
+  for (const m of messages) {
+    const c = S(m.data.site_conversation), t = S(m.data.site_titre);
+    if (c && t && !titres.has(c)) titres.set(c, t);
+  }
+  for (const m of messages.sort((a, b) => String(a.data["Created Date"] ?? "").localeCompare(String(b.data["Created Date"] ?? "")))) {
+    const imId = Array.isArray(m.data.IMMEUBLEs) ? S(m.data.IMMEUBLEs[0]) : undefined;
+    lm.push({
+      compte, cle: await cleDe("bo_suivi", m),
+      bien_cle: imId ? clesBiens.get(imId) ?? null : null,
+      conversation: S(m.data.site_conversation) ?? null,
+      titre: titres.get(S(m.data.site_conversation) ?? "") ?? null,
+      pieces: Array.isArray(m.data.site_pieces) ? (m.data.site_pieces as { nom?: string }[]).map((x) => x.nom).filter(Boolean) : [],
+      de: m.data.site_message === "agent" ? "agent" : "client",
+      auteur: m.data.site_message === "agent" ? S(m.data.site_auteur) ?? "France Immeuble" : null,
+      texte: S(m.data.notes) ?? "",
+      envoye_le: S(m.data["Created Date"]) ?? maj_le,
+      maj_le,
+    });
+  }
+
+  /* Point 4 du site (30/10) : l'agent attitré et « appelé ». Un acquéreur noté
+     D n'a pas encore été appelé : pas d'agent, pas d'off-market. La lettre ne
+     part jamais, seulement le oui ou non. */
+  const [ct] = await lireBo(`bo_contact?select=id,data&id=eq.${cid}`);
+  const appele = !!ct && S(ct.data.Note) !== "D" && !!S(ct.data.SUIVI);
+  const [ag] = appele ? await lireBo(`bo_agentfi?select=id,data&id=eq.${encodeURIComponent(S(ct!.data.SUIVI)!)}`) : [];
+  const photo = S(ag?.data.photo);
+  const la: Record<string, unknown>[] = ct ? [{
+    compte, cle: await cleDe("bo_contact", ct),
+    appele,
+    agent_nom: ag ? [S(ag.data["prénom"]), S(ag.data.nom)].filter(Boolean).join(" ") || null : null,
+    agent_poste: S(ag?.data.Poste) ?? null,
+    agent_tel: S(ag?.data["portable (TXT)"]) ?? S(ag?.data.portable) ?? null,
+    agent_email: S(ag?.data.email)?.toLowerCase() ?? null,
+    agent_photo: photo ? (photo.startsWith("//") ? `https:${photo}` : /^https:\/\//.test(photo) ? photo : null) : null,
+    maj_le,
+  }] : [];
+
+  return {
+    compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le,
+    compte_documents: lpieces, compte_offres: lo, compte_messages: lm, compte_agent: la,
+  };
+}
+
+/* ---------------------------------------------------- Offres (V2, 30/10) */
+
+const STATUT_OFFRE: Record<string, string> = {
+  "En cours": "en_cours", "Contre offre": "contre_offre", "Acceptée": "acceptee", "Refusée": "refusee",
+  "Compromis programmé": "compromis", "Compromis signé": "compromis", "Vente prévue": "compromis", "Vendu": "vendu",
+};
+
+const finValidite = (date: unknown, jours?: number) => {
+  const t = typeof date === "string" ? Date.parse(date) : NaN;
+  return Number.isFinite(t) && jours ? new Date(t + jours * 86_400_000).toISOString().slice(0, 10) : null;
+};
+
+/** Le nom de l'acquéreur, tel qu'il figure sur son offre : la société d'abord. */
+async function acquereurDe(o: Doc): Promise<string | null> {
+  const id = Array.isArray(o.data.ACHETEURs) ? S(o.data.ACHETEURs[0]) : undefined;
+  const [c] = id ? await lireBo(`bo_contact?select=id,data&id=eq.${encodeURIComponent(id)}`) : [];
+  const personne = c ? [S(c.data["prénom"]), S(c.data.nom)].filter(Boolean).join(" ") : "";
+  return S(c?.data.entreprise_nom) ?? (personne || S(o.data.acheteur_nom) || null);
+}
+
+/** Le seau privé du site où le BO dépose les documents d'un client (V2). */
+export const SEAU_CLIENTS = "documents-clients";
+
+/** Un fichier du BO : `storage:…` dans son coffre, ou une adresse (fichiers de l'ancien BO). */
+async function lireFichierBo(ref: string): Promise<ArrayBuffer | null> {
+  const url = ref.startsWith("storage:") ? `${BO_URL}/storage/v1/object/bo-files/${ref.slice(8)}`
+    : ref.startsWith("//") ? `https:${ref}` : ref;
+  if (!/^https:\/\//.test(url)) return null;
+  const res = await fetch(url, {
+    headers: url.startsWith(BO_URL) && BO_KEY ? { Authorization: `Bearer ${BO_KEY}` } : {},
+    cache: "no-store",
+  }).catch(() => null);
+  return res?.ok ? res.arrayBuffer() : null;
+}
+
+/**
+ * Dépose un document dans le dossier du compte sur le site, une seule fois :
+ * s'il y est déjà, on ne le retélécharge pas. Rend le chemin, ou `null` si le
+ * seau n'existe pas encore ou si le fichier est illisible.
+ */
+async function deposerDocumentClient(compte: string, chemin: string, source: string): Promise<string | null> {
+  const s = site();
+  if (!s) return null;
+  const complet = `${compte}/${chemin}`;
+  const info = await fetch(`${s.url}/storage/v1/object/info/${SEAU_CLIENTS}/${complet}`, {
+    headers: { apikey: s.cle, Authorization: `Bearer ${s.cle}` }, cache: "no-store",
+  }).catch(() => null);
+  if (info?.ok) return complet;
+  const octets = await lireFichierBo(source);
+  if (!octets) return null;
+  const up = await fetch(`${s.url}/storage/v1/object/${SEAU_CLIENTS}/${complet}`, {
+    method: "POST",
+    headers: { apikey: s.cle, Authorization: `Bearer ${s.cle}`, "Content-Type": "application/pdf", "x-upsert": "true" },
+    body: new Uint8Array(octets),
+    cache: "no-store",
+  }).catch(() => null);
+  return up?.ok ? complet : null;
 }
 
 /* ------------------------------------------------------------ Le dépôt */
+
+/** Une table que le site n'a pas encore créée (V2) : PostgREST répond PGRST205. */
+const tableAbsente = (e: unknown) => /PGRST205|Could not find the table|does not exist/i.test(e instanceof Error ? e.message : String(e));
 
 /** Remplace, table par table, les lignes du compte par la photographie. */
 async function remplacer(s: Site, compte: string, table: TableCompte, lignes: Record<string, unknown>[]) {
@@ -268,7 +409,9 @@ export async function deposerCompte(contactId: string): Promise<{ ok: boolean; m
   const lignes = await lignesDuCompte(contactId, compte);
   const erreurs: string[] = [];
   for (const t of TABLES_COMPTE) {
-    await remplacer(s, compte, t, lignes[t]).catch((e) => erreurs.push(`${t} : ${e instanceof Error ? e.message : String(e)}`));
+    await remplacer(s, compte, t, lignes[t]).catch((e) => {
+      if (!tableAbsente(e)) erreurs.push(`${t} : ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
   await patchBo("bo_contact", contactId, {
     site_compte_depot_le: new Date().toISOString(),

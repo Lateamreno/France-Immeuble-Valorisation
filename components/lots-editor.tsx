@@ -418,6 +418,8 @@ function CaseNombre({ value, onChange, onFocus, onBlur, placeholder }: {
 
 /* Les types de bail qui veulent dire « personne dedans ». */
 const BAIL_VIDE = new Set(["", "Vide", "n.c."]);
+/** Un lot déclaré vide : sa case de loyer porte le loyer potentiel (MAV, 30/10). */
+const vide = (r: Row) => r.Type_bail === "Vide";
 
 /**
  * Le type de bail se déduit du loyer (retour #171).
@@ -594,10 +596,15 @@ export const COLONNES: Record<ColKey, Colonne> = {
   carrez: { label: "Carrez", menu: "Surface Carrez", poids: 5.6, px: 80 },
   sol: { label: "Au sol", menu: "Surface au sol", poids: 5.6, px: 80, large: true },
   bail: { label: "Type bail", menu: "Type de bail", poids: 7.9, px: 78 },
-  hc: { label: "HC actuel", menu: "Loyer HC actuel", poids: 6.0, px: 82 },
-  hcm2: { label: "€/m²", menu: "€/m² actuel", poids: 4.2, px: 58, large: true },
-  hcmax: { label: "HC max", menu: "Loyer HC max", poids: 6.0, px: 82 },
-  hcmaxm2: { label: "€/m²", menu: "€/m² max", poids: 4.2, px: 58, large: true },
+  /* MAV, 30/10 : une seule colonne de loyer. Un lot loué y montre son loyer ;
+     un lot vide y prend son loyer potentiel, marqué « potentiel » en petit en
+     haut de la case. « HC max » quitte les vues toutes faites : il ne reste
+     au menu Colonnes que pour le potentiel d'un lot loué (le loyer après
+     départ du locataire), que 290 lots portent encore. */
+  hc: { label: "Loyer HC", menu: "Loyer HC (potentiel si le lot est vide)", poids: 6.0, px: 82 },
+  hcm2: { label: "€/m²", menu: "€/m² du loyer", poids: 4.2, px: 58, large: true },
+  hcmax: { label: "Potentiel", menu: "Potentiel d'un lot loué", poids: 6.0, px: 82 },
+  hcmaxm2: { label: "€/m²", menu: "€/m² du potentiel", poids: 4.2, px: 58, large: true },
   etat: { label: "Etat", menu: "État du lot", poids: 5.2, px: 80 },
   travaux: { label: "Travaux", poids: 4.6, px: 70, large: true },
   dpe: { label: "DPE", poids: 3.6, px: 44 },
@@ -643,7 +650,7 @@ export const FIXES = new Set<ColKey>(["num", "dest", "type"]);
 export type Vue = "base" | "baux" | "locataires" | "perso";
 export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
   /* L'état locatif « de base » : ce que l'écran montrait jusqu'ici. */
-  base: ["bat", "etg", "num", "dest", "type", "carrez", "sol", "bail", "hc", "hcm2", "hcmax", "hcmaxm2",
+  base: ["bat", "etg", "num", "dest", "type", "carrez", "sol", "bail", "hc", "hcm2",
     "etat", "travaux", "dpe", "renov", "commentaire", "photos"],
   /* Le bail : on garde de quoi reconnaître le lot et son loyer, on ôte
      l'état, les travaux, le DPE, la date de réno et le potentiel. */
@@ -1463,10 +1470,14 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       } else if (c === "hc" || c === "hcmax") {
         const v = euros(Math.round((c === "hc" ? totaux.loyersAn : totaux.maxAn) / 12)) ?? "0 €";
         const m2 = c === "hc" ? "hcm2" : "hcmaxm2";
+        /* La colonne unique mêle loyers et potentiels des lots vides : le
+           total dit les deux, l'actuel d'abord. */
+        const pot = c === "hc" && totaux.maxAn > totaux.loyersAn
+          ? <small className="ltot-pot">pot. {euros(Math.round(totaux.maxAn / 12))}</small> : null;
         if (suivante === m2) {
-          cases.push(<td key={c} className={cls(c, "na")}>{v}</td>, <td key={m2} className={cls(m2, "ltot-u")}>HC/mois</td>);
+          cases.push(<td key={c} className={cls(c, "na")}>{v}{pot}</td>, <td key={m2} className={cls(m2, "ltot-u")}>HC/mois</td>);
           i++;
-        } else cases.push(<td key={c} className={cls(c, "na")}>{v} HC/mois</td>);
+        } else cases.push(<td key={c} className={cls(c, "na")}>{v} HC/mois{pot}</td>);
       } else if (c === "etat" || c === "travaux") {
         const n = c === "etat" ? avec("travaux") : 1;
         cases.push(<td key={c} className={cls(c, "na")} colSpan={n}>{travaux > 0 ? `Travaux : ${montant(travaux)}` : "Pas de travaux"}</td>);
@@ -1550,15 +1561,48 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           <td key={c} className={cls(c)}>
             <CelluleBail
               r={r} lots={rows}
-              onBail={(v) => edit(r.id, "Type_bail", v)}
+              onBail={(v) => {
+                edit(r.id, "Type_bail", v);
+                /* Déclaré vide, il n'encaisse plus rien : son loyer devient
+                   le potentiel de la case unique (s'il n'en avait pas). */
+                if (v === "Vide" && N(r.loyer)) {
+                  if (!N(r.loyer_max)) edit(r.id, "loyer_max", r.loyer);
+                  edit(r.id, "loyer", "");
+                }
+              }}
               onLot={(v) => edit(r.id, "lot_rattache", v)}
             />
           </td>
         );
-      case "hc": return nombre(c, r, "loyer", "€");
+      case "hc": {
+        /* Une cave ou un parking rattaché n'a pas de loyer propre : il est
+           encaissé sur l'autre lot. Case grisée, sauf loyer déjà saisi. */
+        if (r.Type_bail === RATTACHE && !N(r.loyer)) {
+          return <td key={c} className={cls(c, "na", "grise")} title="Loyer encaissé sur le lot de rattachement">—</td>;
+        }
+        if (vide(r)) {
+          return (
+            <td key={c} className={cls(c, "na", "pot")} title="Lot vide : loyer HC potentiel, à la relocation">
+              <small className="pot-l">potentiel</small>
+              <CaseNombre value={r.loyer_max || r.loyer}
+                onChange={(v) => { edit(r.id, "loyer_max", v); if (r.loyer) edit(r.id, "loyer", ""); }} />
+              <i>€</i>
+            </td>
+          );
+        }
+        /* Un potentiel au-dessus du loyer, saisi avant le 30/10 : il compte
+           toujours, il se lit au survol (et dans la colonne « Potentiel »). */
+        const pot = N(r.loyer_max);
+        const plus = pot !== undefined && pot > (N(r.loyer) ?? 0);
+        const td = nombre(c, r, "loyer", "€");
+        return plus
+          ? cloneElement(td, { className: [td.props.className, "up"].join(" "), title: `Potentiel enregistré : ${euros(pot!)} HC/mois` })
+          : td;
+      }
       case "hcm2": {
-        const act = m2(r.loyer, r.surface_carrez);
-        return <td key={c} className={cls(c, "na", "pc")} data-info={loyerReel(r, r.loyer, "Loyer réel")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
+        const loyer = vide(r) ? r.loyer_max || r.loyer : r.loyer;
+        const act = m2(loyer, r.surface_carrez);
+        return <td key={c} className={cls(c, "na", "pc")} data-info={loyerReel(r, loyer, vide(r) ? "Loyer potentiel" : "Loyer réel")}>{act ? ecart(act) ?? `${act.toFixed(1).replace(".", ",")} €` : <span className="nc">n.a.</span>}</td>;
       }
       case "hcmax": {
         /* Retour #466 : « quand un loyer potentiel est supérieur au loyer

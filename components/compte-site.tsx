@@ -10,7 +10,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { dmy, euros } from "@/lib/format";
 import { Pastille } from "@/components/pastille";
-import { redeposerCompteSite, voirCompteSite, type VueCompte } from "@/lib/bo/compte-site-actions";
+import { redeposerCompteSite, repondreAuClient, voirCompteSite, type VueCompte } from "@/lib/bo/compte-site-actions";
 
 const ETAPES: Record<string, string> = {
   estimation: "En cours d'estimation", mandat: "Mandat signé", commercialisation: "En commercialisation",
@@ -19,9 +19,12 @@ const ETAPES: Record<string, string> = {
 const ETATS: Record<string, string> = { disponible: "Disponible", sous_offre: "Sous offre", vendu: "Vendu", retire: "Retiré" };
 const REPONSES: Record<string, string> = { interesse: "Intéressé", visite: "Visite demandée", pas_pour_moi: "Pas pour lui" };
 const DEMANDES: Record<string, string> = { en_attente: "En attente", dossier_envoye: "Dossier envoyé", close: "Close" };
+const OFFRES: Record<string, string> = {
+  en_cours: "En cours", contre_offre: "Contre-offre", acceptee: "Acceptée", refusee: "Refusée", compromis: "Compromis", vendu: "Vendue",
+};
 const PIECES: Record<string, string> = {
   titre: "Titre de propriété", baux: "Bail", diagnostics: "Diagnostic", taxe: "Taxe foncière",
-  charges: "Charges / travaux", autre: "Pièce",
+  charges: "Charges / travaux", plans: "Plan", photos: "Photo", autre: "Pièce",
 };
 
 type L = Record<string, unknown>;
@@ -41,6 +44,22 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
 
   const l = vue?.lignes;
   const vide = l && Object.values(l).every((x) => x.length === 0);
+  const [reponse, setReponse] = useState("");
+  /* Les conversations, la plus récente d'abord ; « » = en ouvrir une. */
+  const conversations = [...new Map((vue?.messages ?? []).map((m) => [m.conversation, m])).keys()]
+    .map((c) => {
+      const ms = (vue?.messages ?? []).filter((m) => m.conversation === c);
+      return { id: c, titre: ms.find((m) => m.titre)?.titre ?? "Sans titre", ms, dernier: ms[ms.length - 1]?.le ?? "" };
+    })
+    .sort((a, b) => b.dernier.localeCompare(a.dernier));
+  const [choisie, setChoisie] = useState<string | null>(null);
+  const cible = choisie ?? conversations[0]?.id ?? "";
+  const [titreNeuf, setTitreNeuf] = useState("");
+  const envoyer = () => start(async () => {
+    const r = await repondreAuClient(contactId, reponse, cible ? { conversation: cible } : { titre: titreNeuf });
+    setMsg(r.message);
+    if (r.ok) { setReponse(""); setTitreNeuf(""); setVue(await voirCompteSite(contactId)); }
+  });
 
   return (
     <div className="espv cps" style={{ marginBottom: 14 }}>
@@ -98,6 +117,15 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
                   </span>
                 ))}
                 {/* Lot 5 : les pièces qu'il a déposées ; elles sont au coffre de l'immeuble. */}
+                {/* V2 (30/10) : les offres que l'agent lui a transmises. */}
+                {(l.compte_offres ?? []).filter((o) => o.bien_cle === b.cle).map((o) => (
+                  <span className="cps-n" key={String(o.cle)}>
+                    Offre de {t(o.acquereur) ?? "?"} reçue le {dmy(o.recue_le) ?? "?"} — {euros(o.prix_hai) ?? "?"} HAI,{" "}
+                    {euros(o.net_vendeur) ?? "?"} net vendeur, {euros(o.honoraires) ?? "?"}{" "}d&apos;honoraires
+                    {o.valable_jusqu_au ? `, valable jusqu'au ${dmy(o.valable_jusqu_au)}` : o.valable_jours ? `, valable ${String(o.valable_jours)} jours` : ""}
+                    {" · "}{OFFRES[String(o.statut)] ?? String(o.statut)}{o.document ? " · document joint" : ""}
+                  </span>
+                ))}
                 {docs.map((d) => (
                   <span className="cps-n" key={String(d.cle)}>
                     {PIECES[String(d.categorie)] ?? "Pièce"} déposée le {dmy(d.recu_le) ?? "?"} — {t(d.nom)}
@@ -137,6 +165,45 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
               {t(p.reponse) && <Pastille ton={p.reponse === "pas_pour_moi" ? "gris" : "bleu"}>{REPONSES[String(p.reponse)] ?? String(p.reponse)}</Pastille>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* La messagerie (V2, 30/10) : le fil tel que le client le lit, et la
+          réponse de l'agent. Envoyer, c'est la validation humaine. */}
+      {vue?.compte && (
+        <div className="cps-g">
+          <span className="cps-t">Messages</span>
+          {conversations.length === 0 && <span className="cps-n">Aucun message pour l&apos;instant.</span>}
+          {conversations.map((c) => (
+            <div key={c.id} className={`cps-conv${c.id === cible ? " on" : ""}`}>
+              <button type="button" className="cps-conv-t" onClick={() => setChoisie(c.id)} title="Répondre dans cette conversation">
+                {c.titre} <i>· {c.ms.length} message{c.ms.length > 1 ? "s" : ""}</i>
+              </button>
+              <div className="cps-fil">
+                {c.ms.map((m) => (
+                  <div key={m.id} className={`cps-msg ${m.de}`}>
+                    <span className="cps-msg-h">{m.de === "agent" ? m.auteur ?? "France Immeuble" : "Le client"} · {dmy(m.le) ?? ""}</span>
+                    <span className="cps-msg-t">{m.texte}</span>
+                    {m.pieces.length > 0 && <span className="cps-msg-h">Pièces jointes : {m.pieces.join(", ")} (au coffre)</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="cps-cible">
+            <select className="min" value={cible} onChange={(e) => setChoisie(e.target.value)}>
+              {conversations.map((c) => <option key={c.id} value={c.id}>Répondre dans « {c.titre} »</option>)}
+              <option value="">Nouvelle conversation…</option>
+            </select>
+            {!cible && <input className="min" placeholder="Titre de la conversation" value={titreNeuf} onChange={(e) => setTitreNeuf(e.target.value)} />}
+          </div>
+          <div className="cps-rep">
+            <textarea className="min" rows={2} placeholder="Votre réponse, qu'il lira sur son compte…" value={reponse}
+              onChange={(e) => setReponse(e.target.value)} />
+            <button type="button" className="espv-b" disabled={pending || !reponse.trim() || (!cible && !titreNeuf.trim())} onClick={envoyer}>
+              {pending ? "…" : "Envoyer sur son compte"}
+            </button>
+          </div>
         </div>
       )}
 

@@ -28,6 +28,7 @@ const TETES: Record<string, string> = {
   visite: "Demande de visite du ",
   interet: "Intérêt pour un bien proposé, le ",
   prix: "Prix proposé par le propriétaire, le ",
+  message: "Message du client sur son compte, le ",
 };
 type VueQuestions = "en_cours" | "cloturees";
 const VUES_QUESTIONS: readonly VueQuestions[] = ["en_cours", "cloturees"];
