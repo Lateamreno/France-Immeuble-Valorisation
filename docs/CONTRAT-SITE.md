@@ -712,14 +712,44 @@ message retrouve la personne. L'historique du contact dit ce qui a changé.
 du bien. Le BO note le jour d'acceptation d'une offre depuis le 31/10 ; pour
 une offre acceptée avant, la date est celle de sa dernière modification.
 
-### 13.3 Estimation détaillée et repères du secteur
+### 13.3 Estimation détaillée : notre valeur, et les repères du secteur
 
-Pas pour ce lot. Une estimation du BO porte une valeur, pas de fourchette :
-`valeur_basse`, `valeur_haute`, `loyer_marche`, `delai_jours` et
-`compte_comparables` restent à construire avec MAV (d'où tirer la fourchette,
-quelles ventes servent de comparables). Le BO a les repères de 13 209
-communes (`bo_villes_stats`) ; avant de les déposer dans `web.stats_villes`,
-il faut la liste exacte des colonnes que vous lisez.
+Décision de MAV (31/10) : « on laisse notre estim à nous, mais on lui met les
+données de secteur pour qu'il puisse changer le prix lui-même sur la
+réglette ». Donc **pas de fourchette** : `valeur_basse` et `valeur_haute`
+restent nulles, la valeur est celle de l'agent. La réglette se règle avec les
+repères que l'agent a relevés pour l'immeuble. Colonnes ajoutées à
+`compte_estimations` :
+
+| Colonne | Contenu |
+|---|---|
+| `surface` | surface Carrez totale retenue par l'estimation (m²) |
+| `loyers_an` | loyers HC annuels retenus (€) — avec `valeur`, de quoi recalculer le rendement quand le client bouge le prix |
+| `loyer_marche` | loyer de marché de l'habitation, en **€/m²/an** |
+| `valeur_basse`, `valeur_haute`, `delai_jours` | nuls (pas de fourchette, pas de délai mesuré) |
+| `secteur` | jsonb, ci-dessous |
+
+```json
+{ "releve_le": "2026-10-30",
+  "destinations": [
+    { "destination": "Logement", "unite": "m2", "prix": 3050, "loyer_mois": 15.2, "rendement": 5.98 },
+    { "destination": "Commerce", "unite": "m2", "prix": 2400, "loyer_mois": 12.5, "rendement": 6.25 } ],
+  "commune_habitation": {
+    "prix_m2": { "bas": 2520, "moyen": 3010, "haut": 3500 },
+    "loyer_m2_mois": { "bas": 12.1, "moyen": 15, "haut": 18.4 },
+    "rendement": { "bas": 4.8, "moyen": 5.86, "haut": 7.1 } } }
+```
+
+Unités du BO : `prix` au m² (à l'unité quand `unite` vaut `cave` ou
+`place`), `loyer_mois` **mensuel** au m² (à l'unité pour une cave ou une
+place — un commerce se cote à l'année : multipliez par 12 pour l'afficher),
+`rendement` en %. `commune_habitation` donne les bornes naturelles de la
+réglette (prix au m² bas / haut de la commune). Aucune adresse, aucun nom.
+Un champ absent du relevé de l'agent vaut `null` ; sans relevé, `secteur` est
+nul.
+
+`compte_comparables` : pas maintenant. Repères plus fins dans
+`web.stats_villes` : donnez la liste des colonnes que vous lisez.
 
 **Photo de l'agent** : `agent_photo` reste l'adresse https publique de la
 photo ; une nouvelle photo a une nouvelle adresse.

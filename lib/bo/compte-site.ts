@@ -301,7 +301,12 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     }
     /* Une estimation n'apparaît que lorsqu'un agent l'a envoyée au propriétaire :
        jamais un chiffre calculé sans un humain (§7.1). */
-    for (const e of estimations.filter((x) => String(x.data.Statut ?? "").startsWith("3") && N(x.data.prix_hai))) {
+    const envoyees = estimations.filter((x) => String(x.data.Statut ?? "").startsWith("3") && N(x.data.prix_hai));
+    /* MAV, 31/10 : « on laisse notre estim à nous, mais on lui met les
+       données de secteur pour qu'il puisse changer le prix lui-même sur la
+       réglette ». La valeur reste celle de l'agent ; pas de fourchette. */
+    const secteur = envoyees.length ? await secteurDe(im.id) : null;
+    for (const e of envoyees) {
       const valeur = N(e.data.prix_hai)!;
       const surface = N(e.data.imm_carrez_tot_tot);
       const loyers = N(e.data.imm_loyer_hc_tot) ?? 0; // annuels HC (vérifié sur les estimations envoyées)
@@ -311,6 +316,11 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
         prix_m2: surface && surface > 0 ? Math.round(valeur / surface) : null,
         rendement: loyers > 0 ? Math.round((loyers / valeur) * 1000) / 10 : null,
         estimee_le: jour(e.data.date_envoi ?? e.data["Created Date"]),
+        surface: surface ?? null,
+        loyers_an: loyers > 0 ? Math.round(loyers) : null,
+        valeur_basse: null, valeur_haute: null, delai_jours: null,
+        loyer_marche: secteur?.loyerMarche ?? null,
+        secteur: secteur?.json ?? null,
       });
     }
   }
@@ -397,6 +407,54 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le,
     compte_documents: lpieces, compte_offres: lo, compte_messages: lm, compte_agent: la,
     compte_rendez_vous: lrv, compte_mandats: lmd, compte_visites: lvi, compte_dossiers_bien: ldb,
+  };
+}
+
+/* --------------------------------------- Les repères du secteur (31/10) */
+
+const PREFIXES_SECTEUR: [string, string, string][] = [
+  ["hab", "Logement", "m2"], ["com", "Commerce", "m2"], ["bur", "Bureau", "m2"],
+  ["log", "Logistique", "m2"], ["parking", "Parking", "place"], ["cave", "Cave", "cave"],
+];
+const arrondi = (v: number | undefined, pas = 1) => (v === undefined ? null : Math.round(v / pas) * pas);
+
+/**
+ * Les repères du secteur relevés par l'agent pour cet immeuble (le dernier
+ * relevé `bo_prix_secteur`) : de quoi régler la réglette côté client. Unités
+ * du BO : prix au m² (à l'unité pour une cave ou une place), loyer MENSUEL au
+ * m² (à l'unité), rendement en %. Aucune adresse, aucun nom.
+ */
+async function secteurDe(imId: string): Promise<{ json: Record<string, unknown>; loyerMarche: number | null } | null> {
+  const [r] = (await lireBo(`bo_prix_secteur?select=id,data&data->>${encodeURIComponent('"0 - IMMEUBLE"')}=eq.${encodeURIComponent(imId)}&limit=20`))
+    .sort((a, b) => String(b.data["Modified Date"] ?? "").localeCompare(String(a.data["Modified Date"] ?? "")));
+  if (!r) return null;
+  const d = r.data;
+  const destinations = PREFIXES_SECTEUR
+    .map(([px, destination, unite]) => ({
+      destination, unite,
+      prix: arrondi(N(d[`${px}_prix_retenu`]), 10),
+      loyer_mois: N(d[`${px}_loyer_retenu`]) !== undefined ? Math.round(N(d[`${px}_loyer_retenu`])! * 100) / 100 : null,
+      rendement: N(d[`${px}_renta_retenu`]) !== undefined ? Math.round(N(d[`${px}_renta_retenu`])! * 100) / 100 : null,
+    }))
+    .filter((x) => x.prix !== null || x.loyer_mois !== null);
+  const trio = (base: string, pas: number, deci = false) => {
+    const v = (k: string) => {
+      const n = N(d[`${base}_${k}`]);
+      return n === undefined ? null : deci ? Math.round(n * 100) / 100 : arrondi(n, pas);
+    };
+    const t = { bas: v("bas"), moyen: v("moyen"), haut: v("haut") };
+    return t.bas === null && t.moyen === null && t.haut === null ? null : t;
+  };
+  const commune = {
+    prix_m2: trio("hab_prix_ville", 10),
+    loyer_m2_mois: trio("hab_loyer_ville", 0, true),
+    rendement: trio("hab_renta_ville", 0, true),
+  };
+  if (!destinations.length && !commune.prix_m2 && !commune.loyer_m2_mois) return null;
+  const loyerHab = N(d.hab_loyer_retenu) ?? N(d.hab_loyer_ville_moyen);
+  return {
+    json: { releve_le: jour(d["0 - date"] ?? d["Modified Date"]), destinations, commune_habitation: commune },
+    loyerMarche: loyerHab !== undefined ? Math.round(loyerHab * 12) : null,
   };
 }
 
