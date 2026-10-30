@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { LeadInvalide, recevoirLead } from "@/lib/bo/leads-site";
+import { LeadInvalide, LeadPasPret, recevoirLead } from "@/lib/bo/leads-site";
 
 export const dynamic = "force-dynamic";
 /* Une pièce de 25 Mo se rapatrie du site au coffre dans la même requête
@@ -12,7 +12,9 @@ export const maxDuration = 60;
  * Elle ne sait qu'enregistrer : aucune lecture du BO, aucun e-mail vers le
  * visiteur. Réponse 200 = enregistré (ou déjà enregistré : le site réessaie
  * tout ce qui n'a pas eu 200, et un réessai ne doit rien dupliquer). 422 =
- * formulaire illisible, inutile de le renvoyer tel quel.
+ * formulaire illisible, inutile de le renvoyer tel quel. 503 = pas encore
+ * rangeable (envoi que le BO ne sait pas lire, ou arrivé avant celui dont il
+ * dépend) : le site le garde et réessaie (règle du 30/10).
  */
 
 /* Débit limité (contrat §6, exigé par la spec du site) : trente envois par
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
     return json(200, { ok: true, deja: r.deja });
   } catch (e) {
     if (e instanceof LeadInvalide) return json(422, { ok: false, message: e.message });
+    /* Pas encore rangeable (règle du 30/10) : le site le garde et réessaie. */
+    if (e instanceof LeadPasPret) return json(503, { ok: false, message: e.message });
     console.error("[site/lead]", e);
     // Toute autre erreur est passagère : le site gardera le formulaire en file.
     return json(500, { ok: false, message: "Enregistrement impossible pour l'instant." });

@@ -9328,3 +9328,5 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* Sons du BO : l'interrupteur du bas du menu (MAV, 30/10). */
 .rail-moi .rail-son { text-decoration: none; }
 .rail-moi .rail-son[aria-pressed="false"] { color: rgba(255, 255, 255, .35); }
+/* #577 : l'en-tête des notes n'est plus un bouton. */
+.brail-notes-h { cursor: default; }

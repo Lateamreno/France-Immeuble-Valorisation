@@ -7,6 +7,13 @@
 // le garde une journée, et y cherche le slug de la ville dans le bon
 // département. Pas trouvé : le lien renvoie à l'index des villes plutôt qu'à
 // une page qui n'existe pas.
+//
+// Retour #575 (28/10) : le plan du site ne liste plus que 3 477 villes —
+// Barbezieux-Saint-Hilaire n'y est pas, alors que sa page existe. Le code
+// INSEE se prend donc d'abord dans le référentiel des communes du BO
+// (`bo_villes_stats`, 13 209 communes), le plan du site ne servant qu'à
+// défaut. Et jamais le code postal à la place : « …-16300 » répond bien, mais
+// avec la page d'une AUTRE commune (Val-de-Bonnieure).
 
 const SITEMAP = "https://www.pleinbail.fr/sitemap/villes.xml";
 const INDEX = "https://www.pleinbail.fr/villes";
@@ -40,6 +47,24 @@ async function urlsVilles(): Promise<string[]> {
   return urls;
 }
 
+const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+/** Le code INSEE d'après le référentiel des communes du BO, ou rien. */
+async function inseeDuBo(ville: string, slug: string, prefixes: string[]): Promise<string | undefined> {
+  if (!SB_KEY) return undefined;
+  /* Le nom exact d'abord ; les variantes d'écriture (tirets, accents,
+     « St » pour « Saint ») se rattrapent en comparant les slugs. */
+  const mot = ville.split(/[\s'-]+/).filter((m) => m.length > 2).sort((a, b) => b.length - a.length)[0] ?? ville;
+  const res = await fetch(
+    `${SB_URL}/rest/v1/bo_villes_stats?select=code_insee,nom,departement&nom=ilike.*${encodeURIComponent(mot)}*&limit=200`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  ).catch(() => null);
+  if (!res?.ok) return undefined;
+  const lignes = (await res.json()) as { code_insee: string; nom: string; departement: string }[];
+  return lignes.find((l) => slugCommune(l.nom) === slug && prefixes.some((p) => l.code_insee.toUpperCase().startsWith(p)))?.code_insee;
+}
+
 /**
  * L'adresse de la page de la commune, ou l'index des villes si elle n'est
  * pas trouvée. Ne renvoie jamais un lien inventé.
@@ -48,8 +73,10 @@ export async function pageCommunePleinBail(ville: string | undefined, codePostal
   const slug = slugCommune(ville ?? "");
   const cp = (codePostal ?? "").trim();
   if (!slug || !/^\d{5}$/.test(cp)) return INDEX;
-  const urls = await urlsVilles();
   const prefixes = prefixeInsee(cp);
+  const insee = await inseeDuBo(ville ?? "", slug, prefixes).catch(() => undefined);
+  if (insee) return `${INDEX}/${slug}-${insee.toLowerCase()}`;
+  const urls = await urlsVilles();
   const candidats = urls.filter((u) => {
     const m = /\/villes\/(.+)-([0-9ab]{5})$/i.exec(u);
     return !!m && m[1] === slug && prefixes.some((p) => m[2].toUpperCase().startsWith(p));

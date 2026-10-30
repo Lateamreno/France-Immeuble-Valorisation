@@ -88,6 +88,14 @@ function reference(v: unknown): string | null {
 
 export class LeadInvalide extends Error {}
 
+/**
+ * Pas encore rangeable (règle du 30/10, demande du site) : le BO ne répond 200
+ * que si l'envoi est réellement enregistré. Un envoi qu'il ne sait pas encore
+ * lire, ou qui arrive avant celui dont il dépend, reçoit un 503 : le site le
+ * garde dans sa file et le réessaie, rien ne se perd.
+ */
+export class LeadPasPret extends Error {}
+
 /* ---------------------------------------------------------- Les agents */
 
 async function agentParDefaut(): Promise<string | undefined> {
@@ -214,6 +222,194 @@ async function suiviFormulaire(id: string, p: { agentId?: string; contactId: str
   await rpc("bo_append_ref", { p_table: "bo_contact", p_id: p.contactId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
 }
 
+/* ------------------------------------------------------ Notes du client */
+
+/** « (30/10/26 CLIENT) » : la date de Paris, et CLIENT à la place des initiales (#577). */
+function enTeteClient(d = new Date()): string {
+  const [jj, mm, aa] = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "2-digit",
+  }).format(d).split("/");
+  return `(${jj}/${mm}/${aa} CLIENT) `;
+}
+
+/**
+ * Retour #577 : tout ce que le client écrit — dans le formulaire ou depuis son
+ * compte — s'ajoute aux notes de l'immeuble, en bloc daté signé CLIENT. Un
+ * réessai du site n'ajoute rien : un texte déjà présent n'est pas recopié.
+ */
+async function noterClient(immeubleId: string, texte: string | undefined) {
+  const t = texte?.trim();
+  if (!t) return;
+  const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(immeubleId)}`);
+  if (!im) return;
+  const avant = String(im.data.notes ?? "");
+  if (avant.includes(t)) return;
+  const notes = `${avant.trimEnd()}${avant.trim() ? "\n\n" : ""}${enTeteClient()}${t}`;
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { notes, "Modified Date": new Date().toISOString() } });
+}
+
+/* -------------------------------------------- Le dossier du vendeur */
+
+/* L'état locatif saisi sur le site, traduit dans les listes du BO
+   (lib/referentiels.ts). Une valeur que le site n'envoie pas encore ne casse
+   rien : elle part en commentaire du lot, mot pour mot. */
+const TYPE_LOT_SITE: Record<string, { Destination: string; Type_lot?: string }> = {
+  habitation_t1: { Destination: "Logement", Type_lot: "T1" },
+  habitation_t2: { Destination: "Logement", Type_lot: "T2" },
+  habitation_t3: { Destination: "Logement", Type_lot: "T3" },
+  habitation_t4: { Destination: "Logement", Type_lot: "T4" },
+  habitation_t5plus: { Destination: "Logement", Type_lot: "T5" },
+  habitation_maison: { Destination: "Logement", Type_lot: "Maison" },
+  habitation: { Destination: "Logement" },
+  bureau: { Destination: "Bureau", Type_lot: "Bureaux" },
+  commerce: { Destination: "Commerce", Type_lot: "Local commercial" },
+  local_activite: { Destination: "Logistique", Type_lot: "Local d'activites" },
+  parking: { Destination: "Parking", Type_lot: "Parking" },
+  cave: { Destination: "Cave", Type_lot: "Cave" },
+  autre: { Destination: "Annexe", Type_lot: "Autre" },
+};
+const ETAT_SITE: Record<string, string> = {
+  bon: "Bon etat", moyen: "Etat d'usage", rafraichissement: "Etat d'usage", travaux: "Travaux",
+};
+const BAIL_SITE: Record<string, string> = {
+  nu_89: "Nu", meuble: "Meuble", mobilite: "Meuble", nu_48: "Loi 48", commercial_369: "3/6/9",
+  professionnel: "Professionnel", derogatoire: "Précaire", precaire: "Précaire", civil: "Civil", autre: "n.c.",
+};
+const MOTS_SITE: Record<string, string> = {
+  rafraichissement: "à rafraîchir", mobilite: "bail mobilité", derogatoire: "bail dérogatoire",
+  conge_en_cours: "congé en cours", procedure: "procédure en cours",
+};
+
+/** Un lot du site, en lot du BO. Le commentaire garde ce que la liste du BO ne dit pas. */
+function lotDuSite(l: Record<string, unknown>, rang: number) {
+  const type = T(l.type, 40) ?? "";
+  const t = TYPE_LOT_SITE[type];
+  const statut = T(l.statut, 40) ?? "";
+  const libre = statut === "libre";
+  const bail = T(l.bail, 40) ?? "";
+  /* « n.c. » se lit comme un lot libre dans tout le BO : un lot occupé sans
+     type de bail prend le bail courant de sa destination. */
+  const bailParDefaut = t?.Destination === "Commerce" || t?.Destination === "Bureau" || t?.Destination === "Logistique" ? "3/6/9" : "Nu";
+  const Type_bail = libre ? "Vide" : BAIL_SITE[bail] && BAIL_SITE[bail] !== "n.c." ? BAIL_SITE[bail] : bailParDefaut;
+  const etat = T(l.etat, 40) ?? "";
+  const dpe = T(l.dpe, 4)?.toUpperCase();
+  const num = T(String(l.numero ?? ""), 40);
+  const numero = num && /^\d+$/.test(num) ? Number(num) : rang;
+  const aDire = [
+    num && !/^\d+$/.test(num) ? `Lot « ${num} »` : null,
+    !t && type ? `Type déclaré : ${type}` : null,
+    MOTS_SITE[etat] ?? (!ETAT_SITE[etat] && etat ? `État déclaré : ${etat}` : null),
+    !libre && MOTS_SITE[bail] ? MOTS_SITE[bail] : null,
+    !libre && !BAIL_SITE[bail] ? (bail ? `Bail déclaré : ${bail}` : "Type de bail non précisé") : null,
+    MOTS_SITE[statut] ?? null,
+  ].filter(Boolean);
+  const surface = N(l.surfaceCarrez);
+  const auLot = t?.Destination === "Cave" || t?.Destination === "Parking";
+  return {
+    numero, ordre: rang,
+    Destination: t?.Destination ?? "Annexe",
+    Type_lot: t?.Type_lot,
+    Etat: ETAT_SITE[etat],
+    Type_bail,
+    loyer: libre ? undefined : N(l.loyerMensuelHC),
+    surface_carrez: auLot ? undefined : surface,
+    surface_sol: auLot ? surface : undefined,
+    Type_dpe: dpe && /^[A-G]$/.test(dpe) ? dpe : undefined,
+    commentaire: aDire.length ? `Déclaré par le vendeur — ${aDire.join(" · ")}` : "Déclaré par le vendeur",
+  };
+}
+
+/** Le dossier en une phrase, pour le suivi et les notes. */
+function resumeDossier(lots: Record<string, unknown>[], taxe?: number, teom?: number): string {
+  const loyers = lots.reduce((s, l) => s + (N(l.loyerMensuelHC) ?? 0), 0);
+  return [
+    `État locatif transmis par le vendeur : ${lots.length} lot${lots.length > 1 ? "s" : ""}`
+      + (loyers ? `, ${eur(loyers)} HC par mois (${eur(loyers * 12)} par an)` : ""),
+    taxe ? `Taxe foncière : ${eur(taxe)} par an${teom ? `, dont ${eur(teom)} de TEOM récupérée sur les locataires` : ""}` : null,
+  ].filter(Boolean).join(". ") + ".";
+}
+
+/**
+ * `estimation`, état `dossier` (30/10) : l'état locatif lot par lot, la taxe
+ * foncière et le commentaire du vendeur, sous la référence de son estimation.
+ *
+ * Rien de ce qu'un agent a saisi n'est écrasé : si l'immeuble a déjà des lots
+ * saisis au BO, ceux du vendeur ne sont pas créés — ils partent dans les notes,
+ * en clair, pour que l'agent compare ; une taxe foncière déjà renseignée reste
+ * la sienne. Le 200 ne part qu'après relecture des lots en base.
+ */
+async function recevoirDossier(ref: string, b: Record<string, unknown>) {
+  const immeubleId = `app_site_${ref}`;
+  const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${immeubleId}`);
+  if (!im) {
+    /* Supprimé par l'agent : rien à quoi rattacher le dossier, et le réessayer
+       ne le ferait pas revenir. */
+    if (await existe("bo_immeuble", immeubleId)) return { deja: true, id: immeubleId };
+    throw new LeadPasPret("Le formulaire de cette estimation n'est pas encore arrivé.");
+  }
+  if (im.data.site_dossier_ref === ref) return { deja: true, id: immeubleId };
+
+  const lotsSite = Array.isArray(b.lots) ? (b.lots as Record<string, unknown>[]).filter((l) => l && typeof l === "object").slice(0, 200) : [];
+  const taxe = N(b.taxeFonciere);
+  const teom = N(b.teom);
+  const commentaire = T(b.commentaire, 5000);
+
+  const existants = await lire(`bo_lot?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&limit=500`);
+  const saisisParAgent = existants.filter((l) => l.data.site_dossier !== ref);
+  const now = new Date().toISOString();
+  let lotsCrees = 0;
+  if (lotsSite.length && saisisParAgent.length === 0) {
+    /* Un réessai interrompu a pu laisser une partie des lots : on ne crée que
+       ceux qui manquent (un identifiant passé par la corbeille ne se recrée pas). */
+    const deja = new Set(existants.map((l) => l.id));
+    for (const [i, l] of lotsSite.entries()) {
+      const id = `app_site_${ref}_l${i + 1}`;
+      if (deja.has(id)) continue;
+      await rpc("bo_insert_doc", {
+        p_table: "bo_lot", p_id: id,
+        p_doc: sansVides({ IMMEUBLE: immeubleId, ...lotDuSite(l, i + 1), site_dossier: ref, "Created Date": now, "Modified Date": now }),
+      });
+    }
+    const relus = await lire(`bo_lot?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>site_dossier=eq.${ref}&limit=500`);
+    if (relus.length !== lotsSite.length) throw new Error(`Lots du dossier : ${relus.length} en base sur ${lotsSite.length} envoyés.`);
+    lotsCrees = relus.length;
+  }
+
+  /* La taxe foncière, au bon endroit : une charge « Taxe Foncière » de
+     l'immeuble, la TEOM en part récupérable. Jamais par-dessus celle de l'agent. */
+  if (taxe) {
+    const charges = await lire(`bo_charge?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>Type_charge=eq.${encodeURIComponent("Taxe Foncière")}&limit=1`);
+    if (charges.length === 0) {
+      await inserer("bo_charge", `app_site_${ref}_tf`, {
+        IMMEUBLE: immeubleId, Type_charge: "Taxe Foncière",
+        total_an: taxe, recup_an: teom, non_recup_an: Math.max(0, taxe - (teom ?? 0)),
+        commentaire: "Déclarée par le vendeur sur le site", "Created Date": now, "Modified Date": now,
+      });
+    }
+  }
+  await rpc("bo_recompute_immeuble", { p_id: immeubleId });
+
+  /* Les notes : le commentaire du vendeur, et — si ses lots n'ont pas été
+     créés parce que l'agent en avait saisi — son état locatif en clair. */
+  const resume = resumeDossier(lotsSite, taxe, teom);
+  const detail = lotsSite.length && !lotsCrees
+    ? "\nLots déclarés (non créés : l'état locatif du BO a déjà des lots saisis par un agent) :\n"
+      + lotsSite.map((l, i) => {
+        const x = lotDuSite(l, i + 1);
+        return `- Lot ${x.numero} : ${[x.Type_lot ?? x.Destination, x.surface_carrez ?? x.surface_sol ? `${x.surface_carrez ?? x.surface_sol} m²` : null, x.Type_bail === "Vide" ? "libre" : `${x.Type_bail}${x.loyer ? `, ${eur(x.loyer)}/mois HC` : ""}`, x.Type_dpe ? `DPE ${x.Type_dpe}` : null].filter(Boolean).join(", ")}`;
+      }).join("\n")
+    : "";
+  await noterClient(immeubleId, [commentaire, `${resume}${detail}`].filter(Boolean).join("\n\n"));
+  const [s1] = await lire(`bo_suivi?select=id,data&id=eq.app_site_${ref}_s1`);
+  if (s1 && !String(s1.data.notes ?? "").includes(resume)) {
+    await rpc("bo_patch_doc", { p_table: "bo_suivi", p_id: s1.id, p_patch: { notes: `${String(s1.data.notes ?? "")}\n\n${resume}`.trim(), "Modified Date": now } });
+  }
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_le: now, "Modified Date": now } });
+  const contactId = T(im.data.PROPRIETAIRE);
+  if (contactId) await rattacher(contactId, cleCompte(b.compte));
+  return { deja: false, id: immeubleId };
+}
+
 /* ------------------------------------------------- Vendre / Estimer */
 
 const eur = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
@@ -276,7 +472,13 @@ async function geocoder(q: string) {
 }
 
 async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
-  const complement = b.etat === "complement";
+  /* Trois envois sous la même référence : le formulaire, son complément, et
+     l'état locatif du vendeur. Un état inconnu n'est pas « déjà reçu » : c'est
+     un envoi que le BO ne sait pas encore lire, donc un 503 (règle du 30/10). */
+  const etat = b.etat === undefined || b.etat === null || b.etat === "" ? "principal" : String(b.etat);
+  if (etat === "dossier") return recevoirDossier(ref, b);
+  if (etat !== "principal" && etat !== "complement") throw new LeadPasPret(`État d'estimation inconnu : ${etat.slice(0, 40)}`);
+  const complement = etat === "complement";
   const formulaire = b.formulaire === "estimer" ? "estimer" : "vendre";
   const source = formulaire === "estimer" ? "Site - Formulaire estimer" : "Site - Formulaire Vendre";
   const immeubleId = `app_site_${ref}`;
@@ -307,6 +509,7 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
         "Modified Date": new Date().toISOString(),
       }),
     });
+    await noterClient(immeubleId, ajout);
     /* Le complément rejoint le suivi du formulaire au lieu d'en ouvrir un
        second : la carte du tableau de bord affiche le DERNIER suivi, et elle
        doit continuer de montrer le message du propriétaire. */
@@ -339,6 +542,7 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
     await suiviFormulaire(suivi, {
       agentId: T(im?.data.AGENT) ?? agentId, contactId: T(im?.data.PROPRIETAIRE) ?? "", immeubleId, notes: texte,
     });
+    await noterClient(immeubleId, texte);
     return { deja: false, id: immeubleId };
   }
 
@@ -365,6 +569,7 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
     PROPRIETAIRE: contactId,
     source,
     form: texte,
+    notes: `${enTeteClient()}${texte}`,
     adresse_numero_rue: T(b.numero, 20),
     adresse_rue: rue,
     adresse_zipcode: cp,
@@ -531,7 +736,7 @@ async function contactDuCompte(b: Record<string, unknown>): Promise<{ compte: st
   if (!compte) throw new LeadInvalide("Clé de compte absente ou qui n'est pas un UUID.");
   const contactId = await contactParCompte(compte);
   // Erreur passagère (500) : le rattachement `compte` est peut-être encore dans la file du site.
-  if (!contactId) throw new Error("Compte pas encore rattaché à un contact.");
+  if (!contactId) throw new LeadPasPret("Compte pas encore rattaché à un contact.");
   return { compte, contactId };
 }
 
@@ -666,10 +871,9 @@ async function recevoirPrixProprietaire(ref: string, b: Record<string, unknown>)
   const im = await immeubleDuCompte(contactId, cle);
   const id = `app_site_${ref}`;
   if (await existe("bo_question", id)) return { deja: true, id };
-  await questionCompte(id, {
-    nature: "prix", contactId, immeubleId: im.id, source: "Site - Compte client",
-    message: `Prix souhaité par le propriétaire : ${eur(prix)}${T(b.message, 2000) ? `\n${T(b.message, 2000)}` : ""}`,
-  });
+  const message = `Prix souhaité par le propriétaire : ${eur(prix)}${T(b.message, 2000) ? `\n${T(b.message, 2000)}` : ""}`;
+  await questionCompte(id, { nature: "prix", contactId, immeubleId: im.id, source: "Site - Compte client", message });
+  await noterClient(im.id, message);
   return { deja: false, id };
 }
 
@@ -690,6 +894,8 @@ async function immeubleDuCompte(contactId: string, cle: string) {
 const CATEGORIES_PIECE: Record<string, string> = {
   titre: "Titre de propriété", baux: "Bail", diagnostics: "Diagnostic",
   taxe: "Taxe foncière", charges: "Charges / travaux", autre: "Pièce du propriétaire",
+  /* Point 3 du 30/10 : plans et photos, déposés avec le dossier vendeur. */
+  plans: "Plan", photos: "Photo",
 };
 /** Les formats acceptés, et le type qu'on leur donne au coffre. */
 const FORMATS: Record<string, string> = {
@@ -714,15 +920,40 @@ const nomSur = (name: string) =>
  * Le chemin vient du site mais ne peut viser que le dossier de CE compte.
  */
 async function recevoirDocument(ref: string, b: Record<string, unknown>) {
-  const { compte, contactId } = await contactDuCompte(b);
-  const cle = cleCompte(b.bien);
-  if (!cle) throw new LeadInvalide("Bien absent ou illisible.");
-  const im = await immeubleDuCompte(contactId, cle);
+  /* Deux portes. Avec `bien` : une pièce sur un immeuble du compte (lot 5).
+     Avec `estimation` (point 3 du 30/10) : une pièce du dossier vendeur,
+     rattachée à l'immeuble né de cette estimation, avant même qu'il paraisse
+     dans le compte — le vendeur n'est alors pas forcément connecté. */
+  const refEstimation = reference(b.estimation);
+  let compte: string | null;
+  let contactId: string;
+  let im: { id: string; data: Record<string, unknown> };
+  let prefixe: string;
+  if (refEstimation) {
+    const [trouve] = await lire(`bo_immeuble?select=id,data&id=eq.app_site_${refEstimation}`);
+    if (!trouve) {
+      if (await existe("bo_immeuble", `app_site_${refEstimation}`)) throw new LeadInvalide("L'immeuble de cette estimation a été supprimé dans le BO.");
+      throw new LeadPasPret("L'estimation de ce dossier n'est pas encore arrivée.");
+    }
+    im = trouve;
+    compte = cleCompte(b.compte);
+    contactId = T(im.data.PROPRIETAIRE) ?? "";
+    /* Le chemin ne peut viser que le dossier de CETTE estimation (ou du compte). */
+    prefixe = compte ?? String(b.estimation).trim().toLowerCase();
+  } else {
+    const c = await contactDuCompte(b);
+    compte = c.compte;
+    contactId = c.contactId;
+    const cle = cleCompte(b.bien);
+    if (!cle) throw new LeadInvalide("Bien (ou estimation) absent ou illisible.");
+    im = await immeubleDuCompte(contactId, cle);
+    prefixe = compte;
+  }
   const categorie = T(b.categorie, 40) ?? "autre";
   if (!(categorie in CATEGORIES_PIECE)) throw new LeadInvalide("Catégorie de pièce inconnue.");
   const chemin = T(b.chemin, 400);
-  if (!chemin || !chemin.startsWith(`${compte}/`) || chemin.includes("..") || chemin.includes("//")) {
-    throw new LeadInvalide("Chemin de pièce invalide : il doit commencer par la clé du compte.");
+  if (!chemin || !chemin.startsWith(`${prefixe}/`) || chemin.includes("..") || chemin.includes("//")) {
+    throw new LeadInvalide("Chemin de pièce invalide : il doit commencer par la clé du compte, ou par la référence de l'estimation.");
   }
   const nom = T(b.nom, 160) ?? chemin.split("/").pop()!;
   const ext = nom.split(".").pop()?.toLowerCase() ?? "";
@@ -754,16 +985,18 @@ async function recevoirDocument(ref: string, b: Record<string, unknown>) {
     IMMEUBLE: im.id,
     name: `${CATEGORIES_PIECE[categorie]} — ${nom}`,
     file_name: nom, path, format: FORMATS[ext], size_kB: Math.round(piece.taille / 1024),
-    source: "Site - Compte client",
-    site_compte: compte, site_categorie: categorie, site_cle: randomUUID(),
+    source: refEstimation ? "Site - Dossier vendeur" : "Site - Compte client",
+    site_compte: compte ?? undefined, site_categorie: categorie, site_cle: randomUUID(),
     "Created Date": now, "Modified Date": now,
   });
-  await suiviFormulaire(`app_site_${ref}_s1`, {
-    agentId: T(im.data.AGENT) ?? (await agentParDefaut()), contactId, immeubleId: im.id,
-    notes: `Pièce déposée par le propriétaire depuis son compte sur le site : ${CATEGORIES_PIECE[categorie]} — ${nom}. Rangée au coffre de l'immeuble.`,
-  });
+  if (contactId) {
+    await suiviFormulaire(`app_site_${ref}_s1`, {
+      agentId: T(im.data.AGENT) ?? (await agentParDefaut()), contactId, immeubleId: im.id,
+      notes: `Pièce déposée par le propriétaire ${refEstimation ? "avec son dossier vendeur" : "depuis son compte sur le site"} : ${CATEGORIES_PIECE[categorie]} — ${nom}. Rangée au coffre de l'immeuble.`,
+    });
+  }
   await effacerPieceDuSite(chemin);
-  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  if (contactId) after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
   return { deja: false, id };
 }
 
