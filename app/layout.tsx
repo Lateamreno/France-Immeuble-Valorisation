@@ -6,6 +6,7 @@ import { Burger } from "@/components/burger";
 import { getAgents } from "@/lib/bubble/server";
 import { QuickCreate } from "@/components/quick-create";
 import { RevueButton } from "@/components/revue";
+import { Sons } from "@/components/sons";
 import { listFeedbackOuverts } from "@/lib/bo/feedback";
 import { lireMode } from "@/lib/bo/mode";
 import { PastilleSalve, SalveRelancesProvider } from "@/components/salve-relances";
@@ -91,6 +92,8 @@ export default async function RootLayout({
             </div>
             {session.outrepasser && <RevueButton pins={await listFeedbackOuverts().catch(() => [])} />}
             <PastilleSalve />
+            {/* Caisse enregistreuse pour un formulaire, tintement pour un e-mail (MAV, 30/10). */}
+            <Sons />
           </div>
         </SalveRelancesProvider>
         </SessionProvider>

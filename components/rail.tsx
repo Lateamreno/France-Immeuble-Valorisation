@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BoutonSons } from "@/components/sons";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV, NAV_DECOUPE } from "@/lib/nav";
 import { changerMode } from "@/lib/bo/mode";
@@ -120,6 +121,7 @@ export function Rail({ mode = "bloc", direction = true, nom, connecte = false }:
         <form action={deconnecter} className="rail-moi">
           <span title={nom}>{nom ?? "Connecté"}</span>
           <Link href="/mot-de-passe">Mon mot de passe</Link>
+          <BoutonSons />
           <button type="submit">Se déconnecter</button>
         </form>
       )}
