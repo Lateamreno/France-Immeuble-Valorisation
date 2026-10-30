@@ -9,7 +9,7 @@
   "crons": [
     {
       "path": "/api/mails/releve",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/relances/tourner",
