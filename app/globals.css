@@ -9331,19 +9331,6 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* #577 : l'en-tête des notes n'est plus un bouton. */
 .brail-notes-h { cursor: default; }
 
-/* MAV, 30/10 : une seule colonne de loyer. Sur un lot vide, la case porte le
-   loyer potentiel, annoncé en petit en haut ; une cave ou un parking
-   rattaché n'a pas de loyer propre, sa case est grisée. */
-.ltable td.c-hc.pot { position: relative; background: rgba(169, 132, 47, .07); }
-.ltable td.c-hc.pot .pot-l {
-  position: absolute; top: 2px; left: 5px; font-size: 8.5px; line-height: 1;
-  letter-spacing: .05em; text-transform: uppercase; color: #a9842f; pointer-events: none;
-}
-.ltable td.c-hc.pot .lcell { padding-top: 7px; }
-.ltable td.c-hc.grise { background: rgba(20, 30, 40, .05); color: #b4b9be; text-align: center; }
-.ltable td.c-hc.up .lcell { color: #2e7d4f; }
-.ltable .ltot-pot { display: block; font-size: 10px; line-height: 1.1; color: #a9842f; font-weight: 400; }
-
 /* Le compte client V2 (30/10) : la messagerie agent ↔ client et les offres. */
 .cps-fil { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; margin: 4px 0 8px; }
 .cps-msg { max-width: 82%; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4; display: flex; flex-direction: column; gap: 2px; }
