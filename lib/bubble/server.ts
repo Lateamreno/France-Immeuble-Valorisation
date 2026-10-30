@@ -3812,7 +3812,9 @@ export type QuestionCard = {
   remarques?: string;
   date?: string;
   /** Lot 4 : ce qui vient d'un compte client du site, à traiter par l'agent du bien. */
-  nature?: "visite" | "interet" | "prix";
+  nature?: "visite" | "interet" | "prix" | "message" | "appel" | "rendez_vous" | "offre";
+  /** Une demande de rendez-vous depuis le compte du site (§13). */
+  rdv?: { date: string; creneau: string; objet: string; etat: string };
   /** Lot 3 du contrat site : la demande de dossier depuis une fiche à vendre. */
   demande?: {
     bienTitre?: string;
@@ -3887,7 +3889,11 @@ export async function listQuestionsBO(
       clos: q.ended === true,
       remarques: S2(q.remarques_cloture),
       date: typeof q["Created Date"] === "string" ? (q["Created Date"] as string) : undefined,
-      nature: q.nature === "visite" || q.nature === "interet" || q.nature === "prix" ? q.nature : undefined,
+      nature: ["visite", "interet", "prix", "message", "appel", "rendez_vous", "offre"].includes(String(q.nature))
+        ? (q.nature as QuestionCard["nature"]) : undefined,
+      rdv: q.nature === "rendez_vous" && typeof q.rdv_date === "string"
+        ? { date: q.rdv_date, creneau: String(q.rdv_creneau ?? ""), objet: String(q.rdv_objet ?? ""), etat: String(q.rdv_etat ?? "demande") }
+        : undefined,
       demande: q.demande_dossier === true
         ? {
             bienTitre: S2(q.bien_titre),

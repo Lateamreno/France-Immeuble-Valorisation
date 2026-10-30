@@ -21,6 +21,8 @@ export type VueCompte = {
   lignes: LignesCompte | null;
   /** Le fil des messages, lu dans le BO : il fait foi, même avant que le site
    *  ait sa table `compte_messages`. */
+  /** Le profil investisseur envoyé depuis le site (§13), tel que rangé sur la fiche. */
+  profil?: Record<string, unknown>;
   messages?: { id: string; de: "client" | "agent"; auteur?: string; texte: string; le: string; conversation: string; titre?: string; pieces: string[] }[];
 };
 
@@ -40,6 +42,8 @@ export async function voirCompteSite(contactId: string): Promise<VueCompte> {
     erreur: typeof c.data.site_compte_erreur === "string" ? c.data.site_compte_erreur : undefined,
     lignes: await lireCompteSurLeSite(compte),
     messages: (await lireMessages(contactId)),
+    profil: c.data.profil_investisseur && typeof c.data.profil_investisseur === "object"
+      ? (c.data.profil_investisseur as Record<string, unknown>) : undefined,
   };
 }
 

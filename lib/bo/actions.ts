@@ -6126,8 +6126,74 @@ export async function noterAppelDemande(questionId: string, notes: string, agent
   });
   await rpc("bo_patch_doc", { p_table: "bo_question", p_id: questionId, p_patch: { appele_le: now, appele_par: agentId } });
   await attribuerAuTraitant(questionId, agentId);
+  /* Demande du site (30/10) : « non encore appelé » = noté D. Le premier
+     appel le sort du D (en C : on ne fait que monter) ; son compte reçoit
+     alors l'agent attitré et l'accès aux biens off-market (compte_agent). */
+  const contactId = typeof q.CONTACT === "string" ? q.CONTACT : undefined;
+  if (contactId) {
+    const c = await bqOne("bo_contact", contactId).catch(() => null);
+    if (c) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_contact", p_id: contactId,
+        p_patch: {
+          appele_le: c.appele_le ?? now,
+          ...(c.Note === "D" ? { Note: "C", note_auto: { de: "D", motif: "appel", le: now } } : {}),
+        },
+      });
+    }
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(contactId).catch(() => undefined);
+      });
+    } catch { /* hors requête : la reprise de nuit redéposera */ }
+  }
   revalidatePath("/questions");
   if (immeubleId) refresh(immeubleId);
+}
+
+/**
+ * Un rendez-vous demandé depuis le compte du site (§13) : l'agent le confirme
+ * ou l'annule. La question se clôture, et l'état revient au client au dépôt
+ * (`compte_rendez_vous`).
+ */
+export async function repondreRendezVous(questionId: string, etat: "confirme" | "annule", agentId?: string) {
+  const q = await bqOne("bo_question", questionId);
+  if (!q || q.nature !== "rendez_vous") throw new Error("Demande de rendez-vous introuvable.");
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question", p_id: questionId,
+    p_patch: {
+      rdv_etat: etat, rdv_repondu_le: now, rdv_repondu_par: agentId ?? null,
+      ended: true, date_cloture: now, remarques_cloture: etat === "confirme" ? "Rendez-vous confirmé" : "Rendez-vous annulé",
+    },
+  });
+  if (agentId) await attribuerAuTraitant(questionId, agentId);
+  const contactId = typeof q.CONTACT === "string" ? q.CONTACT : undefined;
+  if (contactId) {
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(contactId).catch(() => undefined);
+      });
+    } catch { /* la reprise de nuit redéposera */ }
+  }
+  revalidatePath("/questions");
+}
+
+/**
+ * Le retour de visite pour le vendeur (demande du site, 30/10) : un texte
+ * écrit POUR lui — jamais le commentaire interne — et l'intérêt du visiteur.
+ * L'écrire, c'est la validation humaine : il part à son compte au dépôt.
+ */
+export async function noterRetourVendeur(
+  immeubleId: string, visiteId: string, interet: "faible" | "moyen" | "fort" | "", texte: string,
+) {
+  await rpc("bo_patch_doc", {
+    p_table: "bo_visite", p_id: visiteId,
+    p_patch: { commentaire_externe: texte.trim().slice(0, 2000) || null, interet_vendeur: interet || null },
+  });
+  refresh(immeubleId);
 }
 
 /** « Refuser » une demande de dossier : elle se clôture avec son motif. */
