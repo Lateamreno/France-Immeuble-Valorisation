@@ -311,7 +311,10 @@ function lotDuSite(l: Record<string, unknown>, rang: number) {
     Type_lot: t?.Type_lot,
     Etat: ETAT_SITE[etat],
     Type_bail,
+    /* MAV, 30/10 : le site n'a qu'une case de loyer. Lot vide : elle va au
+       potentiel. Lot loué : elle remplit l'actuel ET le potentiel. */
     loyer: libre ? undefined : N(l.loyerMensuelHC),
+    loyer_max: N(l.loyerMensuelHC),
     surface_carrez: auLot ? undefined : surface,
     surface_sol: auLot ? surface : undefined,
     Type_dpe: dpe && /^[A-G]$/.test(dpe) ? dpe : undefined,
@@ -321,10 +324,13 @@ function lotDuSite(l: Record<string, unknown>, rang: number) {
 
 /** Le dossier en une phrase, pour le suivi et les notes. */
 function resumeDossier(lots: Record<string, unknown>[], taxe?: number, teom?: number): string {
-  const loyers = lots.reduce((s, l) => s + (N(l.loyerMensuelHC) ?? 0), 0);
+  const libre = (l: Record<string, unknown>) => String(l.statut ?? "") === "libre";
+  const loyers = lots.reduce((s, l) => s + (libre(l) ? 0 : N(l.loyerMensuelHC) ?? 0), 0);
+  const potentiels = lots.reduce((s, l) => s + (libre(l) ? N(l.loyerMensuelHC) ?? 0 : 0), 0);
   return [
     `État locatif transmis par le vendeur : ${lots.length} lot${lots.length > 1 ? "s" : ""}`
-      + (loyers ? `, ${eur(loyers)} HC par mois (${eur(loyers * 12)} par an)` : ""),
+      + (loyers ? `, ${eur(loyers)} HC par mois (${eur(loyers * 12)} par an)` : "")
+      + (potentiels ? `, plus ${eur(potentiels)} HC par mois de loyer potentiel sur les lots vides` : ""),
     taxe ? `Taxe foncière : ${eur(taxe)} par an${teom ? `, dont ${eur(teom)} de TEOM récupérée sur les locataires` : ""}` : null,
   ].filter(Boolean).join(". ") + ".";
 }
@@ -396,7 +402,7 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
     ? "\nLots déclarés (non créés : l'état locatif du BO a déjà des lots saisis par un agent) :\n"
       + lotsSite.map((l, i) => {
         const x = lotDuSite(l, i + 1);
-        return `- Lot ${x.numero} : ${[x.Type_lot ?? x.Destination, x.surface_carrez ?? x.surface_sol ? `${x.surface_carrez ?? x.surface_sol} m²` : null, x.Type_bail === "Vide" ? "libre" : `${x.Type_bail}${x.loyer ? `, ${eur(x.loyer)}/mois HC` : ""}`, x.Type_dpe ? `DPE ${x.Type_dpe}` : null].filter(Boolean).join(", ")}`;
+        return `- Lot ${x.numero} : ${[x.Type_lot ?? x.Destination, x.surface_carrez ?? x.surface_sol ? `${x.surface_carrez ?? x.surface_sol} m²` : null, x.Type_bail === "Vide" ? `libre${x.loyer_max ? `, loyer potentiel ${eur(x.loyer_max)}/mois HC` : ""}` : `${x.Type_bail}${x.loyer ? `, ${eur(x.loyer)}/mois HC` : ""}`, x.Type_dpe ? `DPE ${x.Type_dpe}` : null].filter(Boolean).join(", ")}`;
       }).join("\n")
     : "";
   await noterClient(immeubleId, [commentaire, `${resume}${detail}`].filter(Boolean).join("\n\n"));
