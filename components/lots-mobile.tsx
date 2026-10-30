@@ -302,10 +302,12 @@ export function LotPleinEcran({
             {[...new Set([r.Type_bail, ...TYPES_BAIL])].filter(Boolean).map((o) => <option key={o}>{o}</option>)}
           </select>
         </Ligne>
-        <div className="lfs-l2">
-          <Champ2 label="Loyer HC actuel" suffixe="€" valeur={r.loyer} onChange={maj("loyer")} />
-          <Champ2 label="Loyer HC potentiel" suffixe="€" valeur={r.loyer_max} onChange={maj("loyer_max")} />
-        </div>
+        {/* MAV, 30/10 : une seule case de loyer, comme sur l'ordinateur — le
+            loyer d'un lot loué, le potentiel d'un lot vide. */}
+        {r.Type_bail === "Vide"
+          ? <Champ2 label="Loyer HC potentiel" suffixe="€" valeur={r.loyer_max || r.loyer}
+              onChange={(e) => { onChange(r.id, "loyer_max", e.target.value); if (r.loyer) onChange(r.id, "loyer", ""); }} />
+          : <Champ2 label="Loyer HC" suffixe="€" valeur={r.loyer} onChange={maj("loyer")} />}
 
         <div className="lfs-sec">État</div>
         <div className="lfs-l2">

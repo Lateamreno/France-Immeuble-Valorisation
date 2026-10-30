@@ -4,8 +4,9 @@
 // (saisie, acceptation/refus, compromis → vendu), réplique du BO.
 import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
-import { euros, S } from "@/lib/format";
+import { dmy, euros, S } from "@/lib/format";
 import { addOffre, addVisite, setOffreStatut, setVisiteStatut } from "@/lib/bo/actions";
+import { transmettreOffre } from "@/lib/bo/compte-site-actions";
 import { Modale, useQuestion } from "@/components/modale";
 
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -155,10 +156,25 @@ export function OffreActions({ b, o }: { b: BienData; o: Record<string, unknown>
   const immeubleId = String(b.im._id);
   const id = String(o._id);
   const st = S(o.Statut);
-  if (["Refusée", "Vendu"].includes(st)) return null;
+  /* V2 (MAV, 30/10) : l'agent transmet l'offre au vendeur, qui la voit sur
+     son compte du site — nom de l'acquéreur, date, validité, HAI, net vendeur,
+     honoraires et le document. Rien ne part sans ce geste. */
+  const transmise = !!S(o.site_transmise_le);
+  const [msg, setMsg] = useState<string | null>(null);
+  const transmettre = (
+    <button
+      className={`fadd${transmise ? " on" : ""}`} type="button" disabled={pending}
+      title={transmise ? `Transmise au vendeur le ${dmy(S(o.site_transmise_le))} — cliquer pour la retirer de son compte` : "Montrer cette offre au vendeur, sur son compte du site"}
+      onClick={() => start(async () => { setMsg((await transmettreOffre(immeubleId, id, !transmise)).message); })}
+    >{transmise ? "Transmise au vendeur ✓" : "Transmettre au vendeur"}</button>
+  );
+  if (["Refusée", "Vendu"].includes(st)) {
+    return <span className="mrow" style={{ gap: 4 }}>{transmettre}{msg && <i className="oa-msg">{msg}</i>}</span>;
+  }
   return (
     <>
       <span className="mrow" style={{ gap: 4 }}>
+        {transmettre}
         {["En cours", "Contre offre"].includes(st) && (
           <>
             <button className="fadd" type="button" disabled={pending} onClick={() => start(() => setOffreStatut(immeubleId, id, "Acceptée"))}>Accepter</button>
@@ -188,6 +204,7 @@ export function OffreActions({ b, o }: { b: BienData; o: Record<string, unknown>
         {["Compromis signé", "Vente prévue"].includes(st) && (
           <button className="fadd" type="button" disabled={pending} onClick={() => start(() => setOffreStatut(immeubleId, id, "Vendu"))}>Vendu ✓</button>
         )}
+        {msg && <i className="oa-msg">{msg}</i>}
       </span>
       {question}
     </>

@@ -807,7 +807,7 @@ const REPONSES: Record<string, { statut: string; libelle: string }> = {
 
 /** Une question à l'agent du bien : demande de visite, intérêt, prix du propriétaire. */
 async function questionCompte(id: string, p: {
-  nature: "visite" | "interet" | "prix"; contactId: string; immeubleId: string; message: string; source: string;
+  nature: "visite" | "interet" | "prix" | "message"; contactId: string; immeubleId: string; message: string; source: string;
 }) {
   if (await existe("bo_question", id)) return;
   const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(p.contactId)}`);
@@ -820,7 +820,7 @@ async function questionCompte(id: string, p: {
     message: p.message,
     email: T(c?.data.email),
     "téléphone": T(c?.data.portable) ?? T(c?.data.fixe),
-    IMMEUBLE: p.immeubleId,
+    IMMEUBLE: p.immeubleId || undefined,
     CONTACT: p.contactId,
     "Created Date": now,
     "Modified Date": now,
@@ -959,6 +959,12 @@ async function recevoirDocument(ref: string, b: Record<string, unknown>) {
   const ext = nom.split(".").pop()?.toLowerCase() ?? "";
   if (!FORMATS[ext]) throw new LeadInvalide(`Format refusé (.${ext}) : PDF, image, Word, Excel ou OpenDocument.`);
 
+  /* MAV, 30/10 : les photos du dossier vendeur vont directement dans l'onglet
+     Photos (un PDF étiqueté « photos » reste une pièce du coffre). */
+  if (categorie === "photos" && FORMATS[ext].startsWith("image/")) {
+    return recevoirPhoto(ref, chemin, nom, im.id, contactId, compte, !!refEstimation);
+  }
+
   const id = `app_site_${ref}_d`;
   if (await existe("bo_app_document", id)) {
     // Déjà rangée : on retente seulement l'effacement côté site.
@@ -1000,6 +1006,164 @@ async function recevoirDocument(ref: string, b: Record<string, unknown>) {
   return { deja: false, id };
 }
 
+/**
+ * Une photo du propriétaire, rangée dans l'onglet Photos comme celles d'un
+ * agent : redressée, réduite et convertie en JPEG (HEIC compris). Elle arrive
+ * « À classer » et hors du dossier de vente : c'est l'agent qui la regarde,
+ * la rattache (façade, communes, lot) et décide de la montrer.
+ */
+async function recevoirPhoto(
+  ref: string, chemin: string, nom: string, immeubleId: string,
+  contactId: string, compte: string | null, avecDossier: boolean,
+) {
+  const id = `app_site_${ref}_p`;
+  if (await existe("bo_photo", id)) {
+    await effacerPieceDuSite(chemin);
+    return { deja: true, id };
+  }
+  const piece = await lirePieceDuSite(chemin);
+  if (!piece) throw new Error("Photo introuvable dans le seau du site, ou site injoignable.");
+  if (piece.taille === 0 || piece.taille > TAILLE_MAX) throw new LeadInvalide("Fichier vide ou de plus de 25 Mo.");
+  if (!BO_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente.");
+
+  const ext = nom.split(".").pop()?.toLowerCase() ?? "";
+  const { versWeb } = await import("@/lib/bo/images");
+  let web: Awaited<ReturnType<typeof versWeb>>;
+  try {
+    web = await versWeb(new File([new Uint8Array(piece.octets)], nom, { type: FORMATS[ext] }));
+  } catch (e) {
+    throw new LeadInvalide(`Photo illisible : ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const base = `photos/${immeubleId}/${id}-${nomSur(nom).replace(/\.[^.]+$/, "")}`;
+  for (const [suffixe, octets] of [["", web.pleine], ["-min", web.vignette]] as const) {
+    const up = await fetch(`${BO_URL}/storage/v1/object/bo-files/${base}${suffixe}.jpg`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BO_KEY}`, "Content-Type": "image/jpeg", "x-upsert": "true" },
+      body: new Uint8Array(octets),
+      cache: "no-store",
+    });
+    if (!up.ok) throw new Error(`Photos ${up.status} : ${(await up.text()).slice(0, 200)}`);
+  }
+
+  const now = new Date().toISOString();
+  await inserer("bo_photo", id, {
+    IMMEUBLE: immeubleId,
+    image: `storage:${base}.jpg`, compressed: `storage:${base}-min.jpg`,
+    format: "image/jpeg", largeur: web.largeur, hauteur: web.hauteur,
+    size_kB: Math.round(web.pleine.length / 1024),
+    order: 999, show_in_doss: false, show_in_ann: false, show_in_est: false,
+    source: avecDossier ? "Site - Dossier vendeur" : "Site - Compte client",
+    file_name: nom, site_compte: compte ?? undefined,
+    date: now, "Created Date": now, "Modified Date": now,
+  });
+  if (contactId) {
+    const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(immeubleId)}`);
+    await suiviFormulaire(`app_site_${ref}_s1`, {
+      agentId: T(im?.data.AGENT) ?? (await agentParDefaut()), contactId, immeubleId,
+      notes: `Photo déposée par le propriétaire ${avecDossier ? "avec son dossier vendeur" : "depuis son compte sur le site"} : ${nom}. Rangée dans l'onglet Photos, à classer.`,
+    });
+  }
+  await effacerPieceDuSite(chemin);
+  if (contactId) after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  return { deja: false, id };
+}
+
+/**
+ * `message` (V2, MAV 30/10 : « ok pour construire cela ») : le client écrit à
+ * son agent depuis son compte. Le message entre au suivi du contact (et de
+ * l'immeuble visé), dans les notes de l'immeuble, et dans les Questions de
+ * l'agent jusqu'à ce qu'il réponde depuis le panneau « Son compte sur le site ».
+ * La réponse revient au client par le dépôt (`compte_messages`).
+ */
+async function recevoirMessage(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const texte = T(b.texte, 5000) ?? T(b.message, 5000);
+  if (!texte) throw new LeadInvalide("Message vide.");
+  const id = `app_site_${ref}`;
+  if (await existe("bo_suivi", id)) return { deja: true, id };
+  /* Le bien visé, s'il y en a un : un immeuble du compte (propriétaire) ou un
+     bien qu'on lui a proposé (acquéreur) — jamais un autre, c'est le BO qui
+     vérifie sur ses fiches. */
+  let immeubleId: string | undefined;
+  const cleBien = cleCompte(b.bien);
+  const cleProposition = cleCompte(b.proposition);
+  if (cleBien) immeubleId = (await immeubleDuCompte(contactId, cleBien)).id;
+  else if (cleProposition) {
+    const [p] = await lire(`bo_proposition?select=id,data&data->>site_cle=eq.${cleProposition}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&limit=1`);
+    if (!p) throw new LeadInvalide("Proposition inconnue pour ce compte.");
+    immeubleId = T(p.data.IMMEUBLE);
+  }
+  const [im] = immeubleId ? await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(immeubleId)}`) : [];
+  /* Plusieurs conversations par client, nommées (demande du site, 30/10) :
+     sans clé de conversation, le message ouvre la sienne. */
+  /* La clé est rendue au site telle qu'il l'a envoyée (UUID avec tirets). */
+  const conversation = reference(b.conversation)
+    ? String(b.conversation).trim().toLowerCase()
+    : String(b.ref).trim().toLowerCase();
+  const titre = T(b.titre, 120);
+  /* Les pièces jointes : posées par le site dans son seau, sous le dossier du
+     compte ; le BO les rapatrie (au coffre de l'immeuble s'il y en a un) puis
+     les efface du site, comme les pièces du §10. */
+  const listePieces = Array.isArray(b.pieces) ? (b.pieces as unknown[]).slice(0, 5) : [];
+  const pieces: { nom: string; path: string }[] = [];
+  for (const [i, x] of listePieces.entries()) {
+    const pj = (x ?? {}) as Record<string, unknown>;
+    const chemin = T(pj.chemin, 400);
+    if (!chemin || !chemin.startsWith(`${cleCompte(b.compte)}/`) || chemin.includes("..")) throw new LeadInvalide("Chemin de pièce jointe invalide.");
+    const nom = T(pj.nom, 160) ?? chemin.split("/").pop()!;
+    const ext = nom.split(".").pop()?.toLowerCase() ?? "";
+    if (!FORMATS[ext]) throw new LeadInvalide(`Format de pièce jointe refusé (.${ext}).`);
+    const piece = await lirePieceDuSite(chemin);
+    if (!piece) throw new Error("Pièce jointe introuvable dans le seau du site, ou site injoignable.");
+    if (piece.taille === 0 || piece.taille > TAILLE_MAX) throw new LeadInvalide("Pièce jointe vide ou de plus de 25 Mo.");
+    if (!BO_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente.");
+    const path = `${immeubleId ? `documents/${immeubleId}` : `messages/${contactId}`}/${ref}-${i}-${nomSur(nom)}`;
+    const up = await fetch(`${BO_URL}/storage/v1/object/bo-files/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BO_KEY}`, "Content-Type": FORMATS[ext], "x-upsert": "true" },
+      body: new Uint8Array(piece.octets), cache: "no-store",
+    });
+    if (!up.ok) throw new Error(`Coffre ${up.status} : ${(await up.text()).slice(0, 200)}`);
+    pieces.push({ nom, path });
+    if (immeubleId && !(await existe("bo_app_document", `${id}_pj${i}`))) {
+      const maintenant = new Date().toISOString();
+      await inserer("bo_app_document", `${id}_pj${i}`, {
+        IMMEUBLE: immeubleId, name: `Message du client — ${nom}`, file_name: nom, path, format: FORMATS[ext],
+        size_kB: Math.round(piece.taille / 1024), source: "Site - Message du client",
+        site_compte: cleCompte(b.compte) ?? undefined, site_categorie: "autre", site_cle: randomUUID(),
+        "Created Date": maintenant, "Modified Date": maintenant,
+      });
+    }
+  }
+  const now = new Date().toISOString();
+  await inserer("bo_suivi", id, {
+    Type: "Message",
+    AGENT: T(im?.data.AGENT),
+    CONTACT: contactId,
+    IMMEUBLEs: immeubleId ? [immeubleId] : [],
+    Canals: ["Site"],
+    notes: texte,
+    Statut: "Traité",
+    site_message: "client",
+    site_conversation: conversation,
+    site_titre: titre,
+    site_pieces: pieces.length ? pieces : undefined,
+    date_start: now,
+    "Created Date": now,
+    "Modified Date": now,
+  });
+  if (immeubleId) await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
+  await rpc("bo_append_ref", { p_table: "bo_contact", p_id: contactId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
+  await questionCompte(`${id}_q`, {
+    nature: "message", contactId, immeubleId: immeubleId ?? "", source: "Site - Compte client",
+    message: texte,
+  });
+  if (immeubleId && cleBien) await noterClient(immeubleId, texte);
+  for (const pj of listePieces) await effacerPieceDuSite(String((pj as Record<string, unknown>).chemin));
+  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  return { deja: false, id };
+}
+
 /** `compte_supprime` : le BO efface ses dépôts et retire la clé ; le contact reste. */
 async function recevoirCompteSupprime(_ref: string, b: Record<string, unknown>) {
   const compte = cleCompte(b.compte);
@@ -1030,6 +1194,7 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "prix_proprietaire": return recevoirPrixProprietaire(ref, b);
     case "compte_supprime": return recevoirCompteSupprime(ref, b);
     case "document": return recevoirDocument(ref, b);
+    case "message": return recevoirMessage(ref, b);
     default: throw new LeadInvalide(`Type de formulaire inconnu : ${String(b.type).slice(0, 40)}`);
   }
 }

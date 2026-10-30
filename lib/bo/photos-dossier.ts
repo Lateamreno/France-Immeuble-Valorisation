@@ -59,7 +59,10 @@ export function selectionDossier<T extends PhotoDossier>(
   if (cochees.length > 0) {
     return { retenues: cochees.slice(0, MAX_PHOTOS_DOSSIER), auto: false };
   }
-  return { retenues: eligibles.slice(0, MAX_PHOTOS_DOSSIER), auto: true };
+  /* Une photo « à classer » (sans type, comme celles qu'un propriétaire dépose
+     depuis le site, 30/10) n'entre pas d'office : personne ne l'a encore
+     regardée. Elle reste cochable à la main. */
+  return { retenues: eligibles.filter((p) => p.type).slice(0, MAX_PHOTOS_DOSSIER), auto: true };
 }
 
 /** Le nombre de pages de photos qu'imprimera le dossier : 0, 1 ou 2. */
