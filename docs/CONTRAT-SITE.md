@@ -666,6 +666,7 @@ préfixe, comme vous l'avez prévu.
 
 | Table | Colonnes déposées |
 |---|---|
+| `compte_biens` (ajout) | `mandat_le`, `offre_acceptee_le`, `compromis_le`, `acte_le` (date, nullables) — §13.2 ter |
 | `compte_rendez_vous` | `date` (date), `creneau` (text), `objet` (text), `etat` (`demande` / `confirme` / `annule`), `bien_cle` (uuid, nullable : seulement pour un immeuble du propriétaire), `maj_le` |
 | `compte_mandats` | `bien_cle`, `etat` (`envoye` / `signe`), `signe_le` (date, nullable), `document` (text, nullable : `<compte>/mandats/<cle>.pdf`), `maj_le` |
 | `compte_visites` | `bien_cle`, `visite_le` (date), `etat` (`confirmee` / `effectuee`), `retour` (text, nullable), `interet` (`faible` / `moyen` / `fort`, nullable), `maj_le` |
@@ -682,16 +683,43 @@ préfixe, comme vous l'avez prévu.
 - **Dossiers** : le dossier de présentation tel qu'il est parti par e-mail,
   pour un bien encore en vente seulement.
 
-### 13.2 Prévenir le site après un dépôt
+### 13.2 Prévenir le site après un dépôt (validé par MAV le 30/10)
 
-Le BO ne détient pas le secret du cron du site et préfère ne pas le détenir :
-**passez par le déclencheur dans votre base** (une ligne `de = 'agent'` dans
-`compte_messages`, une nouvelle ligne dans `compte_propositions` ou dans
-`compte_offres`). C'est aussi plus juste : le dépôt est la seule chose qui
-compte, quelle que soit la route qui l'a fait.
+Après chaque dépôt d'un compte, le BO compare les clés des lignes `de =
+'agent'` de `compte_messages`, de `compte_propositions` et de `compte_offres`
+à celles du dépôt précédent ; s'il y en a une nouvelle, il appelle
+`POST https://www.france-immeuble.fr/api/compte/avis/` avec
+`Authorization: Bearer <AVIS_SECRET>` (secret à part, posé par MAV dans les
+deux projets). Au tout premier dépôt d'un compte, le BO pose l'empreinte sans
+appeler. Une panne de la route ne bloque jamais le dépôt.
 
-### 13.3 Repères du secteur
+### 13.2 bis `coordonnees` (site → BO, 31/10)
 
-Pas pour ce lot. Le BO a les repères de 13 209 communes (`bo_villes_stats`) ;
-avant de les déposer dans `web.stats_villes`, il faut la liste exacte des
-colonnes que vous lisez.
+```json
+{ "type": "coordonnees", "ref": "<uuid>", "compte": "<uuid>",
+  "prenom": "…", "nom": "…", "telephone": "…", "email": "…",
+  "ancien_email": "<seulement si l'adresse a changé>" }
+```
+La fiche contact prend les nouvelles valeurs (téléphone dans « portable ») ;
+une ancienne adresse reste notée sur la fiche, pour qu'une réponse à un vieux
+message retrouve la personne. L'historique du contact dit ce qui a changé.
+503 tant que le compte n'est pas rattaché ; 422 si l'e-mail est illisible.
+
+### 13.2 ter Dates de la frise, sur `compte_biens`
+
+`mandat_le` (signature du mandat le plus récent), `offre_acceptee_le`,
+`compromis_le`, `acte_le` (date, nullables), tirés de l'offre la plus avancée
+du bien. Le BO note le jour d'acceptation d'une offre depuis le 31/10 ; pour
+une offre acceptée avant, la date est celle de sa dernière modification.
+
+### 13.3 Estimation détaillée et repères du secteur
+
+Pas pour ce lot. Une estimation du BO porte une valeur, pas de fourchette :
+`valeur_basse`, `valeur_haute`, `loyer_marche`, `delai_jours` et
+`compte_comparables` restent à construire avec MAV (d'où tirer la fourchette,
+quelles ventes servent de comparables). Le BO a les repères de 13 209
+communes (`bo_villes_stats`) ; avant de les déposer dans `web.stats_villes`,
+il faut la liste exacte des colonnes que vous lisez.
+
+**Photo de l'agent** : `agent_photo` reste l'adresse https publique de la
+photo ; une nouvelle photo a une nouvelle adresse.
