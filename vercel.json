@@ -2,5 +2,22 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "buildCommand": "next build",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "regions": [
+    "dub1"
+  ],
+  "crons": [
+    {
+      "path": "/api/mails/releve",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/relances/tourner",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/site/tourner",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

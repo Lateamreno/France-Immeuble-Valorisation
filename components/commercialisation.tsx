@@ -1,0 +1,259 @@
+"use client";
+
+// Commercialisation — visites (programmer, REX, annulation) et offres
+// (saisie, acceptation/refus, compromis → vendu), réplique du BO.
+import { useState, useTransition } from "react";
+import type { BienData } from "@/lib/bubble/server";
+import { dmy, euros, S } from "@/lib/format";
+import { addOffre, addVisite, noterRetourVendeur, setOffreStatut, setVisiteStatut } from "@/lib/bo/actions";
+import { transmettreOffre } from "@/lib/bo/compte-site-actions";
+import { Modale, useQuestion } from "@/components/modale";
+
+const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
+
+/* ---------- Visites ---------- */
+
+export function AddVisiteButton({ b }: { b: BienData }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [date, setDate] = useState("");
+  const [heure, setHeure] = useState("14:00");
+  const [visiteur, setVisiteur] = useState("");
+  const [comment, setComment] = useState("");
+  return (
+    <>
+      <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Programmer une visite</button>
+      {open && (
+        <Modale
+          titre="Programmer une visite" onFermer={() => setOpen(false)} fermeDehors={false}
+          pied={
+            <button
+              className="kgo" type="button" disabled={pending || !date}
+              style={pending || !date ? { opacity: 0.5 } : undefined}
+              onClick={() =>
+                start(async () => {
+                  await addVisite(String(b.im._id), String(b.im.AGENT ?? ""), {
+                    date: `${date}T${heure || "14:00"}:00`,
+                    visiteur: visiteur || undefined,
+                    commentaire_interne: comment || undefined,
+                    source: "BO",
+                  });
+                  setOpen(false);
+                })
+              }
+            ><span className="ch">›</span> Programmer la visite</button>
+          }
+        >
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <label style={{ fontSize: 12 }}>Date <input className="min" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+            <label style={{ fontSize: 12 }}>Heure <input className="min" type="time" value={heure} onChange={(e) => setHeure(e.target.value)} /></label>
+          </div>
+          <span className="mlab">Visiteur</span>
+          <input className="min" placeholder="Nom du visiteur / acquéreur" value={visiteur} onChange={(e) => setVisiteur(e.target.value)} />
+          <span className="mlab">Commentaire interne</span>
+          <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+        </Modale>
+      )}
+    </>
+  );
+}
+
+export function VisiteActions({ b, v }: { b: BienData; v: Record<string, unknown> }) {
+  const [pending, start] = useTransition();
+  const { saisir, question } = useQuestion();
+  const immeubleId = String(b.im._id);
+  const id = String(v._id);
+  const st = S(v.Statut);
+  if (st === "Annulée") return null;
+  if (st === "Effectuée") return <RetourVendeur b={b} v={v} />;
+  return (
+    <>
+      <span className="mrow" style={{ gap: 4 }}>
+        <button
+          className="fadd" type="button" disabled={pending}
+          onClick={async () => {
+            /* Un REX vide, ou la fenêtre refermée, marque quand même la visite
+               effectuée : c'est le statut qui compte, le compte rendu est en plus. */
+            const rex = (await saisir("Retour d'expérience (REX) de la visite ?", { multiligne: true })) ?? "";
+            start(() => setVisiteStatut(immeubleId, id, "Effectuée", { rex_fi: rex || undefined }));
+          }}
+        >Effectuée</button>
+        <button
+          className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+          onClick={async () => {
+            const motif = await saisir("Motif de l'annulation ?", { oui: "Annuler la visite" });
+            if (motif === null) return;
+            start(() => setVisiteStatut(immeubleId, id, "Annulée", { motif_annulation: motif || undefined }));
+          }}
+        >Annuler</button>
+      </span>
+      {question}
+    </>
+  );
+}
+
+/**
+ * Le retour de visite pour le vendeur (compte client V2, 30/10) : écrit POUR
+ * lui, sans nom ni société du visiteur — le REX reste interne. Il paraît sur
+ * son compte du site dès qu'il est enregistré.
+ */
+function RetourVendeur({ b, v }: { b: BienData; v: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [interet, setInteret] = useState(S(v.interet_vendeur));
+  const [texte, setTexte] = useState(S(v.commentaire_externe));
+  const fait = !!S(v.commentaire_externe) || !!S(v.interet_vendeur);
+  return (
+    <>
+      <button className={`fadd${fait ? " on" : ""}`} type="button" onClick={() => setOpen(true)}
+        title="Ce que le vendeur lira sur son compte du site">
+        {fait ? "Retour au vendeur ✓" : "Retour au vendeur"}
+      </button>
+      {open && (
+        <Modale titre="Retour de visite pour le vendeur" onFermer={() => setOpen(false)} className="etroit"
+          pied={
+            <button className="fadd" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                await noterRetourVendeur(String(b.im._id), String(v._id), interet as "faible" | "moyen" | "fort" | "", texte);
+                setOpen(false);
+              })}>Enregistrer</button>
+          }>
+          <p className="mhint">
+            Le vendeur le lira sur son compte du site. N&apos;y mettez ni le nom ni la société du visiteur :
+            le compte rendu interne (REX) reste dans le BO.
+          </p>
+          <span className="mlab">Intérêt du visiteur</span>
+          <select className="min" value={interet} onChange={(e) => setInteret(e.target.value)}>
+            <option value="">Non précisé</option>
+            <option value="faible">Faible</option>
+            <option value="moyen">Moyen</option>
+            <option value="fort">Fort</option>
+          </select>
+          <span className="mlab">Retour</span>
+          <textarea className="min" rows={4} value={texte} onChange={(e) => setTexte(e.target.value)}
+            placeholder="Ex. : visite attentive, apprécie l'emplacement, réserve sur les travaux de toiture." />
+        </Modale>
+      )}
+    </>
+  );
+}
+
+/* ---------- Offres ---------- */
+
+export function AddOffreButton({ b }: { b: BienData }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [acheteur, setAcheteur] = useState("");
+  const [nv, setNv] = useState("");
+  const [honos, setHonos] = useState("");
+  const [expiration, setExpiration] = useState("");
+  const [comment, setComment] = useState("");
+  const vNv = parse(nv) ?? 0;
+  const vHonos = parse(honos);
+  return (
+    <>
+      <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Ajouter une offre</button>
+      {open && (
+        <Modale
+          titre="Nouvelle offre" onFermer={() => setOpen(false)} fermeDehors={false}
+          pied={
+            <button
+              className="kgo" type="button" disabled={pending || vNv <= 0}
+              style={pending || vNv <= 0 ? { opacity: 0.5 } : undefined}
+              onClick={() =>
+                start(async () => {
+                  await addOffre(String(b.im._id), {
+                    acheteur: acheteur || undefined,
+                    prix_nv: vNv,
+                    honos_ht: vHonos,
+                    date_expiration: expiration || undefined,
+                    commentaire: comment || undefined,
+                    source: "BO",
+                  });
+                  setOpen(false);
+                })
+              }
+            ><span className="ch">›</span> Ajouter l&apos;offre</button>
+          }
+        >
+          <span className="mlab">Acheteur</span>
+          <input className="min" placeholder="Nom de l'acquéreur" value={acheteur} onChange={(e) => setAcheteur(e.target.value)} />
+          <span className="mlab">Montant</span>
+          <div className="mrow" style={{ alignItems: "center" }}>
+            <label style={{ fontSize: 12 }}>Net vendeur € <input className="min" style={{ width: 110 }} value={nv} onChange={(e) => setNv(e.target.value)} /></label>
+            <label style={{ fontSize: 12 }}>Honoraires HT € <input className="min" style={{ width: 100 }} value={honos} onChange={(e) => setHonos(e.target.value)} /></label>
+            {vNv > 0 && vHonos !== undefined && (
+              <span style={{ fontSize: 12.5 }}>= <b>{euros(vNv + Math.round(vHonos * 1.2))} HAI</b> (TTC)</span>
+            )}
+          </div>
+          <div className="mrow" style={{ marginTop: 8, alignItems: "center" }}>
+            <label style={{ fontSize: 12 }}>Expire le <input className="min" type="date" value={expiration} onChange={(e) => setExpiration(e.target.value)} /></label>
+          </div>
+          <span className="mlab">Commentaire</span>
+          <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+        </Modale>
+      )}
+    </>
+  );
+}
+
+export function OffreActions({ b, o }: { b: BienData; o: Record<string, unknown> }) {
+  const [pending, start] = useTransition();
+  const { saisir, question } = useQuestion();
+  const immeubleId = String(b.im._id);
+  const id = String(o._id);
+  const st = S(o.Statut);
+  /* V2 (MAV, 30/10) : l'agent transmet l'offre au vendeur, qui la voit sur
+     son compte du site — nom de l'acquéreur, date, validité, HAI, net vendeur,
+     honoraires et le document. Rien ne part sans ce geste. */
+  const transmise = !!S(o.site_transmise_le);
+  const [msg, setMsg] = useState<string | null>(null);
+  const transmettre = (
+    <button
+      className={`fadd${transmise ? " on" : ""}`} type="button" disabled={pending}
+      title={transmise ? `Transmise au vendeur le ${dmy(S(o.site_transmise_le))} — cliquer pour la retirer de son compte` : "Montrer cette offre au vendeur, sur son compte du site"}
+      onClick={() => start(async () => { setMsg((await transmettreOffre(immeubleId, id, !transmise)).message); })}
+    >{transmise ? "Transmise au vendeur ✓" : "Transmettre au vendeur"}</button>
+  );
+  if (["Refusée", "Vendu"].includes(st)) {
+    return <span className="mrow" style={{ gap: 4 }}>{transmettre}{msg && <i className="oa-msg">{msg}</i>}</span>;
+  }
+  return (
+    <>
+      <span className="mrow" style={{ gap: 4 }}>
+        {transmettre}
+        {["En cours", "Contre offre"].includes(st) && (
+          <>
+            <button className="fadd" type="button" disabled={pending} onClick={() => start(() => setOffreStatut(immeubleId, id, "Acceptée"))}>Accepter</button>
+            <button
+              className="fadd" type="button" disabled={pending} style={{ color: "var(--red)", borderColor: "#e6b3b3" }}
+              onClick={async () => {
+                const motif = await saisir("Motif du refus ?", { oui: "Refuser l'offre" });
+                if (motif === null) return;
+                start(() => setOffreStatut(immeubleId, id, "Refusée", { motif_refus: motif || undefined }));
+              }}
+            >Refuser</button>
+          </>
+        )}
+        {st === "Acceptée" && (
+          <button
+            className="fadd" type="button" disabled={pending}
+            onClick={async () => {
+              const date = await saisir("Date du compromis (AAAA-MM-JJ) ?", { placeholder: "AAAA-MM-JJ", obligatoire: true });
+              if (!date) return;
+              start(() => setOffreStatut(immeubleId, id, "Compromis programmé", { date_compromis: date }));
+            }}
+          >Programmer le compromis</button>
+        )}
+        {st === "Compromis programmé" && (
+          <button className="fadd" type="button" disabled={pending} onClick={() => start(() => setOffreStatut(immeubleId, id, "Compromis signé"))}>Compromis signé</button>
+        )}
+        {["Compromis signé", "Vente prévue"].includes(st) && (
+          <button className="fadd" type="button" disabled={pending} onClick={() => start(() => setOffreStatut(immeubleId, id, "Vendu"))}>Vendu ✓</button>
+        )}
+        {msg && <i className="oa-msg">{msg}</i>}
+      </span>
+      {question}
+    </>
+  );
+}

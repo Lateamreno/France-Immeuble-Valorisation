@@ -1,0 +1,690 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { KBloc, KCard, KCol } from "@/lib/data/dashboard";
+import {
+  addSuivi, archiverImmeuble, mettreEnAttente, reactiver, reculerStatut, setStatut,
+  transfererImmeuble,
+} from "@/lib/bo/actions";
+import { SuiviModal } from "@/components/suivi-modal";
+import { Modale } from "@/components/modale";
+import { Facade } from "@/components/facade";
+import { VignetteContact } from "@/components/vignette-contact";
+import {
+  ModaleArchivage, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
+} from "@/components/dashboard-modales";
+import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
+
+const COL_IC: Record<KCol["icon"], React.ReactNode> = {
+  form: <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1.6 3v2.4h5V7h-5zm7 .4v1.6h5.8V7.4h-5.8zM5.6 11.6v1.6h12.2v-1.6H5.6zm0 3.6V17h12.2v-1.8H5.6z" />,
+  building: <path d="M5 2h11a1 1 0 0 1 1 1v18h3v2H4v-2h1V3a1 1 0 0 1 0-1zm2.5 3v2h2V5h-2zm4 0v2h2V5h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-2 3.8V21h4v-5h-4z" />,
+  flame: <><path d="M12 3c1 3-3 4.5-3 8a3 3 0 0 0 6 0c0-1.5-.8-2.5-.8-2.5S17 10 17 13a5 5 0 0 1-10 0c0-4.5 4-6 5-10z" /></>,
+  pdf: <><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></>,
+  spread: <><path d="M12 3v7M12 10l-6 8M12 10l6 8" /><circle cx="12" cy="3" r="1.6" /><circle cx="6" cy="19" r="1.6" /><circle cx="18" cy="19" r="1.6" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" /></>,
+  tool: <><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></>,
+  bank: <><path d="M3 9l9-5 9 5M5 9v9M9.5 9v9M14.5 9v9M19 9v9M3 20h18" /></>,
+  flag: <><path d="M5 3v18M5 4h12l-2.5 3.5L17 11H5" /></>,
+};
+
+const BLOC_IC: Record<KBloc["icon"], React.ReactNode> = {
+  in: <><path d="M14 4h6v16h-6M3 12h11M10 8l4 4-4 4" /></>,
+  megaphone: <><path d="M3 10v4l4 .8V9.2zM7 9l11-5v16l-11-5" /><path d="M8 15l1 5h3l-.8-4.6" /></>,
+  flag: <><path d="M4 21V4" /><path d="M4 5c3-2 6 1 9 0s5-1 7 0v9c-2-1-4-1-7 0s-6 2-9 0" /></>,
+};
+
+/** « 9,6 % » — la précision des pastilles de rendement. */
+const pct = (v: number) => `${v.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+
+/* Retour #561 : la carte est aussi celle de l'écran Immeubles — un seul
+   objet, modifié ici, partout. */
+export function Card({
+  c, mock, agents = [], peutTransferer = true,
+}: {
+  c: KCard; mock?: boolean;
+  agents?: { id: string; name: string }[];
+  /** Un agent ne transfère que ses propres biens ; l'admin transfère tout. */
+  peutTransferer?: boolean;
+}) {
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  const [suiviOpen, setSuiviOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [hist, setHist] = useState(false);
+  const [moyen, setMoyen] = useState(false);
+  const [transfert, setTransfert] = useState(false);
+  const [refus, setRefus] = useState<string | null>(null);
+  const [archivage, setArchivage] = useState(false);
+  const [attente, setAttente] = useState(false);
+  const [note, setNote] = useState(false);
+  const [desc, setDesc] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [menu]);
+
+  // « Contacté » : on demande d'abord par quel moyen le contact a été joint
+  // (statistiques), puis on avance le statut et on ouvre la fiche sur l'état
+  // locatif pour enchaîner l'estimation (retours MAV #5 et #25).
+  // Annuler ne déclenche aucune action et ne navigue nulle part (#28).
+  const onAction = () => {
+    if (mock || pending || !c.action) return;
+    if (c.action.kind !== "green" && c.action.next === 2) { setMoyen(true); return; }
+    startTransition(async () => {
+      if (c.action!.kind === "green") await reactiver(c.id);
+      else if (c.action!.next) await setStatut(c.id, c.action!.next);
+    });
+  };
+
+  const confirmerMoyen = (m: string) => {
+    setMoyen(false);
+    startTransition(async () => {
+      await addSuivi({ immeubleId: c.id, agentId: "", contactId: c.contactId, canaux: [m], notes: "" });
+      await setStatut(c.id, c.action!.next!);
+      router.push(`/bien/${c.id}?section=locatif`);
+    });
+  };
+  /* La carte de la capture de MAV (26/10) : photo carrée toute hauteur,
+     ville + département + statut, prix (ou téléphone) + client, trois
+     vignettes, puis le suivi. Chaque ligne tient sur une ligne : toutes les
+     cartes ont la même hauteur, la flèche déroule ce qui est coupé. */
+  const etape = c.statutNum ?? 0;
+  const basculer = (f: (v: boolean) => void, v: boolean) => (e: React.SyntheticEvent) => {
+    e.preventDefault(); e.stopPropagation(); f(!v);
+  };
+  const touche = (f: (v: boolean) => void, v: boolean) => (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault(); e.stopPropagation(); f(!v);
+  };
+  const appeler = (e: React.SyntheticEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (c.tel) window.location.href = `tel:${c.tel.replace(/[^\d+]/g, "")}`;
+  };
+  /* #547 : « Rentabilité », « Occupation » en entier ; l'abrégé ne sert que
+     sur une vignette trop étroite (requête de conteneur, globals.css). */
+  const tuile = (label: string | [string, string], valeur: string | undefined, ton = "", titre?: string) => (
+    <div className={`ktu-c${valeur === undefined ? " vide" : ""}`} title={titre}>
+      <span>{Array.isArray(label) ? <><i className="long">{label[0]}</i><i className="court">{label[1]}</i></> : label}</span>
+      <b className={ton}>{valeur ?? "—"}</b>
+    </div>
+  );
+  const rentaAff = c.perf?.rentaPot ?? c.perf?.renta;
+  const tuiles = etape === 2 ? (
+    <div className="ktu">
+      {tuile("Loyer", c.loyerAn)}
+      {tuile("Surface", c.surface)}
+      {tuile(["Occupation", "Occup."], c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+        c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "")}
+    </div>
+  ) : (
+    <div className="ktu">
+      {tuile(["Rentabilité", "Renta"], rentaAff !== undefined ? pct(rentaAff) : undefined,
+        c.perf?.rentaEcart ? (c.perf.rentaEcart > 0 ? "v" : "r") : "",
+        rentaAff === undefined ? undefined
+          : (c.perf!.rentaPot !== undefined
+            ? `Renta potentielle ${pct(c.perf!.rentaPot)}` + (c.perf!.renta !== undefined ? ` — actuelle ${pct(c.perf!.renta)}` : "")
+            : `Renta actuelle ${pct(c.perf!.renta!)}`)
+            + (c.perf!.rentaRef !== undefined ? ` — secteur ${pct(c.perf!.rentaRef)}` : ""))}
+      {tuile(["Occupation", "Occup."], c.perf?.occupation !== undefined ? `${c.perf.occupation} %` : undefined,
+        c.perf?.occupation === 100 ? "v" : c.perf?.occupation === 0 ? "r" : "",
+        c.perf?.occupation !== undefined ? `Occupation : ${c.perf.occupation} % des lots loués` : undefined)}
+      {tuile("Vs secteur", c.perf?.ecartM2 !== undefined ? `${c.perf.ecartM2 > 0 ? "+" : ""}${c.perf.ecartM2} %` : undefined,
+        c.perf?.ecartM2 ? (c.perf.ecartM2 > 0 ? "r" : "v") : "",
+        c.perf?.ecartM2 !== undefined
+          ? "Écart prix secteur : "
+            + (c.perf.prixM2 ? `${Math.round(c.perf.prixM2).toLocaleString("fr-FR")} €/m²` : "prix au m²")
+            + (c.perf.prixM2Ref ? ` face au secteur à ${Math.round(c.perf.prixM2Ref).toLocaleString("fr-FR")} €/m²` : "")
+            + (c.perf.prixM2RefLe ? ` (relevé du ${c.perf.prixM2RefLe})` : "")
+          : undefined)}
+    </div>
+  );
+
+  const top = (
+    <>
+        <Vignette c={c} />
+        <div className="kbody k26">
+          <div className="krow1">
+            {/* Le département entre parenthèses, en texte, comme avant la
+                carte du 26/10 (MAV, 27/10 : pas de pastille). */}
+            <span className="kt" title={c.adresseComplete || c.ville}>{c.villeNom ?? c.ville}</span>
+            {c.dpt && <span className="kt kt-dpt">({c.dpt})</span>}
+            {c.pastille && <span className={`kpast ${c.pastille.ton ?? ""}`} title={c.pastille.texte}>{c.pastille.texte}</span>}
+          </div>
+
+          <div className="krowp">
+            {/* Le propriétaire à gauche, le numéro (Formulaires, À estimer) ou
+                le prix à droite (MAV, 27/10). La vignette est la partagée
+                (retour du 24/09 : la même fiche contact partout, tableau de
+                bord compris), NOM puis prénom (26/10). */}
+            <VignetteContact
+              nom={c.contact}
+              immeuble={c.objet}
+              telAuSurvol={etape === 3}
+              v={c.contactId && c.contactInfo ? {
+                id: c.contactId, nom: c.contact || c.contactInfo.nom, qualite: c.contactInfo.type,
+                tel: c.contactInfo.tel, email: c.contactInfo.email,
+                immeubles: c.contactInfo.nbImmeubles ?? 0, recherches: c.contactInfo.nbRecherches ?? 0,
+                note: c.contactInfo.note, estAgent: c.contactInfo.estAgent,
+                agent: c.contactInfo.initiales ? { initiales: c.contactInfo.initiales, couleur: c.contactInfo.initialesCouleur } : undefined,
+              } : undefined}
+            />
+            {etape <= 2 ? (
+              c.tel ? (
+                <span className="ktel" role="link" tabIndex={0} title={`Appeler le ${c.tel}`}
+                  onClick={appeler} onKeyDown={(e) => { if (e.key === "Enter") appeler(e); }}>
+                  <svg viewBox="0 0 24 24" aria-hidden><path d="M6.6 3.5h3l1.5 4-2 1.3a10 10 0 0 0 6.1 6.1l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z" /></svg>
+                  {c.tel}
+                </span>
+              ) : <span className="kprix vide">Pas de numéro</span>
+            ) : (
+              <span className="kprix">{c.prix ?? "—"}{c.fee && <small>{c.fee}</small>}</span>
+            )}
+          </div>
+
+          {etape === 1 ? (
+            <>
+              <div className={`krecu${c.recu?.retard ? " r" : ""}`}>{c.recu ? `Reçu ${c.recu.texte}` : "Reçu —"}</div>
+              {/* Ce que le propriétaire a écrit sur le site, coupé à une
+                  ligne ; la flèche le déroule. */}
+              <div className="krow2 kdesc">
+                {c.descriptif ? (
+                  <>
+                    <span className="knote kdep" role="button" tabIndex={0}
+                      title={desc ? "Replier le descriptif" : "Dérouler le descriptif"}
+                      onClick={basculer(setDesc, desc)} onKeyDown={touche(setDesc, desc)}>« {c.descriptif} »</span>
+                    <span className={`kchev${desc ? " on" : ""}`} role="button" tabIndex={0}
+                      title={desc ? "Replier le descriptif" : "Dérouler le descriptif"}
+                      onClick={basculer(setDesc, desc)} onKeyDown={touche(setDesc, desc)}>
+                      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+                    </span>
+                  </>
+                ) : <span className="knote vide">Pas de descriptif</span>}
+              </div>
+              {desc && c.descriptif && <div className="knote-full">{c.descriptif}</div>}
+            </>
+          ) : tuiles}
+
+          {etape === 2 && c.manque && (
+            <div className="kmq">
+              {c.manque.length > 0 ? (
+                <><b>Manque</b>{c.manque.map((m) => <span key={m} className="ko">× {m}</span>)}</>
+              ) : <span className="ok">✓ État locatif et charges reçus</span>}
+            </div>
+          )}
+
+          {/* Le suivi : la frise d'une attente, sinon le dernier échange. */}
+          {c.wait ? (
+            <div className={`kwait${c.wait.late === false ? " soon" : ""}`}>
+              <span className="d">{c.wait.from}</span>
+              <span className="mid">
+                {c.noteComplete ? (
+                  <span className="lbl kdep" role="button" tabIndex={0}
+                    title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
+                    onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
+                    {c.wait.motif}
+                  </span>
+                ) : <span className="lbl">{c.wait.motif}</span>}
+                {c.wait.pct !== undefined && <span className="bar"><i style={{ width: `${c.wait.pct}%` }} /></span>}
+                {/* La flèche déroule et replie le dernier suivi (retour #349). */}
+                {c.noteComplete ? (
+                  <span className={`ar act${note ? " on" : ""}`} role="button" tabIndex={0}
+                    title={note ? "Replier le dernier suivi" : "Voir le dernier suivi"}
+                    onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
+                    ▾
+                  </span>
+                ) : (
+                  <span className="ar">▾</span>
+                )}
+              </span>
+              <span className="d">{c.wait.to}</span>
+            </div>
+          ) : (c.date || c.note || c.estimation) ? (
+            <div className="krow2">
+              {c.date && <span className="kdate">{c.date}</span>}
+              {c.estimation && !c.note && (
+                <span className="knote">
+                  <span className="nic"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg></span>
+                  Estimation
+                </span>
+              )}
+              {c.note && (
+                /* Retour #495 : le texte du suivi déroule le suivi, comme la
+                   flèche — sans ouvrir la fiche. */
+                <span className={`knote${c.noteComplete ? " kdep" : ""}`}
+                  {...(c.noteComplete ? {
+                    role: "button", tabIndex: 0, title: note ? "Replier le suivi" : "Dérouler le suivi",
+                    onClick: basculer(setNote, note), onKeyDown: touche(setNote, note),
+                  } : {})}>
+                  {c.note}
+                </span>
+              )}
+              {c.noteComplete && (
+                <span className={`kchev${note ? " on" : ""}`} role="button" tabIndex={0}
+                  title={note ? "Replier le suivi" : "Dérouler le suivi"}
+                  onClick={basculer(setNote, note)} onKeyDown={touche(setNote, note)}>
+                  <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="krow2"><span className="knote vide">Pas encore de suivi</span></div>
+          )}
+
+          {note && c.noteComplete && <div className="knote-full">{c.noteComplete}</div>}
+        </div>
+    </>
+  );
+  return (
+    <div className={`kard${c.wait ? (c.wait.late === false ? " hold" : " alert") : ""}`}>
+      {mock ? (
+        <div className="kard-top" style={{ display: "flex" }}>{top}</div>
+      ) : (
+        <Link href={`/bien/${c.id}`} className="kard-top" style={{ display: "flex" }}>{top}</Link>
+      )}
+
+      <div className="kact">
+        <div className="kmenu-wrap" ref={menuRef}>
+          <button className="kbtn" type="button" aria-label="Autres actions" onClick={() => setMenu((v) => !v)}>
+            {menu
+              ? <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></svg>
+              : <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>}
+          </button>
+          {menu && (
+            <div className="kmenu">
+              <button type="button" onClick={() => { setMenu(false); setSuiviOpen(true); }}>
+                <svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
+                Appeler
+              </button>
+              <button type="button" onClick={() => { setMenu(false); setSuiviOpen(true); }}>
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 8 9 5 9-5" /></svg>
+                Envoyer un e-mail
+              </button>
+              {/* Retour #362 : plus de `prompt()` du navigateur pré-rempli —
+                  une vraie liste, et rien n'est archivé tant qu'on n'a pas
+                  choisi. */}
+              <button type="button" onClick={() => { setMenu(false); setArchivage(true); }}>
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8M10 12h4" /></svg>
+                Archiver
+              </button>
+              <button type="button" onClick={() => { setMenu(false); setTransfert(true); }}>
+                <svg viewBox="0 0 24 24"><path d="M4 12h14M13 7l5 5-5 5" /></svg>
+                Transférer à un collègue
+              </button>
+              {/* Repousser n'est pas archiver : le dossier sort du « en cours »
+                  mais garde une date de retour (retour #139). */}
+              <button type="button" onClick={() => { setMenu(false); setAttente(true); }}>
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                Mettre en attente
+              </button>
+              <button type="button" onClick={() => {
+                setMenu(false);
+                if (c.statutNum) startTransition(() => reculerStatut(c.id, c.statutNum!));
+              }}>
+                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
+                Renvoyer à l&apos;étape précédente
+              </button>
+            </div>
+          )}
+        </div>
+        {c.history && (
+          <button className={`kbtn${hist ? " on" : ""}`} type="button" aria-label="Historique" onClick={() => setHist((v) => !v)}>
+            <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /><path d="M12 8v4l3 2" /></svg>
+          </button>
+        )}
+        {/* Le plan, descendu de la ligne du prix jusqu'ici (retour #348 : « le
+            picto Google Map tu peux le mettre à côté du picto historique comme
+            ça il dénote pas »). Il devient un `kbtn` comme les autres : même
+            taille, même cadre, même écart — c'est la rangée qui les tient, on
+            ne règle plus rien à la main.
+
+            Et il redevient un vrai `<button>` : cette rangée est en dehors du
+            lien de la carte, contrairement à la ligne du prix. Plus besoin
+            d'arrêter la propagation du clic. */}
+        {c.adresseComplete && (
+          <button
+            className="kbtn"
+            type="button"
+            aria-label={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            title={`Ouvrir « ${c.adresseComplete} » dans Google Maps`}
+            onClick={() => window.open(
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.adresseComplete!)}`,
+              "_blank", "noopener,noreferrer",
+            )}
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.6" />
+            </svg>
+          </button>
+        )}
+        {c.redIcons && (
+          <>
+            <button className="kbtn redic" type="button" aria-label="Mandat manquant">
+              <svg viewBox="0 0 24 24"><path d="M5 8h14v12H5z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></svg>
+            </button>
+            <button className="kbtn redic" type="button" aria-label="Dossier PDF manquant">
+              <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></svg>
+            </button>
+            <button className="kbtn redic" type="button" aria-label="Contacts manquants">
+              <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19c.5-3.5 3-5 5.5-5s5 1.5 5.5 5" /><circle cx="17" cy="9" r="2.4" /><path d="M15.6 14.2c2.4.2 4.2 1.6 4.6 4.3" /></svg>
+            </button>
+            <button className="kbtn" type="button" aria-label="Verrouillé">
+              <svg viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></svg>
+            </button>
+          </>
+        )}
+        <span className="sp" />
+        <button className="kbtn msg" type="button" aria-label="Messages" onClick={() => setSuiviOpen(true)}>
+          <svg viewBox="0 0 24 24"><path d="M8.4 3h9.2A3.4 3.4 0 0 1 21 6.4v4.4a3.4 3.4 0 0 1-3.4 3.4h-.6v2.5c0 .5-.6.8-1 .5l-3.6-3H8.4A3.4 3.4 0 0 1 5 10.8V6.4A3.4 3.4 0 0 1 8.4 3z" /><path d="M3.2 8.6v4.6a4.2 4.2 0 0 0 4.2 4.2h.6v1.4c0 .5.6.8 1 .4l1.2-1H7.4a4.9 4.9 0 0 1-4.2-4.9V8.6z" /></svg>
+        </button>
+        {c.counts && (
+          <>
+            <span className="kcount"><svg viewBox="0 0 24 24"><path d="M21 4 3 11l7 3 3 7z" /></svg>{c.counts.prop}</span>
+            <span className="kcount"><svg viewBox="0 0 24 24"><path d="M4 15l2-6h12l2 6" /><rect x="3" y="15" width="18" height="4" rx="1.5" /><circle cx="7.5" cy="19" r="1.4" /><circle cx="16.5" cy="19" r="1.4" /></svg>{c.counts.vis}</span>
+            <span className="kcount"><svg viewBox="0 0 24 24"><path d="M13 3 4 12l3.5 3.5L14 9M11 12l6 6M14 15l4 4" /></svg>{c.counts.off}</span>
+          </>
+        )}
+        {c.action && (
+          <button
+            className={`kgo${c.action.kind === "green" ? " green" : ""}`}
+            type="button"
+            disabled={pending}
+            style={pending ? { opacity: 0.5 } : undefined}
+            onClick={onAction}
+          >
+            {c.action.kind === "green" ? (
+              <svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1-1 5" /><path d="M4 4v5h5" /></svg>
+            ) : (
+              <span className="ch">›</span>
+            )}
+            {c.action.label}
+          </button>
+        )}
+      </div>
+
+      {hist && c.historique && c.historique.length > 0 && (
+        <div className="khist">
+          {c.historique.map((h, i) => (
+            <div className="l" key={i}>
+              <span className="d">{h.date}</span>
+              <span className="m">{h.motif}</span>
+              <span>{h.note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {moyen && (
+        <ModaleMoyenContact onAnnuler={() => setMoyen(false)} onConfirmer={confirmerMoyen} />
+      )}
+
+      {archivage && (
+        <ModaleArchivage
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
+          motifs={MOTIFS_ARCHIVAGE}
+          immeubleId={c.id}
+          onAnnuler={() => setArchivage(false)}
+          onArchiver={(motif, precision, mail) => {
+            setArchivage(false);
+            startTransition(async () => { await archiverImmeuble(c.id, motif, precision || undefined, mail); });
+          }}
+        />
+      )}
+
+      {transfert && (
+        <ModaleTransfert
+          bien={{ ville: c.ville, adresse: c.adresse, contact: c.contact, photoUrl: c.photoUrl, initiales: c.rvText, initialesCouleur: c.rvCouleur, note: c.note }}
+          agents={agents}
+          peutTransferer={peutTransferer}
+          onAnnuler={() => setTransfert(false)}
+          onTransferer={(agentId, avecProprio) => {
+            setTransfert(false);
+            startTransition(async () => {
+              const r = await transfererImmeuble(c.id, agentId, avecProprio ? c.contactId ?? null : null);
+              if (!r.ok) setRefus(r.message);
+            });
+          }}
+        />
+      )}
+      {/* Un agent ne transfère que ses propres dossiers (MAV, 27/10). */}
+      {refus && (
+        <Modale titre="Transfert refusé" onFermer={() => setRefus(null)} className="etroit"
+          pied={<button className="kgo" type="button" onClick={() => setRefus(null)}><span className="ch">›</span> Compris</button>}>
+          <p className="mhint">{refus}</p>
+        </Modale>
+      )}
+
+      {attente && (
+        <ModaleAttente
+          bien={{
+            ville: c.ville, adresse: c.adresse,
+            proprietaire: c.contactInfo?.nom ?? c.contact,
+            email: c.contactInfo?.email,
+          }}
+          onAnnuler={() => setAttente(false)}
+          onValider={({ motif, dateRelance, email }) => {
+            setAttente(false);
+            startTransition(async () => {
+              await mettreEnAttente({ immeubleId: c.id, agentId: "", motif, dateRelance });
+              /* L'e-mail au propriétaire n'est jamais envoyé d'ici : on ouvre
+                 la fenêtre de rédaction de la boîte, pré-remplie. */
+              if (email) {
+                router.push(
+                  `/mails?to=${encodeURIComponent(email.to)}`
+                  + `&objet=${encodeURIComponent(email.objet)}`
+                  + `&corps=${encodeURIComponent(email.corps)}`,
+                );
+              }
+            });
+          }}
+        />
+      )}
+
+      {suiviOpen && (
+        <SuiviModal
+          immeubleId={c.id}
+          agentId=""
+          objet={c.objet ?? c.ville}
+          contactNom={c.contact}
+          contactId={c.contactId}
+          onClose={() => setSuiviOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Vrai quand le dashboard est en mode téléphone (classe posée par Burger). */
+const estTel = () => typeof document !== "undefined" && document.body.classList.contains("ecran-tel");
+
+/* Retour #562 : « quand je passe de portrait à paysage les menus se
+   replient ». Le pli par défaut suivait la largeur EN DIRECT : 640 px de
+   large en paysage, 372 en portrait, et chaque rotation repliait ou dépliait
+   toutes les colonnes qu'on n'avait pas touchées. Le défaut se lit donc une
+   seule fois, à l'ouverture de la page (même seuil que Burger), puis il ne
+   bouge plus — tourner le téléphone ne change rien à ce qu'on a sous les yeux. */
+let telAuChargement: boolean | null = null;
+const lireTelAuChargement = () => {
+  if (telAuChargement === null) telAuChargement = window.innerWidth < 640;
+  return telAuChargement;
+};
+const sansAbonnement = () => () => {};
+
+
+/**
+ * La vignette d'une carte du dashboard.
+ *
+ * Ordre de repli : la photo du bien, puis — faute de photo — la façade en vue
+ * de rue, puis le pictogramme. Les deux premières colonnes du dashboard
+ * n'ont presque jamais de photo (les immeubles viennent d'arriver) : sans la
+ * vue de rue, l'agent trie une liste de pictogrammes identiques.
+ *
+ * La vue de rue est un repère DANS l'outil : les conditions d'usage de Google
+ * interdisent de la réutiliser comme photo du bien, dossier de vente ou
+ * annonce comprises.
+ */
+function Vignette({ c }: { c: KCard }) {
+  return (
+    <div className={`kthumb${c.photoUrl ? " has-photo" : ""}`}>
+      <Facade photoUrl={c.photoUrl} facadeRue={c.facadeRue}
+        repli={<svg viewBox="0 0 24 24">{c.photo ? COL_IC.building : COL_IC.form}</svg>} />
+      {/* Retour #509 : les initiales de l'agent ne servent que sur la vue
+          « Tous », qui mélange les portefeuilles — le serveur ne pose `rv`
+          que là. Fond légèrement transparent. */}
+      {c.rv && <span className="rv" style={c.rvCouleur ? { background: `${c.rvCouleur}b3` } : undefined}>{c.rvText ?? "RV"}</span>}
+    </div>
+  );
+}
+
+function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: string; name: string }[] }) {
+  const [open, setOpen] = useState(b.openDefault);
+  /* Colonnes repliées / dépliées EXPLICITEMENT par l'agent. Deux ensembles
+     plutôt qu'un booléen : le pli par défaut n'est pas le même sur téléphone
+     (tout replié, pour lire les neuf en-têtes d'un coup d'œil) et sur écran
+     large (tout ouvert, comme aujourd'hui). En laissant le défaut au CSS, le
+     rendu du serveur et celui du navigateur restent identiques — aucun
+     clignotement, aucune alerte d'hydratation. */
+  const [plies, setPlies] = useState<Set<string>>(new Set());
+  const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  /* `null` au rendu serveur : le CSS décide, comme avant. Ensuite, chaque
+     colonne porte son état explicitement, et la rotation ne le change plus. */
+  const telDepart = useSyncExternalStore(sansAbonnement, lireTelAuChargement, () => null);
+  const ouverte = (cle: string) => deplies.has(cle) || (!plies.has(cle) && !(telDepart ?? estTel()));
+  const basculerCol = (cle: string) => {
+    const ouverteMaintenant = ouverte(cle);
+    setPlies((s) => { const n = new Set(s); if (ouverteMaintenant) n.add(cle); else n.delete(cle); return n; });
+    setDeplies((s) => { const n = new Set(s); if (ouverteMaintenant) n.delete(cle); else n.add(cle); return n; });
+  };
+  return (
+    <section className="bloc">
+      <div className="bloc-band" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open}>
+        <span className="bic"><svg viewBox="0 0 24 24">{BLOC_IC[b.icon]}</svg></span>
+        <h2>{b.titre}</h2>
+        <span className="sp" />
+        {b.ventes && (
+          <>
+            <span style={{ fontSize: 12.5, color: "var(--slate-2)", fontWeight: 700 }}>{b.ventes.left}</span>
+            <span className="karrow">→</span>
+            <span className="kchip">{b.ventes.right}</span>
+          </>
+        )}
+        {b.nred > 0 && <span className="nred">{b.nred}</span>}
+        <span className="nsq">{b.nsq}</span>
+        {/* Rien n'indiquait que le bandeau était cliquable (retour MAV). */}
+        <span className={`bchev${open ? " on" : ""}`} aria-hidden>˅</span>
+      </div>
+      {open && b.ventes && (
+        <div className="vbar">
+          <span className="g" style={{ width: `${b.ventes.pctGreen}%` }} />
+          <span className="r" />
+        </div>
+      )}
+      {open && (
+        <div className="cols">
+          {b.cols.map((col) => (
+            <div
+              className={`col${telDepart === null
+                ? `${plies.has(col.key) ? " plie" : ""}${deplies.has(col.key) ? " deplie" : ""}`
+                : ouverte(col.key) ? " deplie" : " plie"}`}
+              key={col.key}
+            >
+              <button type="button" className="col-head" onClick={() => basculerCol(col.key)}>
+                <span className="cic"><svg viewBox="0 0 24 24">{COL_IC[col.icon]}</svg></span>
+                <span className="t">{col.titre}</span>
+                {col.fee && <span className="kchip">{col.fee}</span>}
+                <span className="n">{col.count}</span>
+                <span className="cchev" aria-hidden>˅</span>
+              </button>
+              <div className="col-body">
+                {col.cards.map((c) => (
+                  <Card key={c.id} c={c} mock={mock} agents={agents} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Le dashboard filtré par la recherche de la barre haute (retour #306).
+ *
+ * MAV : « quand je fais une recherche, je veux juste que ça cache tous les
+ * immeubles qui ne correspondent pas à la recherche, que ce soit par nom de
+ * proprio, par ville ou par adresse. Je t'ai mis ce à quoi ça ressemble. »
+ *
+ * La barre partait sur un écran de résultats à part : on perdait les colonnes,
+ * donc l'étape où chaque dossier se trouve — et c'est justement ce qu'on
+ * cherche en tapant un nom. Les colonnes restent ; seules les cartes qui ne
+ * correspondent pas disparaissent, et les compteurs suivent.
+ *
+ * Mot à mot : « voci nanterre » trouve la carte de Nanterre de M. Voci, dans
+ * l'ordre qu'on veut. Chaque mot doit se retrouver quelque part — ville,
+ * adresse, contact — ce qui évite les faux positifs d'une recherche « ou ».
+ */
+function correspond(c: KCard, mots: string[]): boolean {
+  if (mots.length === 0) return true;
+  const foin = [
+    c.ville, c.adresse, c.contact, c.objet,
+    c.contactInfo?.nom, c.contactInfo?.email, c.contactInfo?.tel,
+  ]
+    .filter(Boolean).join(" ")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return mots.every((m) => foin.includes(m));
+}
+
+const decouper = (q: string) =>
+  q.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .split(/\s+/).map((x) => x.trim()).filter(Boolean);
+
+export function DashboardBlocs({ blocs, mock, agents, recherche = "" }: {
+  blocs: KBloc[]; mock?: boolean; agents?: { id: string; name: string }[];
+  /** Ce qui est tapé dans la barre haute (#306). */
+  recherche?: string;
+}) {
+  const mots = useMemo(() => decouper(recherche), [recherche]);
+
+  const vus = useMemo(() => {
+    if (mots.length === 0) return blocs;
+    return blocs.map((b) => {
+      const cols = b.cols.map((c) => {
+        const cards = c.cards.filter((x) => correspond(x, mots));
+        return { ...c, cards, count: cards.length };
+      }) as KBloc["cols"];
+      const total = cols.reduce((s, c) => s + c.cards.length, 0);
+      /* Les pastilles du bandeau comptent ce que l'écran montre, pas ce qu'il
+         montrerait sans filtre : un « 45 » à côté de deux cartes visibles
+         ferait douter du filtre. */
+      return { ...b, cols, nsq: total, nred: Math.min(b.nred, total), openDefault: total > 0 };
+    });
+  }, [blocs, mots]);
+
+  const trouves = vus.reduce((s, b) => s + b.cols.reduce((t, c) => t + c.cards.length, 0), 0);
+
+  return (
+    <div className="wrap">
+      {mots.length > 0 && (
+        <div className="dash-filtre">
+          {trouves === 0
+            ? <>Aucun immeuble ne correspond à <b>{recherche}</b>.</>
+            : <>{trouves} immeuble{trouves > 1 ? "s" : ""} {trouves > 1 ? "correspondent" : "correspond"} à <b>{recherche}</b> — les autres sont masqués.</>}
+          <Link className="dash-filtre-x" href="/">✕ Tout afficher</Link>
+        </div>
+      )}
+      {vus.map((b) => (
+        <Bloc key={b.key} b={b} mock={mock} agents={agents} />
+      ))}
+    </div>
+  );
+}

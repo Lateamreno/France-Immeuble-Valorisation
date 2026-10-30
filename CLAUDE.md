@@ -14,6 +14,64 @@ Ce document est la source de vérité du projet. Avant toute session de code :
 3. Ne jamais élargir le périmètre d'un milestone sans validation explicite.
 4. Respecter les **garde-fous** de la section 8 comme des invariants non négociables (conformité Hoguet, RGPD locataires, doctrine préemption). Une violation de garde-fou est un bug bloquant, pas un arbitrage de style.
 5. À chaque fin de milestone : déployer sur preview Vercel, attendre validation humaine avant le milestone suivant.
+6. À chaque **lot de modifications livré**, produire le document avant / après (§0 bis). Ce n'est pas une option.
+
+---
+
+## 0 bis. Le document avant / après — à chaque lot livré
+
+> Règle générale de travail avec MAV, valable sur **tous** ses projets (une copie
+> vit dans son contexte permanent utilisateur). Elle est répétée ici parce que le
+> contexte utilisateur ne survit pas à un conteneur neuf, alors que ce fichier,
+> lui, est dans le dépôt.
+
+Dès qu'un **lot de modifications** est livré — plusieurs corrections d'un coup,
+qu'elles soient arrivées **en direct dans la conversation** ou **via l'outil de
+correction** (`bo_feedback`) — le travail n'est pas fini tant que le document
+n'est pas publié en **Artifact** et le lien donné. Sans le demander.
+
+Le document contient, dans cet ordre :
+
+1. **Le relevé** — une ligne par modification, dans la numérotation de MAV quand
+   elle existe, avec sa mention « vérifié ».
+2. **Les comparaisons avant / après** — des captures **réelles**, prises au
+   navigateur sur les **deux versions construites** : l'ancienne servie depuis un
+   worktree du commit d'avant, la nouvelle depuis le build courant, sur le même
+   écran et les mêmes données. Les deux commits sont cités dans le document.
+3. **Ce qu'il faut savoir** — les arbitrages pris sans lui, les vrais défauts
+   trouvés en chemin, ce qui reste en pause.
+
+Règles non négociables :
+
+- **Aucune capture fabriquée ni décorative.** Si un écran n'existait pas avant,
+  le volet « avant » est un **texte** qui dit ce que faisait l'ancienne version —
+  avec le libellé exact de l'alerte ou du message s'il y en avait un — jamais une
+  image de rien.
+- **Écarter les paires trompeuses** : deux captures identiques au pixel près (le
+  changement est un comportement, pas un dessin), ou une capture qui ne montre
+  pas ce dont parle la légende. Mieux vaut huit comparaisons vraies que douze
+  dont trois mentent.
+- **Pas de données personnelles inutiles** dans les captures : une liste qui
+  étale des e-mails et des téléphones sans rien démontrer n'y a pas sa place
+  (cohérent avec le §8.3).
+- **Un revirement de MAV se dit dans le document**, pas seulement dans le commit :
+  la ligne du relevé porte la mention, et la capture « après » est refaite.
+- Le document se **met à jour à la même adresse** quand un retour arrive après
+  coup — jamais un second lien.
+
+**Après chaque fusion dans `main` : attendre que le déploiement Vercel soit
+« Ready » et le dire dans le récap.** Le 16/10, deux déploiements ont échoué
+sans que personne ne le voie (un fichier Deno versionné sous `supabase/`
+faisait tomber la vérification TypeScript de Next) : la prod est restée trois
+jours sur l'ancienne version alors que le lot était annoncé livré. Un lot n'est
+livré que quand le déploiement de `main` est passé.
+
+Recette éprouvée pour les captures (à reprendre telle quelle) : `git worktree add`
+sur le commit d'avant, `npm run build` puis `next start` sur deux ports distincts,
+puis puppeteer-core (`executablePath: "/opt/pw-browsers/chromium"`, `--no-sandbox`)
+qui cadre chaque scène sur le sélecteur qui compte. Les images partent en
+**data: URI base64** dans la page — la CSP des Artifacts bloque toute image
+externe. Nettoyer le worktree ensuite (`git worktree remove`), il pèse ~900 Mo.
 
 ---
 
@@ -35,7 +93,7 @@ Ce n'est **pas** un CRM généraliste ni un logiciel de gestion locative. C'est 
 - **Backend :** Supabase **« Plein Bail »** — projet mutualisé avec la marketplace « biens loués », déjà en production. PostgreSQL + RLS + Storage + Edge Functions.
   - Project ID : `fkfwucqpdhbkgkouccyi` · région `eu-west-1`.
 - **Auth :** Supabase Auth (table `profiles` déjà en place, extension de `auth.users`). Rôles applicatifs (voir §3.2).
-- **Email :** boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium ni SendGrid) synchronisée via **Gmail API** (envoi + réception threadée). Voir §7.1.
+- **Email :** deux routes (§7.1). Un-à-un : boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium) via **Gmail API**, envoi + réception threadée. Masse : relais **SendGrid** en SMTP, sur un **sous-domaine d'envoi dédié**, plafonné à 4 000 messages par jour.
 - **Signature (V2) :** Docusign (connecteur déjà disponible).
 - **Données de marché :** DVF + loyers **déjà chargés dans Plein Bail** (voir §4.3). Pas d'API externe à brancher.
 - **Diffusion :** Ubiflow (pont marketplace).
@@ -227,10 +285,84 @@ Générés par le moteur de séquencement + saisie manuelle. Le calendrier agrè
 
 ## 7. Intégrations
 
-### 7.1 Email (`devis@`)
-- Boîte **dédiée**, jamais la boîte FI premium, jamais SendGrid (doctrine délivrabilité).
+### 7.1 Email — deux routes, jamais une seule
+
+Le BO écrit à deux publics très différents, et confondre leurs routes est le
+meilleur moyen de griller le domaine. D'où deux chemins distincts, décidés au
+seul endroit qui décide (`lancerSalve` dans `lib/bo/mails-actions.ts`).
+
+**Route nominative — le un-à-un.** Estimation au propriétaire, demande de devis
+à un prestataire, réponse à un locataire.
+- Boîte **dédiée** `devis@`, jamais la boîte FI premium.
 - Gmail API : envoi (avec PJ depuis le coffre) + réception, threading rattaché à `operation_id`/`provider_id`.
-- Doctrine héritée du netlinking : **validation humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Pas d'envoi automatique en masse.
+- Part de l'adresse de l'agent : c'est une conversation, elle doit avoir un visage.
+
+**Route de masse — les salves.** Diffusion d'un dossier à un vivier
+d'acquéreurs, projets annexes.
+- Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
+  mot de passe = la clé d'API). Variables `MASSE_SMTP_*`, puis `MASSE_DOMAINE`
+  (une adresse par agent) ou `MASSE_FROM` (adresse de service unique).
+- Adresse d'expédition sur un **sous-domaine dédié** (`agence.france-immeuble.fr`),
+  jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
+  de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
+  un nom de domaine proche de la marque et sans historique est le motif même du
+  phishing, c'est lui qui se fait signaler.
+  - Nom du sous-domaine : **neutre et durable**. `dossiers.` deviendrait faux le
+    jour d'une salve « projets annexes » ; `communication.` est long (il s'affiche
+    dans chaque expéditeur, tronqué sur mobile) et sonne publipostage.
+    `agence.` reste vrai quoi qu'on envoie — c'est le nom retenu et authentifié
+    chez SendGrid, il ne change plus.
+  - **Une adresse par agent** sur ce sous-domaine, à sa convention habituelle :
+    `r.voci@agence.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
+    visage. Attention à deux illusions : ça ne cloisonne PAS la réputation entre
+    agents — les messageries la calculent au niveau du domaine signataire, pas de
+    l'adresse ; et chaque adresse doit **exister en renvoi** vers la vraie boîte
+    de l'agent, sinon une réponse qui ignore le `Reply-To` part dans le vide.
+  - Le **nom affiché** fait l'essentiel : c'est lui que montrent presque tous les
+    clients de messagerie, l'adresse ne venant qu'après.
+- SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
+  sert à rien.
+  - **État au 12/10/26, en pause par MAV** : le sous-domaine porte les clés DKIM
+    SendGrid et le DMARC, mais **ni MX, ni SPF**. Une réponse adressée à
+    `ma.voci@agence.france-immeuble.fr` rebondit en « adresse erronée » (cas
+    « Répondre à tous », messagerie qui ignore le `Reply-To`, adresse recopiée).
+    Le BO le détecte et l'affiche en rouge (Réglages › Envois, fenêtre de salve,
+    relance groupée). Chez OVH, le sous-domaine est déclaré dans Email Pro
+    (0 compte) alors que ma.voci est sur Exchange ; le minimum pour clore :
+    ajouter le domaine dans Exchange en « configuration recommandée », alias
+    `ma.voci`, puis TXT `agence` = `v=spf1 include:mx.ovh.com include:sendgrid.net ~all`.
+    Ne pas relancer MAV dessus sans qu'il le demande.
+- `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit
+  l'expéditeur affiché. C'est ce qui permet à la route de masse de rester
+  compatible avec « le commercial gère les retours ».
+- `List-Unsubscribe` + `List-Unsubscribe-Post` sur chaque message. Sans eux, le
+  bouton « désabonnement » des messageries devient « signaler comme spam ».
+- **Plafond du jour : `PLAFOND_JOUR` (4 000 par défaut).** Au-delà de 5 000 par
+  jour, Gmail classe l'expéditeur en « masse » et lui impose ses obligations :
+  on s'arrête avant, avec une marge. Le compteur s'affiche à l'écran de salve
+  et le bouton se ferme quand la salve ferait franchir la ligne.
+- Connexion SMTP mutualisée, cadence tenue à 4 messages/seconde. Une rafale de
+  connexions se fait limiter aussi sûrement qu'un volume excessif.
+- Montée en charge sur un domaine neuf : 20 le premier jour, 50, 100, puis le
+  régime normal à partir de la deuxième semaine. C'est le démarrage à froid qui
+  se fait signaler, pas le volume.
+
+**Module Mailing (27/10/26)** — les campagnes commerciales (Plein Bail, la
+team réno, bloc ou découpe) à un public choisi dans tout le fichier
+(`/mailing`, `lib/bo/campagnes.ts`). Une campagne est une salve de nature
+« campagne » : chaque message est fusionné d'avance dans `fi_salve_envoi` avec
+un jeton, puis la file est vidée par le cron de chaque minute
+(`/api/relances/tourner`) sous le plafond du jour — fermer la page n'arrête
+rien, le plafond atteint la suite part le lendemain. Le jeton est dans le
+Message-ID : une réponse le cite, la relève (`fi_mail_entrant`) suffit à
+compter les réponses (sinon même adresse dans les 30 jours). Chaque message
+porte un lien de désinscription (obligation de la prospection commerciale) ;
+les refus vont dans `fi_desabonnement` et sortent de **toutes** les salves.
+Lancer une campagne est réservé à la direction.
+
+**Commun aux deux routes :** doctrine héritée du netlinking — **validation
+humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
+automatique, jamais.
 
 ### 7.2 DVF / loyers
 Déjà en base (§4.3). Consommation directe, aucune API externe.
@@ -238,8 +370,59 @@ Déjà en base (§4.3). Consommation directe, aucune API externe.
 ### 7.3 Ubiflow / marketplace
 Un `listing_lot` « prêt à vendre » → publication marketplace et/ou flux XML Ubiflow. Réutilise l'architecture flux unique déjà décidée.
 
+**Le numéro de l'annonce est celui de l'agent en charge, jamais le standard**
+(décision MAV 20/10/26). La charge utile envoie le contact du dossier
+(`b.im.AGENT` → nom, poste, e-mail, portable) ; côté Plein Bail,
+`reveler_telephone()` le révèle en priorité (migration `telephone_agent`) et
+ne retombe sur le téléphone du compte France Immeuble qu'à défaut. Un bien
+sans agent, ou dont l'agent n'a pas de portable, est **bloqué** à la
+publication (`blocages`, clés `agent` / `agent_tel`).
+
+### 7.3 bis Site France Immeuble — seconde destination
+
+Décidé avec MAV le 21/10/26, contrat complet dans `docs/CONTRAT-SITE.md` (il
+fait foi entre la session du BO et celle du site). L'essentiel : le BO **dépose**
+dans la base Supabase du site (`omtkttpvfjsbnqsajcsp`, variables
+`SITE_FI_SUPABASE_*`), le site ne lit jamais le BO ; le site poste ses
+formulaires sur `/api/site/lead` (jeton `BO_LEAD_TOKEN`), qui ne sait
+qu'enregistrer. Le BO ne crée aucune table dans la base du site. Le statut 5
+n'est jamais en ligne, ni sur le site ni sur Plein Bail.
+
 ### 7.4 Docusign (V2)
 Mandats, contrats de mission, protocoles de départ locataire.
+
+### 7.5 SMS — MailingVox, et lui seul
+
+Décidé le 11/09/26. **Les SMS partent de MailingVox ; les e-mails restent sur
+SendGrid.** MAV a MailingVox, et pour de la France métropolitaine c'est le bon
+outil : STOP opérateur, horaires légaux et prix au SMS y sont natifs. Twilio a
+servi de premier pont et n'a rien laissé derrière lui — tout tenait dans
+`lib/bo/sms.ts`.
+
+MailingVox a bien une API e-mail (pièces jointes, programmation, `email_reponse`
+qui ferait le `Reply-To` agent), **mais la route de masse reste SendGrid** :
+arbitrage de MAV, ne pas y revenir sans lui.
+
+- `POST https://v3.mailingvox.com/api/envoyer/sms`, toute la liste en **un**
+  appel. Réponse `{resultat: 1, id}` ou `{resultat: 0, erreurs: "24,38"}`.
+- Variables : `MAILINGVOX_KEY`, `MAILINGVOX_EXPEDITEUR` (11 caractères,
+  lettres et chiffres seulement), `MAILINGVOX_PLAFOND` (250), `MAILINGVOX_STOP`.
+- **Programmation, pas automatisme.** MAV : « ce que je veux faire c'est une
+  programmation ». Le contenu, la liste ET l'heure sont validés dans le même
+  geste ; la machine attend, elle ne décide de rien. La doctrine §7.1 tient.
+- **Horaires légaux** : lundi–samedi, 8 h – 22 h, hors jours fériés. MailingVox
+  reporte d'office un envoi programmé hors créneau, il ne l'annule pas.
+- **Deux pièges à trancher avec eux avant le premier envoi :**
+  - le **numéro STOP** — le BO écrivait 36111, leur documentation cite 36200.
+    Un message qui annonce le mauvais numéro ne fait pas remonter l'opposition ;
+  - l'**erreur 61** — un lien dans le corps peut bloquer la campagne, à faire
+    valider par leur service client (le lien transfer.it est concerné).
+- **Désinscrits** : `/api/stops` est lu avant chaque envoi, et
+  `/api/contacts/blacklist` reçoit nos oppositions. C'est légitime — MailingVox
+  est **sous-traitant** au sens du RGPD, pas un tiers : lui transmettre une
+  opposition est la seule façon de la faire respecter par l'outil qui envoie.
+  On ne pousse QUE des numéros, et QUE des oppositions — jamais une liste de
+  contacts, jamais une adresse e-mail (celles-là regardent SendGrid).
 
 ---
 
@@ -252,6 +435,11 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ### 8.2 Doctrine préemption — honoraires charge vendeur
 - Sur tout lot susceptible de préemption (locataire loi 75, commercial Pinel), honoraires **charge vendeur** et prix notifié au locataire = **prix net vendeur non majoré**. Jamais de charge acquéreur sur ces lots (jurisprudence constante). Le module grilles/mandats l'impose par défaut.
+- **Exception décidée par MAV le 27/10 (#558)** : sur **sa** session
+  (ma.voci@france-immeuble.fr) seulement, il peut passer outre la charge
+  vendeur imposée (« comme je suis admin je décide »). Le mandat le garde
+  (`Charge_forcee`), l'écran rappelle ce que la doctrine aurait imposé, et le
+  serveur refuse ce choix à tout autre compte.
 
 ### 8.3 RGPD locataires (risque n°1)
 - **Jamais** de nom de locataire exposé côté public/marketplace : personne morale/physique anonymisée dans `listing_lots` publiées.
@@ -281,11 +469,76 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ## 10. Décisions actées
 
-- Boîte email **dédiée** (`devis@`), Gmail API, jamais la boîte FI premium ni SendGrid.
+- **Deux routes e-mail, jamais une seule** (§7.1) : le un-à-un part de la boîte dédiée `devis@` via Gmail API, jamais de la boîte FI premium ; la masse part de SendGrid sur un sous-domaine dédié, avec `Reply-To` sur l'agent et un plafond de 4 000 par jour.
 - Supabase **« Plein Bail »** (`fkfwucqpdhbkgkouccyi`) mutualisé : bien = `listings`, lots+baux = `listing_lots`, pas de table `properties`. Le cockpit ajoute la couche `operations`.
 - Benchmarks DVF/loyers déjà chargés → rapprochement DVF dès le MVP.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.
 - **Extranet vendeur ET extranet locataire** retenus (locataire en dernier, garde-fous §8.3).
+
+## 10 bis. Espace client — fermé dans le BO le 22/10/26
+
+> L'espace client du BO (`/espace`, `/proprietaire`) n'existe plus. Décision de
+> MAV : un seul compte client, **sur le site France Immeuble**, pour les
+> acquéreurs comme pour les propriétaires — moins de surfaces exposées, moins
+> de risques de fuite. Contrat complet : `docs/CONTRAT-SITE.md` §9 (lot 4).
+
+**Ce qui tient désormais.**
+- **Le BO ne parle jamais directement au client.** Le site gère l'inscription,
+  la connexion, les mots de passe et la vérification d'e-mail. Le BO reçoit des
+  événements (`/api/site/lead`, types `compte`, `recherche_compte`, `reponse`,
+  `prix_proprietaire`, `compte_supprime`) et **dépose** ce que le client doit
+  voir dans les tables `compte_*` du site (`lib/bo/compte-site.ts`), sous une
+  clé neutre `site_cle` — jamais un identifiant du BO (contrat §7).
+- **Rattachement** : par le compte déjà connu, sinon par l'e-mail **vérifié**
+  par le site. Rien ne s'auto-crée côté BO hormis la fiche contact du lead.
+- **L'agent voit ce que voit le client** : panneau « Son compte sur le site »
+  (`components/compte-site.tsx`) sur la fiche contact et sur l'onglet
+  Propriétaire de la fiche bien. Il relit la base du site, pas le BO.
+- Acquéreur : ne voit que ce qu'on lui a proposé (12 derniers mois ou bien
+  encore en vente) et ses propres recherches — **jamais tous les mandats**.
+- Propriétaire : une estimation n'apparaît qu'une fois **envoyée**
+  (statut « 3 »). On l'incite à estimer lui-même sur le site (bouton
+  « Inviter à créer son compte » de l'assistant d'estimation) : c'est une
+  porte d'entrée vers le mandat.
+- Les anciennes adresses mènent à « Votre espace a déménagé », avec un lien
+  vers le compte du site. Les fonctions `ec_*` restent en base mais **plus
+  aucun rôle exposé ne peut les exécuter** (migration
+  `fermer_espace_client_bo`). Ne pas les rebrancher.
+
+**Reste à faire.**
+1. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
+   connaît le chemin. Le BO a désormais une connexion (§10 ter), mais ce
+   relais reste ouvert parce que Plein Bail, le site et les dossiers envoyés
+   s'en servent : à refermer par des liens signés.
+2. Pièces du propriétaire (lot 5, contrat §10) : livré côté BO le 22/10. Le
+   site pose la pièce dans son seau privé, le BO la range au coffre de
+   l'immeuble puis l'efface du site — **le site n'en garde jamais de copie**.
+   Le chemin ne peut viser que le dossier du compte, l'immeuble est vérifié
+   par le BO sur ses propres fiches. En attente des tables et du seau du site.
+
+## 10 ter. Connexion et rôles — depuis le 27/10/26
+
+Chacun se connecte avec **son** mot de passe (Supabase Auth sur la base du BO,
+cookie signé `fi_session`). Deux rôles, **direction** et **agent** ; la règle
+complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
+
+- Un agent travaille sur **tous** les dossiers, voit le tableau de bord des
+  collègues et la vue « tous ». Il ne transfère que **ses** dossiers, n'annule
+  que **ses** mandats, n'exporte rien, et **demande** la publication d'un récit
+  de vente (la direction reçoit un e-mail et relit).
+- Toute règle se vérifie côté serveur. Les transferts sont gardés au point de
+  passage unique des écritures (`gardeTransfert`, `lib/bo/actions.ts`) : ne
+  pas écrire `AGENT` ou `SUIVI` par un autre chemin.
+- L'« agent aux commandes » d'un poste, c'est la personne connectée
+  (`components/session.tsx`), plus un choix.
+- Les comptes se gèrent dans Réglages › Équipe (direction). Revirement de MAV
+  le 27/10 : la direction peut **définir** le premier mot de passe d'un agent
+  (ou copier un lien, ou l'envoyer par e-mail) ; chacun le change ensuite dans
+  « Mon mot de passe ». Un lien ne vaut qu'une fois et le dernier annule les
+  précédents.
+- L'outil de correction (`bo_feedback`, « Signaler un écart », `/revue`) n'est
+  visible et utilisable que par ma.voci@france-immeuble.fr (`peutReviser`).
+- La porte ne se ferme qu'avec `BO_AUTH=on` (Vercel) ; `off` ou absent = BO ouvert, en secours.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
@@ -345,3 +598,27 @@ déploiement passe **Ready** mais sert le dossier statique `public/` (sans
   conclure à un bug ; le 1ᵉʳ 404 vient souvent d'un test **avant** la fin du build.
 - Polices : rester sur des **polices système** (pas de `next/font/google`) pour un
   build hermétique, indépendant de l'accès réseau au build.
+
+## 13. Objets partagés et leur jumeau côté client
+
+Décidé le 25/09/26 (catalogue des objets). Certains éléments existent en
+**deux versions volontairement séparées**, qui ne sont **jamais** fusionnées.
+Les jumeaux « côté client » (carte de proposition de l'espace client, bloc de
+prix de l'espace propriétaire) ont disparu avec l'espace client du BO le
+22/10/26 (§10 bis) : leur équivalent vit désormais sur le site, et
+`propositions.tsx` / `prix.tsx` n'ont plus de jumeau dans ce dépôt. Reste :
+
+- la pièce jointe : celle du contact (`contact-fiche.tsx`) et celle de
+  l'assistant de commercialisation (`commercialisation-assistant.tsx`) sont
+  deux objets différents sous le même nom, pas deux copies.
+
+**Règle de MAV :** quand une modification touche l'une des deux versions d'un
+jumeau, **lui demander** s'il veut la même chose sur l'autre — dans le récap
+du lot, jamais en décidant à sa place.
+
+Les objets partagés (une seule source, modifiée partout) vivent dans
+`components/` : `modale.tsx` (fenêtre + `useQuestion` à la place de `confirm`
+/ `prompt`), `pastille.tsx` (statut et son ton), `puce-immeuble.tsx`,
+`champ.tsx` (libellé + case), `avatar.tsx`, `vignette-contact.tsx`,
+`copier.tsx`, `propositions.tsx` (`BoutonScinde`, `Pagination`,
+`CarteProposition`). Toute nouvelle fenêtre, pastille ou puce passe par eux.
