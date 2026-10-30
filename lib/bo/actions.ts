@@ -2916,6 +2916,8 @@ export async function setOffreStatut(
       date_compromis: extra?.date_compromis ? new Date(extra.date_compromis).toISOString() : undefined,
       date_acte: extra?.date_acte ? new Date(extra.date_acte).toISOString() : undefined,
       ...(statut === "Vendu" ? { date_cloture: new Date().toISOString() } : {}),
+      /* La frise du compte client (31/10) : le jour où l'offre a été acceptée. */
+      ...(statut === "Acceptée" ? { date_acceptation: new Date().toISOString() } : {}),
     }),
   });
   /* Retour #563 : « j'ai accepté une offre, il devrait passer à l'étape

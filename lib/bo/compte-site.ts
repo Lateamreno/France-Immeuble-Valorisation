@@ -238,8 +238,12 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       visites: st >= 5 ? visites.length : null,
       offres: st >= 5 ? offres.length : null,
       bien: c.bien,
+      /* Les dates de la frise (demande du site, 31/10). L'offre qui compte
+         est la plus avancée ; une offre refusée n'en donne aucune. */
+      ...frise(offres),
       maj_le,
     });
+    const ligneBien = lb[lb.length - 1];
     /* Le mandat (demande du site, 30/10) : envoyé à la signature, puis signé
        avec son PDF. Un mandat annulé, ou encore en préparation, ne paraît pas. */
     const mandats = await lireBo(`bo_mandat?select=id,data&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([im.id]))}&limit=50`);
@@ -248,6 +252,10 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       const signe = !!(S(m.data.date_signature) || S(m.data.pdf_signed)) && ["En cours", "Vendu", "Expiré"].includes(stm);
       const envoye = stm === "Attente signature";
       if (!signe && !envoye) continue;
+      if (signe) {
+        const d = jour(m.data.date_signature);
+        if (d && (!ligneBien.mandat_le || String(ligneBien.mandat_le) < d)) ligneBien.mandat_le = d;
+      }
       const mcle = await cleDe("bo_mandat", m);
       lmd.push({
         compte, cle: mcle, bien_cle: cle,
@@ -392,6 +400,26 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
   };
 }
 
+/* ------------------------------------------------ La frise (31/10) */
+
+const RANG_OFFRE: Record<string, number> = {
+  "Acceptée": 1, "Compromis programmé": 2, "Compromis signé": 3, "Vente prévue": 3, "Vendu": 4,
+};
+
+/** Offre acceptée, compromis, acte : les dates de l'offre la plus avancée du bien. */
+function frise(offres: Doc[]) {
+  const [o] = offres
+    .filter((x) => RANG_OFFRE[S(x.data.Statut) ?? ""])
+    .sort((a, b) => RANG_OFFRE[S(b.data.Statut)!] - RANG_OFFRE[S(a.data.Statut)!]);
+  const rang = o ? RANG_OFFRE[S(o.data.Statut)!] : 0;
+  return {
+    mandat_le: null as string | null,
+    offre_acceptee_le: o ? jour(o.data.date_acceptation) ?? (rang === 1 ? jour(o.data["Modified Date"]) : null) : null,
+    compromis_le: o && rang >= 2 ? jour(o.data.date_compromis) : null,
+    acte_le: o && rang >= 3 ? jour(o.data.date_acte) ?? jour(o.data.date_acte_estimated) : null,
+  };
+}
+
 /* ---------------------------------------------------- Offres (V2, 30/10) */
 
 const STATUT_OFFRE: Record<string, string> = {
@@ -511,11 +539,36 @@ export async function deposerCompte(contactId: string): Promise<{ ok: boolean; m
       if (!tableAbsente(e)) erreurs.push(`${t} : ${e instanceof Error ? e.message : String(e)}`);
     });
   }
+  /* Prévenir le site (validé par MAV le 30/10) : quand le dépôt apporte une
+     réponse d'agent, une proposition ou une offre transmise qu'il n'avait pas,
+     le site envoie l'e-mail au client dans la minute au lieu d'attendre son
+     tour du jour. Une empreinte des clés dit ce qui est nouveau ; au tout
+     premier dépôt, on pose l'empreinte sans prévenir. */
+  const empreinte = [
+    ...lignes.compte_messages.filter((l) => l.de === "agent").map((l) => `m${l.cle}`),
+    ...lignes.compte_propositions.map((l) => `p${l.cle}`),
+    ...lignes.compte_offres.map((l) => `o${l.cle}`),
+  ];
+  const avant = Array.isArray(c.data.site_avis_cles) ? new Set(c.data.site_avis_cles as string[]) : null;
+  const nouveau = avant !== null && empreinte.some((k) => !avant.has(k));
+  if (nouveau && !erreurs.length) await prevenirSite().catch(() => undefined);
   await patchBo("bo_contact", contactId, {
     site_compte_depot_le: new Date().toISOString(),
     site_compte_erreur: erreurs.length ? erreurs.join(" · ").slice(0, 500) : null,
+    site_avis_cles: empreinte,
   });
   return erreurs.length ? { ok: false, message: erreurs.join(" · ") } : { ok: true, message: "Compte à jour." };
+}
+
+/**
+ * L'avis au site (§13.2) : il n'ouvre que cette route ; elle ne renvoie que
+ * des compteurs, et un appel en trop est sans effet.
+ */
+async function prevenirSite() {
+  const secret = process.env.AVIS_SECRET?.trim();
+  if (!secret) return;
+  const url = process.env.SITE_FI_AVIS_URL?.trim() || "https://www.france-immeuble.fr/api/compte/avis/";
+  await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${secret}` }, cache: "no-store", signal: AbortSignal.timeout(8000) });
 }
 
 /** Efface, sur le site, tout ce que le BO avait déposé pour ce compte. */

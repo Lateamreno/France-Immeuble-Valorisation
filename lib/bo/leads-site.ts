@@ -1331,6 +1331,49 @@ async function recevoirProfilInvestisseur(ref: string, b: Record<string, unknown
   return { deja: false, id: contactId };
 }
 
+/**
+ * `coordonnees` (MAV, 30/10) : le client change lui-même son prénom, son nom,
+ * son téléphone ou son e-mail depuis « Mon profil » du site. Le site a prouvé
+ * la nouvelle adresse par un code ; `ancien_email` n'est là que si elle a
+ * changé. La fiche contact suit, et l'historique dit ce qui a changé.
+ */
+async function recevoirCoordonnees(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  if (!c) throw new LeadPasPret("Contact introuvable.");
+  if (c.data.site_coordonnees_ref === ref) return { deja: true, id: contactId };
+  const email = T(b.email, 200)?.toLowerCase();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new LeadInvalide("Adresse e-mail illisible.");
+  const nouveau: Record<string, string | undefined> = {
+    "prénom": T(b.prenom, 80), nom: T(b.nom, 80), portable: T(b.telephone, 40), email,
+  };
+  const libelles: Record<string, string> = { "prénom": "prénom", nom: "nom", portable: "téléphone", email: "e-mail" };
+  const changes: string[] = [];
+  const patch: Record<string, unknown> = { site_coordonnees_ref: ref, "Modified Date": new Date().toISOString() };
+  for (const [k, v] of Object.entries(nouveau)) {
+    if (!v) continue;
+    const avant = T(c.data[k]);
+    const pareil = k === "portable" ? neufChiffres(avant) === neufChiffres(v) : (avant ?? "").toLowerCase() === v.toLowerCase();
+    if (pareil) continue;
+    patch[k] = v;
+    changes.push(`${libelles[k]} : ${avant ?? "—"} → ${v}`);
+  }
+  /* L'ancienne adresse reste lisible sur la fiche : une réponse à un vieux
+     mail doit encore retrouver la personne. */
+  if (patch.email && T(c.data.email)) {
+    const anciens = Array.isArray(c.data.emails_anciens) ? (c.data.emails_anciens as unknown[]).map((x) => T(x)).filter(Boolean) as string[] : [];
+    patch.emails_anciens = [...new Set([...anciens, T(c.data.email)!.toLowerCase()])];
+  }
+  await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: patch });
+  if (changes.length) {
+    await suiviCompte(`app_site_${ref}`, {
+      type: "Formulaire", contactId,
+      notes: `Coordonnées modifiées par le client depuis son compte :\n${changes.join("\n")}`,
+    }).catch(() => undefined);
+  }
+  return { deja: false, id: contactId };
+}
+
 /** `compte_supprime` : le BO efface ses dépôts et retire la clé ; le contact reste. */
 async function recevoirCompteSupprime(_ref: string, b: Record<string, unknown>) {
   const compte = cleCompte(b.compte);
@@ -1365,6 +1408,7 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "rendez_vous": return recevoirRendezVous(ref, b);
     case "offre_acquereur": return recevoirOffreAcquereur(ref, b);
     case "profil_investisseur": return recevoirProfilInvestisseur(ref, b);
+    case "coordonnees": return recevoirCoordonnees(ref, b);
     /* Règle du 30/10 (§11.1) : un type que le BO ne sait pas encore lire est
        gardé en file par le site (503), jamais jeté. */
     default: throw new LeadPasPret(`Type d'envoi pas encore lu par le BO : ${String(b.type).slice(0, 40)}`);
