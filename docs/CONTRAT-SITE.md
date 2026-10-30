@@ -414,3 +414,89 @@ l'agence, ni ce qu'aurait déposé un co-indivisaire depuis son propre compte.
 - dans le compte, sur chaque immeuble : la liste du §10.2, un bouton
   « Déposer » par catégorie, et les pièces déjà reçues avec leur date.
 
+
+## 11. Tout ce que le client saisit entre au BO (règle du 30/10)
+
+Demandée par la session du site et validée par MAV le 30/10, après qu'un état
+locatif saisi par un vendeur est arrivé par e-mail mais pas dans le BO.
+
+### 11.1 Ce que veulent dire les réponses
+
+- **200** : l'envoi est **enregistré** dans le BO (ou l'était déjà). Jamais
+  avant : le BO relit en base ce qu'il vient d'écrire.
+- **503** : pas encore rangeable — un envoi que le BO ne sait pas encore lire
+  (type ou `etat` inconnus), ou arrivé avant celui dont il dépend (le dossier
+  avant le formulaire, une action de compte avant le rattachement `compte`).
+  Le site le garde dans sa file et le réessaie.
+- **422** : illisible tel quel (champ obligatoire absent, valeur refusée) :
+  inutile de le renvoyer sans le corriger.
+- **500** : erreur passagère, à réessayer.
+
+Le BO limite le débit : 30 envois par minute et par adresse, 120 par minute en
+tout, 3 000 par jour (**429** au-delà).
+
+### 11.2 `estimation`, état `dossier` : l'état locatif du vendeur
+
+Même `ref` que l'estimation. Répète `prenom`, `nom`, `email`, `telephone`,
+`numero`, `rue`, `codePostal`, `ville`, `formulaire`. Champs propres :
+`taxeFonciere` (€/an), `teom` (€, part récupérée sur les locataires),
+`commentaire`, `compte` (si connecté, adresse vérifiée), `lots[]` :
+`{ numero, type, etat, surfaceCarrez, statut, bail, loyerMensuelHC, dpe }`.
+
+Ce qu'en fait le BO :
+- les lots deviennent les lots de l'immeuble né de la même `ref`, **sauf** si
+  un agent en a déjà saisi : ils ne sont alors pas créés, et le détail part en
+  clair dans les notes de l'immeuble pour que l'agent compare ;
+- la taxe foncière devient la charge « Taxe Foncière » de l'immeuble, la TEOM
+  en part récupérable — jamais par-dessus une taxe déjà saisie ;
+- le commentaire et un résumé du dossier entrent dans les notes, en bloc daté
+  signé CLIENT ;
+- un renvoi du même dossier ne crée rien de plus (200, `deja: true`).
+
+Correspondance des valeurs du site avec les listes du BO (`bo_lot`) :
+
+| Site `type` | `Destination` | `Type_lot` |
+|---|---|---|
+| `habitation_t1` … `habitation_t4` | Logement | T1 … T4 |
+| `habitation_t5plus` | Logement | T5 |
+| `habitation_maison` | Logement | Maison |
+| `habitation` | Logement | (vide) |
+| `bureau` | Bureau | Bureaux |
+| `commerce` | Commerce | Local commercial |
+| `local_activite` | Logistique | Local d'activites |
+| `parking` / `cave` | Parking / Cave | Parking / Cave (surface au sol) |
+| `autre` | Annexe | Autre |
+
+| Site `etat` | `Etat` du BO |
+|---|---|
+| `bon` | Bon etat |
+| `moyen` | Etat d'usage |
+| `rafraichissement` | Etat d'usage (+ « à rafraîchir » en commentaire) |
+| `travaux` | Travaux |
+
+| Site `statut` / `bail` | `Type_bail` du BO |
+|---|---|
+| `libre` | Vide |
+| `nu_89` | Nu |
+| `meuble`, `mobilite` | Meuble |
+| `nu_48` | Loi 48 |
+| `commercial_369` | 3/6/9 |
+| `professionnel` | Professionnel |
+| `derogatoire`, `precaire` | Précaire |
+| `civil` | Civil |
+| occupé sans bail, ou `autre` | Nu (logement) ou 3/6/9 (commerce, bureau, activité), « Type de bail non précisé » en commentaire |
+
+`conge_en_cours` et `procedure` restent des lots occupés, avec la mention en
+commentaire. `dpe` : A à G dans `Type_dpe`. `loyerMensuelHC` dans `loyer`
+(€/mois HC). Listes complètes du BO : `lib/referentiels.ts` (`TYPES_LOT`,
+`TYPES_BAIL`, `ETATS_LOT`, `TYPES_DPE`).
+
+### 11.3 Plans et photos du dossier vendeur
+
+Le type `document` du §10.3 accepte une seconde porte : `estimation` (l'UUID
+de l'estimation) **à la place** de `bien`. `compte` est alors facultatif ; le
+`chemin` doit commencer par `<compte>/` si le vendeur est connecté, sinon par
+`<estimation>/`. Deux catégories de plus : `plans` et `photos`. Le circuit ne
+change pas : la pièce est rangée au coffre de l'immeuble, puis effacée du seau
+du site. 503 si l'estimation n'est pas encore arrivée ; 422 si son immeuble a
+été supprimé dans le BO.

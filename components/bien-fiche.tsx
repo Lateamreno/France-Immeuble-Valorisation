@@ -2012,7 +2012,13 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
  */
 function NotesRail({ b }: { b: BienData }) {
   const immeubleId = String(b.im._id);
-  const [ouvert, setOuvert] = useState(false);
+  /* Retour #577 : toujours ouvertes — on voit les dernières notes en
+     arrivant, et on note au fil de l'eau sans rien déplier. */
+  const zone = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = zone.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [immeubleId]);
   const [notes, setNotes] = useState(String(b.im.notes ?? ""));
   const [erreur, setErreur] = useState(false);
   /* Ce qui est en base, ce qui est à l'écran, et l'envoi en cours. */
@@ -2055,21 +2061,19 @@ function NotesRail({ b }: { b: BienData }) {
 
   return (
     <>
-      <button type="button" className={`srow2 sgroupe${ouvert ? " ouvert" : ""}`} aria-expanded={ouvert}
-        onClick={() => setOuvert((o) => !o)}>
+      <div className="srow2 sgroupe ouvert brail-notes-h">
         <span className="sic2"><svg viewBox="0 0 24 24">{I.note}</svg></span>
         Notes
         <span className="right">
-          {!ouvert && notes.trim() && <span className="ncount">{blocsNote(notes).length}</span>}
-          <span className="chev">{ouvert ? "˄" : "˅"}</span>
+          {notes.trim() && <span className="ncount">{blocsNote(notes).length}</span>}
         </span>
-      </button>
-      {ouvert && (
+      </div>
+      {(
         <div className="brail-notes">
           <textarea
+            ref={zone}
             value={notes}
             rows={14}
-            autoFocus
             onChange={(e) => changer(saisieDatee(e))}
             onBlur={() => void enregistrer()}
             placeholder={"Mémos internes : contacts, historique, références comparables…"}
