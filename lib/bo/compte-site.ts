@@ -83,6 +83,8 @@ export const TABLES_COMPTE = [
   "compte_recherches", "compte_propositions", "compte_demandes", "compte_biens", "compte_estimations", "compte_documents",
   /* V2 (30/10) : tant que le site ne les a pas créées, on les saute sans bruit. */
   "compte_offres", "compte_messages", "compte_agent",
+  /* V2 bis (demande du site, 30/10) */
+  "compte_rendez_vous", "compte_mandats", "compte_visites", "compte_dossiers_bien",
 ] as const;
 export type TableCompte = (typeof TABLES_COMPTE)[number];
 export type LignesCompte = Record<TableCompte, Record<string, unknown>[]>;
@@ -151,6 +153,7 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
   const ilYaUnAn = Date.now() - 365 * 86_400_000;
   const lp: Record<string, unknown>[] = [];
   const vus = new Set<string>();
+  const propsDeposees: { p: Doc; etat: string }[] = [];
   for (const p of propositions) {
     const imId = S(p.data.IMMEUBLE);
     if (!imId || vus.has(imId)) continue;
@@ -159,6 +162,7 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     const recente = Date.parse(String(p.data.date_envoi ?? p.data["Created Date"] ?? "")) > ilYaUnAn;
     if (!recente && !(c.st >= 5 && c.st <= 10)) continue;
     vus.add(imId);
+    propsDeposees.push({ p, etat: c.st >= 5 && c.st <= 6 ? "disponible" : c.st >= 7 && c.st <= 10 ? "sous_offre" : "autre" });
     const st = String(p.data.Statut ?? "");
     const reponse = S(p.data.site_reponse)
       ?? (/^(Intéressé|Visite|Offre)/.test(st) ? "interesse" : st.startsWith("Refusée (sans offre)") ? "pas_pour_moi" : null);
@@ -196,6 +200,8 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
   const lpieces: Record<string, unknown>[] = [];
   const le: Record<string, unknown>[] = [];
   const lo: Record<string, unknown>[] = [];
+  const lmd: Record<string, unknown>[] = [];
+  const lvi: Record<string, unknown>[] = [];
   const clesBiens = new Map<string, string>();
   for (const im of immeubles) {
     const st = statutNum(im.data.Statut);
@@ -234,6 +240,39 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       bien: c.bien,
       maj_le,
     });
+    /* Le mandat (demande du site, 30/10) : envoyé à la signature, puis signé
+       avec son PDF. Un mandat annulé, ou encore en préparation, ne paraît pas. */
+    const mandats = await lireBo(`bo_mandat?select=id,data&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([im.id]))}&limit=50`);
+    for (const m of mandats) {
+      const stm = S(m.data.Statut) ?? "";
+      const signe = !!(S(m.data.date_signature) || S(m.data.pdf_signed)) && ["En cours", "Vendu", "Expiré"].includes(stm);
+      const envoye = stm === "Attente signature";
+      if (!signe && !envoye) continue;
+      const mcle = await cleDe("bo_mandat", m);
+      lmd.push({
+        compte, cle: mcle, bien_cle: cle,
+        etat: signe ? "signe" : "envoye",
+        signe_le: signe ? jour(m.data.date_signature) : null,
+        document: signe && S(m.data.pdf_signed) ? await deposerDocumentClient(compte, `mandats/${mcle}.pdf`, S(m.data.pdf_signed)!) : null,
+        maj_le,
+      });
+    }
+    /* Les visites (confirmées ou faites) et le retour écrit POUR le vendeur —
+       jamais le compte rendu interne, jamais le nom ni la société du visiteur. */
+    if (st >= 5) {
+      const vis = await lireBo(`bo_visite?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(im.id)}&limit=500`);
+      for (const v of vis.filter((x) => ["Effectuée", "Confirmée"].includes(S(x.data.Statut) ?? ""))) {
+        const interet = S(v.data.interet_vendeur);
+        lvi.push({
+          compte, cle: await cleDe("bo_visite", v), bien_cle: cle,
+          visite_le: jour(v.data.date),
+          etat: S(v.data.Statut) === "Effectuée" ? "effectuee" : "confirmee",
+          retour: await anonymiser(S(v.data.commentaire_externe), v),
+          interet: interet && ["faible", "moyen", "fort"].includes(interet) ? interet : null,
+          maj_le,
+        });
+      }
+    }
     /* Les offres que l'agent a transmises au propriétaire (V2, 30/10). */
     for (const o of offres.filter((x) => S(x.data.site_transmise_le))) {
       const ocle = await cleDe("bo_offre", o);
@@ -313,9 +352,43 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     maj_le,
   }] : [];
 
+  /* Les rendez-vous demandés depuis le compte, et la réponse de l'agent. */
+  const rdvs = await lireBo(`bo_question?select=id,data&data->>CONTACT=eq.${cid}&data->>nature=eq.rendez_vous&limit=200`);
+  const lrv: Record<string, unknown>[] = [];
+  for (const q of rdvs) {
+    const imId = S(q.data.IMMEUBLE);
+    lrv.push({
+      compte, cle: await cleDe("bo_question", q),
+      date: S(q.data.rdv_date) ?? null, creneau: S(q.data.rdv_creneau) ?? null, objet: S(q.data.rdv_objet) ?? "autre",
+      etat: ["confirme", "annule"].includes(S(q.data.rdv_etat) ?? "") ? S(q.data.rdv_etat) : "demande",
+      bien_cle: imId ? clesBiens.get(imId) ?? null : null,
+      maj_le,
+    });
+  }
+
+  /* Les documents d'un bien proposé, ouverts dès l'envoi du dossier : le
+     dossier de présentation, tel qu'il est parti par e-mail. Seulement pour
+     un bien encore en vente. */
+  const ldb: Record<string, unknown>[] = [];
+  for (const { p, etat } of propsDeposees.filter((x) => x.etat !== "autre")) {
+    const dossierId = S(p.data.DOSSIER);
+    const [d] = dossierId ? await lireBo(`bo_dossier?select=id,data&id=eq.${encodeURIComponent(dossierId)}`) : [];
+    const pdf = S(d?.data.pdf);
+    if (!d || !pdf) continue;
+    const dcle = await cleDe("bo_dossier", d);
+    const document = await deposerDocumentClient(compte, `dossiers/${dcle}.pdf`, pdf);
+    if (!document) continue;
+    ldb.push({
+      compte, cle: dcle, proposition: await cleDe("bo_proposition", p),
+      nom: "Dossier de présentation", categorie: "dossier", document, bien_etat: etat,
+      maj_le,
+    });
+  }
+
   return {
     compte_recherches: lr, compte_propositions: lp, compte_demandes: ld, compte_biens: lb, compte_estimations: le,
     compte_documents: lpieces, compte_offres: lo, compte_messages: lm, compte_agent: la,
+    compte_rendez_vous: lrv, compte_mandats: lmd, compte_visites: lvi, compte_dossiers_bien: ldb,
   };
 }
 
@@ -339,11 +412,36 @@ async function acquereurDe(o: Doc): Promise<string | null> {
   return S(c?.data.entreprise_nom) ?? (personne || S(o.data.acheteur_nom) || null);
 }
 
+/**
+ * Un retour de visite pour le vendeur, sans le nom ni la société du visiteur
+ * (demande du site : « jamais de nom ni de société »). L'agent l'écrit pour
+ * le vendeur ; ceci rattrape une distraction. Un retour où restent une adresse
+ * e-mail ou un numéro de téléphone n'est pas déposé du tout.
+ */
+async function anonymiser(texte: string | undefined, v: Doc): Promise<string | null> {
+  if (!texte) return null;
+  const ids = Array.isArray(v.data.VISITEURs) ? (v.data.VISITEURs as unknown[]).map(S).filter((x): x is string => !!x) : [];
+  const filtre = ids.map((x) => `"${x}"`).join(",");
+  const visiteurs = ids.length ? await lireBo(`bo_contact?select=id,data&id=in.(${encodeURIComponent(filtre)})`) : [];
+  const noms = [
+    ...visiteurs.flatMap((c) => [S(c.data.entreprise_nom), [S(c.data["prénom"]), S(c.data.nom)].filter(Boolean).join(" "), S(c.data.nom), S(c.data["prénom"])]),
+    S(v.data.visiteur_nom),
+  ].filter((x): x is string => !!x && x.length >= 3).sort((a, b) => b.length - a.length);
+  let t = texte;
+  for (const n of noms) t = t.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "le visiteur");
+  if (/@|\d{2}[ .]?\d{2}[ .]?\d{2}[ .]?\d{2}/.test(t)) return null;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /** Le seau privé du site où le BO dépose les documents d'un client (V2). */
 export const SEAU_CLIENTS = "documents-clients";
 
 /** Un fichier du BO : `storage:…` dans son coffre, ou une adresse (fichiers de l'ancien BO). */
 async function lireFichierBo(ref: string): Promise<ArrayBuffer | null> {
+  /* Les fichiers déposés par le BO récent sont parfois notés par le relais
+     `/api/photo?s=<chemin>` : c'est le même coffre. */
+  const relais = ref.match(/^\/api\/photo\?s=([^&]+)/);
+  if (relais) ref = `storage:${decodeURIComponent(relais[1])}`;
   const url = ref.startsWith("storage:") ? `${BO_URL}/storage/v1/object/bo-files/${ref.slice(8)}`
     : ref.startsWith("//") ? `https:${ref}` : ref;
   if (!/^https:\/\//.test(url)) return null;

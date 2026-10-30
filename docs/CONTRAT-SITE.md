@@ -606,10 +606,11 @@ les champs de l'agent sont nuls.
 | `agent_photo` | text, nullable | adresse https de sa photo, quand la fiche agent en a une |
 | `maj_le` | timestamptz | dépôt |
 
-## 13. Formats proposés pour les prochains envois du site (30/10, pas encore lus par le BO)
+## 13. Les envois du compte v2 : rendez-vous, offre, profil (lus depuis le 30/10)
 
-Tant que le BO ne les lit pas, il répond **503** (règle du §11.1) : le site
-peut les coder et les mettre en file sans rien perdre.
+Un type que le BO ne lit pas encore reçoit **503** (règle du §11.1), jamais
+422 : le site le garde en file. Ces trois-là sont lus ; `bienTitre`, ajouté
+par le site pour la lisibilité, est ignoré.
 
 ```json
 { "type": "rendez_vous", "ref": "<uuid>", "compte": "<uuid>",
@@ -618,9 +619,10 @@ peut les coder et les mettre en file sans rien perdre.
   "bien": "<cle de compte_biens, facultatif>",
   "proposition": "<cle de compte_propositions, facultatif>" }
 ```
-Une demande : elle entre dans les Questions de l'agent attitré (à défaut, de
-tous) ; la confirmation revient par le dépôt (`compte_rendez_vous` : date,
-créneau, objet, `etat` = `demande` / `confirme` / `annule`).
+Une demande : elle entre dans les Questions (« Demande de rendez-vous ») avec
+deux boutons, Confirmer et Annuler ; la réponse revient par le dépôt
+(`compte_rendez_vous`, §13.1). 422 si la date n'est pas `AAAA-MM-JJ` ou le
+créneau illisible.
 
 ```json
 { "type": "offre_acquereur", "ref": "<uuid>", "compte": "<uuid>",
@@ -631,8 +633,12 @@ créneau, objet, `etat` = `demande` / `confirme` / `annule`).
   "pieces": [{ "chemin": "<compte>/offre.pdf", "nom": "offre.pdf" }] }
 ```
 Le bien est désigné par la proposition (un acquéreur ne connaît pas
-l'immeuble autrement). Le BO crée l'offre « En cours » sur la fiche, la
-rattache au contact, et le profil investisseur déjà reçu l'accompagne.
+l'immeuble autrement). Le BO crée l'offre « En cours » sur la fiche, rattachée
+à l'acquéreur (qui passe en B), avec la première pièce PDF comme document
+d'offre ; `montant` est le prix offert honoraires inclus, net vendeur et
+honoraires sont répartis au prorata du prix affiché et l'agent les vérifie.
+L'agent est prévenu dans les Questions. Le vendeur ne la voit que si l'agent
+la lui transmet (§12.1).
 
 ```json
 { "type": "profil_investisseur", "ref": "<uuid>", "compte": "<uuid>",
@@ -641,5 +647,51 @@ rattache au contact, et le profil investisseur déjà reçu l'accompagne.
   "financement": "comptant | pret | mixte", "presentation": "…",
   "pieces": [{ "chemin": "<compte>/presentation.pdf", "nom": "presentation.pdf" }] }
 ```
-Rangé sur la fiche contact (la société créée ou retrouvée par son SIREN) ;
-un nouvel envoi remplace le précédent.
+Rangé sur la fiche contact (l'agent le lit dans « Son compte sur le site ») ;
+un nouvel envoi remplace le précédent, l'historique garde la trace de chaque
+envoi.
+
+**Demande d'appel.** Un `message` dont le titre est « Demande d'appel » devient
+une question de nature « appel », **en tête des Questions** tant qu'elle est
+ouverte. Le geste « J'ai appelé » sort le contact du D (en C), lui donne
+l'agent qui a appelé s'il n'en avait pas, et redépose son compte :
+`compte_agent.appele` passe à vrai avec les champs de l'agent.
+
+### 13.1 Les projections v2 bis (feu vert du BO, 30/10)
+
+Même forme que les autres `compte_*` : clé `(compte, cle)`, lecture par le
+seul titulaire, écriture par le BO. Les PDF vont dans `documents-clients`,
+sous `<compte>/…` ; le site les sert après avoir vérifié la ligne et le
+préfixe, comme vous l'avez prévu.
+
+| Table | Colonnes déposées |
+|---|---|
+| `compte_rendez_vous` | `date` (date), `creneau` (text), `objet` (text), `etat` (`demande` / `confirme` / `annule`), `bien_cle` (uuid, nullable : seulement pour un immeuble du propriétaire), `maj_le` |
+| `compte_mandats` | `bien_cle`, `etat` (`envoye` / `signe`), `signe_le` (date, nullable), `document` (text, nullable : `<compte>/mandats/<cle>.pdf`), `maj_le` |
+| `compte_visites` | `bien_cle`, `visite_le` (date), `etat` (`confirmee` / `effectuee`), `retour` (text, nullable), `interet` (`faible` / `moyen` / `fort`, nullable), `maj_le` |
+| `compte_dossiers_bien` | `proposition` (uuid : la `cle` de `compte_propositions`), `nom`, `categorie` (`dossier`), `document` (`<compte>/dossiers/<cle>.pdf`), `bien_etat` (`disponible` / `sous_offre`), `maj_le` |
+
+- **Mandat** : « envoyé » = à la signature ; « signé » = date de signature ou
+  PDF signé, mandat en cours, vendu ou expiré. Un mandat annulé ou en
+  préparation n'est pas déposé.
+- **Visites** : seules les visites confirmées ou faites. `retour` est le texte
+  que l'agent écrit POUR le vendeur (bouton « Retour au vendeur » de la
+  visite) — jamais le compte rendu interne. Le BO retire en plus le nom et la
+  société du visiteur, et ne dépose pas un retour où resterait une adresse
+  e-mail ou un numéro de téléphone.
+- **Dossiers** : le dossier de présentation tel qu'il est parti par e-mail,
+  pour un bien encore en vente seulement.
+
+### 13.2 Prévenir le site après un dépôt
+
+Le BO ne détient pas le secret du cron du site et préfère ne pas le détenir :
+**passez par le déclencheur dans votre base** (une ligne `de = 'agent'` dans
+`compte_messages`, une nouvelle ligne dans `compte_propositions` ou dans
+`compte_offres`). C'est aussi plus juste : le dépôt est la seule chose qui
+compte, quelle que soit la route qui l'a fait.
+
+### 13.3 Repères du secteur
+
+Pas pour ce lot. Le BO a les repères de 13 209 communes (`bo_villes_stats`) ;
+avant de les déposer dans `web.stats_villes`, il faut la liste exacte des
+colonnes que vous lisez.

@@ -813,7 +813,7 @@ const REPONSES: Record<string, { statut: string; libelle: string }> = {
 
 /** Une question à l'agent du bien : demande de visite, intérêt, prix du propriétaire. */
 async function questionCompte(id: string, p: {
-  nature: "visite" | "interet" | "prix" | "message"; contactId: string; immeubleId: string; message: string; source: string;
+  nature: "visite" | "interet" | "prix" | "message" | "appel" | "offre"; contactId: string; immeubleId: string; message: string; source: string;
 }) {
   if (await existe("bo_question", id)) return;
   const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(p.contactId)}`);
@@ -1075,47 +1075,42 @@ async function recevoirPhoto(
 }
 
 /**
- * `message` (V2, MAV 30/10 : « ok pour construire cela ») : le client écrit à
- * son agent depuis son compte. Le message entre au suivi du contact (et de
- * l'immeuble visé), dans les notes de l'immeuble, et dans les Questions de
- * l'agent jusqu'à ce qu'il réponde depuis le panneau « Son compte sur le site ».
- * La réponse revient au client par le dépôt (`compte_messages`).
+ * Le bien dont parle le client, s'il en désigne un : un immeuble de son compte
+ * (`bien`, propriétaire) ou un bien qu'on lui a proposé (`proposition`,
+ * acquéreur) — jamais un autre : c'est le BO qui vérifie, sur ses fiches.
  */
-async function recevoirMessage(ref: string, b: Record<string, unknown>) {
-  const { contactId } = await contactDuCompte(b);
-  const texte = T(b.texte, 5000) ?? T(b.message, 5000);
-  if (!texte) throw new LeadInvalide("Message vide.");
-  const id = `app_site_${ref}`;
-  if (await existe("bo_suivi", id)) return { deja: true, id };
-  /* Le bien visé, s'il y en a un : un immeuble du compte (propriétaire) ou un
-     bien qu'on lui a proposé (acquéreur) — jamais un autre, c'est le BO qui
-     vérifie sur ses fiches. */
-  let immeubleId: string | undefined;
+async function bienVise(contactId: string, b: Record<string, unknown>) {
   const cleBien = cleCompte(b.bien);
   const cleProposition = cleCompte(b.proposition);
+  let immeubleId: string | undefined;
+  let propositionId: string | undefined;
   if (cleBien) immeubleId = (await immeubleDuCompte(contactId, cleBien)).id;
   else if (cleProposition) {
     const [p] = await lire(`bo_proposition?select=id,data&data->>site_cle=eq.${cleProposition}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&limit=1`);
     if (!p) throw new LeadInvalide("Proposition inconnue pour ce compte.");
     immeubleId = T(p.data.IMMEUBLE);
+    propositionId = p.id;
   }
   const [im] = immeubleId ? await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(immeubleId)}`) : [];
-  /* Plusieurs conversations par client, nommées (demande du site, 30/10) :
-     sans clé de conversation, le message ouvre la sienne. */
-  /* La clé est rendue au site telle qu'il l'a envoyée (UUID avec tirets). */
-  const conversation = reference(b.conversation)
-    ? String(b.conversation).trim().toLowerCase()
-    : String(b.ref).trim().toLowerCase();
-  const titre = T(b.titre, 120);
-  /* Les pièces jointes : posées par le site dans son seau, sous le dossier du
-     compte ; le BO les rapatrie (au coffre de l'immeuble s'il y en a un) puis
-     les efface du site, comme les pièces du §10. */
-  const listePieces = Array.isArray(b.pieces) ? (b.pieces as unknown[]).slice(0, 5) : [];
-  const pieces: { nom: string; path: string }[] = [];
-  for (const [i, x] of listePieces.entries()) {
+  return { immeubleId, propositionId, im, proprietaire: !!cleBien };
+}
+
+/**
+ * Les pièces jointes d'un envoi : posées par le site dans son seau, sous le
+ * dossier du compte. Le BO les rapatrie — au coffre de l'immeuble s'il y en a
+ * un, sinon dans le dossier du contact — ; l'appelant les efface du site une
+ * fois l'envoi rangé (`effacerPieces`), comme les pièces du §10.
+ */
+async function rapatrierPieces(
+  b: Record<string, unknown>, ref: string, contactId: string, immeubleId: string | undefined, libelle: string,
+): Promise<{ nom: string; path: string; format: string }[]> {
+  const liste = Array.isArray(b.pieces) ? (b.pieces as unknown[]).slice(0, 5) : [];
+  const compte = cleCompte(b.compte);
+  const pieces: { nom: string; path: string; format: string }[] = [];
+  for (const [i, x] of liste.entries()) {
     const pj = (x ?? {}) as Record<string, unknown>;
     const chemin = T(pj.chemin, 400);
-    if (!chemin || !chemin.startsWith(`${cleCompte(b.compte)}/`) || chemin.includes("..")) throw new LeadInvalide("Chemin de pièce jointe invalide.");
+    if (!chemin || !compte || !chemin.startsWith(`${compte}/`) || chemin.includes("..")) throw new LeadInvalide("Chemin de pièce jointe invalide.");
     const nom = T(pj.nom, 160) ?? chemin.split("/").pop()!;
     const ext = nom.split(".").pop()?.toLowerCase() ?? "";
     if (!FORMATS[ext]) throw new LeadInvalide(`Format de pièce jointe refusé (.${ext}).`);
@@ -1130,44 +1125,210 @@ async function recevoirMessage(ref: string, b: Record<string, unknown>) {
       body: new Uint8Array(piece.octets), cache: "no-store",
     });
     if (!up.ok) throw new Error(`Coffre ${up.status} : ${(await up.text()).slice(0, 200)}`);
-    pieces.push({ nom, path });
-    if (immeubleId && !(await existe("bo_app_document", `${id}_pj${i}`))) {
+    pieces.push({ nom, path, format: FORMATS[ext] });
+    const docId = `app_site_${ref}_pj${i}`;
+    if (immeubleId && !(await existe("bo_app_document", docId))) {
       const maintenant = new Date().toISOString();
-      await inserer("bo_app_document", `${id}_pj${i}`, {
-        IMMEUBLE: immeubleId, name: `Message du client — ${nom}`, file_name: nom, path, format: FORMATS[ext],
-        size_kB: Math.round(piece.taille / 1024), source: "Site - Message du client",
-        site_compte: cleCompte(b.compte) ?? undefined, site_categorie: "autre", site_cle: randomUUID(),
+      await inserer("bo_app_document", docId, {
+        IMMEUBLE: immeubleId, name: `${libelle} — ${nom}`, file_name: nom, path, format: FORMATS[ext],
+        size_kB: Math.round(piece.taille / 1024), source: "Site - Compte client",
+        site_compte: compte, site_categorie: "autre", site_cle: randomUUID(),
         "Created Date": maintenant, "Modified Date": maintenant,
       });
     }
   }
+  return pieces;
+}
+
+async function effacerPieces(b: Record<string, unknown>) {
+  const liste = Array.isArray(b.pieces) ? (b.pieces as unknown[]).slice(0, 5) : [];
+  for (const pj of liste) await effacerPieceDuSite(String((pj as Record<string, unknown>).chemin));
+}
+
+/** Un suivi « Formulaire » ou « Message » venu du compte, rattaché au contact et à l'immeuble. */
+async function suiviCompte(id: string, p: {
+  type: string; contactId: string; immeubleId?: string; agentId?: string; notes: string; extra?: Record<string, unknown>;
+}) {
   const now = new Date().toISOString();
   await inserer("bo_suivi", id, {
-    Type: "Message",
-    AGENT: T(im?.data.AGENT),
-    CONTACT: contactId,
-    IMMEUBLEs: immeubleId ? [immeubleId] : [],
-    Canals: ["Site"],
-    notes: texte,
-    Statut: "Traité",
-    site_message: "client",
-    site_conversation: conversation,
-    site_titre: titre,
-    site_pieces: pieces.length ? pieces : undefined,
-    date_start: now,
-    "Created Date": now,
-    "Modified Date": now,
+    Type: p.type, AGENT: p.agentId, CONTACT: p.contactId,
+    IMMEUBLEs: p.immeubleId ? [p.immeubleId] : [], Canals: ["Site"],
+    notes: p.notes, Statut: "Traité", ...p.extra,
+    date_start: now, "Created Date": now, "Modified Date": now,
   });
-  if (immeubleId) await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: immeubleId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
-  await rpc("bo_append_ref", { p_table: "bo_contact", p_id: contactId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
+  if (p.immeubleId) await rpc("bo_append_ref", { p_table: "bo_immeuble", p_id: p.immeubleId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
+  await rpc("bo_append_ref", { p_table: "bo_contact", p_id: p.contactId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
+}
+
+/**
+ * `message` (V2, MAV 30/10 : « ok pour construire cela ») : le client écrit à
+ * son agent depuis son compte. Le message entre au suivi du contact (et de
+ * l'immeuble visé), dans les notes de l'immeuble, et dans les Questions de
+ * l'agent jusqu'à ce qu'il réponde depuis le panneau « Son compte sur le site ».
+ * La réponse revient au client par le dépôt (`compte_messages`).
+ *
+ * Une « Demande d'appel » (demande du site, 30/10) arrive comme un message :
+ * elle devient une question de nature `appel`, en tête des Questions.
+ */
+async function recevoirMessage(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const texte = T(b.texte, 5000) ?? T(b.message, 5000);
+  if (!texte) throw new LeadInvalide("Message vide.");
+  const id = `app_site_${ref}`;
+  if (await existe("bo_suivi", id)) return { deja: true, id };
+  const { immeubleId, im, proprietaire } = await bienVise(contactId, b);
+  /* Plusieurs conversations par client, nommées : sans clé de conversation,
+     le message ouvre la sienne. La clé est rendue au site telle qu'il l'a
+     envoyée (UUID avec tirets). */
+  const conversation = reference(b.conversation)
+    ? String(b.conversation).trim().toLowerCase()
+    : String(b.ref).trim().toLowerCase();
+  const titre = T(b.titre, 120);
+  const pieces = await rapatrierPieces(b, ref, contactId, immeubleId, "Message du client");
+  await suiviCompte(id, {
+    type: "Message", contactId, immeubleId, agentId: T(im?.data.AGENT), notes: texte,
+    extra: {
+      site_message: "client", site_conversation: conversation, site_titre: titre,
+      site_pieces: pieces.length ? pieces.map(({ nom, path }) => ({ nom, path })) : undefined,
+    },
+  });
+  const appel = /demande d.appel/i.test(titre ?? "");
   await questionCompte(`${id}_q`, {
-    nature: "message", contactId, immeubleId: immeubleId ?? "", source: "Site - Compte client",
-    message: texte,
+    nature: appel ? "appel" : "message", contactId, immeubleId: immeubleId ?? "", source: "Site - Compte client",
+    message: appel ? `Demande d'appel : ${texte}` : texte,
   });
-  if (immeubleId && cleBien) await noterClient(immeubleId, texte);
-  for (const pj of listePieces) await effacerPieceDuSite(String((pj as Record<string, unknown>).chemin));
+  if (immeubleId && proprietaire) await noterClient(immeubleId, texte);
+  await effacerPieces(b);
   after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
   return { deja: false, id };
+}
+
+const CRENEAUX: Record<string, string> = { matin: "le matin", apres_midi: "l'après-midi", soir: "en soirée" };
+const OBJETS_RDV: Record<string, string> = { visite: "Visite", estimation: "Estimation", signature: "Signature", autre: "Rendez-vous" };
+
+/**
+ * `rendez_vous` (§13) : une DEMANDE. Elle entre dans les Questions (nature
+ * `rendez_vous`) ; l'agent la confirme ou l'annule, et l'état revient au
+ * client par `compte_rendez_vous`.
+ */
+async function recevoirRendezVous(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const id = `app_site_${ref}`;
+  if (await existe("bo_question", id)) return { deja: true, id };
+  const date = T(b.date, 10);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))) throw new LeadInvalide("Date illisible (AAAA-MM-JJ).");
+  const creneau = T(b.creneau, 20) ?? "";
+  if (!CRENEAUX[creneau] && !/^\d{1,2}:\d{2}$/.test(creneau)) throw new LeadInvalide("Créneau illisible.");
+  const objet = OBJETS_RDV[T(b.objet, 20) ?? ""] ? T(b.objet, 20)! : "autre";
+  const { immeubleId, proprietaire } = await bienVise(contactId, b);
+  const [a, m, j] = date.split("-");
+  const quand = `${j}/${m}/${a.slice(2)} ${CRENEAUX[creneau] ?? `à ${creneau.replace(":", "h")}`}`;
+  const texte = T(b.texte, 2000);
+  const message = `${OBJETS_RDV[objet]} demandée pour le ${quand}.${texte ? `\n${texte}` : ""}`;
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  const now = new Date().toISOString();
+  await inserer("bo_question", id, {
+    source: "Site - Compte client", nature: "rendez_vous", ended: false, message,
+    email: T(c?.data.email), "téléphone": T(c?.data.portable) ?? T(c?.data.fixe),
+    IMMEUBLE: immeubleId, CONTACT: contactId,
+    rdv_date: date, rdv_creneau: creneau, rdv_objet: objet, rdv_etat: "demande",
+    "Created Date": now, "Modified Date": now,
+  });
+  if (immeubleId && proprietaire) await noterClient(immeubleId, message);
+  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  return { deja: false, id };
+}
+
+const FINANCEMENTS: Record<string, string> = { comptant: "comptant", pret: "avec prêt", mixte: "apport et prêt" };
+
+/**
+ * `offre_acquereur` (§13) : une offre sur un bien proposé. Elle se range
+ * comme une offre saisie par l'agent (« En cours », rattachée à l'acquéreur,
+ * qui passe en B) et l'agent est prévenu dans les Questions. Le site donne le
+ * prix offert : net vendeur et honoraires sont répartis au prorata du prix
+ * affiché, à vérifier par l'agent. Le vendeur ne la voit que si l'agent la
+ * lui transmet.
+ */
+async function recevoirOffreAcquereur(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const id = `app_site_${ref}`;
+  if (await existe("bo_offre", id)) return { deja: true, id };
+  const montant = N(b.montant);
+  if (!montant || montant <= 0) throw new LeadInvalide("Montant illisible.");
+  if (!cleCompte(b.proposition)) throw new LeadInvalide("L'offre doit désigner une proposition.");
+  const { immeubleId, im } = await bienVise(contactId, { proposition: b.proposition });
+  if (!immeubleId || !im) throw new LeadInvalide("Le bien de cette proposition n'est plus dans le BO.");
+  const pieces = await rapatrierPieces(b, ref, contactId, immeubleId, "Offre de l'acquéreur");
+  const hai = N(im.data.prix_hai), nv = N(im.data.prix_nv);
+  const prixNv = hai && nv && hai > 0 && nv <= hai ? Math.round((montant * nv) / hai) : undefined;
+  const jours = N(b.validite_jours);
+  const financement = FINANCEMENTS[T(b.financement, 20) ?? ""];
+  const apport = N(b.apport);
+  const conditions = T(b.conditions, 3000);
+  const now = new Date();
+  const commentaire = [
+    "Offre faite depuis son compte sur le site.",
+    financement ? `Financement ${financement}${apport ? `, apport ${eur(apport)}` : ""}.` : apport ? `Apport ${eur(apport)}.` : null,
+    conditions ? `Conditions : ${conditions}` : null,
+    prixNv ? "Net vendeur et honoraires répartis au prorata du prix affiché : à vérifier." : "Net vendeur à renseigner.",
+  ].filter(Boolean).join("\n");
+  await inserer("bo_offre", id, {
+    IMMEUBLEs: [immeubleId], Statut: "En cours", date: now.toISOString(),
+    ACHETEURs: [contactId], prix_hai: montant, prix_nv: prixNv,
+    honos_ttc: prixNv !== undefined ? montant - prixNv : undefined,
+    honos_ht: prixNv !== undefined ? Math.round((montant - prixNv) / 1.2) : undefined,
+    validite_jours: jours, date_expiration: jours ? new Date(now.getTime() + jours * 86_400_000).toISOString() : undefined,
+    commentaire, source: "Site - Compte client",
+    pdf: pieces.find((x) => x.format === "application/pdf") ? `storage:${pieces.find((x) => x.format === "application/pdf")!.path}` : undefined,
+    site_financement: T(b.financement, 20), site_apport: apport,
+    "Created Date": now.toISOString(), "Modified Date": now.toISOString(),
+  });
+  /* Retour #525 : celui qui fait une offre passe en B (on ne fait que monter). */
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  if (c && c.data.Note !== "A" && c.data.Note !== "B") {
+    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: { Note: "B", note_auto: { de: c.data.Note ?? null, motif: "offre", le: now.toISOString() } } });
+  }
+  await questionCompte(`${id}_q`, {
+    nature: "offre", contactId, immeubleId, source: "Site - Compte client",
+    message: `Offre à ${eur(montant)}${jours ? `, valable ${jours} jours` : ""}.\n${commentaire}`,
+  });
+  await effacerPieces(b);
+  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  return { deja: false, id };
+}
+
+/**
+ * `profil_investisseur` (§13) : rangé sur la fiche contact ; un nouvel envoi
+ * remplace le précédent. L'agent le lit dans « Son compte sur le site ».
+ */
+async function recevoirProfilInvestisseur(ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  const ancien = (c?.data.profil_investisseur ?? {}) as Record<string, unknown>;
+  if (ancien.ref === ref) return { deja: true, id: contactId };
+  const pieces = await rapatrierPieces(b, ref, contactId, undefined, "Profil investisseur");
+  const achat = T(b.achat_en, 20);
+  const profil = {
+    ref, recu_le: new Date().toISOString(),
+    achat_en: achat === "societe" ? "societe" : achat === "nom_propre" ? "nom_propre" : undefined,
+    societe: T(b.societe, 160), siren: T(b.siren, 14)?.replace(/\s/g, ""),
+    immeubles_detenus: N(b.immeubles_detenus), budget: N(b.budget), apport: N(b.apport),
+    financement: FINANCEMENTS[T(b.financement, 20) ?? ""] ? T(b.financement, 20) : undefined,
+    presentation: T(b.presentation, 5000),
+    pieces: pieces.map(({ nom, path }) => ({ nom, path })),
+  };
+  await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: { profil_investisseur: JSON.parse(JSON.stringify(profil)) } });
+  await suiviCompte(`app_site_${ref}`, {
+    type: "Formulaire", contactId,
+    notes: `Profil investisseur ${Object.keys(ancien).length ? "mis à jour" : "renseigné"} depuis son compte : `
+      + [profil.achat_en === "societe" ? `achète en société${profil.societe ? ` (${profil.societe})` : ""}` : profil.achat_en ? "achète en nom propre" : null,
+        profil.budget ? `budget ${eur(profil.budget)}` : null, profil.apport ? `apport ${eur(profil.apport)}` : null,
+        profil.financement ? `financement ${FINANCEMENTS[profil.financement]}` : null,
+        profil.immeubles_detenus !== undefined ? `${profil.immeubles_detenus} immeuble(s) détenu(s)` : null]
+        .filter(Boolean).join(", ") + ".",
+  }).catch(() => undefined);
+  await effacerPieces(b);
+  return { deja: false, id: contactId };
 }
 
 /** `compte_supprime` : le BO efface ses dépôts et retire la clé ; le contact reste. */
@@ -1201,7 +1362,12 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "compte_supprime": return recevoirCompteSupprime(ref, b);
     case "document": return recevoirDocument(ref, b);
     case "message": return recevoirMessage(ref, b);
-    default: throw new LeadInvalide(`Type de formulaire inconnu : ${String(b.type).slice(0, 40)}`);
+    case "rendez_vous": return recevoirRendezVous(ref, b);
+    case "offre_acquereur": return recevoirOffreAcquereur(ref, b);
+    case "profil_investisseur": return recevoirProfilInvestisseur(ref, b);
+    /* Règle du 30/10 (§11.1) : un type que le BO ne sait pas encore lire est
+       gardé en file par le site (503), jamais jeté. */
+    default: throw new LeadPasPret(`Type d'envoi pas encore lu par le BO : ${String(b.type).slice(0, 40)}`);
   }
 }
 

@@ -168,6 +168,29 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
         </div>
       )}
 
+      {/* Le profil investisseur qu'il a rempli sur le site (§13). */}
+      {vue?.profil && (
+        <div className="cps-g">
+          <span className="cps-t">Son profil investisseur</span>
+          <div className="cps-l">
+            <span>
+              {vue.profil.achat_en === "societe" ? `Achète en société${t(vue.profil.societe) ? ` (${vue.profil.societe})` : ""}` : vue.profil.achat_en === "nom_propre" ? "Achète en nom propre" : "Mode d'achat non précisé"}
+            </span>
+            <span className="cps-n">
+              {[euros(vue.profil.budget) && `budget ${euros(vue.profil.budget)}`, euros(vue.profil.apport) && `apport ${euros(vue.profil.apport)}`,
+                t(vue.profil.financement) && `financement ${vue.profil.financement === "pret" ? "avec prêt" : vue.profil.financement === "mixte" ? "apport et prêt" : "comptant"}`,
+                vue.profil.immeubles_detenus !== undefined && vue.profil.immeubles_detenus !== null && `${String(vue.profil.immeubles_detenus)} immeuble(s) détenu(s)`]
+                .filter(Boolean).join(" · ")}
+              {t(vue.profil.recu_le) ? ` — reçu le ${dmy(String(vue.profil.recu_le))}` : ""}
+            </span>
+          </div>
+          {t(vue.profil.presentation) && <p className="espv-txt" style={{ whiteSpace: "pre-wrap" }}>{String(vue.profil.presentation)}</p>}
+          {Array.isArray(vue.profil.pieces) && vue.profil.pieces.length > 0 && (
+            <span className="cps-n">Pièces : {(vue.profil.pieces as { nom?: string }[]).map((x) => x.nom).filter(Boolean).join(", ")}</span>
+          )}
+        </div>
+      )}
+
       {/* La messagerie (V2, 30/10) : le fil tel que le client le lit, et la
           réponse de l'agent. Envoyer, c'est la validation humaine. */}
       {vue?.compte && (

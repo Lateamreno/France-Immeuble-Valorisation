@@ -11,7 +11,7 @@ import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { QuestionCard } from "@/lib/bubble/server";
-import { cloturerQuestion, creerContactDepuisQuestion, demandeTraitee, noterAppelDemande, refuserDemandeDossier, rouvrirQuestion } from "@/lib/bo/actions";
+import { cloturerQuestion, creerContactDepuisQuestion, demandeTraitee, noterAppelDemande, refuserDemandeDossier, repondreRendezVous, rouvrirQuestion } from "@/lib/bo/actions";
 import { Modale, useQuestion } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
 import { ModaleProposition } from "@/components/actions-rapides";
@@ -29,7 +29,11 @@ const TETES: Record<string, string> = {
   interet: "Intérêt pour un bien proposé, le ",
   prix: "Prix proposé par le propriétaire, le ",
   message: "Message du client sur son compte, le ",
+  appel: "Demande d'appel, le ",
+  rendez_vous: "Demande de rendez-vous, le ",
+  offre: "Offre faite depuis son compte, le ",
 };
+const CRENEAUX: Record<string, string> = { matin: "le matin", apres_midi: "l'après-midi", soir: "en soirée" };
 type VueQuestions = "en_cours" | "cloturees";
 const VUES_QUESTIONS: readonly VueQuestions[] = ["en_cours", "cloturees"];
 
@@ -78,7 +82,9 @@ export function EcranQuestions({
       if (!qq) return true;
       return [r.message, r.email, r.telephone, r.contact?.nom, r.immeuble?.libelle, r.source]
         .filter(Boolean).join(" ").toLowerCase().includes(qq);
-    });
+    /* Demande du site (30/10) : une demande d'appel encore ouverte passe en
+       tête — l'acquéreur attend qu'on l'appelle pour accéder à l'off-market. */
+    }).sort((a, b) => Number(b.nature === "appel" && !b.clos) - Number(a.nature === "appel" && !a.clos));
   }, [rows, vue, q]);
 
   const pages = Math.max(1, Math.ceil(filtrees.length / taille));
@@ -152,6 +158,14 @@ export function EcranQuestions({
                     <Pastille ton="bleu">Depuis son compte sur le site</Pastille>
                   </div>
                 )}
+                {r.rdv && (
+                  <div className="qc-dem">
+                    <Pastille ton={r.rdv.etat === "confirme" ? "vert" : r.rdv.etat === "annule" ? "gris" : "orange"}>
+                      {r.rdv.etat === "confirme" ? "Confirmé" : r.rdv.etat === "annule" ? "Annulé" : "À confirmer"}
+                    </Pastille>
+                    <b>{dmy(r.rdv.date)} {CRENEAUX[r.rdv.creneau] ?? `à ${r.rdv.creneau.replace(":", "h")}`}</b>
+                  </div>
+                )}
                 {r.projet && <div className="qc-projet">{r.projet}</div>}
                 <p className="qc-msg">{r.message || <i>Sans message.</i>}</p>
                 <div className="qc-coord">
@@ -184,6 +198,19 @@ export function EcranQuestions({
                   <button type="button" className="qc-b" disabled={pending} onClick={() => setAAppeler(r)}>
                     ✓ J&apos;ai appelé
                   </button>
+                )}
+                {r.rdv && !r.clos && (
+                  <>
+                    <button type="button" className="qc-b qc-env" disabled={pending}
+                      title="Le client voit « Confirmé » sur son compte"
+                      onClick={() => start(() => repondreRendezVous(r.id, "confirme", agentId))}>
+                      Confirmer le rendez-vous
+                    </button>
+                    <button type="button" className="qc-b qc-ref" disabled={pending}
+                      onClick={() => start(() => repondreRendezVous(r.id, "annule", agentId))}>
+                      Annuler
+                    </button>
+                  </>
                 )}
                 {r.demande && !r.clos && (
                   <>

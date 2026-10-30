@@ -5,7 +5,7 @@
 import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { dmy, euros, S } from "@/lib/format";
-import { addOffre, addVisite, setOffreStatut, setVisiteStatut } from "@/lib/bo/actions";
+import { addOffre, addVisite, noterRetourVendeur, setOffreStatut, setVisiteStatut } from "@/lib/bo/actions";
 import { transmettreOffre } from "@/lib/bo/compte-site-actions";
 import { Modale, useQuestion } from "@/components/modale";
 
@@ -64,7 +64,8 @@ export function VisiteActions({ b, v }: { b: BienData; v: Record<string, unknown
   const immeubleId = String(b.im._id);
   const id = String(v._id);
   const st = S(v.Statut);
-  if (["Effectuée", "Annulée"].includes(st)) return null;
+  if (st === "Annulée") return null;
+  if (st === "Effectuée") return <RetourVendeur b={b} v={v} />;
   return (
     <>
       <span className="mrow" style={{ gap: 4 }}>
@@ -87,6 +88,52 @@ export function VisiteActions({ b, v }: { b: BienData; v: Record<string, unknown
         >Annuler</button>
       </span>
       {question}
+    </>
+  );
+}
+
+/**
+ * Le retour de visite pour le vendeur (compte client V2, 30/10) : écrit POUR
+ * lui, sans nom ni société du visiteur — le REX reste interne. Il paraît sur
+ * son compte du site dès qu'il est enregistré.
+ */
+function RetourVendeur({ b, v }: { b: BienData; v: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [interet, setInteret] = useState(S(v.interet_vendeur));
+  const [texte, setTexte] = useState(S(v.commentaire_externe));
+  const fait = !!S(v.commentaire_externe) || !!S(v.interet_vendeur);
+  return (
+    <>
+      <button className={`fadd${fait ? " on" : ""}`} type="button" onClick={() => setOpen(true)}
+        title="Ce que le vendeur lira sur son compte du site">
+        {fait ? "Retour au vendeur ✓" : "Retour au vendeur"}
+      </button>
+      {open && (
+        <Modale titre="Retour de visite pour le vendeur" onFermer={() => setOpen(false)} className="etroit"
+          pied={
+            <button className="fadd" type="button" disabled={pending}
+              onClick={() => start(async () => {
+                await noterRetourVendeur(String(b.im._id), String(v._id), interet as "faible" | "moyen" | "fort" | "", texte);
+                setOpen(false);
+              })}>Enregistrer</button>
+          }>
+          <p className="mhint">
+            Le vendeur le lira sur son compte du site. N&apos;y mettez ni le nom ni la société du visiteur :
+            le compte rendu interne (REX) reste dans le BO.
+          </p>
+          <span className="mlab">Intérêt du visiteur</span>
+          <select className="min" value={interet} onChange={(e) => setInteret(e.target.value)}>
+            <option value="">Non précisé</option>
+            <option value="faible">Faible</option>
+            <option value="moyen">Moyen</option>
+            <option value="fort">Fort</option>
+          </select>
+          <span className="mlab">Retour</span>
+          <textarea className="min" rows={4} value={texte} onChange={(e) => setTexte(e.target.value)}
+            placeholder="Ex. : visite attentive, apprécie l'emplacement, réserve sur les travaux de toiture." />
+        </Modale>
+      )}
     </>
   );
 }
