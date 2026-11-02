@@ -295,17 +295,22 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             et l'état locatif déjà ». */}
         <h2 className="dv-h"><Ic d={I.brique} /> Construit en <b>{d.annee ?? "n.c."}</b></h2>
 
-        <h2 className="dv-h"><Ic d={I.pouls} /> Etat des matériaux</h2>
+        {/* Retour #588 : un seul tableau pour l'état et les travaux. Le montant
+            des travaux va en dernière colonne, en k€ ; on ne les décrit plus
+            (la description ne tenait pas). Une dernière ligne pour les lots :
+            leur état « de X à Y » et les travaux de tous les lots. */}
+        <h2 className="dv-h"><Ic d={I.pouls} /> Etat des matériaux et travaux à prévoir</h2>
         {/* Retour #410 : le type reste à gauche ; matériau, derniers travaux
-            et état sont centrés, titre ET contenu. La colonne des travaux ne
-            s'imprime que si au moins un composant porte une date. */}
+            et état sont centrés, titre ET contenu. La colonne des derniers
+            travaux ne s'imprime que si au moins un composant porte une date. */}
         {(() => {
-          const colTravaux = d.composants.some((c) => c.annee !== undefined && c.annee !== null);
-          const nbCols = colTravaux ? 4 : 3;
+          const colAnnee = d.composants.some((c) => c.annee !== undefined && c.annee !== null);
+          const nbCols = colAnnee ? 5 : 4;
+          const k = (x: number) => (x > 0 ? `${fr1(x / 1000).replace(/,0$/, "")} k€` : "—");
           return (
         <table className="dv-tab">
           <thead>
-            <tr><th>Type</th><th className="c">Matériau</th>{colTravaux && <th className="c">Derniers travaux</th>}<th className="c">Etat</th></tr>
+            <tr><th>Type</th><th className="c">Matériau</th>{colAnnee && <th className="c">Derniers travaux</th>}<th className="c">Etat</th><th className="r">Travaux</th></tr>
           </thead>
           <tbody>
             {d.composants.map((c, i) => (
@@ -313,48 +318,42 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
                 {/* MAV (25/09) : les mêmes pictos que l'écran Technique du BO. */}
                 <td><span className="dv-lot"><svg className="dv-ic mini" viewBox="0 0 24 24" aria-hidden>{IC_COMPOSANT[c.type] ?? IC_COMPOSANT.Autre}</svg>{nc(c.type)}</span></td>
                 <td className="c">{nc(c.materiau)}</td>
-                {colTravaux && <td className="c gris">{c.annee ?? "n.c."}</td>}
+                {colAnnee && <td className="c gris">{c.annee ?? "n.c."}</td>}
                 <td className={`c${/rénov|renov|neuf/i.test(c.etat) ? " vert" : ""}`}>{nc(c.etat)}</td>
+                <td className={`r${c.travaux > 0 ? "" : " gris"}`}>{k(c.travaux)}</td>
               </tr>
             ))}
-            {d.composants.length === 0 && (
+            {d.lotsEtat && (
+              <tr>
+                <td><span className="dv-lot"><svg className="dv-ic mini" viewBox="0 0 24 24" aria-hidden>{I.maison}</svg>{d.lotsEtat.libelle}</span></td>
+                <td className="c gris">—</td>
+                {colAnnee && <td className="c gris">—</td>}
+                <td className="c">{nc(d.lotsEtat.etat)}</td>
+                <td className={`r${d.lotsEtat.travaux > 0 ? "" : " gris"}`}>{k(d.lotsEtat.travaux)}</td>
+              </tr>
+            )}
+            {d.travauxAutres > 0 && (
+              <tr>
+                <td><span className="dv-lot"><svg className="dv-ic mini" viewBox="0 0 24 24" aria-hidden>{I.molette}</svg>Autres travaux</span></td>
+                <td className="c gris">—</td>
+                {colAnnee && <td className="c gris">—</td>}
+                <td className="c gris">—</td>
+                <td className="r">{k(d.travauxAutres)}</td>
+              </tr>
+            )}
+            {d.composants.length === 0 && !d.lotsEtat && (
               <tr><td colSpan={nbCols} className="gris">Aucun composant renseigné.</td></tr>
             )}
           </tbody>
-          {d.etatGeneral && (
-            <tfoot><tr><td colSpan={nbCols - 2} /><td className="c tot">État général</td><td className="c">{d.etatGeneral}</td></tr></tfoot>
-          )}
+          <tfoot>
+            {d.etatGeneral && (
+              <tr><td colSpan={nbCols - 3} /><td className="c tot">État général</td><td className="c">{d.etatGeneral}</td><td /></tr>
+            )}
+            <tr><td colSpan={nbCols - 2} /><td className="c tot">Total travaux</td><td className="r">{k(d.prix.travaux)}</td></tr>
+          </tfoot>
         </table>
           );
         })()}
-
-        {/* Retour #222 : la clé à molette plutôt que l'outil générique. */}
-        <h2 className="dv-h"><Ic d={I.molette} /> Travaux à prévoir</h2>
-        {d.travauxListe.length === 0 ? (
-          <div className="dv-plat">Aucun travaux à prévoir</div>
-        ) : (
-          <table className="dv-tab">
-            <thead>
-              <tr>
-                <th>Objet des travaux</th><th>Description</th>
-                <th className="c">Urgence</th><th className="r">Montant</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.travauxListe.map((t, i) => (
-                <tr key={i}>
-                  <td>{t.objet}</td>
-                  <td className="gris">{nc(t.description)}</td>
-                  <td className={`c${/urgent|imm[ée]diat/i.test(t.urgence) ? " rouge" : ""}`}>{nc(t.urgence)}</td>
-                  <td className="r">{eur(t.montant)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr><td colSpan={2} /><td className="c tot">Total</td><td className="r">{eur(d.prix.travaux)}</td></tr>
-            </tfoot>
-          </table>
-        )}
 
         <div className="dv-terrain">
           <div className="dv-t-col">
