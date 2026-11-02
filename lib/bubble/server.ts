@@ -3852,7 +3852,11 @@ export type QuestionCard = {
   telephone?: string;
   email?: string;
   projet?: string;
-  contact?: { id: string; nom: string; note?: string };
+  /** De quoi ouvrir la vignette du contact (#578), comme sur les Recherches. */
+  contact?: {
+    id: string; nom: string; note?: string; qualite?: string; tel?: string; email?: string;
+    immeubles: number; recherches: number; estAgent?: boolean; agent?: { initiales: string; couleur?: string };
+  };
   immeuble?: { id: string; libelle: string };
   clos: boolean;
   remarques?: string;
@@ -3930,7 +3934,12 @@ export async function listQuestionsBO(
       telephone: S2(q["téléphone"]),
       email: S2(q.email),
       projet: S2(q.Projet),
-      contact: c ? { id: String(c._id), nom: contactLabel(c) || String(c.email ?? "Contact"), note: gradeOf(c) } : undefined,
+      contact: c ? {
+        id: String(c._id), nom: contactLabel(c) || String(c.email ?? "Contact"), note: gradeOf(c),
+        qualite: qualiteContact(c), tel: S2(c.portable_formatted) ?? S2(c.portable), email: S2(c.email),
+        immeubles: combien(c.IMMEUBLES), recherches: combien(c.RECHERCHEs),
+        estAgent: estAgentContact(c), agent: agentDe(c.SUIVI),
+      } : undefined,
       immeuble: im ? { id: String(im._id), libelle: imLabel(im) } : undefined,
       clos: q.ended === true,
       remarques: S2(q.remarques_cloture),
