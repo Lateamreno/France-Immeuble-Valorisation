@@ -769,8 +769,8 @@ reçoivent au premier dépôt suivant, au plus tard au rapprochement de 3 h.
 |---|---|
 | `code_postal` | 5 chiffres, de la fiche (§7 amendé) |
 | `commune_population` | population INSEE saisie à l'onglet Emplacement (pour Paris : l'arrondissement) ; nulle sous 50 |
-| `loyer_hc_an_potentiel` | loyer en place des lots occupés + loyer de marché (`loyer_max`) des lots vides, × 12 |
-| `rendement_potentiel` | % = loyer potentiel ÷ (prix HAI + travaux), 2 décimales ; nul hors de 1 à 40 |
+| `loyer_hc_an_potentiel` | le potentiel **du BO** (MAV, 02/11) : chaque lot, occupé ou vide, à son loyer max (`loyer_max`, à défaut le loyer en place), × 12 — le même que sur la fiche et sur Plein Bail |
+| `rendement_potentiel` | % = loyer potentiel ÷ (prix HAI + travaux), 2 décimales, comme le rendement potentiel du BO ; nul hors de 1 à 40 |
 | `travaux_total` | € : la somme de l'état technique (0 = aucun) |
 | `dpe` / `dpe_min` | la **pire** / la meilleure classe des lots (A à G ; « G+ » compte G). `dpe` ne vaut plus « la lettre commune » |
 | `ges` / `ges_min` | **non envoyés** : le BO ne tient pas le GES au lot |
