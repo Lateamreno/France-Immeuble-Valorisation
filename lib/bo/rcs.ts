@@ -219,7 +219,7 @@ export async function agentRcs(): Promise<{ id: string; nom: string } | null> {
     const j = (await res.json()) as { agents?: { id?: unknown; name?: unknown; status?: unknown }[] };
     const liste = (j.agents ?? []).filter((a) => a.id !== undefined && a.id !== null);
     /* Un seul agent aujourd'hui ; s'il y en avait plusieurs, le premier actif. */
-    const a = liste.find((x) => !x.status || /launch|actif|active|valid/i.test(String(x.status))) ?? liste[0];
+    const a = liste.find((x) => !x.status || /activ|launch|valid/i.test(String(x.status))) ?? liste[0];
     return a ? { id: String(a.id), nom: String(a.name ?? "") } : null;
   } catch {
     return null;
