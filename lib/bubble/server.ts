@@ -3001,6 +3001,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
      bureaux pour un immeuble logements + commerces. Bubble matche avec la
      liste `Destinations` de la fiche ; c'est elle qu'on passe, la principale
      ne servant qu'à défaut. */
+  const repartition = (await repartitionDes([immeubleId])).get(immeubleId);
   const dest = String(im.Destination_principale ?? "");
   const destinations = Array.isArray(im.Destinations) && (im.Destinations as unknown[]).length > 0
     ? (im.Destinations as unknown[]).map(String).filter(Boolean)
@@ -3024,6 +3025,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       departement: cp.slice(0, 2),
       destinations,
       cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+      repartition,
     },
   };
 }
@@ -3452,6 +3454,33 @@ export function critereBien(im: Record<string, unknown>): CriteresBien {
   };
 }
 
+/**
+ * Loyers annuels potentiels et surfaces par destination, immeuble par
+ * immeuble (règle « pro » du 02/11) : un lot vide compte pour son loyer HC
+ * max, une cave ou un parking pour ce qu'il rapporte. Un seul aller-retour.
+ */
+export async function repartitionDes(ids: string[]): Promise<Map<string, NonNullable<CriteresBien["repartition"]>>> {
+  const out = new Map<string, NonNullable<CriteresBien["repartition"]>>();
+  const uniques = [...new Set(ids.filter(Boolean))];
+  if (!uniques.length) return out;
+  const nb = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  for (let i = 0; i < uniques.length; i += 80) {
+    const lots = await fetchAll("lot", [{ key: "IMMEUBLE", constraint_type: "in", value: uniques.slice(i, i + 80) }], 20000, undefined,
+      ["IMMEUBLE", "Destination", "loyer", "loyer_max", "surface_carrez", "surface_sol"]).catch(() => []);
+    for (const l of lots) {
+      const im = String(l.IMMEUBLE ?? ""), d = S2(l.Destination);
+      if (!im || !d) continue;
+      const r = out.get(im) ?? { revenus: {}, surfaces: {} };
+      const loyer = (nb(l.loyer_max) ?? nb(l.loyer) ?? 0) * 12;
+      const surface = nb(l.surface_carrez) || nb(l.surface_sol) || 0;
+      if (loyer > 0) r.revenus[d] = (r.revenus[d] ?? 0) + loyer;
+      if (surface > 0) r.surfaces[d] = (r.surfaces[d] ?? 0) + surface;
+      out.set(im, r);
+    }
+  }
+  return out;
+}
+
 /** Les clés d'une recherche que l'écran et le moteur de matching lisent. */
 const CHAMPS_RECHERCHE = [
   "ACHETEUR", "SUIVI", "Cible", "Destinations", "IMMEUBLES_hidden", "IMMEUBLEs_proposed", "MANDATs", "Note",
@@ -3510,7 +3539,8 @@ export async function listRecherchesBO(
     dejaVuParContact.set(cid, set);
   }
 
-  const criteres = dispo.map(critereBien);
+  const reps = await repartitionDes(dispo.map((im) => String(im._id)));
+  const criteres = dispo.map((im) => ({ ...critereBien(im), repartition: reps.get(String(im._id)) }));
 
   return rechs.map((r) => {
     const c = contacts.get(String(r.ACHETEUR ?? ""));
@@ -3735,12 +3765,13 @@ export async function getAProposer(rechercheId: string): Promise<APropositions |
     for (const id of (Array.isArray(x.IMMEUBLES_hidden) ? x.IMMEUBLES_hidden : []) as unknown[]) vus.add(String(id));
   }
 
-  const retenus = ims.filter((im) => {
+  const candidats = ims.filter((im) => {
     const rang = statutOf(im);
-    if (rang < 5 || rang > 7) return false;
-    if (vus.has(String(im._id))) return false;
-    return correspond(r, critereBien(im), exclusions.get(rechercheId));
+    return rang >= 5 && rang <= 7 && !vus.has(String(im._id));
   });
+  const reps = await repartitionDes(candidats.map((im) => String(im._id)));
+  const retenus = candidats.filter((im) =>
+    correspond(r, { ...critereBien(im), repartition: reps.get(String(im._id)) }, exclusions.get(rechercheId)));
 
   /* Le dernier dossier de chaque immeuble retenu, en un aller-retour. */
   const dossiers = retenus.length

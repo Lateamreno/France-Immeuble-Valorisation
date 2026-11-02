@@ -23,7 +23,55 @@ export type CriteresBien = {
   /** La région du bien, pour les exclusions géographiques (#332). */
   region?: string;
   cibles?: string[];
+  /** Les loyers annuels POTENTIELS (un lot vide compte pour son loyer HC max)
+   *  et les surfaces, destination par destination — la règle « pro » du
+   *  02/11 en a besoin. Absents, la règle ne tranche que sur les logements. */
+  repartition?: { revenus: Record<string, number>; surfaces: Record<string, number> };
 };
+
+/* Les destinations « pro » d'une recherche (MAV, 02/11). */
+const PRO = ["commerce", "bureau", "logistique"];
+const HABITATION = "logement";
+
+/**
+ * La part des types cochés dans l'immeuble : loyers potentiels d'abord, à
+ * défaut la surface ; `undefined` quand on ne sait pas (rien de saisi) — et
+ * on n'écarte pas un bien faute de données.
+ */
+function partDes(types: string[], rep: CriteresBien["repartition"]): number | undefined {
+  if (!rep) return undefined;
+  for (const m of [rep.revenus, rep.surfaces]) {
+    const total = Object.values(m).reduce((t, v) => t + v, 0);
+    if (total > 0) {
+      const part = Object.entries(m).filter(([d]) => types.includes(d.toLowerCase())).reduce((t, [, v]) => t + v, 0);
+      return part / total;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * La règle des types (MAV, 02/11) :
+ * - une recherche « pro » seulement (commerce, bureaux, entrepôt, sans
+ *   habitation) ne reçoit jamais un immeuble qui a un logement, et les types
+ *   cochés doivent faire ENSEMBLE au moins 50 % des loyers potentiels de
+ *   l'immeuble (à défaut de loyers, de sa surface) ;
+ * - une recherche « habitation » seulement reçoit tout immeuble qui a au
+ *   moins un logement, quoi qu'il contienne d'autre ;
+ * - une recherche mixte : au moins un des types cochés, comme avant.
+ */
+function typesOk(r: Record<string, unknown>, bien: CriteresBien): boolean {
+  const voulues = arr(r.Destinations).map((d) => d.toLowerCase());
+  const dests = (bien.destinations ?? []).map((d) => d.toLowerCase());
+  const pro = voulues.filter((d) => PRO.includes(d));
+  if (pro.length > 0 && !voulues.includes(HABITATION) && dests.length > 0) {
+    if (dests.includes(HABITATION)) return false;
+    if (!pro.some((d) => dests.includes(d))) return false;
+    const part = partDes(pro, bien.repartition);
+    return part === undefined || part >= 0.5;
+  }
+  return listeOk(bien.destinations ?? [], arr(r.Destinations));
+}
 
 /**
  * Ce qu'une recherche refuse (retour #332).
@@ -206,7 +254,7 @@ export function correspond(
   if (!dansFourchette(bien.occupation, r.occup_min, r.occup_max)) return false;
   if (nb(r.renta) !== undefined && bien.renta !== undefined && bien.renta < nb(r.renta)!) return false;
   if (!geoOk(r, bien)) return false;
-  if (!listeOk(bien.destinations ?? [], arr(r.Destinations))) return false;
+  if (!typesOk(r, bien)) return false;
   if (bien.cibles && bien.cibles.length > 0 && S(r.Cible) && !bien.cibles.includes(S(r.Cible))) return false;
   if (exclu(bien, exclusions)) return false;
   return true;
