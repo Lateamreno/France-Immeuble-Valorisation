@@ -320,9 +320,21 @@ export async function envoyerCarteRcs(
     cache: "no-store",
   });
   const brut = await res.text();
-  let j: { resultat?: unknown; id?: unknown; erreurs?: unknown } | null = null;
-  try { j = JSON.parse(brut); } catch { /* lu plus bas */ }
+  /* 02/11, premier essai : le RCS est bien arrivé, mais la réponse ne portait
+     pas `resultat` — l'API RCS ne répond pas comme l'API SMS. On accepte les
+     deux formes, on garde la réponse brute au journal (elle ne contient pas la
+     clé) et, en cas de doute, on la MONTRE plutôt que d'inventer un refus. */
+  console.info("[rcs envoi]", res.status, brut.slice(0, 500));
+  let j: Record<string, unknown> | null = null;
+  try { j = JSON.parse(brut) as Record<string, unknown>; } catch { /* lu plus bas */ }
   if (!j) throw new Error(`MailingVox (envoi RCS) HTTP ${res.status} : ${brut.slice(0, 200)}`);
-  if (!j.resultat) throw new Error(`MailingVox a refusé l'envoi RCS : ${direErreurs(j.erreurs)}.`);
-  return { campagne: j.id === undefined || j.id === null ? undefined : String(j.id), mediaId, agent: agent.nom };
+  const ok = j.resultat === 1 || j.resultat === "1" || j.resultat === true || j.success === true;
+  if (!ok) {
+    const motif = j.erreurs !== undefined && j.erreurs !== null && j.erreurs !== ""
+      ? direErreurs(j.erreurs)
+      : `réponse ${brut.slice(0, 200)}`;
+    throw new Error(`MailingVox a refusé l'envoi RCS : ${motif}.`);
+  }
+  const idBrut = j.id ?? j.campaign_id ?? j.campagne ?? (j.data as Record<string, unknown> | undefined)?.id;
+  return { campagne: idBrut === undefined || idBrut === null ? undefined : String(idBrut), mediaId, agent: agent.nom };
 }
