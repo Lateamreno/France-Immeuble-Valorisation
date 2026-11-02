@@ -244,6 +244,41 @@ export async function traiterAccuse(r: {
   });
 }
 
+const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** « Pas intéressé » : le bouton de la carte, ou « 2 » / « pas intéressé » au SMS de repli. */
+export function estPasInteresse(texte: string, repli: boolean): boolean {
+  const t = sansAccents(texte);
+  if (t === "pas interesse" || t === "pas interessee" || t === "pas interesses") return true;
+  return repli && (t === "2" || t === "non");
+}
+
+/**
+ * Refuse la proposition et coupe ses relances (MAV, 02/11), comme « Pas pour
+ * moi » depuis le compte client. Une proposition déjà avancée (visite, offre,
+ * vente) ne recule pas : seules ses relances sont coupées.
+ */
+async function refuserParRcs(propositionId: string, canal: string) {
+  const [p] = await lire<{ id: string; data: Doc }>(`bo_proposition?select=id,data&id=eq.${encodeURIComponent(propositionId)}&limit=1`);
+  if (!p) return;
+  const avance = /^(Visite|Offre|Vendu)/.test(String(p.data.Statut ?? ""));
+  const now = new Date().toISOString();
+  await patcher("bo_proposition", p.id, {
+    ...(avance ? {} : { Statut: "Refusée (sans offre)", motif_refus: `Pas intéressé (${canal})`, date_fin: now }),
+    stop_relances_yn: true,
+    stop_relances_le: now,
+    stop_relances_motif: `Pas intéressé (${canal})`,
+    date_modif: now,
+    "Modified Date": now,
+  });
+  /* Le compte client du site suit : la proposition y passe refusée. */
+  const contactId = S(p.data.ACHETEUR);
+  if (contactId) {
+    const { deposerCompte } = await import("./compte-site");
+    await deposerCompte(contactId).catch(() => undefined);
+  }
+}
+
 /**
  * Les événements du webhook RCS (MailingVox, 02/11) : un lot de cent au plus.
  *
@@ -254,8 +289,8 @@ export async function traiterAccuse(r: {
  *
  * Rangés comme les retours SMS : une réponse s'inscrit sur la proposition
  * (retrouvée par l'identifiant de campagne gardé à l'envoi), un STOP coupe
- * les relances. On n'INTERPRÈTE rien : « Pas intéressé » ne refuse pas la
- * proposition tout seul — c'est à décider avec MAV. Rend le nombre
+ * les relances. « Pas intéressé » (bouton, ou « 2 » au SMS de repli) refuse
+ * la proposition et coupe ses relances (MAV, 02/11). Rend le nombre
  * d'événements rangés.
  */
 export async function traiterEvenementsRcs(corps: unknown): Promise<number> {
@@ -289,9 +324,18 @@ export async function traiterEvenementsRcs(corps: unknown): Promise<number> {
           ? S(pb.text) ?? S(pb.payload) ?? ""
           : typeof tx === "string" ? tx : S((tx as Record<string, unknown> | undefined)?.text) ?? "";
         if (!texte) continue;
-        const canal = S(msg.channelId) === "fallback" ? "SMS de repli" : pb ? "bouton RCS" : "RCS";
+        const repli = S(msg.channelId) === "fallback";
+        const canal = repli ? "SMS de repli" : pb ? "bouton RCS" : "RCS";
         const r = await traiterReponse({ evenementId: id, numero, texte, source, campagne: canal, recuLe, brut });
-        if (r.nouvelle) n++;
+        if (r.nouvelle) {
+          n++;
+          /* MAV (02/11) : « si le client clique pas intéressé ça refuse la
+             propal et coupe les relances ». Le bouton, ou « 2 » au SMS de repli
+             (« Répondez 1 si intéressé, 2 sinon »). « Intéressé » reste rangé. */
+          if (estPasInteresse(texte, repli) && r.cible?.propositionId) {
+            await refuserParRcs(r.cible.propositionId, canal);
+          }
+        }
       } else if (statut) {
         if (await traiterAccuse({
           evenementId: id, numero, statut: S(statut.status) ?? null, source,
