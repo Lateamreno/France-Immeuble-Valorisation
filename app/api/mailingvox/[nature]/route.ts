@@ -43,6 +43,11 @@ async function traiter(req: NextRequest, nature: Chemin) {
   if (nature === "rcs") {
     let corps: unknown = null;
     try { corps = await req.json(); } catch { /* corps vide ou illisible */ }
+    /* Une trace par appel (02/11 : un clic n'est jamais arrivé et rien ne
+       permettait de savoir si MailingVox avait appelé). Les types d'événements
+       seulement, pas les numéros. */
+    const evts = (corps as { events?: Record<string, unknown>[] } | null)?.events ?? [];
+    console.info("[mailingvox rcs]", evts.length, "événement(s)", evts.map((e) => Object.keys(e).filter((k) => !["eventId", "on", "accountId"].includes(k)).join("+")).join(", "));
     const n = await traiterEvenementsRcs(corps);
     return Response.json({ ok: true, evenements: n });
   }
@@ -82,6 +87,7 @@ async function point(req: NextRequest, params: Promise<{ nature: string }>) {
     return Response.json({ erreur: "Nature inconnue." }, { status: 404 });
   }
   if (!autorise(req)) {
+    console.warn("[mailingvox]", nature, "appel refusé : secret absent ou faux");
     return Response.json({ erreur: "Secret absent ou faux." }, { status: 401 });
   }
   try {
