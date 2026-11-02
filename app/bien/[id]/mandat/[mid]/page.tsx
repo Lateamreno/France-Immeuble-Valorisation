@@ -3,6 +3,7 @@ import { getBien, getMandat, getOperation } from "@/lib/bubble/server";
 import { BienFiche } from "@/components/bien-fiche";
 import { MandatFiche } from "@/components/mandat-fiche";
 import { lireReglages } from "@/lib/bo/reglages";
+import { verrou } from "@/lib/mandat";
 
 export const dynamic = "force-dynamic";
 // Génération du PDF : Chromium met quelques secondes à démarrer à froid.
@@ -44,6 +45,9 @@ export default async function MandatDansFiche({
       contenu={<MandatFiche d={d} bareme={bareme} />}
       contenuLabel={`Mandat ${d.m.numero ? `n° ${d.m.numero}` : "en cours"}`}
       contenuIcone="mandat"
+      /* Retour #583 : un mandat signé (ou annulé, expiré) n'a plus rien à
+         « reprendre » — pas de bandeau « laissée ouverte » pour lui. */
+      contenuFige={verrou(d.m) !== null}
       /* L'identifiant demandé : sans lui, cliquer sur un autre mandat changeait
          l'adresse sans rouvrir l'écran (retour #137). */
       cleEcran={`mandat:${mid}`}

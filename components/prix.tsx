@@ -388,6 +388,14 @@ export function PrixEcran({ b }: {
 
   /* Le prix de la molette ne touche à rien : il sert à voir. */
   const [hai, setHai] = useState(prixEnBase);
+  /* Retour #581 : quand le prix de la fiche change (« Modifier le prix », une
+     signature de mandat), le tableau repart du NOUVEAU prix HAI. La molette et
+     la saisie à la main restent libres ensuite : c'est une simulation. */
+  const [haiVu, setHaiVu] = useState(prixEnBase);
+  if (haiVu !== prixEnBase) {
+    setHaiVu(prixEnBase);
+    setHai(prixEnBase);
+  }
   const nv = Math.round(hai / (1 + tauxHonos / 100));
   const honos = hai - nv;
   const r = rendements(hai, ctx);

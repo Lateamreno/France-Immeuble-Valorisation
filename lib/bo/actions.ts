@@ -3849,11 +3849,37 @@ export async function marquerMandatSigne(
       patch.pdf_signed = `/api/photo?s=${encodeURIComponent(path)}`;
     }
     await rpc("bo_patch_doc", { p_table: "bo_mandat", p_id: mandatId, p_patch: patch });
+    await prixDuMandatSurFiche(mandatId, immeubleId, "Mandat signé");
     rafraichirMandat(mandatId, immeubleId);
     return { ok: true as const };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/**
+ * Retour #580 : à la signature, le prix du mandat devient le prix de la fiche,
+ * sans qu'on ait à passer par « Modifier le prix ». Il laisse sa ligne dans
+ * l'historique, comme tout changement de prix. Un mandat de vente seulement,
+ * et sur un seul immeuble : un mandat global porte un prix d'ensemble qu'on ne
+ * sait pas ventiler. Rien ne bouge si la fiche est déjà à ce prix.
+ */
+async function prixDuMandatSurFiche(mandatId: string, immeubleId: string, motif: string) {
+  const m = await bqOne("bo_mandat", mandatId);
+  if (!m || String(m.Type ?? "Vente") !== "Vente") return;
+  const ims = Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as unknown[]) : [];
+  if (ims.length > 1) return;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+  const hai = n(m.prix_hai);
+  if (!hai) return;
+  const nv = n(m.prix_nv);
+  const honos = typeof m.honos_ttc === "number" && m.honos_ttc >= 0 ? m.honos_ttc : nv ? hai - nv : 0;
+  const im = await bqOne("bo_immeuble", immeubleId);
+  if (im && Math.abs((n(im.prix_hai) ?? 0) - hai) < 1 && Math.abs((n(im.prix_honos_ttc) ?? 0) - honos) < 1) return;
+  await enregistrerPrix(immeubleId, {
+    hai, honosTtc: honos, motif,
+    remarque: `Prix du mandat${m.numero ? ` n° ${String(m.numero)}` : ""}, repris à la signature.`,
+  });
 }
 
 /* ---------------------------------------------------- Avenants au mandat
@@ -4060,6 +4086,7 @@ export async function marquerAvenantSigne(
       honos_taux: cible.apres.taux,
       honos_ttc: cible.apres.honos,
     }));
+    await prixDuMandatSurFiche(mandatId, immeubleId, `Avenant n° ${n} signé`);
     rafraichirMandat(mandatId, immeubleId);
     return { ok: true as const };
   } catch (e) {

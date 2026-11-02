@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 // Barre d'enregistrement collée en bas (retours #79, #81, #83, puis #192 et #196).
 //
@@ -30,6 +30,41 @@ import { useEffect, useState } from "react";
 // `onAnnuler`, et le bouton se dessine comme dans le BO Bubble : un texte
 // souligné, pas un cadre.
 
+/*
+ * Retour #584 : la barre disparaissait « si je clique ailleurs ». Ce n'était
+ * pas elle qui se fermait : l'onglet entier était REMONTÉ. Les onglets de la
+ * fiche portent une clé tirée de la date de modification du bien, pour
+ * repartir des données fraîches après un enregistrement ; or un clic ailleurs
+ * suffit à écrire sur le bien (les notes s'enregistrent en quittant la zone),
+ * et l'onglet repartait de zéro — barre et saisie non enregistrée comprises.
+ *
+ * Les barres ouvertes se déclarent donc ici, et `useCleStable` garde la clé
+ * d'un onglet tant qu'il en reste une : il ne se remonte qu'une fois tout
+ * enregistré ou annulé.
+ */
+let barresOuvertes = 0;
+const abonnes = new Set<() => void>();
+const prevenir = () => abonnes.forEach((f) => f());
+const abonner = (f: () => void) => { abonnes.add(f); return () => { abonnes.delete(f); }; };
+
+/** Déclare une saisie en cours (une barre ouverte, des lignes modifiées) tant que `actif` est vrai. */
+export function useSaisieOuverte(actif: boolean) {
+  useEffect(() => {
+    if (!actif) return;
+    barresOuvertes++;
+    prevenir();
+    return () => { barresOuvertes--; prevenir(); };
+  }, [actif]);
+}
+
+/** La clé donnée, sauf tant qu'une barre d'enregistrement est ouverte : on garde alors la précédente. */
+export function useCleStable(cle: string): string {
+  const ouverte = useSyncExternalStore(abonner, () => barresOuvertes > 0, () => false);
+  const [stable, setStable] = useState(cle);
+  if (!ouverte && stable !== cle) setStable(cle);
+  return ouverte ? stable : cle;
+}
+
 export function BarreEnregistrer({
   modifie, pending, onEnregistrer, onAnnuler, libelle = "Enregistrer", plein, children,
 }: {
@@ -53,7 +88,10 @@ export function BarreEnregistrer({
     if (aFermer && !pending && !modifie) { setOuverte(false); setAFermer(false); }
   }, [aFermer, pending, modifie]);
 
-  if (!ouverte && !pending) return null;
+  const visible = ouverte || !!pending;
+  useSaisieOuverte(visible);
+
+  if (!visible) return null;
   const enregistrer = () => {
     setAFermer(true);
     // Rien à écrire : le clic vaut fermeture.
