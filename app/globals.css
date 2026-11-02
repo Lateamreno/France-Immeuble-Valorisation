@@ -9351,3 +9351,9 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .cps-conv-t i { font-style: normal; font-weight: 400; color: var(--gray-txt); }
 .cps-cible { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .cps-cible > * { flex: 1; min-width: 180px; }
+
+/* Retour #589 : les recherches supprimées, à la demande, grisées. */
+.cfx-anciennes { align-self: flex-start; margin-top: 4px; background: none; border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; font: 600 12.5px/1 var(--font-titre, inherit); color: var(--gray-txt, #6c7781); cursor: pointer; }
+.cfx-anciennes:hover { color: var(--slate, #3d4652); border-color: var(--gray-txt, #6c7781); }
+.cfx-ancienne { opacity: .55; }
+.cfx-ancienne:hover { opacity: .85; }

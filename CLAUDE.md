@@ -412,11 +412,22 @@ arbitrage de MAV, ne pas y revenir sans lui.
   geste ; la machine attend, elle ne décide de rien. La doctrine §7.1 tient.
 - **Horaires légaux** : lundi–samedi, 8 h – 22 h, hors jours fériés. MailingVox
   reporte d'office un envoi programmé hors créneau, il ne l'annule pas.
-- **Deux pièges à trancher avec eux avant le premier envoi :**
-  - le **numéro STOP** — le BO écrivait 36111, leur documentation cite 36200.
-    Un message qui annonce le mauvais numéro ne fait pas remonter l'opposition ;
-  - l'**erreur 61** — un lien dans le corps peut bloquer la campagne, à faire
-    valider par leur service client (le lien transfer.it est concerné).
+- **Tranché par MAV le 02/11/26 :**
+  - le **numéro STOP** est le **36200** (celui de leur documentation, valeur
+    par défaut de `MAILINGVOX_STOP`) ; le 36111 n'est plus utilisé ;
+  - l'expéditeur RCS « France Immeuble » est **vérifié** chez MailingVox ;
+  - le lien du dossier reste un lien **transfer.it** (pas de lien
+    france-immeuble.fr). Reste à surveiller l'**erreur 61** (un lien dans le
+    corps d'un SMS peut bloquer la campagne) sur le premier envoi.
+- **Premier envoi RCS (02/11/26)** : un seul modèle pour l'instant, « un
+  immeuble correspondant à votre recherche » — photo principale, type, ville
+  (département), surface, renta potentielle, prix HAI, et trois boutons
+  Intéressé / Pas intéressé / Télécharger le dossier. Texte et maquette :
+  artifact « RCS clients France Immeuble ».
+- **Réponses** : MailingVox les pousse sur `/api/mailingvox/{reponses,stops,accuses}`
+  (secret `MAILINGVOX_WEBHOOK_SECRET`), rangées dans `fi_sms_entrant` et
+  rattachées à la proposition. Les e-mails de réponse que MailingVox envoie
+  en plus ne sont qu'un doublon.
 - **Désinscrits** : `/api/stops` est lu avant chaque envoi, et
   `/api/contacts/blacklist` reçoit nos oppositions. C'est légitime — MailingVox
   est **sous-traitant** au sens du RGPD, pas un tiers : lui transmettre une

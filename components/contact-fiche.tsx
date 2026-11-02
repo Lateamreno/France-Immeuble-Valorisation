@@ -155,6 +155,8 @@ export function ContactFiche({ d, echanges = [] }: {
   /* Retour #453 : « quand je clique sur la recherche je veux directement
      qu'on m'affiche la modale de modification de recherche ». */
   const [edition, setEdition] = useState<RechercheCard | null>(null);
+  /** Retour #589 : les recherches supprimées ne s'affichent qu'à la demande. */
+  const [voirAnciennes, setVoirAnciennes] = useState(false);
   const router = useRouter();
   /* Retour #336 : les mêmes modales que la barre d'actions rapides, ouvertes
      ici avec l'acquéreur déjà rempli. */
@@ -269,7 +271,7 @@ export function ContactFiche({ d, echanges = [] }: {
   const onglets = [
     { key: "infos", label: "Informations" },
     { key: "immeubles", label: "Immeubles", n: d.immeubles.length },
-    { key: "recherches", label: "Recherches", n: d.recherches.length },
+    { key: "recherches", label: "Recherches", n: d.recherches.filter((r) => r.group !== "archivees").length },
     { key: "mandats", label: "Mandats", n: d.mandats.length },
     { key: "propositions", label: "Propositions", n: d.propositions.length },
     { key: "questions", label: "Questions", n: d.questions.length },
@@ -557,12 +559,30 @@ export function ContactFiche({ d, echanges = [] }: {
         )}
 
         {tab === "recherches" && (
-          <Onglet ajout="+ Ajouter une recherche" href="/recherches" vide={d.recherches.length === 0} quoi="recherche"
-            onAjouter={() => setAjout("recherche")}
-            cartes={d.recherches.map((r) => (
+          /* Retour #589 : une recherche supprimée (archivée) disparaît de la
+             liste ; le bouton « Anciennes recherches » la fait réapparaître,
+             en dessous et grisée. */
+          (() => {
+            const actives = d.recherches.filter((r) => r.group !== "archivees");
+            const anciennes = d.recherches.filter((r) => r.group === "archivees");
+            const carte = (r: (typeof d.recherches)[number]) => (
               <CarteRecherche key={r.id} r={r} onDetail={setDetail} onModifier={setEdition} clicCarte sansContact
-                mention={d.mandatRechercheActif ? "Mandat de recherche actif" : undefined} />
-            ))} />
+                mention={d.mandatRechercheActif && r.group !== "archivees" ? "Mandat de recherche actif" : undefined} />
+            );
+            return (
+              <Onglet ajout="+ Ajouter une recherche" href="/recherches" vide={actives.length === 0 && !voirAnciennes} quoi="recherche"
+                onAjouter={() => setAjout("recherche")}
+                cartes={[
+                  ...actives.map(carte),
+                  ...(voirAnciennes ? anciennes.map((r) => <div key={`a-${r.id}`} className="cfx-ancienne">{carte(r)}</div>) : []),
+                ]}
+                pied={anciennes.length > 0 && (
+                  <button type="button" className="cfx-anciennes" onClick={() => setVoirAnciennes((v) => !v)}>
+                    {voirAnciennes ? "Masquer les anciennes recherches" : `Anciennes recherches (${anciennes.length})`}
+                  </button>
+                )} />
+            );
+          })()
         )}
 
         {tab === "mandats" && (
@@ -601,7 +621,7 @@ export function ContactFiche({ d, echanges = [] }: {
             vignette={{
               id, nom: nomComplet, qualite: entreprise || types[0] || undefined,
               tel: telAffiche || undefined, email: email.trim() || undefined,
-              immeubles: d.immeubles.length, recherches: d.recherches.length,
+              immeubles: d.immeubles.length, recherches: d.recherches.filter((r) => r.group !== "archivees").length,
               note: note || undefined, estAgent: types.includes("Agent immobilier"),
               agent: d.agent ? { initiales: d.agent.initiales, couleur: d.agent.couleur } : undefined,
             }}
@@ -960,9 +980,11 @@ function PieceJointe({ url, contactId, cle, depose }: {
  *  ferait une page de vingt écrans de haut. */
 const PAQUET = 25;
 
-function Onglet({ ajout, href, vide, quoi, entete, cartes, onAjouter }: {
+function Onglet({ ajout, href, vide, quoi, entete, pied, cartes, onAjouter }: {
   ajout: string; href: string; vide: boolean; quoi: string;
   entete?: React.ReactNode;
+  /** Sous la liste (retour #589 : « Anciennes recherches »). */
+  pied?: React.ReactNode;
   cartes: React.ReactNode[];
   /* Retour #336 — « dans la fiche client il y a plein de menus et on peut à
      chaque fois ajouter un immeuble, une recherche, une proposition, une
@@ -991,6 +1013,7 @@ function Onglet({ ajout, href, vide, quoi, entete, cartes, onAjouter }: {
           <i>{reste} restante{feminin ? "s" : ""}</i>
         </button>
       )}
+      {pied}
     </div>
   );
 }
