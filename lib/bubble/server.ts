@@ -3019,7 +3019,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       prix: num(im.prix_hai),
       surface: num(im.surface_carrez),
       occupation: num(im.occupation_lots),
-      renta: num(im.fin_renta_ba),
+      renta: rentaPotentielle(im),
       travaux: num(im.travaux_total),
       ville: String(adr?.ville_name ?? ""),
       departement: cp.slice(0, 2),
@@ -3434,6 +3434,21 @@ function fourchette(min: unknown, max: unknown, fmt: (v: number) => string) {
  * elle que les exclusions interrogent. La principale ne sert plus que de
  * secours pour les fiches anciennes qui n'ont pas la liste.
  */
+/**
+ * Le rendement qu'on compare à celui d'une recherche : TOUJOURS le potentiel
+ * (MAV, 02/11 : « le rendement cible des clients, c'est toujours sur le loyer
+ * potentiel qu'on calcule »). `fin_renta_bm` (brut aux loyers de marché), à
+ * défaut les loyers potentiels sur le prix, à défaut le rendement actuel.
+ */
+export function rentaPotentielle(im: Record<string, unknown>): number | undefined {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+  const bm = n(im.fin_renta_bm);
+  if (bm !== undefined) return bm;
+  const max = n(im.fin_loyers_an_max), prix = n(im.prix_hai);
+  if (max !== undefined && prix !== undefined) return Math.round((max / prix) * 10000) / 100;
+  return n(im.fin_renta_ba);
+}
+
 export function critereBien(im: Record<string, unknown>): CriteresBien {
   const toutes = Array.isArray(im.Destinations) ? (im.Destinations as unknown[]).map(String) : [];
   return {
@@ -3441,7 +3456,7 @@ export function critereBien(im: Record<string, unknown>): CriteresBien {
     prix: typeof im.prix_hai === "number" ? (im.prix_hai as number) : undefined,
     surface: typeof im.surface_carrez === "number" ? (im.surface_carrez as number) : undefined,
     occupation: typeof im.occupation_lots === "number" ? (im.occupation_lots as number) : undefined,
-    renta: typeof im.fin_renta_ba === "number" ? (im.fin_renta_ba as number) : undefined,
+    renta: rentaPotentielle(im),
     ville: S2(im.adresse_ville),
     /* `adresse_dpt` quand la fiche l'a, sinon le code postal — mais pas une
        coupe à deux caractères : 20… c'est la Corse, 974… La Réunion. */
@@ -3491,7 +3506,7 @@ const CHAMPS_RECHERCHE = [
 const CHAMPS_IMMEUBLE_CRITERES = [
   "Statut", "prix_hai_estim", "date_last_est", "ESTIMATIONs", "Cibles", "Destination_principale", "Destinations",
   "adresse_dpt", "adresse_ville", "adresse_zipcode", "adresse_numero_rue", "adresse_rue", "fin_renta_ba",
-  "occupation_lots", "prix_hai", "surface_carrez",
+  "occupation_lots", "prix_hai", "surface_carrez", "fin_renta_bm", "fin_loyers_an_max",
 ];
 
 export async function listRecherchesBO(
