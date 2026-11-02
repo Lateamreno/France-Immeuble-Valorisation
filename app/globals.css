@@ -9357,3 +9357,22 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .cfx-anciennes:hover { color: var(--slate, #3d4652); border-color: var(--gray-txt, #6c7781); }
 .cfx-ancienne { opacity: .55; }
 .cfx-ancienne:hover { opacity: .85; }
+
+/* Réglages › Envois — essai RCS (02/11) : la carte telle qu'elle partira. */
+.rcs-essai { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line, #d9dde2); }
+.rcs-champs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.rcs-champs .mi { flex: 1 1 280px; min-width: 0; }
+.rcs-champs .rcs-num { flex: 0 1 160px; }
+.rcs-apercu { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 14px; }
+.rcs-carte { width: 300px; max-width: 100%; border-radius: 16px; overflow: hidden; background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 4px 14px rgba(16, 24, 40, .08); border: 1px solid #e3e6ea; }
+.rcs-carte img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.rcs-sans { padding: 30px 14px; background: #f4f5f7; font-size: 12.5px; color: var(--red); text-align: center; }
+.rcs-corps { padding: 10px 14px 4px; font-size: 13px; line-height: 1.45; color: #1d2433; }
+.rcs-corps b { display: block; font-size: 14.5px; margin-bottom: 6px; }
+.rcs-corps p { margin: 0; }
+.rcs-boutons { display: grid; border-top: 1px solid #eceef1; }
+.rcs-boutons span { padding: 9px 12px; text-align: center; font-size: 13.5px; font-weight: 600; color: #1a62d6; }
+.rcs-boutons span + span { border-top: 1px solid #eceef1; }
+.rcs-cote { flex: 1 1 260px; display: grid; gap: 10px; align-content: start; }
+.rcs-alerte { margin: 0; padding: 8px 12px; border-radius: 6px; background: #fdf3e2; color: #8a5300; font-size: 12.5px; line-height: 1.45; }

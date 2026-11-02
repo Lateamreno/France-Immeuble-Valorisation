@@ -5116,6 +5116,100 @@ export async function envoyerSmsEssai(input: { texte: string; numero: string }) 
   }
 }
 
+/** L'identifiant d'immeuble dans un lien de fiche ou tel quel. */
+const idImmeuble = (s: string) => /(\d{10,}x\d{5,})/.exec(s)?.[1] ?? null;
+
+/**
+ * La carte RCS d'un bien, telle qu'elle partira (Réglages › Envois, essai).
+ * Réservée au compte de MAV, comme l'envoi.
+ */
+export async function apercuRcs(bien: string) {
+  const { peutReviser } = await import("@/lib/auth/comptes");
+  if (!(await peutReviser())) return { ok: false as const, message: "L'essai RCS est réservé à Marc-Antoine." };
+  const id = idImmeuble(bien);
+  if (!id) return { ok: false as const, message: "Collez le lien de la fiche du bien (ou son identifiant)." };
+  const { preparerCarte } = await import("./rcs");
+  const c = await preparerCarte(id);
+  if (!c) return { ok: false as const, message: "Bien introuvable." };
+  return { ok: true as const, carte: { ...c, photo: c.photo ? photoUrlRcs(c.photo) : undefined } };
+}
+
+/* La photo vue dans l'aperçu passe par le relais du BO, comme partout. */
+function photoUrlRcs(ref: string) {
+  if (ref.startsWith("storage:")) return `/api/photo?s=${encodeURIComponent(ref.slice(8))}`;
+  return `/api/photo?u=${encodeURIComponent(ref.startsWith("//") ? `https:${ref}` : ref)}`;
+}
+
+/**
+ * Un RCS d'ESSAI (MAV, 02/11 : « tu l'envoies à moi-même, on va voir si ça
+ * marche »). Un seul numéro, un clic de MAV — la doctrine §7.1 tient. Si une
+ * proposition « Envoyée » de ce bien attend un contact qui porte ce numéro,
+ * elle garde l'identifiant de campagne : un toucher sur « Intéressé » ou
+ * « Pas intéressé » s'y inscrira, comme une réponse SMS.
+ */
+export async function envoyerRcsEssai(input: { bien: string; numero: string }) {
+  const { peutReviser } = await import("@/lib/auth/comptes");
+  if (!(await peutReviser())) return { ok: false as const, message: "L'essai RCS est réservé à Marc-Antoine." };
+  const id = idImmeuble(input.bien);
+  if (!id) return { ok: false as const, message: "Collez le lien de la fiche du bien (ou son identifiant)." };
+  const { telE164 } = await import("./matching");
+  const numero = telE164(input.numero);
+  if (!numero) return { ok: false as const, message: `Numéro illisible : « ${input.numero} ».` };
+  try {
+    const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
+    const c = await preparerCarte(id);
+    if (!c) return { ok: false as const, message: "Bien introuvable." };
+    const r = await envoyerCarteRcs(c, [numero], { campagne: `Essai RCS ${id}` });
+
+    /* La proposition qui attend ce numéro sur ce bien. */
+    let proposition: string | null = null;
+    if (r.campagne && SB_KEY) {
+      const fin = numero.replace(/\D/g, "").slice(-9);
+      const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
+      const contacts = (await (await fetch(
+        `${SB_URL}/rest/v1/bo_contact?select=id&data->>portable=like.*${fin}&limit=20`, { headers: H, cache: "no-store" },
+      )).json().catch(() => [])) as { id: string }[];
+      if (contacts.length) {
+        const liste = contacts.map((x) => `"${x.id}"`).join(",");
+        const props = (await (await fetch(
+          `${SB_URL}/rest/v1/bo_proposition?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(id)}&data->>ACHETEUR=in.(${liste})&data->>Statut=eq.${encodeURIComponent("Envoyée")}&order=bubble_created.desc.nullslast&limit=1`,
+          { headers: H, cache: "no-store" },
+        )).json().catch(() => [])) as { id: string }[];
+        proposition = props[0]?.id ?? null;
+      }
+      if (proposition) {
+        const now = new Date().toISOString();
+        await rpc("bo_patch_doc", {
+          p_table: "bo_proposition", p_id: proposition,
+          p_patch: { sms_campagne: r.campagne, rcs_envoye_le: now, "Modified Date": now },
+        }).catch(() => undefined);
+      }
+    }
+    return { ok: true as const, campagne: r.campagne, agent: r.agent, proposition };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * L'adresse du webhook RCS, à coller une fois dans le compte MailingVox — leur
+ * API ne sait pas la poser. Elle porte le secret : seul MAV la voit.
+ */
+export async function adresseWebhookRcs() {
+  const { peutReviser } = await import("@/lib/auth/comptes");
+  if (!(await peutReviser())) return { ok: false as const, message: "Réservé à Marc-Antoine." };
+  const secret = process.env.MAILINGVOX_WEBHOOK_SECRET?.trim();
+  if (!secret) return { ok: false as const, message: "MAILINGVOX_WEBHOOK_SECRET absente : pas d'adresse protégée possible." };
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const hote = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  if (!hote || hote.startsWith("localhost")) {
+    return { ok: false as const, message: "À demander depuis le BO en ligne : MailingVox doit pouvoir appeler l'adresse." };
+  }
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  return { ok: true as const, url: `${proto}://${hote}/api/mailingvox/rcs?cle=${encodeURIComponent(secret)}` };
+}
+
 /**
  * Envoie les SMS d'une commercialisation, et marque la ligne.
  *

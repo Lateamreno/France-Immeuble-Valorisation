@@ -245,6 +245,67 @@ export async function traiterAccuse(r: {
 }
 
 /**
+ * Les événements du webhook RCS (MailingVox, 02/11) : un lot de cent au plus.
+ *
+ *   • `userMessageReceived` — un bouton touché (`postback`, dont le `text` est
+ *     le libellé : « Intéressé », « Pas intéressé »), un texte libre (y compris
+ *     le « 1 » ou « 2 » du SMS de repli, canal `fallback`), ou un `optout` ;
+ *   • `messageStatusChanged` — l'accusé : SENT, DELIVERED, READ, échec…
+ *
+ * Rangés comme les retours SMS : une réponse s'inscrit sur la proposition
+ * (retrouvée par l'identifiant de campagne gardé à l'envoi), un STOP coupe
+ * les relances. On n'INTERPRÈTE rien : « Pas intéressé » ne refuse pas la
+ * proposition tout seul — c'est à décider avec MAV. Rend le nombre
+ * d'événements rangés.
+ */
+export async function traiterEvenementsRcs(corps: unknown): Promise<number> {
+  const evts = corps && typeof corps === "object" && Array.isArray((corps as { events?: unknown }).events)
+    ? ((corps as { events: unknown[] }).events)
+    : [];
+  let n = 0;
+  for (const brutEvt of evts.slice(0, 100)) {
+    if (!brutEvt || typeof brutEvt !== "object") continue;
+    const e = brutEvt as Record<string, unknown>;
+    const id = S(e.eventId);
+    const recuLe = S(e.on) ?? undefined;
+    const msg = (e.userMessageReceived ?? null) as Record<string, unknown> | null;
+    const statut = (e.messageStatusChanged ?? null) as Record<string, unknown> | null;
+    const corpsEvt = (msg ?? statut ?? {}) as Record<string, unknown>;
+    const ctx = (corpsEvt.context ?? {}) as Record<string, unknown>;
+    const numero = normaliserNumero(S(corpsEvt.userId));
+    const source = ctx.campaign_id === undefined || ctx.campaign_id === null ? null : String(ctx.campaign_id);
+    const brut = { rcs: true, ...e };
+    try {
+      if (msg) {
+        const c = (msg.content ?? {}) as Record<string, unknown>;
+        if (c.typing !== undefined || c.optin !== undefined) continue;
+        if (c.optout !== undefined) {
+          if (await traiterStop({ evenementId: id, numero, source, campagne: null, recuLe, brut })) n++;
+          continue;
+        }
+        const pb = (c.postback ?? null) as Record<string, unknown> | null;
+        const tx = c.text;
+        const texte = pb
+          ? S(pb.text) ?? S(pb.payload) ?? ""
+          : typeof tx === "string" ? tx : S((tx as Record<string, unknown> | undefined)?.text) ?? "";
+        if (!texte) continue;
+        const canal = S(msg.channelId) === "fallback" ? "SMS de repli" : pb ? "bouton RCS" : "RCS";
+        const r = await traiterReponse({ evenementId: id, numero, texte, source, campagne: canal, recuLe, brut });
+        if (r.nouvelle) n++;
+      } else if (statut) {
+        if (await traiterAccuse({
+          evenementId: id, numero, statut: S(statut.status) ?? null, source,
+          campagne: S(statut.channelId) === "fallback" ? "SMS de repli" : "RCS", brut,
+        })) n++;
+      }
+    } catch (err) {
+      console.error("[mailingvox rcs]", err);
+    }
+  }
+  return n;
+}
+
+/**
  * Relit chez MailingVox les réponses et les STOP des derniers jours (leur API
  * « Lister les réponses » et « Lister les STOPS ») et range ce qui manque au
  * journal — ce que le webhook n'a pas reçu, parce qu'il n'était pas encore

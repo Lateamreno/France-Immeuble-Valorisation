@@ -3,7 +3,7 @@ import { lireReglages } from "@/lib/bo/reglages";
 import { ReglagesAgence } from "@/components/reglages-agence";
 import { ReglagesEnvois, type EtatEnvois } from "@/components/reglages-envois";
 import { Equipe, type LigneEquipe } from "@/components/equipe";
-import { compteCourant, exigerDirection, tousLesComptes } from "@/lib/auth/comptes";
+import { compteCourant, exigerDirection, peutReviser, tousLesComptes } from "@/lib/auth/comptes";
 import { getAgents } from "@/lib/bubble/server";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,8 @@ async function etatEnvois(): Promise<EtatEnvois> {
       secretWebhook: !!process.env.MAILINGVOX_WEBHOOK_SECRET?.trim(),
     },
     siteUrl: process.env.SITE_URL?.trim() || null,
+    /* L'essai RCS (02/11) : au compte de MAV seulement, comme l'outil de revue. */
+    essaiRcs: await peutReviser(),
   };
 }
 

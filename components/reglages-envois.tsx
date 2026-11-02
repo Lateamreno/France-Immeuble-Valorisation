@@ -10,6 +10,7 @@
 // geste à faire une fois : déclarer nos adresses de réception chez MailingVox.
 import { useState, useTransition } from "react";
 import { brancherRetoursSms, relireRetoursSms } from "@/lib/bo/actions";
+import { EssaiRcs } from "@/components/essai-rcs";
 
 export type EtatEnvois = {
   masse: {
@@ -26,6 +27,7 @@ export type EtatEnvois = {
     secretWebhook: boolean;
   };
   siteUrl: string | null;
+  essaiRcs: boolean;
 };
 
 function Ligne({ ok, libelle, detail }: { ok: boolean | "info"; libelle: string; detail?: string }) {
@@ -132,6 +134,7 @@ export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
         </span>
       </div>
       {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
+      {etat.essaiRcs && <EssaiRcs actif={etat.sms.configure} />}
     </>
   );
 }
