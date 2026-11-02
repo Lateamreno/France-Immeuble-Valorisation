@@ -274,11 +274,12 @@ export function ligneSite(b: BienData, charge: ChargeUtile, statut: StatutSite):
   const type = typeImmeuble(b.lots);
   const nbLots = b.lots.length;
 
-  /* Le loyer potentiel au sens de Plein Bail et du site : le loyer EN PLACE
-     des lots occupés, le loyer de marché des lots vides. (Le « potentiel » du
-     BO, lui, reloue tout au loyer de marché : c'est `fin_loyers_an_max`.) */
+  /* Le loyer potentiel est CELUI DU BO (MAV, 02/11) : chaque lot reloué à
+     son loyer max, occupé ou non — à défaut de loyer max, le loyer en place.
+     C'est le potentiel de la fiche, des recherches et des cartes, et le
+     rendement potentiel se calcule comme `out_rbm` : ÷ (prix HAI + travaux). */
   const loyerPot = charge.lots.reduce(
-    (s, l) => s + (l.statut === "occupe" ? l.loyer_mensuel_hc ?? l.loyer_marche_estime ?? 0 : l.loyer_marche_estime ?? 0), 0,
+    (s, l) => s + (l.loyer_marche_estime ?? l.loyer_mensuel_hc ?? 0), 0,
   ) * 12;
   const travauxTotal = Math.round(N(charge.travaux.travaux_estimation_eur) ?? 0);
   const rendPot = prix > 0 && loyerPot > 0 ? arrondi((loyerPot / (prix + travauxTotal)) * 100) : null;
