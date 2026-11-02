@@ -13,9 +13,9 @@
 import { revalidatePath } from "next/cache";
 import { getAgentFiche, getBien, type BienData } from "@/lib/bubble/server";
 import {
-  blocages, chargeUtile, departement, empreinte, ligneSite, lireEtat, lireEtatSite,
+  blocages, chargeUtile, departement, empreinte, ligneSite, lireEtat, lireEtatSite, lotsSite,
   mandatEnVigueur, mandatPermetLigne, statutSite,
-  type Blocage, type EtatSite, type LigneSite, type StatutSite,
+  type Blocage, type EtatSite, type LigneSite, type LotSite, type StatutSite,
 } from "@/lib/diffusion";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -107,6 +107,8 @@ export type ApercuSite = {
   motif: string;
   blocages: Blocage[];
   ligne: LigneSite | null;
+  /** L'état locatif qui part dans `biens_lots`. */
+  lots: LotSite[];
   empreinte?: string;
   /** La fiche a-t-elle changé depuis le dernier dépôt ? */
   ecart: boolean;
@@ -126,8 +128,13 @@ async function calculer(b: BienData) {
   const agent = await getAgentFiche(String(b.im.AGENT ?? "")).catch(() => null);
   const charge = statut ? chargeUtile(b, mandat, agent, statut === "en_vente" ? "online" : "sous_offre") : null;
   const ligne = charge && statut ? ligneSite(b, charge, statut) : null;
-  return { mandat, empeche, statut, motif, charge, ligne };
+  const lots = ligne ? lotsSite(b) : [];
+  return { mandat, empeche, statut, motif, charge, ligne, lots };
 }
+
+/** L'empreinte de ce qui part : la ligne, l'état locatif, les photos. */
+const empreinteSite = (ligne: LigneSite, lots: LotSite[], photos: string[]) =>
+  empreinte({ ligne, lots, photos });
 
 /** Ce que la publication sur le site ferait, sans la faire. */
 export async function apercuSite(immeubleId: string): Promise<ApercuSite> {
@@ -136,12 +143,12 @@ export async function apercuSite(immeubleId: string): Promise<ApercuSite> {
   if (!b) {
     return {
       configuree: !!c, etat: lireEtatSite({}), statut: null, motif: "Fiche introuvable",
-      blocages: [], ligne: null, ecart: false,
+      blocages: [], ligne: null, lots: [], ecart: false,
     };
   }
   const etat = lireEtatSite(b.im);
-  const { empeche, statut, motif, charge, ligne } = await calculer(b);
-  const emp = ligne && charge ? empreinte({ ligne, photos: charge.photos.map((p) => p.empreinte) }) : undefined;
+  const { empeche, statut, motif, charge, ligne, lots } = await calculer(b);
+  const emp = ligne && charge ? empreinteSite(ligne, lots, charge.photos.map((p) => p.empreinte)) : undefined;
   return {
     configuree: !!c,
     etat,
@@ -149,6 +156,7 @@ export async function apercuSite(immeubleId: string): Promise<ApercuSite> {
     motif,
     blocages: empeche,
     ligne,
+    lots,
     empreinte: emp,
     ecart: !!emp && emp !== etat.empreinte,
     url: etat.slug ? `${PUBLIC}/immeubles-a-vendre/${etat.slug}/` : undefined,
@@ -242,6 +250,31 @@ async function deposerPhotos(c: Config, id: string, proxys: string[]): Promise<s
    est fabriquée et figée par la base du site, à la première insertion. Le BO
    n'envoie jamais de slug : il lit celui que la base a posé. */
 
+/* -------------------------------------------------------- État locatif */
+
+/**
+ * Remplace les lots du bien dans `biens_lots` (contrat §3.2) : suppression puis
+ * insertion, à chaque dépôt. Tant que le site n'a pas ouvert la table, on
+ * passe sans rien dire — l'annonce, elle, part quand même.
+ */
+async function deposerLots(c: Config, id: string, lots: LotSite[]) {
+  try {
+    await site(c, `/rest/v1/biens_lots?bien=eq.${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+  } catch (e) {
+    if (/PGRST205|biens_lots/.test(String(e)) && /404/.test(String(e))) return;
+    throw e;
+  }
+  if (!lots.length) return;
+  await site(c, "/rest/v1/biens_lots", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(lots),
+  });
+}
+
 /* ---------------------------------------------------------------- Publier */
 
 /**
@@ -262,7 +295,7 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
   try {
     const b = await getBien(immeubleId);
     if (!b) return { ok: false as const, message: "Fiche introuvable." };
-    const { empeche, statut, motif, charge, ligne } = await calculer(b);
+    const { empeche, statut, motif, charge, ligne, lots } = await calculer(b);
     if (empeche.length) return { ok: false as const, message: `Publication impossible : ${empeche[0].label}.` };
     if (!statut || !ligne || !charge) return { ok: false as const, message: motif || "Le bien n'est pas publiable en l'état." };
 
@@ -294,13 +327,14 @@ export async function publierSurSite(immeubleId: string, agent?: string) {
       });
       slug = ((await r.json()) as { slug?: string }[])[0]?.slug;
     }
+    await deposerLots(c, ligne.id, lots);
 
     await memoriser(immeubleId, {
       site_statut: statut,
       site_slug: slug,
       site_publie_le: (b.im.site_publie_le as string | undefined) ?? maintenant,
       site_synchro_le: maintenant,
-      site_empreinte: empreinte({ ligne, photos: charge.photos.map((p) => p.empreinte) }),
+      site_empreinte: empreinteSite(ligne, lots, charge.photos.map((p) => p.empreinte)),
       site_photos_empreinte: empPhotos,
       site_images: images,
       site_erreur: null,

@@ -497,6 +497,10 @@ const finValidite = (date: unknown, jours?: number) => {
 async function acquereurDe(o: Doc): Promise<string | null> {
   const id = Array.isArray(o.data.ACHETEURs) ? S(o.data.ACHETEURs[0]) : undefined;
   const [c] = id ? await lireBo(`bo_contact?select=id,data&id=eq.${encodeURIComponent(id)}`) : [];
+  /* L'offrant déclaré sur le site (02/11) passe avant la fiche du compte :
+     c'est en son nom que l'offre est faite, parfois au nom d'une société. */
+  const off = (o.data.site_offrant ?? null) as Record<string, unknown> | null;
+  if (off) return S(off.societe) ?? ([S(off.prenom), S(off.nom)].filter(Boolean).join(" ") || null);
   const personne = c ? [S(c.data["prénom"]), S(c.data.nom)].filter(Boolean).join(" ") : "";
   return S(c?.data.entreprise_nom) ?? (personne || S(o.data.acheteur_nom) || null);
 }
