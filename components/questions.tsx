@@ -14,6 +14,7 @@ import type { QuestionCard } from "@/lib/bubble/server";
 import { cloturerQuestion, creerContactDepuisQuestion, demandeTraitee, noterAppelDemande, refuserDemandeDossier, repondreRendezVous, rouvrirQuestion } from "@/lib/bo/actions";
 import { Modale, useQuestion } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
+import { VignetteContact } from "@/components/vignette-contact";
 import { ModaleProposition } from "@/components/actions-rapides";
 import { dmy } from "@/lib/format";
 import { Avatar } from "@/components/avatar";
@@ -94,7 +95,7 @@ export function EcranQuestions({
   return (
     <div className="lstx">
       <div className="lstx-top">
-        <h1 className="lstx-titre">Questions</h1>
+        <h1 className="lstx-titre">Formulaire site</h1>
         <div className="lst-search">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder="Recherchez une question, un nom, un e-mail…" value={q}
@@ -128,11 +129,9 @@ export function EcranQuestions({
                   </span>
                   <span style={{ flex: 1 }} />
                   {r.contact ? (
-                    <Link className="qc-ct" href={`/contact/${r.contact.id}`}>
-                      <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.4" /><path d="M5.5 20c.7-4 3.6-5.6 6.5-5.6s5.8 1.6 6.5 5.6" /></svg>
-                      {r.contact.nom}
-                      {r.contact.note && <b className={`note n${r.contact.note}`}>{r.contact.note}</b>}
-                    </Link>
+                    /* #578 : la vignette du contact, comme partout ailleurs ;
+                       son nom et son picto mènent ensuite à la fiche. */
+                    <span className="qc-ct-v"><VignetteContact v={r.contact} immeuble={r.immeuble?.libelle} /></span>
                   ) : (
                     <span className="qc-nc">⊘ Pas de contact</span>
                   )}

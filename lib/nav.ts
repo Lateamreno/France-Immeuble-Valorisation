@@ -36,7 +36,8 @@ export const NAV: NavItem[] = [
      Les relances raisonnent PAR CLIENT quand le reste du BO raisonne par
      immeuble : elles gardent leur entrée. */
   { href: "/relances", label: "Relances" },
-  { href: "/questions", label: "Questions" },
+  /* #579 : « Questions » devient « Formulaire site ». */
+  { href: "/questions", label: "Formulaire site" },
   /* Prospection en dur : les immeubles détenus par une société et PAS en
      copropriété — la cible de la découpe. Elle vit à côté des Recherches,
      qui sont la demande, quand celle-ci est l'offre à aller chercher. */
