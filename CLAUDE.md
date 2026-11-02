@@ -424,6 +424,15 @@ arbitrage de MAV, ne pas y revenir sans lui.
   (département), surface, renta potentielle, prix HAI, et trois boutons
   Intéressé / Pas intéressé / Télécharger le dossier. Texte et maquette :
   artifact « RCS clients France Immeuble ».
+  - Code : `lib/bo/rcs.ts` (préparer la carte, créer le modèle chez
+    MailingVox `/rcs/model/create` avec la photo en multipart, envoyer
+    `/envoyer/rcs` type `single` avec un SMS de repli ≤ 145 car. sans lien).
+    Essai à un seul numéro dans Réglages › Envois, au compte de MAV seul.
+  - Les boutons touchés arrivent en POST JSON sur `/api/mailingvox/rcs`
+    (`traiterEvenementsRcs`), adresse à coller **à la main** dans le compte
+    MailingVox (leur API ne la pose pas ; bouton « Copier l'adresse du
+    webhook RCS »). « Pas intéressé » est **rangé, pas interprété** : il ne
+    refuse pas la proposition tout seul tant que MAV n'a pas tranché.
 - **Réponses** : MailingVox les pousse sur `/api/mailingvox/{reponses,stops,accuses}`
   (secret `MAILINGVOX_WEBHOOK_SECRET`), rangées dans `fi_sms_entrant` et
   rattachées à la proposition. Les e-mails de réponse que MailingVox envoie

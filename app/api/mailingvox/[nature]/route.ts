@@ -17,12 +17,15 @@
 // — c'est-à-dire faire taire notre communication vers quelqu'un qui n'a rien
 // demandé.
 import { NextRequest } from "next/server";
-import { normaliserNumero, traiterAccuse, traiterReponse, traiterStop } from "@/lib/bo/sms-retours";
+import { normaliserNumero, traiterAccuse, traiterEvenementsRcs, traiterReponse, traiterStop } from "@/lib/bo/sms-retours";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NATURES = { reponses: "reponse", stops: "stop", accuses: "accuse" } as const;
+/* `rcs` : le webhook des RCS (02/11), d'une autre forme — un POST JSON
+   `{ events: [...] }` par lots de cent, à déclarer à la main dans le compte
+   MailingVox (Paramètres), l'API ne le pose pas. */
+const NATURES = { reponses: "reponse", stops: "stop", accuses: "accuse", rcs: "rcs" } as const;
 type Chemin = keyof typeof NATURES;
 
 function autorise(req: NextRequest) {
@@ -37,6 +40,12 @@ function autorise(req: NextRequest) {
 }
 
 async function traiter(req: NextRequest, nature: Chemin) {
+  if (nature === "rcs") {
+    let corps: unknown = null;
+    try { corps = await req.json(); } catch { /* corps vide ou illisible */ }
+    const n = await traiterEvenementsRcs(corps);
+    return Response.json({ ok: true, evenements: n });
+  }
   const q = req.nextUrl.searchParams;
   const brut: Record<string, string> = {};
   q.forEach((v, k) => { if (k !== "cle") brut[k] = v; });
