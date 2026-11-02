@@ -11,7 +11,7 @@
 
 import type { BienData } from "./bubble/server";
 import { synthese } from "./mandat";
-import { BAUX_LIBRES } from "./referentiels";
+import { BAUX_LIBRES, situationLot } from "./referentiels";
 
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
@@ -184,8 +184,51 @@ export type LigneSite = {
   rendement: number | null;
   occupation: number | null;
   prix_m2: number | null;
+  /** La PIRE classe des lots (contrat §3.1, 02/11) ; `dpe_min` la meilleure. */
   dpe: string | null;
   travaux: string | null;
+  /* ---- « Au niveau de Plein Bail » (demande du site, 02/11). Tout est
+     facultatif côté site : il affiche ce qui arrive et cache le reste. */
+  code_postal: string | null;
+  commune_population: number | null;
+  loyer_hc_an_potentiel: number | null;
+  rendement_potentiel: number | null;
+  travaux_total: number;
+  dpe_min: string | null;
+  occupation_lots: number | null;
+  type_dominant: "habitation" | "commercial" | "bureau" | null;
+  mixte: boolean;
+  monopropriete: boolean;
+  taxe_fonciere: number | null;
+  taxe_fonciere_recuperable: number | null;
+  charges_copro: number | null;
+  charges_copro_recuperables: number | null;
+  prix_net_vendeur: number | null;
+  honoraires: number | null;
+  prix_precedent: number | null;
+  prix_baisse_le: string | null;
+};
+
+/** Une ligne de `biens_lots` : l'état locatif, sans un nom (contrat §3.2). */
+export type LotSite = {
+  bien: string;
+  numero: string;
+  ordre: number;
+  type: "habitation" | "commerce" | "bureau" | "activite" | "parking" | "cave" | "autre";
+  typologie: string | null;
+  etage: number | null;
+  statut: "occupe" | "libre";
+  bail: "nu" | "meuble" | "commercial" | "professionnel" | "derogatoire" | "mixte" | "saisonnier" | "autre" | null;
+  bail_debut: string | null;
+  bail_fin: string | null;
+  surface: number | null;
+  loyer_hc_mois: number | null;
+  charges_mois: number | null;
+  loyer_marche_mois: number | null;
+  disponible_le: string | null;
+  etat: "bon" | "a_rafraichir" | "a_renover" | null;
+  travaux: number | null;
+  dpe: string | null;
 };
 
 /** Le département sur deux caractères, Corse comprise. */
@@ -224,10 +267,47 @@ export function ligneSite(b: BienData, charge: ChargeUtile, statut: StatutSite):
   /* Une seule lettre pour tout l'immeuble : on ne la donne que si tous les lots
      renseignés ont la même. Choisir la meilleure serait flatteur, la pire
      injuste ; mieux vaut se taire. */
-  const dpes = [...new Set(charge.lots.map((l) => l.dpe_lot).filter((d): d is string => !!d))];
+  /* La pire et la meilleure lettre, désormais (le site, 02/11) : l'acquéreur
+     filtre sur la pire, et la fourchette se lit d'un coup d'œil. */
+  const dpes = [...new Set(charge.lots.map((l) => l.dpe_lot).filter((d): d is string => !!d))].sort();
   const ville = S(im.adresse_ville) ?? "";
   const type = typeImmeuble(b.lots);
   const nbLots = b.lots.length;
+
+  /* Le loyer potentiel au sens de Plein Bail et du site : le loyer EN PLACE
+     des lots occupés, le loyer de marché des lots vides. (Le « potentiel » du
+     BO, lui, reloue tout au loyer de marché : c'est `fin_loyers_an_max`.) */
+  const loyerPot = charge.lots.reduce(
+    (s, l) => s + (l.statut === "occupe" ? l.loyer_mensuel_hc ?? l.loyer_marche_estime ?? 0 : l.loyer_marche_estime ?? 0), 0,
+  ) * 12;
+  const travauxTotal = Math.round(N(charge.travaux.travaux_estimation_eur) ?? 0);
+  const rendPot = prix > 0 && loyerPot > 0 ? arrondi((loyerPot / (prix + travauxTotal)) * 100) : null;
+
+  /* Occupation par nombre de lots : les caves, parkings et annexes ne
+     comptent pas (même règle que les recherches, MAV 02/11), ni les lots
+     rattachés à un autre, qui n'ont pas de loyer propre. */
+  const principaux = b.lots.filter(
+    (l) => !HORS_USAGE.has(String(l.Destination ?? "")) && situationLot(l.Type_bail) !== "rattache",
+  );
+  const occupesNb = principaux.filter((l) => situationLot(l.Type_bail) === "loue" || (N(l.loyer) ?? 0) > 0).length;
+
+  /* Usage dominant : plus de 70 % de la surface des lots d'usage. */
+  const surfUsage = new Map<string, number>();
+  for (const l of b.lots) {
+    const d = String(l.Destination ?? "");
+    if (!USAGE[d]) continue;
+    surfUsage.set(USAGE[d], (surfUsage.get(USAGE[d]) ?? 0) + (SURF(l.surface_carrez) ?? SURF(l.surface_sol) ?? 0));
+  }
+  const surfTotale = [...surfUsage.values()].reduce((s, v) => s + v, 0);
+  const [dominant, partDominante] = [...surfUsage.entries()].sort((x, y) => y[1] - x[1])[0] ?? [];
+  const typeDominant = surfTotale > 0 && partDominante! / surfTotale > 0.7 && dominant !== "activite"
+    ? (dominant as "habitation" | "commercial" | "bureau") : null;
+  const usages = new Set(b.lots.map((l) => USAGE[String(l.Destination ?? "")]).filter(Boolean));
+
+  const ch = charge.charges;
+  const pop = N(im.emp_population);
+  const cp = S(im.adresse_zipcode)?.replace(/\s/g, "");
+  const baisse = baisseDePrix(b);
   return {
     id: String(im._id),
     statut,
@@ -246,9 +326,138 @@ export function ligneSite(b: BienData, charge: ChargeUtile, statut: StatutSite):
     rendement: rendement !== null && rendement >= 1 && rendement <= 40 ? rendement : null,
     occupation: surface > 0 ? Math.min(100, arrondi((surfaceOcc / surface) * 100, 1)) : null,
     prix_m2: prix > 0 && surface > 0 ? Math.round(prix / surface) : null,
-    dpe: dpes.length === 1 ? dpes[0] : null,
+    dpe: dpes.at(-1) ?? null,
     travaux: S(charge.travaux.travaux_a_prevoir) ?? null,
+    /* Le code postal passe désormais (le site, 02/11, relayé par MAV) : il
+       situe la commune, jamais le bien. L'adresse, elle, ne part toujours pas. */
+    code_postal: cp && /^\d{5}$/.test(cp) ? cp : null,
+    /* `emp_population` est la population INSEE saisie à l'onglet Emplacement
+       (pour Paris, celle de l'arrondissement). Un chiffre aberrant ne part pas. */
+    commune_population: pop !== undefined && pop >= 50 ? Math.round(pop) : null,
+    loyer_hc_an_potentiel: loyerPot > 0 ? Math.round(loyerPot) : null,
+    rendement_potentiel: rendPot !== null && rendPot >= 1 && rendPot <= 40 ? rendPot : null,
+    travaux_total: travauxTotal,
+    dpe_min: dpes[0] ?? null,
+    occupation_lots: principaux.length ? Math.round((occupesNb / principaux.length) * 1000) / 10 : null,
+    type_dominant: typeDominant,
+    mixte: usages.size > 1,
+    /* Le BO ne vend que des immeubles entiers : la charge Plein Bail dit déjà
+       `copropriete: false`. */
+    monopropriete: true,
+    taxe_fonciere: N(ch.taxe_fonciere_eur) ? Math.round(N(ch.taxe_fonciere_eur)!) : null,
+    /* La part récupérable de la taxe foncière, c'est la TEOM. */
+    taxe_fonciere_recuperable: N(ch.taxe_fonciere_recuperable_eur) ? Math.round(N(ch.taxe_fonciere_recuperable_eur)!) : null,
+    /* Un immeuble en monopropriété n'a pas de syndic : ce sont les charges
+       d'exploitation de l'immeuble (eau, électricité, entretien, assurance…),
+       hors taxe foncière — le seul équivalent qui ait un sens. */
+    charges_copro: chargesHorsTf(b) || null,
+    charges_copro_recuperables: N(ch.charges_recuperables_eur) ? Math.round(N(ch.charges_recuperables_eur)!) : null,
+    prix_net_vendeur: N(im.prix_nv) && N(im.prix_nv)! > 0 ? Math.round(N(im.prix_nv)!) : null,
+    honoraires: N(im.prix_honos_ttc) && N(im.prix_honos_ttc)! > 0 ? Math.round(N(im.prix_honos_ttc)!) : null,
+    prix_precedent: baisse?.prix ?? null,
+    prix_baisse_le: baisse?.le ?? null,
   };
+}
+
+/** Usage d'un lot, au sens du site. Caves, parkings et annexes n'en ont pas. */
+const USAGE: Record<string, string> = {
+  Logement: "habitation", Commerce: "commercial", Bureau: "bureau", Logistique: "activite",
+};
+const HORS_USAGE = new Set(["Cave", "Parking", "Annexe"]);
+
+/** Le total annuel des charges hors taxe foncière (récupérables comprises). */
+function chargesHorsTf(b: BienData): number {
+  return Math.round(
+    b.charges
+      .filter((c) => String(c.Type_charge ?? "") !== "Taxe Foncière")
+      .reduce((s, c) => s + (N(c.total_an) ?? 0), 0),
+  );
+}
+
+/**
+ * La dernière baisse de prix, si elle a eu lieu une fois le bien en ligne.
+ *
+ * Le prix d'une estimation qui descend avant le mandat n'est pas une « baisse »
+ * pour le public : il ne l'a jamais vu. On ne retient donc que le changement
+ * daté d'après la première mise en ligne (site ou Plein Bail).
+ */
+export function baisseDePrix(b: BienData): { prix: number; le: string } | null {
+  const actuel = N(b.im.prix_hai);
+  const debuts = [S(b.im.site_publie_le), S(b.im.pb_publie_le)].filter((d): d is string => !!d).sort();
+  if (!actuel || !debuts.length) return null;
+  const h = b.prixHisto
+    .map((p) => ({ prix: N(p.in_prix_hai), le: S(p["Created Date"]) }))
+    .filter((p): p is { prix: number; le: string } => !!p.prix && !!p.le)
+    .sort((x, y) => y.le.localeCompare(x.le));
+  const egal = (v: number) => Math.abs(v - actuel) < 1;
+  const i = h.findIndex((p) => egal(p.prix));
+  if (i < 0) return null;
+  let j = i;
+  while (j + 1 < h.length && egal(h[j + 1].prix)) j++;
+  const avant = h[j + 1];
+  if (!avant || avant.prix <= actuel || h[j].le < debuts[0]) return null;
+  return { prix: Math.round(avant.prix), le: h[j].le.slice(0, 10) };
+}
+
+const TYPE_LOT_SITE: Record<string, LotSite["type"]> = {
+  Logement: "habitation", Commerce: "commerce", Bureau: "bureau", Logistique: "activite",
+  Parking: "parking", Cave: "cave",
+};
+const BAIL_SITE: Record<string, NonNullable<LotSite["bail"]>> = {
+  "Nu": "nu", "Loi 89": "nu", "Loi 48": "nu", "Meuble": "meuble", "Airbnb": "saisonnier",
+  "3/6/9": "commercial", "Précaire": "derogatoire", "Professionnel": "professionnel",
+  "Civil": "autre", "Ferme": "autre",
+};
+const ETAT_SITE: Record<string, NonNullable<LotSite["etat"]>> = {
+  Neuf: "bon", Renove: "bon", "Bon etat": "bon", "Etat d'usage": "a_rafraichir", Travaux: "a_renover",
+};
+
+/**
+ * L'état locatif tel que le reçoit `biens_lots`.
+ *
+ * RGPD, garde-fou n°1 : aucun nom de locataire, aucune enseigne. La typologie
+ * d'un commerce est son ACTIVITÉ (« Pharmacie »), jamais son nom ; et la table
+ * du site n'a de toute façon aucune colonne pour en recevoir un.
+ */
+export function lotsSite(b: BienData): LotSite[] {
+  const id = String(b.im._id);
+  const vus = new Set<string>();
+  return b.lots.map((l, i) => {
+    const bail = String(l.Type_bail ?? "");
+    const situation = situationLot(bail);
+    const loue = situation !== "libre" || (N(l.loyer) ?? 0) > 0;
+    const dest = String(l.Destination ?? "");
+    /* La clé du site est (bien, numéro) : deux lots sans numéro, ou sous le
+       même, ne doivent pas se marcher dessus. */
+    let numero = `Lot ${T(l.numero) ?? i + 1}`;
+    for (let k = 2; vus.has(numero); k++) numero = `Lot ${T(l.numero) ?? i + 1} (${k})`;
+    vus.add(numero);
+    const typo = S(l.Type_lot);
+    const baux = b.baux.filter((x) => Array.isArray(x.LOTs) && (x.LOTs as unknown[]).includes(l._id));
+    const actif = baux.find((x) => x.activ === true) ?? baux[0];
+    const jour = (v: unknown) => S(v)?.slice(0, 10) ?? null;
+    return {
+      bien: id,
+      numero,
+      ordre: i + 1,
+      type: TYPE_LOT_SITE[dest] ?? "autre",
+      typologie: typo && typo !== "Autre" && typo !== "n.c." ? typo : null,
+      etage: N(l.etage) ?? null,
+      statut: loue ? "occupe" : "libre",
+      bail: loue && situation === "loue" ? BAIL_SITE[bail] ?? "autre" : null,
+      bail_debut: loue && actif ? jour(actif.date_start) : null,
+      bail_fin: loue && actif ? jour(actif.date_end) : null,
+      surface: SURF(l.surface_carrez) ?? SURF(l.surface_sol) ?? null,
+      loyer_hc_mois: loue ? N(l.loyer) ?? null : null,
+      /* Le BO ne tient pas les charges au lot : elles sont à l'immeuble. */
+      charges_mois: null,
+      loyer_marche_mois: loue ? null : N(l.loyer_max) ?? null,
+      disponible_le: null,
+      etat: ETAT_SITE[String(l.Etat ?? "")] ?? null,
+      travaux: N(l.travaux) ?? null,
+      dpe: classeEnergie(l.Type_dpe) ?? null,
+    };
+  });
 }
 
 /** L'état de la diffusion sur le site, tel que le BO l'a mémorisé. */

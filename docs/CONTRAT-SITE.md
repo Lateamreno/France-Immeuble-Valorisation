@@ -219,12 +219,14 @@ envoyer le dossier. »
 
 ## 7. Ce qui ne traverse jamais
 
-- Vers le site : numéro de rue, code postal complet, coordonnées GPS ; l'adresse
+- Vers le site : numéro de rue, coordonnées GPS ; l'adresse
   des biens à vendre (même la rue) ; nom, coordonnées, société ou motif du
   vendeur ; nom de l'acquéreur, des locataires, du notaire ; numéro de mandat,
   honoraires internes, notes ; identifiant d'un contact du BO ; nom de l'agent
   qui a validé ; nom de fichier d'origine d'une photo. Seule exception : une
   offre transmise par l'agent à SON propriétaire (§12.1).
+- Le **code postal** des biens à vendre traverse depuis le 02/11 (§14, demande
+  du site relayée par MAV) : il situe la commune, jamais le bien.
 - Vers le BO : rien d'autre que les formulaires.
 
 ## 8. Robustesse
@@ -753,3 +755,69 @@ nul.
 
 **Photo de l'agent** : `agent_photo` reste l'adresse https publique de la
 photo ; une nouvelle photo a une nouvelle adresse.
+
+## 14. Les annonces au niveau de Plein Bail (demande du site, 02/11)
+
+La page « Immeubles à vendre » du site reprend le moteur de recherche et la
+fiche de Plein Bail. Le site a ouvert les colonnes (migration 0015) ; le BO
+les remplit à chaque dépôt depuis le 02/11. Les biens déjà en ligne les
+reçoivent au premier dépôt suivant, au plus tard au rapprochement de 3 h.
+
+### 14.1 Colonnes de `biens_a_vendre` remplies par le BO
+
+| Colonne | Ce que le BO envoie |
+|---|---|
+| `code_postal` | 5 chiffres, de la fiche (§7 amendé) |
+| `commune_population` | population INSEE saisie à l'onglet Emplacement (pour Paris : l'arrondissement) ; nulle sous 50 |
+| `loyer_hc_an_potentiel` | loyer en place des lots occupés + loyer de marché (`loyer_max`) des lots vides, × 12 |
+| `rendement_potentiel` | % = loyer potentiel ÷ (prix HAI + travaux), 2 décimales ; nul hors de 1 à 40 |
+| `travaux_total` | € : la somme de l'état technique (0 = aucun) |
+| `dpe` / `dpe_min` | la **pire** / la meilleure classe des lots (A à G ; « G+ » compte G). `dpe` ne vaut plus « la lettre commune » |
+| `ges` / `ges_min` | **non envoyés** : le BO ne tient pas le GES au lot |
+| `occupation_lots` | % de lots occupés, **hors caves, parkings, annexes et lots rattachés** (même règle que les recherches) |
+| `type_dominant` | `habitation`, `commercial` ou `bureau` quand il dépasse 70 % de la surface des lots d'usage (caves, parkings, annexes exclus) ; nul sinon, et nul quand c'est de l'activité |
+| `mixte` | vrai si plusieurs usages parmi habitation, commerce, bureau, activité |
+| `monopropriete` | toujours vrai : le BO ne vend que des immeubles entiers |
+| `taxe_fonciere`, `taxe_fonciere_recuperable` | € par an ; la part récupérable est la TEOM |
+| `charges_copro`, `charges_copro_recuperables` | € par an : en monopropriété il n'y a pas de syndic, ce sont **les charges d'exploitation de l'immeuble** hors taxe foncière (eau, électricité, entretien, assurance…) — à libeller « Charges » côté site |
+| `prix_net_vendeur`, `honoraires` | € (honoraires TTC) |
+| `prix_precedent`, `prix_baisse_le` | la dernière baisse, **seulement si elle date d'après la première mise en ligne** (site ou Plein Bail) : un prix d'estimation qui descend avant le mandat n'est pas une baisse pour le public |
+| `remonte_le` | **non envoyé** : le BO n'a pas encore de geste « remonter » ; `publie_le` n'est jamais réécrit |
+
+### 14.2 `biens_lots`
+
+Remplacée à chaque dépôt : `DELETE bien=eq.<id>` puis insertion. Le retrait
+du bien efface ses lots (clé étrangère côté site).
+
+| Colonne | Source BO |
+|---|---|
+| `numero` | « Lot <n° du BO> » ; à défaut de numéro, son rang ; un doublon prend « (2) » |
+| `ordre` | l'ordre de l'état locatif du BO |
+| `type` | Logement → `habitation`, Commerce, Bureau, Logistique → `activite`, Parking, Cave ; le reste `autre` |
+| `typologie` | « T2 », « Studio »… ; pour un commerce son **activité** (« Pharmacie »), jamais une enseigne |
+| `statut` | `occupe` / `libre` (un lot rattaché à un autre compte occupé, sans bail) |
+| `bail` | Nu, Loi 89, Loi 48 → `nu` ; Meublé → `meuble` ; Airbnb → `saisonnier` ; 3/6/9 → `commercial` ; Précaire → `derogatoire` ; Professionnel ; Civil, Ferme → `autre` |
+| `bail_debut`, `bail_fin` | dates d'effet et de fin du bail actif (AAAA-MM-JJ) |
+| `surface` | Carrez, à défaut au sol ; jamais 0 |
+| `loyer_hc_mois` | lots occupés |
+| `loyer_marche_mois` | lots **vides** seulement (`loyer_max`) |
+| `charges_mois`, `disponible_le` | nuls : le BO ne les tient pas au lot |
+| `etat` | Neuf, Rénové, Bon état → `bon` ; État d'usage → `a_rafraichir` ; Travaux → `a_renover` |
+| `travaux`, `dpe` | € ; A à G |
+
+Aucun nom de locataire ni d'enseigne : la table n'a pas de colonne pour en
+recevoir, et le BO ne les envoie pas davantage ailleurs.
+
+### 14.3 Deux envois du site lus par le BO
+
+- `offre_acquereur` peut désigner une **annonce** (`annonce` = `id` de
+  `biens_a_vendre`) au lieu d'une proposition. Le BO ne la rattache que si le
+  bien est en ligne sur le site aujourd'hui ; sinon 422. Il lit en plus
+  `offrant {prenom, nom, societe?}` (c'est ce nom — la société d'abord — que
+  verra le vendeur si l'agent transmet l'offre, §12.1), `montant_finance`,
+  `condition_pret`, `condition_visite`, `profil_joint` (booléens) et
+  `conditions` (une par ligne). `validite_jours` : 7, 15, 30, 45 — toute
+  valeur entière de 1 à 90 est acceptée, au-delà ignorée.
+- `message` peut porter `annonce` : la conversation est rattachée au bien
+  (suivi de l'immeuble, Formulaire site de l'agent). Même vérification : bien
+  en ligne, sinon 422.

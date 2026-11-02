@@ -235,7 +235,7 @@ export function SectionDiffusion({
       <div className="dif-tete">
         <div className="t">
           <b>Ce qui part</b>
-          <span>Le même contenu sur les deux destinations ; le site ne reçoit ni l&apos;adresse ni le détail des lots</span>
+          <span>Le même contenu sur les deux destinations ; le site reçoit l&apos;état locatif lot par lot, mais ni l&apos;adresse ni un nom de locataire</span>
         </div>
       </div>
 
@@ -317,7 +317,7 @@ export function SectionDiffusion({
           </button>
           {detail && (
             <pre className="dif-json">
-              {JSON.stringify({ plein_bail: a.charge, site_france_immeuble: s?.ligne ?? null }, null, 2)}
+              {JSON.stringify({ plein_bail: a.charge, site_france_immeuble: s?.ligne ? { biens_a_vendre: s.ligne, biens_lots: s.lots } : null }, null, 2)}
             </pre>
           )}
         </>

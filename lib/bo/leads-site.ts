@@ -1082,6 +1082,7 @@ async function recevoirPhoto(
 async function bienVise(contactId: string, b: Record<string, unknown>) {
   const cleBien = cleCompte(b.bien);
   const cleProposition = cleCompte(b.proposition);
+  const annonce = T(b.annonce, 80);
   let immeubleId: string | undefined;
   let propositionId: string | undefined;
   if (cleBien) immeubleId = (await immeubleDuCompte(contactId, cleBien)).id;
@@ -1090,6 +1091,16 @@ async function bienVise(contactId: string, b: Record<string, unknown>) {
     if (!p) throw new LeadInvalide("Proposition inconnue pour ce compte.");
     immeubleId = T(p.data.IMMEUBLE);
     propositionId = p.id;
+  } else if (annonce) {
+    /* Une annonce du site (02/11) : l'`id` de `biens_a_vendre`. Le BO ne la
+       reconnaît que si le bien y est EN LIGNE aujourd'hui — un identifiant
+       deviné ne rattache rien à une fiche qui n'est pas publiée. */
+    if (!/^[\w-]+$/.test(annonce)) throw new LeadInvalide("Annonce illisible.");
+    const [a] = await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(annonce)}`);
+    if (!a || !["en_vente", "sous_offre"].includes(String(a.data.site_statut ?? ""))) {
+      throw new LeadInvalide("Annonce inconnue ou plus en ligne.");
+    }
+    return { immeubleId: a.id, propositionId, im: a, proprietaire: false };
   }
   const [im] = immeubleId ? await lire(`bo_immeuble?select=id,data&id=eq.${encodeURIComponent(immeubleId)}`) : [];
   return { immeubleId, propositionId, im, proprietaire: !!cleBien };
@@ -1255,21 +1266,40 @@ async function recevoirOffreAcquereur(ref: string, b: Record<string, unknown>) {
   if (await existe("bo_offre", id)) return { deja: true, id };
   const montant = N(b.montant);
   if (!montant || montant <= 0) throw new LeadInvalide("Montant illisible.");
-  if (!cleCompte(b.proposition)) throw new LeadInvalide("L'offre doit désigner une proposition.");
-  const { immeubleId, im } = await bienVise(contactId, { proposition: b.proposition });
+  if (!cleCompte(b.proposition) && !T(b.annonce, 80)) throw new LeadInvalide("L'offre doit désigner une proposition ou une annonce.");
+  const { immeubleId, im } = await bienVise(contactId, cleCompte(b.proposition) ? { proposition: b.proposition } : { annonce: b.annonce });
   if (!immeubleId || !im) throw new LeadInvalide("Le bien de cette proposition n'est plus dans le BO.");
   const pieces = await rapatrierPieces(b, ref, contactId, immeubleId, "Offre de l'acquéreur");
   const hai = N(im.data.prix_hai), nv = N(im.data.prix_nv);
   const prixNv = hai && nv && hai > 0 && nv <= hai ? Math.round((montant * nv) / hai) : undefined;
-  const jours = N(b.validite_jours);
+  /* Validité : 7, 15, 30 ou 45 jours au choix sur le site (02/11). Une autre
+     valeur raisonnable passe ; une valeur absurde est ignorée. */
+  const j = N(b.validite_jours);
+  const jours = j && Number.isInteger(j) && j > 0 && j <= 90 ? j : undefined;
   const financement = FINANCEMENTS[T(b.financement, 20) ?? ""];
   const apport = N(b.apport);
+  const finance = N(b.montant_finance);
   const conditions = T(b.conditions, 3000);
+  /* L'offrant (02/11) : celui au nom de qui l'offre est faite, parfois une
+     société. C'est lui que verra le vendeur si l'agent transmet l'offre. */
+  const o = (b.offrant && typeof b.offrant === "object" ? b.offrant : {}) as Record<string, unknown>;
+  const offrant = T(o.prenom, 80) || T(o.nom, 80) || T(o.societe, 160)
+    ? { prenom: T(o.prenom, 80), nom: T(o.nom, 80), societe: T(o.societe, 160) }
+    : undefined;
+  const nomOffrant = offrant
+    ? [[offrant.prenom, offrant.nom].filter(Boolean).join(" "), offrant.societe ? `(${offrant.societe})` : ""].filter(Boolean).join(" ")
+    : undefined;
+  const oui = (v: unknown) => v === true || v === "true" || v === 1;
   const now = new Date();
   const commentaire = [
     "Offre faite depuis son compte sur le site.",
-    financement ? `Financement ${financement}${apport ? `, apport ${eur(apport)}` : ""}.` : apport ? `Apport ${eur(apport)}.` : null,
-    conditions ? `Conditions : ${conditions}` : null,
+    nomOffrant ? `Offrant : ${nomOffrant}.` : null,
+    financement ? `Financement ${financement}${apport ? `, apport ${eur(apport)}` : ""}${finance ? `, ${eur(finance)} financés` : ""}.`
+      : apport || finance ? [apport ? `Apport ${eur(apport)}.` : "", finance ? `Montant financé ${eur(finance)}.` : ""].filter(Boolean).join(" ") : null,
+    oui(b.condition_pret) ? "Sous condition suspensive de prêt." : null,
+    oui(b.condition_visite) ? "Sous réserve de visite." : null,
+    oui(b.profil_joint) ? "Le client demande que son profil investisseur accompagne l'offre." : null,
+    conditions ? `Conditions :\n${conditions}` : null,
     prixNv ? "Net vendeur et honoraires répartis au prorata du prix affiché : à vérifier." : "Net vendeur à renseigner.",
   ].filter(Boolean).join("\n");
   await inserer("bo_offre", id, {
@@ -1280,7 +1310,11 @@ async function recevoirOffreAcquereur(ref: string, b: Record<string, unknown>) {
     validite_jours: jours, date_expiration: jours ? new Date(now.getTime() + jours * 86_400_000).toISOString() : undefined,
     commentaire, source: "Site - Compte client",
     pdf: pieces.find((x) => x.format === "application/pdf") ? `storage:${pieces.find((x) => x.format === "application/pdf")!.path}` : undefined,
-    site_financement: T(b.financement, 20), site_apport: apport,
+    site_financement: T(b.financement, 20), site_apport: apport, site_montant_finance: finance,
+    site_offrant: offrant, acheteur_nom: nomOffrant,
+    site_condition_pret: oui(b.condition_pret) || undefined, site_condition_visite: oui(b.condition_visite) || undefined,
+    site_profil_joint: oui(b.profil_joint) || undefined,
+    site_annonce: cleCompte(b.proposition) ? undefined : immeubleId,
     "Created Date": now.toISOString(), "Modified Date": now.toISOString(),
   });
   /* Retour #525 : celui qui fait une offre passe en B (on ne fait que monter). */
