@@ -165,7 +165,10 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     propsDeposees.push({ p, etat: c.st >= 5 && c.st <= 6 ? "disponible" : c.st >= 7 && c.st <= 10 ? "sous_offre" : "autre" });
     const st = String(p.data.Statut ?? "");
     const reponse = S(p.data.site_reponse)
-      ?? (/^(Intéressé|Visite|Offre)/.test(st) ? "interesse" : st.startsWith("Refusée (sans offre)") ? "pas_pour_moi" : null);
+      ?? (/^(Intéressé|Visite|Offre)/.test(st) ? "interesse"
+        /* Un refus posé par le BO (hors critères, 02/11) n'est pas une
+           réponse du client : son compte ne lui fait pas dire « pas pour moi ». */
+        : st.startsWith("Refusée (sans offre)") && !p.data.refus_auto ? "pas_pour_moi" : null);
     lp.push({
       compte, cle: await cleDe("bo_proposition", p),
       bien: c.bien, commune: c.commune, dept: c.dept, type: c.type, lots: c.lots,

@@ -32,6 +32,10 @@ export type CriteresBien = {
 /* Les destinations « pro » d'une recherche (MAV, 02/11). */
 const PRO = ["commerce", "bureau", "logistique"];
 const HABITATION = "logement";
+/* Ni une typologie ni un revenu de typologie (MAV, 02/11 : « les parkings et
+   caves ne comptent pas pour le calcul ») : ils sortent des 50 %, en haut
+   comme en bas de la fraction. L'annexe suit le même sort. */
+const HORS_CALCUL = ["cave", "parking", "annexe"];
 
 /**
  * La part des types cochés dans l'immeuble : loyers potentiels d'abord, à
@@ -41,9 +45,10 @@ const HABITATION = "logement";
 function partDes(types: string[], rep: CriteresBien["repartition"]): number | undefined {
   if (!rep) return undefined;
   for (const m of [rep.revenus, rep.surfaces]) {
-    const total = Object.values(m).reduce((t, v) => t + v, 0);
+    const lignes = Object.entries(m).filter(([d]) => !HORS_CALCUL.includes(d.toLowerCase()));
+    const total = lignes.reduce((t, [, v]) => t + v, 0);
     if (total > 0) {
-      const part = Object.entries(m).filter(([d]) => types.includes(d.toLowerCase())).reduce((t, [, v]) => t + v, 0);
+      const part = lignes.filter(([d]) => types.includes(d.toLowerCase())).reduce((t, [, v]) => t + v, 0);
       return part / total;
     }
   }
@@ -55,7 +60,8 @@ function partDes(types: string[], rep: CriteresBien["repartition"]): number | un
  * - une recherche « pro » seulement (commerce, bureaux, entrepôt, sans
  *   habitation) ne reçoit jamais un immeuble qui a un logement, et les types
  *   cochés doivent faire ENSEMBLE au moins 50 % des loyers potentiels de
- *   l'immeuble (à défaut de loyers, de sa surface) ;
+ *   l'immeuble (à défaut de loyers, de sa surface), caves, parkings et
+ *   annexes mis à part ;
  * - une recherche « habitation » seulement reçoit tout immeuble qui a au
  *   moins un logement, quoi qu'il contienne d'autre ;
  * - une recherche mixte : au moins un des types cochés, comme avant.
