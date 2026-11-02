@@ -71,6 +71,18 @@ export function typeCarte(destinations: unknown): string {
   return vrais[0] ?? "Immeuble";
 }
 
+/** Le type en toutes lettres, pour le titre de la carte. */
+export function natureCarte(type: string): string {
+  switch (type) {
+    case "Habitation": return "Immeuble d'habitation";
+    case "Bureaux": return "Immeuble de bureaux";
+    case "Commerces": return "Immeuble de commerces";
+    case "Entrepôt": return "Entrepôt";
+    case "Mixte": return "Immeuble mixte";
+    default: return "Immeuble";
+  }
+}
+
 export type CarteRcs = {
   immeubleId: string;
   titre: string;
@@ -105,7 +117,10 @@ export async function preparerCarte(immeubleId: string, signataire?: { nom: stri
   const ville = villeArrondissement(im.adresse_ville, cp) ?? S(im.adresse_ville) ?? "";
   const dept = departement(cp) || S(im.adresse_dpt) || "";
   const type = typeCarte(im.Destinations);
-  const titre = `${type} · ${ville}${dept ? ` (${dept})` : ""}`;
+  /* MAV (02/11) : « Immeuble d'habitation · Paris 18ème (75) - Prix HAI ». */
+  const prixTitre = N(im.prix_hai);
+  const titre = `${natureCarte(type)} · ${ville}${dept ? ` (${dept})` : ""}`
+    + (prixTitre ? ` - ${fr(Math.round(prixTitre))} € HAI` : "");
 
   const surface = N(im.surface_carrez) ?? N(im.surface_sol);
   /* La renta potentielle, celle des cartes du tableau de bord et du site :
