@@ -136,18 +136,30 @@ export async function preparerCarte(immeubleId: string, signataire?: { nom: stri
     [sig.nom, telAffiche].filter(Boolean).join("<br>"),
   ].filter(Boolean).join("<br><br>");
 
-  /* Le repli : 145 caractères au plus (MailingVox ajoute sa mention STOP au-delà,
-     et refuse un repli trop long — erreur 134). Pas de lien : un lien dans un
-     SMS déclenche une validation manuelle chez eux (erreurs 61 et 138). */
+  /* Le repli : 145 caractères au plus (MailingVox refuse un repli trop long —
+     erreur 134). Avec le lien transfer.it du dossier : MAV (02/11) « tu peux
+     mettre le lien, il passait de mon côté ». On essaie du plus complet au plus
+     court, et le lien ne saute qu'en dernier recours. */
   const k = prixHai ? `${fr(Math.round(prixHai / 1000))} k€ HAI` : "";
-  const bouts = [
-    `${type} ${ville}${dept ? ` (${dept})` : ""}`,
+  const lieu = `${type} ${ville}${dept ? ` (${dept})` : ""}`;
+  const chiffresCourts = (avecRenta: boolean) => [
     surface ? `${fr(Math.round(surface))} m2` : "",
-    renta ? `renta ${fr(renta, 1)}%` : "",
+    avecRenta && renta ? `renta ${fr(renta, 1)}%` : "",
     k,
   ].filter(Boolean).join(", ");
-  let repli = `France Immeuble: ${bouts}. Repondez 1 si interesse, 2 sinon. STOP ${NUMERO_STOP}`;
-  if (longueurRepli(repli) > 145) repli = `France Immeuble: ${bouts}. 1=interesse 2=non. STOP ${NUMERO_STOP}`;
+  const urlDossier = lien && !lien.aRemplacer ? lien.url.replace(/^https:\/\//, "") : "";
+  const stop = `STOP ${NUMERO_STOP}`;
+  const candidats = [
+    ...(urlDossier ? [
+      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} Repondez 1 si interesse, 2 sinon. ${stop}`,
+      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
+      `France Immeuble: ${lieu}, ${chiffresCourts(false)}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
+      `France Immeuble: ${lieu}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
+    ] : []),
+    `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Repondez 1 si interesse, 2 sinon. ${stop}`,
+    `France Immeuble: ${lieu}, ${chiffresCourts(true)}. 1=interesse 2=non. ${stop}`,
+  ];
+  const repli = candidats.find((t) => longueurRepli(t) <= 145) ?? candidats.at(-1)!;
 
   const photoBrute = S(photos[0]?.data.image) ?? S(photos[0]?.data.compressed) ?? S(im.photo_main_compressed);
   return {
