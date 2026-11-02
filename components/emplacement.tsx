@@ -49,7 +49,9 @@ const proxy = (u: string) =>
 
 /* Pictogrammes des points d'intérêt, comme dans le BO (retour #15). */
 const PICTOS: Record<string, React.ReactNode> = {
-  gare: <><path d="M6 4h12v10H6z" /><path d="M6 14l-2 5M18 14l2 5M9 19h6" /><circle cx="9" cy="10" r="1" /><circle cx="15" cy="10" r="1" /></>,
+  /* Retour #586 : l'ancien dessin (un carré sur deux pattes) ne se lisait
+     pas comme un train. L'avant d'une rame : pare-brise en deux, phares, rails. */
+  gare: <><path d="M8 2.5h8a3 3 0 0 1 3 3V14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5.5a3 3 0 0 1 3-3z" /><path d="M5 9.5h14M12 2.5v7" /><circle cx="8.5" cy="12.8" r=".9" /><circle cx="15.5" cy="12.8" r=".9" /><path d="m8 16-2.5 5.5M16 16l2.5 5.5M6.6 19h10.8" /></>,
   bus: <><rect x="4" y="4" width="16" height="12" rx="2" /><path d="M4 10h16M7 20v-2M17 20v-2" /><circle cx="8" cy="14" r="1" /><circle cx="16" cy="14" r="1" /></>,
   route: <><path d="M8 3 5 21M16 3l3 18M12 4v3M12 11v3M12 18v3" /></>,
   school: <><path d="m12 4 9 4-9 4-9-4z" /><path d="M7 10v5c0 1.7 2.2 3 5 3s5-1.3 5-3v-5" /></>,
@@ -76,6 +78,11 @@ type CleP = (typeof POIS)[number][0];
    explicites. */
 const POIS_GAUCHE: readonly CleP[] = ["gare", "bus", "route"];
 const POIS_DROITE: readonly CleP[] = ["school", "com", "autre"];
+
+/** Ce qui est écrit sous chaque picto (retour #586). */
+const LEGENDE_POI: Record<CleP, string> = {
+  gare: "Train", bus: "Bus", route: "Route", school: "École", com: "Commerce", autre: "Autre",
+};
 
 /** Le type d'un point, tel qu'il se lit dans la liste déroulante (#388). */
 const TYPES_POI: Record<CleP, string> = {
@@ -658,7 +665,10 @@ function PoiVignette({
   return (
     <div className={`poi place${dansLeNom ? " actif" : ""}`}>
       <div className="poi-l">
-        <Picto k={cle} gros />
+        <span className="poi-ic">
+          <Picto k={cle} gros />
+          <small>{LEGENDE_POI[cle]}</small>
+        </span>
         <div className="poi-txt">
           {/* Le titre est le nom du point d'intérêt, saisi par l'agent (#47). */}
           <input

@@ -248,3 +248,14 @@ export const situationLot = (typeBail?: unknown): SituationLot => {
   if (v === BAIL_RATTACHE) return "rattache";
   return BAUX_LIBRES.has(v) ? "libre" : "loue";
 };
+
+/**
+ * Le nom d'un composant du bâti tel qu'on l'affiche (retours #582, #585, #587) :
+ * un composant « Autre » porte le nom qu'on lui a donné à sa création
+ * (`type_composant_autre`, « Sous-sol », « Escalier ») — jamais le mot « Autre ».
+ */
+export function nomComposant(c: Record<string, unknown> | null | undefined): string {
+  const t = typeof c?.Type_composant === "string" ? c.Type_composant.trim() : "";
+  const autre = typeof c?.type_composant_autre === "string" ? c.type_composant_autre.trim() : "";
+  return t === "Autre" && autre ? autre : t;
+}

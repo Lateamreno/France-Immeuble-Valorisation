@@ -26,7 +26,7 @@ import {
   ajouterTypologie,
 } from "@/lib/bo/actions";
 import {
-  ETATS_BATI, materiauxPour, RUBRIQUE_MATERIAU, TYPES_COMPOSANT,
+  ETATS_BATI, materiauxPour, RUBRIQUE_MATERIAU, TYPES_COMPOSANT, nomComposant,
 } from "@/lib/referentiels";
 
 const ETATS_COMPOSANT = ETATS_BATI;
@@ -201,7 +201,7 @@ function LigneComposant({
   const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
   /* Retour #582 : un composant « Autre » s'affiche sous le nom qu'on lui a
      donné à sa création (« Sous-sol »), pas sous « Autre ». */
-  const nom = type === "Autre" ? S(composant?.type_composant_autre) || "Autre" : type;
+  const nom = composant ? nomComposant(composant) || type : type;
 
   return (
     <>
@@ -574,7 +574,7 @@ function ModaleTravaux({
           {b.composants.map((c) => (
             <button key={String(c._id)} type="button"
               className={`mopt${compIds.includes(String(c._id)) ? " on" : ""}`}
-              onClick={() => toggle(compIds, setCompIds, String(c._id))}>{S(c.Type_composant)}</button>
+              onClick={() => toggle(compIds, setCompIds, String(c._id))}>{nomComposant(c)}</button>
           ))}
         </div>
 
@@ -633,7 +633,7 @@ function TravauxTab({ b }: { b: BienData }) {
       return (t.COMPOSANTs as string[])
         .map((id) => b.composants.find((c) => c._id === id))
         .filter(Boolean)
-        .map((c) => S(c!.Type_composant))
+        .map((c) => nomComposant(c))
         .join(", ");
     }
     return "";

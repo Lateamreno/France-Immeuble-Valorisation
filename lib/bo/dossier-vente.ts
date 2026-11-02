@@ -24,7 +24,7 @@ import { estFacadeRue } from "./facade";
 import { descriptifRetenu } from "./descriptif";
 import { selectionDossier } from "./photos-dossier";
 import { etagesDepuisLots } from "./etages";
-import { situationLot } from "@/lib/referentiels";
+import { nomComposant, situationLot } from "@/lib/referentiels";
 
 /* Retours #461 et #465 : les destinations PRINCIPALES font la nature du bien ;
    parkings, caves et annexes sont des accessoires — ils complètent la
@@ -106,6 +106,7 @@ export function construireDossierVente(
   const loyers = lots.reduce((s, l) => s + (N(l.loyer) ?? 0), 0) * 12;
   const loyersMax = lots.reduce((s, l) => s + (N(l.loyer_max) ?? N(l.loyer) ?? 0), 0) * 12;
   const travaux = N(im.fin_travaux) ?? 0;
+  const travauxRepartis = repartirTravaux(b);
 
   /* Occupation « carrez » : c'est la surface qui compte, pas le nombre de
      lots — sept parkings vides ne valent pas sept logements vides. */
@@ -302,7 +303,10 @@ export function construireDossierVente(
        j'ai décrit à la main », c'est la description qui s'imprime, jamais le
        mot « Autre » — elle vit dans `type_matériau_autre`. */
     composants: b.composants.map((c) => ({
-      type: S(c.Type_composant),
+      /* Retour #587 : un composant « Autre » s'imprime sous son nom. */
+      type: nomComposant(c),
+      /* Retour #588 : le montant des travaux du composant, dans le tableau. */
+      travaux: travauxRepartis.composants.get(String(c._id)) ?? 0,
       materiau: S(c["Type_matériau"]) === "Autre"
         ? (S(c["type_matériau_autre"]) || S(c["Type_matériau"]))
         : S(c["Type_matériau"]),
@@ -310,6 +314,11 @@ export function construireDossierVente(
       etat: S(c.Etat),
     })),
     etatGeneral: S(im.Etat),
+    /* Retour #588 : une dernière ligne pour les lots — l'état « de X à Y » et
+       les travaux à faire sur tous les lots ; puis ce qui ne se rattache à
+       rien, pour que le total du tableau soit celui des travaux. */
+    lotsEtat: lignesLots(lots, travauxRepartis.lots),
+    travauxAutres: travauxRepartis.autres,
     /* Retour #222 : « il manque les titres des colonnes du tableau des travaux
        à prévoir — objet des travaux, description et montant au minimum, si y a
        pas urgence et devis. » L'objet et la description étaient jusqu'ici
@@ -423,7 +432,7 @@ function objetTravaux(t: Record<string, unknown>, b: BienData): string {
   const parties = comps
     .map((id) => b.composants.find((c) => String(c._id) === id))
     .filter(Boolean)
-    .map((c) => S(c!.Type_composant))
+    .map((c) => nomComposant(c))
     .filter(Boolean);
   /* Lots ET composants quand les deux sont là : « Lot 6, Toiture » est
      exactement l'exemple donné par MAV. */
@@ -436,4 +445,47 @@ function bailDebut(b: BienData, lotId: string): string {
   const d = S(bail?.date_start);
   if (!d) return "";
   return `${d.slice(5, 7)}/${d.slice(2, 4)}`;
+}
+
+/**
+ * Retour #588 : où vont les montants des travaux dans le tableau « État des
+ * matériaux et travaux à prévoir ». Un travail rattaché à des composants est
+ * réparti à parts égales entre eux ; rattaché seulement à des lots, il va à la
+ * ligne des lots ; rattaché à rien, il va aux « Autres travaux ».
+ */
+function repartirTravaux(b: BienData) {
+  const composants = new Map<string, number>();
+  let lots = 0, autres = 0;
+  for (const t of b.travaux) {
+    const m = N(t.montant) ?? 0;
+    if (!m) continue;
+    const comps = (Array.isArray(t.COMPOSANTs) ? (t.COMPOSANTs as unknown[]) : [])
+      .map(String).filter((id) => b.composants.some((c) => String(c._id) === id));
+    const deLots = Array.isArray(t.LOTs) && (t.LOTs as unknown[]).length > 0;
+    if (comps.length) for (const id of comps) composants.set(id, (composants.get(id) ?? 0) + m / comps.length);
+    else if (deLots) lots += m;
+    else autres += m;
+  }
+  return { composants, lots, autres };
+}
+
+/** L'ordre des états, du pire au meilleur, et leur libellé imprimé. */
+const ETATS_LOT: [string, string][] = [
+  ["Travaux", "À rénover"], ["Etat d'usage", "État d'usage"], ["Bon etat", "Bon état"],
+  ["Renove", "Rénové"], ["Neuf", "Neuf"],
+];
+
+/** La ligne des lots : « Appartements » (ou « Lots » si l'immeuble en a d'autres), état de X à Y, travaux. */
+function lignesLots(lots: Record<string, unknown>[], travaux: number) {
+  const usage = lots.filter((l) => !["Cave", "Parking", "Annexe"].includes(S(l.Destination)));
+  if (!usage.length) return null;
+  const rangs = usage
+    .map((l) => ETATS_LOT.findIndex(([v]) => v === S(l.Etat)))
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b);
+  const etat = !rangs.length ? ""
+    : rangs[0] === rangs[rangs.length - 1] ? ETATS_LOT[rangs[0]][1]
+      : `${ETATS_LOT[rangs[0]][1]} à ${ETATS_LOT[rangs[rangs.length - 1]][1].toLowerCase()}`;
+  const libelle = usage.every((l) => S(l.Destination) === "Logement") ? "Appartements" : "Lots";
+  return { libelle, etat, travaux };
 }
