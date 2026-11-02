@@ -821,3 +821,52 @@ recevoir, et le BO ne les envoie pas davantage ailleurs.
 - `message` peut porter `annonce` : la conversation est rattachée au bien
   (suivi de l'immeuble, Formulaire site de l'agent). Même vérification : bien
   en ligne, sinon 422.
+
+## 15. Les recherches d'acquéreur comme au BO (demande du site, 02/11)
+
+Livré côté BO le 02/11, sur les colonnes ouvertes par la migration 0016 du site.
+
+### 15.1 Occupation minimum et maximum
+
+- Lue sur chaque élément de `recherches` (`recherche_acquereur`) et sur
+  `recherche_compte` : `occupationMin`, `occupationMax`, entiers de 0 à 100
+  (arrondis et bornés par le BO). Absent = sans borne.
+- Rangée dans la recherche du contact (`occup_min`, `occup_max` : les mêmes
+  champs que l'écran Recherche du BO et que le matching).
+- Redéposée dans `compte_recherches.occupation_min` / `occupation_max`
+  (entiers 0 à 100, `null` = sans borne), y compris pour les recherches
+  saisies par un agent.
+- Le BO **retire du commentaire** la mention « Occupation recherchée : … %. »
+  en tête quand l'une des deux valeurs est arrivée. Le site peut **cesser de
+  l'écrire** ; s'il continue, rien ne double. Sans les valeurs, la mention
+  reste.
+
+### 15.2 La société de l'acquéreur
+
+- `societe` (facultatif) de `recherche_acquereur` est rangé sur le contact :
+  sa société principale (`entreprise_nom`) s'il n'en a pas, sinon ajoutée à
+  sa liste de sociétés. Une société déjà saisie par un agent n'est jamais
+  écrasée.
+- La mention « Société : … . » en tête de chaque commentaire est retirée une
+  fois la société rangée. Le site peut cesser de l'écrire.
+
+### 15.3 Le type d'opération d'un immeuble
+
+- Oui, le BO le sait : ce sont les **cibles** que l'agent coche sur le bien
+  (à l'estimation et sur la fiche). C'est une **saisie**, pas une déduction
+  des lots ou des travaux.
+- Déposé dans `biens_a_vendre.operations` (tableau de texte) :
+  « Investisseur » et/ou « Marchand de biens ». Le BO a quatre cibles ; les
+  deux retirées du formulaire du site se rangent ainsi : Patrimonial →
+  « Investisseur » (il achète pour garder et louer), Promoteur → « Marchand de
+  biens » (il achète pour transformer et revendre).
+- Aucune cible cochée : tableau vide — le site garde le bien dans tous les
+  résultats, comme convenu.
+- Les biens déjà en ligne reçoivent la colonne à leur prochain dépôt.
+
+### 15.4 Pris en compte
+
+Profils Investisseur et Marchand de biens seulement (une recherche ancienne
+garde le sien), financement non demandé, `prixMax` absent = sans plafond,
+lieux : rien à changer côté BO — il lisait déjà `departements` et `villes`
+tels que décrits.

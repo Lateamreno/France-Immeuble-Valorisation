@@ -131,6 +131,7 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
     return cartes.get(id) ?? null;
   };
 
+  const pct = (v: unknown) => { const n = N(v); return n === undefined ? null : Math.min(100, Math.max(0, Math.round(n))); };
   // Les recherches actives.
   const lr: Record<string, unknown>[] = [];
   for (const r of recherches.filter((x) => x.data.archived !== true)) {
@@ -142,6 +143,9 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       villes: Array.isArray(r.data.villes) ? r.data.villes : [],
       prix_min: prix[0] ?? null, prix_max: prix[1] ?? null,
       rendement_min: N(r.data.renta) ?? null,
+      /* L'occupation (le site, 02/11) : entiers de 0 à 100, rien = sans borne. */
+      occupation_min: pct(r.data.occup_min),
+      occupation_max: pct(r.data.occup_max),
       destinations: Array.isArray(r.data.Destinations) ? r.data.Destinations : [],
       commentaire: S(r.data.commentaire) ?? null,
       maj_le,
