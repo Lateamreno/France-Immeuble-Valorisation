@@ -615,6 +615,60 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
 
 const DESTINATIONS = new Set(["Logement", "Commerce", "Bureau", "Logistique", "Hôtel", "Parking"]);
 
+/** Une occupation en % (le site, 02/11) : entier de 0 à 100, ou rien. */
+const pourcent = (v: unknown) => {
+  const n = N(v);
+  return n === undefined ? undefined : Math.min(100, Math.max(0, Math.round(n)));
+};
+
+/**
+ * L'occupation d'une recherche et le commentaire débarrassé de ce que le site
+ * y recopiait en attendant que le BO range les valeurs (02/11) : « Occupation
+ * recherchée : 50 à 100 %. » et « Société : SCI Exemple. » en tête. On ne
+ * retire une mention QUE si la valeur correspondante est rangée ailleurs —
+ * sinon elle reste, rien ne se perd.
+ */
+function occupationEtCommentaire(r: Record<string, unknown>, societe?: string) {
+  const occupMin = pourcent(r.occupationMin);
+  const occupMax = pourcent(r.occupationMax);
+  let commentaire = T(r.commentaire, 2000) ?? "";
+  for (let i = 0; i < 3; i++) {
+    const avant = commentaire;
+    if (occupMin !== undefined || occupMax !== undefined) {
+      commentaire = commentaire.replace(/^\s*Occupation recherchée\s*:[^%\n]*%\s*\.?\s*/i, "");
+    }
+    if (societe) {
+      const esc = societe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      commentaire = commentaire.replace(new RegExp(`^\\s*Société\\s*:\\s*${esc}\\s*\\.?\\s*`, "i"), "");
+    }
+    if (commentaire === avant) break;
+  }
+  return { occupMin, occupMax, commentaire: commentaire.trim() || undefined };
+}
+
+/**
+ * La société de l'acquéreur (le site, 02/11 : `societe` sur
+ * `recherche_acquereur`), rangée sur le contact comme l'écran Contact la
+ * range : `entreprise_nom` s'il n'en a pas, sinon dans la liste `societes`.
+ * Jamais d'écrasement d'une société déjà saisie par un agent.
+ */
+async function rangerSociete(contactId: string, societe: string | undefined) {
+  if (!societe) return;
+  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
+  if (!c) return;
+  const actuelle = T(c.data.entreprise_nom);
+  const liste = Array.isArray(c.data.societes) ? (c.data.societes as Record<string, unknown>[]) : [];
+  const meme = (x?: string) => (x ?? "").toLowerCase().replace(/\s+/g, " ") === societe.toLowerCase().replace(/\s+/g, " ");
+  if (meme(actuelle) || liste.some((x) => meme(T(x?.nom)))) return;
+  const patch: Record<string, unknown> = actuelle
+    ? { societes: [...liste, { nom: societe }] }
+    : { entreprise_nom: societe };
+  await rpc("bo_patch_doc", {
+    p_table: "bo_contact", p_id: contactId,
+    p_patch: { ...patch, "Modified Date": new Date().toISOString() },
+  });
+}
+
 async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
   const recherches = Array.isArray(b.recherches) ? (b.recherches as Record<string, unknown>[]).slice(0, 10) : [];
   if (!T(b.email) && !T(b.telephone)) throw new LeadInvalide("Ni e-mail ni téléphone.");
@@ -625,11 +679,14 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
     source, agentId, noteD: true, acheteur: true, compte,
   });
+  const societe = T(b.societe, 160);
+  await rangerSociete(contact.id, societe);
   let creees = 0;
   for (const [i, r] of recherches.entries()) {
     const id = `app_site_${ref}_r${i + 1}`;
     if (await existe("bo_recherche", id)) continue;
     const cible = T(r.cible);
+    const oc = occupationEtCommentaire(r, societe);
     await enregistrerRecherche({
       contactId: contact.id,
       cible: cible && CIBLES.includes(cible) ? cible : undefined,
@@ -639,7 +696,9 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
       prixMin: N(r.prixMin),
       prixMax: N(r.prixMax),
       renta: N(r.rendementMin),
-      commentaire: T(r.commentaire, 2000),
+      occupMin: oc.occupMin,
+      occupMax: oc.occupMax,
+      commentaire: oc.commentaire,
       exclusions: { destinations: [], villes: [], departements: [], regions: [] },
     }, agentId, { id, source });
     creees++;
@@ -780,6 +839,7 @@ async function recevoirRechercheCompte(ref: string, b: Record<string, unknown>) 
     notes = "Recherche supprimée par le client depuis son compte.";
   } else {
     const cible = T(b.cible);
+    const oc = occupationEtCommentaire(b);
     const saisie = {
       contactId,
       cible: cible && CIBLES.includes(cible) ? cible : undefined,
@@ -787,7 +847,8 @@ async function recevoirRechercheCompte(ref: string, b: Record<string, unknown>) 
       villes: L(b.villes),
       departements: L(b.departements).map((d) => d.toUpperCase()).filter((d) => /^(\d{2}|2A|2B|97\d)$/.test(d)),
       prixMin: N(b.prixMin), prixMax: N(b.prixMax), renta: N(b.rendementMin),
-      commentaire: T(b.commentaire, 2000),
+      occupMin: oc.occupMin, occupMax: oc.occupMax,
+      commentaire: oc.commentaire,
       exclusions: { destinations: [], villes: [], departements: [], regions: [] },
     };
     const agentId = await agentParDefaut();

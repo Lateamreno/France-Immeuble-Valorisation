@@ -207,6 +207,9 @@ export type LigneSite = {
   honoraires: number | null;
   prix_precedent: number | null;
   prix_baisse_le: string | null;
+  /** À qui s'adresse le bien (le site, 02/11) : « Investisseur »,
+   *  « Marchand de biens », les deux, ou vide = non précisé. */
+  operations: ("Investisseur" | "Marchand de biens")[];
 };
 
 /** Une ligne de `biens_lots` : l'état locatif, sans un nom (contrat §3.2). */
@@ -357,7 +360,27 @@ export function ligneSite(b: BienData, charge: ChargeUtile, statut: StatutSite):
     honoraires: N(im.prix_honos_ttc) && N(im.prix_honos_ttc)! > 0 ? Math.round(N(im.prix_honos_ttc)!) : null,
     prix_precedent: baisse?.prix ?? null,
     prix_baisse_le: baisse?.le ?? null,
+    operations: operationsDuBien(im.Cibles),
   };
+}
+
+/**
+ * Le type d'opération d'un bien, au sens de la barre du site (02/11) :
+ * Investissement ou Marchand de biens. Il vient des « Cibles » que l'agent
+ * coche sur le bien (estimation et fiche) — une saisie, pas une déduction.
+ * Les deux autres cibles du BO se rangent chez leur plus proche voisin :
+ * un acquéreur patrimonial INVESTIT (il achète pour garder et louer), un
+ * promoteur fait une OPÉRATION de marchand (il achète pour transformer et
+ * revendre). Aucune cible cochée : vide, et le site garde le bien partout.
+ */
+export function operationsDuBien(cibles: unknown): ("Investisseur" | "Marchand de biens")[] {
+  const liste = Array.isArray(cibles) ? cibles.map(String) : [];
+  const out = new Set<"Investisseur" | "Marchand de biens">();
+  for (const c of liste) {
+    if (c === "Investisseur" || c === "Patrimonial") out.add("Investisseur");
+    if (c === "Marchand de biens" || c === "Promoteur") out.add("Marchand de biens");
+  }
+  return (["Investisseur", "Marchand de biens"] as const).filter((x) => out.has(x));
 }
 
 /** Usage d'un lot, au sens du site. Caves, parkings et annexes n'en ont pas. */
