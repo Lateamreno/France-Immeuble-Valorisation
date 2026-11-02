@@ -16,7 +16,7 @@ import { LotsEditor, MenuColonnes, useVueLocatif, VUES_LISTE } from "@/component
 import { Modale, useQuestion } from "@/components/modale";
 import { addCharge, deleteCharge, updateCharge } from "@/lib/bo/actions";
 import { useBaseSaisie } from "@/lib/base-saisie";
-import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { BarreEnregistrer, useCleStable } from "@/components/barre-enregistrer";
 
 import { TAXES, TYPES_CHARGE } from "@/lib/referentiels";
 
@@ -423,6 +423,7 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
   onTab?: (t: string) => void;
 }) {
   const [interne, setInterne] = useState("lots");
+  const cleLots = useCleStable(`${String(b.im.app_modified ?? "")}-${b.lots.length}`);
   const tab = pilote ?? interne;
   const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   /* Tout ce qui n'est pas Charges est le tableau : une ancienne adresse qui
@@ -465,7 +466,7 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
         </button>
       </div>
       {onglet === "lots" && (
-        <LotsEditor key={`${String(b.im.app_modified ?? "")}-${b.lots.length}`} b={b} colonnes={colonnes} />
+        <LotsEditor key={cleLots} b={b} colonnes={colonnes} />
       )}
       {onglet === "charges" && <ChargesTab b={b} />}
     </>

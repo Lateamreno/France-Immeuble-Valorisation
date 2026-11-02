@@ -48,7 +48,7 @@ import { manquesDossier } from "@/lib/bo/completude";
 import { initialesAgentCourant } from "@/lib/bo/agent-courant";
 import { blocsNote, daterNouveauBloc, enTeteNote, triPossible, trierBlocsNote } from "@/lib/bo/notes-datees";
 import { Facade } from "@/components/facade";
-import { BarreEnregistrer } from "@/components/barre-enregistrer";
+import { BarreEnregistrer, useCleStable } from "@/components/barre-enregistrer";
 import { SuiviVente } from "@/components/suivi-vente";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
@@ -199,7 +199,7 @@ type MemoEst = { mode: EcranEstimation["mode"]; eid?: string };
 const sansAbonnement = () => () => {};
 
 export function BienFiche({
-  b, contenu, contenuLabel, contenuIcone, operation, secteur, envoiActif, ouvrir, cleEcran,
+  b, contenu, contenuLabel, contenuIcone, contenuFige, operation, secteur, envoiActif, ouvrir, cleEcran,
 }: {
   b: BienData;
   /** Opération de découpe ouverte sur cet immeuble, s'il y en a une. */
@@ -211,6 +211,8 @@ export function BienFiche({
   /** Ce que le rail annonce pour cet écran. Défaut : l'estimation. */
   contenuLabel?: string;
   contenuIcone?: "estimation" | "mandat";
+  /** L'écran ouvert ne se modifie plus (mandat signé) : rien à « reprendre ». */
+  contenuFige?: boolean;
   /** Prix du secteur : le wizard d'estimation s'en sert, la fiche les porte
    *  donc en permanence pour pouvoir le monter sans changer de page (#125). */
   secteur?: Record<string, unknown> | null;
@@ -518,7 +520,7 @@ export function BienFiche({
               {sect === "prix" && (
                 <PrixSection b={b}
                   tab={sous.prix} onTab={majSous("prix")}
-                  ouverte={est ? LIBELLE_EST[est.mode] : contenu ? contenuLabel ?? "Estimation en cours" : undefined}
+                  ouverte={est ? LIBELLE_EST[est.mode] : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
                   onReprendre={() => setSect("encours")} />
               )}
               {sect === "photos" && <PhotosSection b={b} />}
@@ -529,7 +531,7 @@ export function BienFiche({
                   onOuvrir={ouvrirEst}
                   enCours={chargement}
                   erreur={erreurEst}
-                  ouverte={est ? LIBELLE_EST[est.mode] : contenu ? contenuLabel ?? "Estimation en cours" : undefined}
+                  ouverte={est ? LIBELLE_EST[est.mode] : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
                   onReprendre={() => setSect("encours")}
                 />
               )}
@@ -1351,11 +1353,14 @@ function ProprioSection({ b }: { b: BienData }) {
 type PropsOnglet = { b: BienData; tab?: string; onTab?: (t: string) => void };
 
 function EmplacementSection({ b, tab, onTab }: PropsOnglet) {
+  /* La clé fait repartir l'onglet des données fraîches après un
+     enregistrement — mais jamais pendant une saisie (retour #584). */
+  const cleEmplacement = useCleStable(String(b.im.app_modified ?? ""));
   return (
     <>
       {/* Le titre de section fait partie du cadre doré de l'onglet Adresse
           (comme dans le BO) : pas de bandeau séparé ici. */}
-      <EmplacementTabs key={String(b.im.app_modified ?? "")} b={b} tab={tab} onTab={onTab} />
+      <EmplacementTabs key={cleEmplacement} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }
@@ -1363,18 +1368,20 @@ function EmplacementSection({ b, tab, onTab }: PropsOnglet) {
 function LocatifSection({ b, tab, onTab }: PropsOnglet) {
   const im = b.im;
   const lots = b.lots;
+  const cleLocatif = useCleStable(`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`);
   const pct = (a?: unknown, m?: unknown) =>
     typeof a === "number" && typeof m === "number" && a > 0 && m > a
       ? `+${Math.round(((m - a) / a) * 100)} %`
       : undefined;
   return (
     <>
-      <LocatifTabs key={`${String(im.app_modified ?? "")}-${lots.length}-${b.baux.length}-${b.locataires.length}-${b.charges.length}`} b={b} tab={tab} onTab={onTab} />
+      <LocatifTabs key={cleLocatif} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }
 
 function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
+  const cleTechnique = useCleStable(`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`);
   return (
     <>
       <SectTitle
@@ -1387,7 +1394,7 @@ function TechniqueSection({ b, tab, onTab }: PropsOnglet) {
           </>
         }
       />
-      <TechniqueTabs key={`${String(b.im.app_modified ?? "")}-${b.composants.length}-${b.travaux.length}`} b={b} tab={tab} onTab={onTab} />
+      <TechniqueTabs key={cleTechnique} b={b} tab={tab} onTab={onTab} />
     </>
   );
 }

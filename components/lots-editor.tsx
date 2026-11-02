@@ -33,6 +33,7 @@ import {
 import { typesFor } from "@/lib/typologies";
 import { ModaleDpe } from "@/components/dpe-modale";
 import { Modale } from "@/components/modale";
+import { useSaisieOuverte } from "@/components/barre-enregistrer";
 import { ClaudeDrive } from "@/components/claude-drive";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
@@ -838,7 +839,11 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       return !r || !o || !egal(r, o);
     }));
   }, [touches, rows]);
+
   const [pending, start] = useTransition();
+  /* Retour #584 : tant que des lignes attendent « Enregistrer », la fiche ne
+     remonte pas l'éditeur (une note enregistrée ailleurs les aurait effacées). */
+  useSaisieOuverte(dirty.size > 0 || pending);
   const [destOff, setDestOff] = useState<Set<string>>(new Set());
 
   // Largeur réellement disponible : en dessous du seuil on bascule en vue

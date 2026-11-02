@@ -199,6 +199,9 @@ function LigneComposant({
     .reduce((s, t) => s + (num(t.montant) ?? 0), 0);
 
   const standard = (COMPOSANTS_STANDARD as readonly string[]).includes(type);
+  /* Retour #582 : un composant « Autre » s'affiche sous le nom qu'on lui a
+     donné à sa création (« Sous-sol »), pas sous « Autre ». */
+  const nom = type === "Autre" ? S(composant?.type_composant_autre) || "Autre" : type;
 
   return (
     <>
@@ -217,7 +220,7 @@ function LigneComposant({
             côte à côte. */}
         <span className="cmp-c">
           <b className="cmp-l">
-            <span className="cmp-n">{type}</span>
+            <span className="cmp-n">{nom}</span>
             <span className="tiret">—</span>
             <span className="cmp-m">
               <ChoixMateriau composant={type} valeur={materiau} ajouts={b.typologies} onChange={setMateriau} />
