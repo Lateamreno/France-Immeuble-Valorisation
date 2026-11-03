@@ -32,6 +32,7 @@ import {
   DEST_PREFIX, aggLocatif, ecartRef, loyerM2Actuel, loyerM2Potentiel, pistesPrix,
 } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
+import { CIBLES_EST } from "@/lib/cibles-bien";
 
 const STEPS = ["Immeuble", "Secteur", "Prix et analyse", "PDF", "Envoi"] as const;
 
@@ -55,12 +56,8 @@ const FONDAMENTAUX = [
 
 /* Le BO affiche des libellés courts ; la valeur enregistrée reste celle du
    référentiel acquéreurs, pour ne pas casser l'historique. */
-const CIBLES_EST = [
-  { valeur: "Investisseur", label: "Locatif", picto: <><path d="M4 18 10 11l4 4 6-8" /><path d="M20 7v5h-5" /></> },
-  { valeur: "Patrimonial", label: "Patrimonial", picto: <><path d="m12 3 2.5 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.4 6.8 19.2l1.1-5.9L3.6 9.2l5.9-.8z" /></> },
-  { valeur: "Marchand de biens", label: "Marchand", picto: <><path d="m14.5 5.5 4 4-8.5 8.5H6v-4z" /><path d="M13 7 17 11" /></> },
-  { valeur: "Promoteur", label: "Promotion", picto: <><path d="M5 21V8l7-5 7 5v13" /><path d="M9 21v-6h6v6" /></> },
-] as const;
+/* Les quatre cibles : une seule source, partagée avec la fiche du bien (#591). */
+
 
 /** Champ de l'estimation : servi par la fiche, grisé tant qu'on ne
  *  personnalise pas — le libellé flotte au-dessus comme dans le BO. */

@@ -4112,6 +4112,8 @@ export async function updateBien(
     notes: string;
     /** Année de construction — bloque le dossier tant qu'elle manque (#204). */
     year_constru: number;
+    /** À qui s'adresse le bien (#591) : les quatre types de recherche. */
+    Cibles: string[];
   }>,
 ) {
   const clean = Object.fromEntries(

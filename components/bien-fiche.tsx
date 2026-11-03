@@ -52,6 +52,7 @@ import { BarreEnregistrer, useCleStable } from "@/components/barre-enregistrer";
 import { SuiviVente } from "@/components/suivi-vente";
 import { AddOffreButton, AddVisiteButton, OffreActions, VisiteActions } from "@/components/commercialisation";
 import { Avion, Corbeille, Picto } from "@/components/pictos";
+import { CIBLES_EST } from "@/lib/cibles-bien";
 import { MOTIFS_CHANGEMENT_PROPRIETAIRE, MOTIFS_VENTE } from "@/lib/referentiels";
 import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
@@ -731,8 +732,10 @@ export function BienFiche({
           {etatVente && (
             <button type="button" className={`srow2${sect === "vente" ? " on" : ""}`} onClick={() => setSect("vente")}>
               <span className="sic2"><svg viewBox="0 0 24 24">{I.marteau}</svg></span>
+              {/* Retour #593 — « pas besoin d'indiquer où on en est ici, il
+                  suffit de cliquer ; ça rend la case plus haute que les
+                  autres ». L'étape se lit dans l'écran du suivi. */}
               Suivi de la vente
-              <span className="right"><span className="pill-dec">{etatVente}</span></span>
             </button>
           )}
           {/* Retour #455 — « quand on déplie les notes, c'est directement le
@@ -1612,11 +1615,32 @@ function DescriptifForm({ b }: { b: BienData }) {
   const [aLaMain, setALaMain] = useState(!!enregistre.trim());
   const aVerifier = descriptifAVerifier(source);
 
+  /* Retour #591 — « ici j'aimerais pouvoir noter si l'immeuble est pour
+     investisseur, marchand, patrimonial ou promoteur ; ce sont les 4 types de
+     recherche ». Jusqu'ici la cible ne se cochait que dans l'estimation
+     (page 3) et restait sur l'estimation. Elle vit désormais sur le bien
+     (`Cibles`), c'est elle que le site reçoit comme type d'opération. Sans
+     cible sur le bien, la dernière estimation qui en porte est proposée. */
+  const ciblesEnregistrees = useMemo(
+    () => (Array.isArray(b.im.Cibles) ? (b.im.Cibles as unknown[]).map(String) : []),
+    [b.im.Cibles],
+  );
+  const [cibles, setCibles] = useState<string[]>(ciblesEnregistrees);
+  const estimationCible = useMemo(() => [...b.estimations]
+    .sort((x, y) => String(y["Created Date"] ?? "").localeCompare(String(x["Created Date"] ?? "")))
+    .find((e) => Array.isArray(e.Cibles) && (e.Cibles as unknown[]).length > 0), [b.estimations]);
+  const ciblesEstimation = estimationCible ? (estimationCible.Cibles as unknown[]).map(String) : [];
+  const memes = (x: string[], y: string[]) => x.length === y.length && x.every((v) => y.includes(v));
+  const ciblesModifiees = !memes(cibles, ciblesEnregistrees);
+
   const sauver = (valeur: string) =>
     start(async () => {
       /* On enregistre le texte ET l'automatique du jour : c'est ce témoin qui
          permettra de dire, au prochain dossier, que la fiche a bougé depuis. */
-      await updateBien(String(b.im._id), { descriptif: valeur, descriptif_auto: auto });
+      await updateBien(String(b.im._id), {
+        descriptif: valeur, descriptif_auto: auto,
+        ...(ciblesModifiees ? { Cibles: cibles } : {}),
+      });
     });
 
   /* Retour #303 — « l'enregistrement, tu le fais pas en dessous du cadre de
@@ -1627,10 +1651,30 @@ function DescriptifForm({ b }: { b: BienData }) {
      et on quittait l'onglet sans enregistrer. Le retour au texte automatique,
      lui, appartient au champ — c'est une action SUR le texte, pas sur la
      fiche. */
-  const modifie = txt !== (enregistre || auto);
+  const modifie = txt !== (enregistre || auto) || ciblesModifiees;
 
   return (
     <div className="frow" style={{ display: "block" }}>
+      <div className="dsc-cibles">
+        <span className="dsc-cibles-t">Pour qui</span>
+        <div className="est-cibles"><div className="g">
+          {CIBLES_EST.map((c) => (
+            <button key={c.valeur} type="button" aria-pressed={cibles.includes(c.valeur)}
+              className={`est-cible${cibles.includes(c.valeur) ? " on" : ""}`}
+              onClick={() => setCibles(cibles.includes(c.valeur) ? cibles.filter((x) => x !== c.valeur) : [...cibles, c.valeur])}>
+              <svg viewBox="0 0 24 24">{c.picto}</svg>
+              {c.valeur}
+              <i />
+            </button>
+          ))}
+        </div></div>
+        {cibles.length === 0 && ciblesEstimation.length > 0 && (
+          <span className="fine">
+            L&apos;estimation du {dmy(estimationCible!["Created Date"])} visait : {ciblesEstimation.join(", ")}.{" "}
+            <button type="button" className="fadd" onClick={() => setCibles(ciblesEstimation)}>Reprendre</button>
+          </span>
+        )}
+      </div>
       {aVerifier && (
         <div className="dsc-alerte">
           <b>L&apos;état locatif ou l&apos;emplacement ont changé depuis que ce texte a été écrit.</b>
@@ -1666,7 +1710,7 @@ function DescriptifForm({ b }: { b: BienData }) {
       <BarreEnregistrer
         modifie={modifie} pending={pending}
         onEnregistrer={() => sauver(txt)}
-        onAnnuler={() => { setTxt(enregistre || auto); setALaMain(!!enregistre.trim()); }}
+        onAnnuler={() => { setTxt(enregistre || auto); setALaMain(!!enregistre.trim()); setCibles(ciblesEnregistrees); }}
       >
         {modifie
           ? "Ce texte part au vendeur, dans le dossier et dans l'annonce — modifications non enregistrées"
