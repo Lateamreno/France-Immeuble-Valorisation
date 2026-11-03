@@ -71,7 +71,8 @@ export type BienMail = {
 export function objetCommercialisation(b: BienMail): string {
   const dept = deptDeCp(b.codePostal);
   const ou = [villeNue(b.ville) || "vendre", dept ? `(${dept})` : ""].filter(Boolean).join(" ");
-  const renta = nb(b.rentaPotentielle) ?? nb(b.renta);
+  /* Retour #594 : le potentiel, et lui seul — pas de repli sur l'actuel. */
+  const renta = nb(b.rentaPotentielle);
   const bouts = [
     `Immeuble à vendre à ${ou}`,
     prixCourt(nb(b.prixHai)),
@@ -129,28 +130,36 @@ export const villeNue = (v?: string) =>
  * rendement brut de 9,2 % » se contredit tout seul — sur un immeuble vide,
  * ce rendement est celui des loyers de marché, pas un encaissement.
  */
+/**
+ * Le rendement brut POTENTIEL tel que MAV le définit (retour #594) : les
+ * loyers potentiels annuels (chaque lot à son loyer max, à défaut son loyer)
+ * divisés par le prix HAI PLUS les travaux. C'est le seul rendement annoncé
+ * aux acquéreurs, dans l'objet comme dans le texte. Arrondi au dixième.
+ */
+export function rendementPotentiel(loyersPotentielsAn: number, prixHai?: number, travaux?: number): number | undefined {
+  const base = (prixHai ?? 0) + Math.max(0, travaux ?? 0);
+  if (!(loyersPotentielsAn > 0) || !(prixHai && prixHai > 0) || !(base > 0)) return undefined;
+  return Math.round((loyersPotentielsAn / base) * 1000) / 10;
+}
+
+/**
+ * La phrase du rendement (retour #594) : toujours le POTENTIEL — loyers
+ * potentiels ÷ (prix HAI + travaux). L'occupation dit dans quel état on achète,
+ * le rendement ce que l'immeuble rapportera. Sans potentiel calculable, pas de
+ * phrase : mieux vaut se taire qu'annoncer l'actuel à sa place (c'était le cas
+ * de Paris 18, vide, annoncé à 1,2 %).
+ */
 export function phraseRendement(b: BienMail): string | undefined {
   const occ = nb(b.occupation);
-  const r = nb(b.renta);
   const rp = nb(b.rentaPotentielle);
-  if (r === undefined && rp === undefined) return undefined;
-
+  if (rp === undefined) return undefined;
   if (occ !== undefined && occ <= 0) {
-    const cible = rp ?? r!;
-    return `L'immeuble est actuellement vide. Loué, le rendement brut ressortirait à ${fr(cible)} %.`;
+    return `L'immeuble est actuellement vide, pour un rendement brut potentiel de ${fr(rp)} %.`;
   }
-  if (r === undefined) return undefined;
-
-  const plein = occ === undefined || occ >= 100;
-  const base = plein
-    ? `L'immeuble est intégralement loué, pour un rendement brut de ${fr(r)} %.`
-    : `L'immeuble est loué à ${fr(occ)} % pour un rendement brut de ${fr(r)} %.`;
-  /* Le potentiel ne s'annonce que s'il ajoute quelque chose : sur un immeuble
-     plein, ou quand il rejoint l'actuel, la phrase serait du remplissage. */
-  if (!plein && rp !== undefined && rp - r >= 0.1) {
-    return `${base} Intégralement loué, le rendement brut passera à ${fr(rp)} %.`;
+  if (occ === undefined || occ >= 100) {
+    return `L'immeuble est intégralement loué, pour un rendement brut potentiel de ${fr(rp)} %.`;
   }
-  return base;
+  return `L'immeuble est loué à ${fr(occ)} %, pour un rendement brut potentiel de ${fr(rp)} %.`;
 }
 
 /**
@@ -180,7 +189,7 @@ export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?
       `· ${groupeNominal(natureImmeuble(b.destinations)).replace(/^un /, "Un ")} à ${ou}`,
       surface !== undefined ? `${fr(Math.round(surface), 0)} m²` : "",
       prix !== undefined ? `${fr(Math.round(prix), 0)} € HAI` : "",
-      nb(b.renta) !== undefined ? `${fr(nb(b.renta)!)} % de rendement brut` : "",
+      nb(b.rentaPotentielle) !== undefined ? `${fr(nb(b.rentaPotentielle)!)} % de rendement brut potentiel` : "",
     ].filter(Boolean).join(", ");
     return [tete, lien ? `  Dossier, photos et plans : ${lien}` : "", ""];
   });
@@ -221,6 +230,36 @@ export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?
 const PAS_INTERESSE =
   "Pas intéressé ? Un mot en réponse, avec la raison si possible, m'aidera à affiner vos critères.";
 
+const PHRASE_SANS_LIEN = "Vous pouvez me demander le dossier, les photos et les plans, je vous les transmets aussitôt.";
+const phraseLien = (lien: string) => `Vous pouvez télécharger le dossier, les photos et les plans via ce lien : ${lien}`;
+
+/**
+ * Le message, avec le nouveau lien transfer.it À LA PLACE de l'ancien — sans
+ * rien toucher d'autre (retour #594 : coller le lien régénérait tout le
+ * message et effaçait les retouches de l'agent). Sans ancien lien, la phrase
+ * « Vous pouvez me demander le dossier… » devient la phrase du lien. Si
+ * l'agent a réécrit le passage, on ne devine pas : l'écran signale le lien
+ * absent et propose de l'ajouter.
+ */
+export function avecLienDossier(message: string, ancien: string, nouveau: string): string {
+  const a = ancien.trim(), n = nouveau.trim();
+  if (!n) return message;
+  if (a && message.includes(a)) return message.split(a).join(n);
+  if (message.includes(PHRASE_SANS_LIEN)) return message.replace(PHRASE_SANS_LIEN, phraseLien(n));
+  return message;
+}
+
+/** Ajoute la phrase du lien avant « Si ce dernier vous intéresse… », à défaut avant « Cordialement ». */
+export function insererLienDossier(message: string, lien: string): string {
+  const n = lien.trim();
+  if (!n || message.includes(n)) return message;
+  for (const ancre of [/^Si ce dernier vous intéresse/m, /^Cordialement/m]) {
+    const i = message.search(ancre);
+    if (i >= 0) return `${message.slice(0, i)}${phraseLien(n)}\n\n${message.slice(i)}`;
+  }
+  return `${message.trimEnd()}\n\n${phraseLien(n)}`;
+}
+
 export function messageCommercialisation(b: BienMail, lien: string): string {
   const surface = nb(b.surfaceCarrez);
   const prix = nb(b.prixHai);
@@ -241,9 +280,7 @@ export function messageCommercialisation(b: BienMail, lien: string): string {
     "",
     phraseRendement(b),
     "",
-    lien
-      ? `Vous pouvez télécharger le dossier, les photos et les plans via ce lien : ${lien}`
-      : "Vous pouvez me demander le dossier, les photos et les plans, je vous les transmets aussitôt.",
+    lien ? phraseLien(lien) : PHRASE_SANS_LIEN,
     "",
     "Si ce dernier vous intéresse et que vous avez la moindre question, n'hésitez pas à me contacter je me ferai un plaisir d'y répondre.",
     "",

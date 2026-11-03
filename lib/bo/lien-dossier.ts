@@ -101,6 +101,16 @@ export function urlPdfDossier(d: Record<string, unknown> | null | undefined): st
   return `/api/photo?u=${encodeURIComponent(u.replace(/^\/\//, "https://"))}`;
 }
 
+/**
+ * L'adresse du PDF pour l'ouvrir (ou, `telecharger`, l'enregistrer) depuis le
+ * BO, sous son nom lisible. Elle passe par le relais, qui ne sert un document
+ * qu'à une personne connectée (retour #595) : elle ne vaut rien hors du BO.
+ */
+export function lienPdfBo(url: string | undefined, nom?: string, telecharger = false): string | undefined {
+  if (!url || !url.startsWith("/api/photo?s=")) return url;
+  return `${url}${nom ? `&nom=${encodeURIComponent(nom)}` : ""}${telecharger ? "&dl=1" : ""}`;
+}
+
 /** « Dossier-Sens-V2.pdf ». */
 export function nomPdfDossier(ville: string | undefined, version: unknown): string {
   const v = (ville ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");

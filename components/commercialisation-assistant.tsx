@@ -17,11 +17,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { destinataires, paquets, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
-import { dateLien, expirationParDefaut, lienDuDossier } from "@/lib/bo/lien-dossier";
+import { dateLien, expirationParDefaut, lienDuDossier, lienPdfBo, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { resumeDepuisDoc, smsEnvoiDossier } from "@/lib/bo/resume-immeuble";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
-  messageCommercialisation, objetCommercialisation, type BienMail,
+  avecLienDossier, insererLienDossier,
+  messageCommercialisation, objetCommercialisation, rendementPotentiel, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
@@ -88,9 +89,9 @@ export function AssistantCommercialisation({
         : repli && typeof l[repli] === "number" ? (l[repli] as number) : 0;
       return t + v;
     }, 0);
-    const loyers = somme("loyer");
     const loyersMax = somme("loyer_max", "loyer");
     const renta = typeof b.im.fin_renta_ba === "number" ? b.im.fin_renta_ba : undefined;
+    const travaux = typeof b.im.fin_travaux === "number" ? (b.im.fin_travaux as number) : 0;
     return {
       ville: b.ville,
       codePostal: b.im.adresse_zipcode,
@@ -99,15 +100,19 @@ export function AssistantCommercialisation({
       /* La fiche ne remonte pas toujours `prix_hai_m2` : à Lille il est absent
          et l'objet sortait sans prix au m². Le calcul de secours porte sur les
          mêmes deux nombres que Bubble utilise. */
-      prixM2: typeof b.im.prix_hai_m2 === "number" ? b.im.prix_hai_m2
-        : prixHai && typeof b.im.surface_carrez === "number" && b.im.surface_carrez > 0
-          ? prixHai / b.im.surface_carrez
-          : undefined,
+      /* Calculé sur le prix du jour d'abord : `prix_hai_m2` de la fiche date de
+         la dernière estimation (Paris 18 : 6 202 €/m² pour 800 000 €, alors
+         que le prix est passé à 1 030 000 €). */
+      prixM2: prixHai && typeof b.im.surface_carrez === "number" && b.im.surface_carrez > 0
+        ? prixHai / b.im.surface_carrez
+        : typeof b.im.prix_hai_m2 === "number" ? b.im.prix_hai_m2 : undefined,
       occupation: b.im.occupation_lots,
       renta,
-      rentaPotentielle: renta !== undefined && loyers > 0
-        ? Math.round((renta * loyersMax / loyers) * 10) / 10
-        : undefined,
+      /* Retour #594 : loyers potentiels annuels ÷ (prix HAI + travaux), calculé
+         ici sur le prix du jour. L'ancien calcul (actuel × loyers max ÷ loyers)
+         ne donnait rien sur un immeuble vide, et le texte retombait sur
+         l'actuel : Paris 18 était annoncé à 1,2 %. */
+      rentaPotentielle: rendementPotentiel(loyersMax * 12, prixHai, travaux),
       destinations: b.lots.map((l) => String(l.Destination ?? "")).filter(Boolean),
       agentNom: b.agentNom,
       agentTel: b.agentTel,
@@ -221,6 +226,13 @@ export function AssistantCommercialisation({
     if (pj2?.path) out.push({ nom: pj2.nom, path: pj2.path });
     return out;
   }, [doc, pj2, b.ville]);
+
+  /* MAV (03/11) : « le PDF je veux vraiment qu'il se mette en PJ et qu'il n'y
+     ait pas de doute », et « il faut que je puisse voir le lien transfer.it ».
+     Deux verrous de plus sur l'envoi : pas d'e-mail sans le PDF du dossier,
+     pas d'e-mail dont le texte ne montre pas le lien. */
+  const pdfDossier = piecesJointes.find((p) => /^Dossier-/.test(p.nom));
+  const lienAbsent = !!lien.trim() && !message.includes(lien.trim());
 
   const envoyerParLots = async (adresses: string[], quand?: string) => {
     if (!commId) return;
@@ -460,7 +472,7 @@ export function AssistantCommercialisation({
           {/* Et la pièce jointe elle-même, « pour qu'on puisse le vérifier
               avant envoi ». Pas de bouton pour la retirer : elle se change à
               la ligne du dessus, c'est le même geste en plus clair. */}
-          {doc && <PieceJointe d={doc} onPoids={setPoidsDossier} />}
+          {doc && <PieceJointe d={doc} nom={piecesJointes[0]?.nom} onPoids={setPoidsDossier} />}
 
           {/* Retour #359, option C — « on va sûrement générer automatiquement
               dans l'état locatif actuel mais qu'on pourra aussi peut-être faire
@@ -529,7 +541,11 @@ export function AssistantCommercialisation({
             onChange={(e) => {
               const v = e.target.value;
               setLien(v);
-              setMessage(messageCommercialisation(bienMail, v));
+              /* Retour #594 — « quand je modifie un titre ou un message, c'est
+                 bien la version modifiée qui s'envoie ». Coller le lien
+                 régénérait tout le message et effaçait les retouches : on ne
+                 remplace plus que le lien, à sa place. */
+              setMessage((m) => avecLienDossier(m, lien, v));
               /* Le SMS suit le lien tant qu'il n'a pas été retouché à la main. */
               if (sms === smsParDefaut(b, lien)) setSms(smsParDefaut(b, v));
             }} />
@@ -751,6 +767,39 @@ export function AssistantCommercialisation({
           )}
           {envoiMail && <div className="asst-ok">{envoiMail}</div>}
 
+          {/* Retour #594 — « assure-toi bien que quand je modifie un titre ou un
+              message, c'est bien la version que j'ai modifiée qui s'envoie ».
+              L'objet et le message sont ici, au-dessus du bouton : ce qui est
+              dans ces deux cases est exactement ce qui part. */}
+          <div className="asst-part">
+            <span className="mlab">Ce qui part, mot pour mot</span>
+            <input className="min" aria-label="Objet de l'e-mail" value={objet} onChange={(e) => setObjet(e.target.value)} />
+            <textarea className="min" aria-label="Message" rows={12} value={message} onChange={(e) => setMessage(e.target.value)} />
+            {/* MAV (03/11) : « le PDF je veux vraiment qu'il se mette en PJ et
+                qu'il n'y ait pas de doute ». La pièce est montrée ici, juste
+                au-dessus du bouton, et s'ouvre d'un clic. */}
+            {pdfDossier && doc ? (
+              <>
+                <PieceJointe d={doc} nom={pdfDossier.nom} onPoids={setPoidsDossier} />
+                {piecesJointes.length > 1 && (
+                  <div className="asst-part-l ok">Seconde pièce jointe : <b>{piecesJointes[1].nom}</b>.</div>
+                )}
+              </>
+            ) : (
+              <div className="asst-part-l ko">
+                Aucun PDF de dossier : l&apos;e-mail ne peut pas partir. Choisissez un dossier qui a son PDF (étape Dossier).
+              </div>
+            )}
+            <div className={`asst-part-l${lienAbsent || lienManque ? " ko" : " ok"}`}>
+              {lienManque
+                ? <>Le lien transfer.it manque (étape Dossier).</>
+                : lienAbsent
+                  ? <>Le lien transfer.it n&apos;apparaît pas dans le message.{" "}
+                    <button type="button" className="fadd" onClick={() => setMessage((m) => insererLienDossier(m, lien))}>Insérer le lien</button></>
+                  : <>Lien transfer.it dans le message : <b>{lien.trim()}</b></>}
+            </div>
+          </div>
+
           <div className="wnav">
             <button
               className="fadd" type="button" disabled={pending || mailsEnvoyes}
@@ -763,8 +812,10 @@ export function AssistantCommercialisation({
             <span className="sp" style={{ flex: 1 }} />
             <button
               className="kgo" type="button"
-              disabled={pending || envoiEnCours || mailsEnvoyes || restantes.length === 0 || pesee.depasse || lienManque}
-              title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier" : undefined}
+              disabled={pending || envoiEnCours || mailsEnvoyes || restantes.length === 0 || pesee.depasse || lienManque || lienAbsent || !pdfDossier}
+              title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier"
+                : lienAbsent ? "Le lien transfer.it doit figurer dans le message"
+                : !pdfDossier ? "Le PDF du dossier doit être joint" : undefined}
               onClick={async () => {
                 if (!commId) return;
                 const n = restantes.length;
@@ -1035,18 +1086,27 @@ function ChiffresDossier({ d, secteur }: { d: Record<string, unknown>; secteur: 
  * requête `HEAD` : c'est une info que seul le serveur qui l'héberge connaît,
  * et elle décide de la délivrabilité de la salve.
  */
-function PieceJointe({ d, onPoids }: { d: Record<string, unknown>; onPoids?: (o: number | null) => void }) {
-  const url = [d.pdf, d.FILE].map(S).find((u) => u.length > 0);
+function PieceJointe({ d, nom, onPoids }: { d: Record<string, unknown>; nom?: string; onPoids?: (o: number | null) => void }) {
+  /* MAV (03/11) : « j'ai essayé de cliquer dessus, ça ne marchait pas ». Le PDF
+     d'un dossier du BO s'écrit « storage:… » : le lien pointait sur cette
+     adresse brute, que le navigateur ne sait pas ouvrir (et le poids restait
+     « non communiqué »). Il passe par le relais du BO, comme partout. */
+  const url = lienPdfBo(urlPdfDossier(d), nom);
   const [poids, setPoids] = useState<number | null | undefined>(undefined);
 
   useEffect(() => {
     if (!url) return;
     let vivant = true;
-    const abs = url.startsWith("//") ? `https:${url}` : url;
-    fetch(abs, { method: "HEAD" })
-      .then((r) => {
+    /* Le relais ne donne pas toujours la taille dans l'en-tête : on lit alors
+       le fichier lui-même, une fois — c'est aussi la preuve qu'il s'ouvre. */
+    fetch(url, { method: "HEAD" })
+      .then(async (r) => {
         const l = Number(r.headers.get("content-length"));
-        const v = Number.isFinite(l) && l > 0 ? l : null;
+        let v: number | null = Number.isFinite(l) && l > 0 ? l : null;
+        if (v === null && r.ok) {
+          const g = await fetch(url).catch(() => null);
+          if (g?.ok) v = (await g.blob()).size || null;
+        }
         if (vivant) { setPoids(v); onPoids?.(v); }
       })
       .catch(() => { if (vivant) { setPoids(null); onPoids?.(null); } });
@@ -1056,7 +1116,7 @@ function PieceJointe({ d, onPoids }: { d: Record<string, unknown>; onPoids?: (o:
   if (!url) {
     return <div className="asst-note">Ce dossier n&apos;a pas de PDF rattaché : l&apos;e-mail partira sans pièce jointe.</div>;
   }
-  const abs = url.startsWith("//") ? `https:${url}` : url;
+  const abs = url;
   const mo = typeof poids === "number" ? poids / 1_048_576 : undefined;
   return (
     <a className={`asst-pj${mo !== undefined && mo > 3 ? " lourd" : ""}`} href={abs} target="_blank" rel="noreferrer">
@@ -1064,15 +1124,15 @@ function PieceJointe({ d, onPoids }: { d: Record<string, unknown>; onPoids?: (o:
         <svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></svg>
       </span>
       <span className="asst-pj-t">
-        <b>{libelleDossier(d)} — ouvrir la pièce jointe</b>
+        <b>{nom ?? libelleDossier(d)} — jointe à chaque e-mail · ouvrir</b>
         {/* Trois états, pas deux : « en cours », « connu », et « refusé ». Le
             serveur qui héberge le PDF peut très bien répondre sans autoriser
             la lecture de l'en-tête depuis le navigateur — laisser « en cours
             de lecture » pour toujours serait le pire des trois. */}
         {poids === undefined ? "Lecture du poids…"
           : poids === null ? "Poids non communiqué par l'hébergeur — ouvrez la pièce pour le vérifier."
-          : mo! > 3 ? `${mo!.toFixed(1)} Mo — au-delà de 3 Mo, la délivrabilité chute.`
-          : `${mo!.toFixed(1)} Mo`}
+          : mo! > 3 ? `${mo!.toFixed(1).replace(".", ",")} Mo — au-delà de 3 Mo, la délivrabilité chute.`
+          : `${mo!.toFixed(1).replace(".", ",")} Mo`}
       </span>
     </a>
   );

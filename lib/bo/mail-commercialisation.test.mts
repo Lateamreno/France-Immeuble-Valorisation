@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   deptDeCp, messageCommercialisation, natureImmeuble, objetCommercialisation,
-  phraseRendement, prixCourt, groupeNominal, villeNue,
+  phraseRendement, prixCourt, groupeNominal, villeNue, rendementPotentiel, avecLienDossier, insererLienDossier,
 } from "./mail-commercialisation.ts";
 
 test("prixCourt : le million s'écrit avec une décimale", () => {
@@ -31,7 +31,7 @@ test("deptDeCp : les deux premiers chiffres, et rien si ce n'est pas un code pos
 test("objet : la ligne complète de MAV", () => {
   assert.equal(
     objetCommercialisation({
-      ville: "Lille", codePostal: "59000", prixHai: 425_200, renta: 9.2, prixM2: 2203,
+      ville: "Lille", codePostal: "59000", prixHai: 425_200, renta: 7.1, rentaPotentielle: 9.2, prixM2: 2203,
     }),
     "Immeuble à vendre à Lille (59) - 425 k€ - 9,2 % - 2 203 €/m²",
   );
@@ -62,35 +62,32 @@ test("nature : sans lot renseigné, on retombe sur « rapport »", () => {
   assert.equal(natureImmeuble(undefined), "rapport");
 });
 
-test("rendement : partiellement loué, le potentiel s'annonce", () => {
+test("rendement (#594) : toujours le potentiel, quelle que soit l'occupation", () => {
   assert.equal(
     phraseRendement({ occupation: 90, renta: 9.6, rentaPotentielle: 10.6 }),
-    "L'immeuble est loué à 90 % pour un rendement brut de 9,6 %. "
-      + "Intégralement loué, le rendement brut passera à 10,6 %.",
+    "L'immeuble est loué à 90 %, pour un rendement brut potentiel de 10,6 %.",
   );
-});
-
-test("rendement : intégralement loué, pas de phrase de potentiel", () => {
   assert.equal(
     phraseRendement({ occupation: 100, renta: 8.1, rentaPotentielle: 8.9 }),
-    "L'immeuble est intégralement loué, pour un rendement brut de 8,1 %.",
+    "L'immeuble est intégralement loué, pour un rendement brut potentiel de 8,9 %.",
   );
 });
 
-test("rendement : un potentiel qui rejoint l'actuel ne s'annonce pas", () => {
+test("rendement (#594) : un immeuble vide annonce son potentiel, jamais l'actuel", () => {
   assert.equal(
-    phraseRendement({ occupation: 80, renta: 7.4, rentaPotentielle: 7.45 }),
-    "L'immeuble est loué à 80 % pour un rendement brut de 7,4 %.",
+    phraseRendement({ occupation: 0, renta: 1.2, rentaPotentielle: 3.6 }),
+    "L'immeuble est actuellement vide, pour un rendement brut potentiel de 3,6 %.",
   );
+  assert.equal(phraseRendement({ occupation: 0, renta: 9.2 }), undefined);
 });
 
-test("rendement : un immeuble vide a sa propre phrase", () => {
-  // Le piège de Lille : 0 % occupé et pourtant 9,2 % de rendement, parce que
-  // le chiffre porte sur des loyers de marché. « Loué à 0 % » se contredirait.
-  assert.equal(
-    phraseRendement({ occupation: 0, renta: 9.2 }),
-    "L'immeuble est actuellement vide. Loué, le rendement brut ressortirait à 9,2 %.",
-  );
+test("rendement (#594) : loyers potentiels ÷ (prix HAI + travaux)", () => {
+  // Paris 18 : 3 lots à 1 281,38 + 1 227,38 + 1 365,97 €/mois, 1 030 000 € HAI, 256 500 € de travaux.
+  const loyers = (1281.38 + 1227.38 + 1365.97) * 12;
+  assert.equal(rendementPotentiel(loyers, 1_030_000, 256_500), 3.6);
+  assert.equal(rendementPotentiel(loyers, 1_030_000), 4.5);
+  assert.equal(rendementPotentiel(0, 1_030_000), undefined);
+  assert.equal(rendementPotentiel(loyers, undefined), undefined);
 });
 
 test("rendement : sans aucun chiffre, pas de phrase", () => {
@@ -109,7 +106,7 @@ test("message : la trame de MAV, avec son lien", () => {
     "Vous trouverez ci-joint le dossier d'un immeuble de logement à Viry-Châtillon (91170)"
     + " d'une surface de 206 m² proposé à 850 000 € honoraires d'agence inclus.",
   ));
-  assert.ok(m.includes("Intégralement loué, le rendement brut passera à 10,6 %."));
+  assert.ok(m.includes("L'immeuble est loué à 90 %, pour un rendement brut potentiel de 10,6 %."));
   assert.ok(m.includes("via ce lien : https://transfer.it/t/0rYZT3pV3DTY"));
   assert.ok(m.endsWith("Cordialement\n\nRomain Voci\nFrance Immeuble\n06 12 34 56 78"));
 });
@@ -162,4 +159,18 @@ test("« un immeuble mixte », pas « un immeuble de mixte »", () => {
   assert.equal(groupeNominal("rapport"), "un immeuble de rapport");
   assert.ok(messageCommercialisation({ ville: "Lille", destinations: ["Logement", "Commerce"] }, "")
     .includes("d'un immeuble mixte à Lille"));
+});
+
+test("lien (#594) : coller le lien ne touche qu'au lien, pas aux retouches", () => {
+  const retouche = "Bonjour Paul,\n\nVous pouvez me demander le dossier, les photos et les plans, je vous les transmets aussitôt.\n\nMerci !";
+  const avec = avecLienDossier(retouche, "", "https://transfer.it/t/AAA");
+  assert.ok(avec.startsWith("Bonjour Paul,"));
+  assert.ok(avec.includes("via ce lien : https://transfer.it/t/AAA"));
+  assert.ok(avec.endsWith("Merci !"));
+  const change = avecLienDossier(avec, "https://transfer.it/t/AAA", "https://transfer.it/t/BBB");
+  assert.equal(change, avec.replace("AAA", "BBB"));
+  // Passage réécrit à la main : on ne devine pas, l'écran signale et propose « Insérer ».
+  assert.equal(avecLienDossier("Texte libre.", "", "https://transfer.it/t/CCC"), "Texte libre.");
+  const insere = insererLienDossier("Bonjour,\n\nTexte.\n\nCordialement\n\nX", "https://transfer.it/t/CCC");
+  assert.ok(insere.indexOf("https://transfer.it/t/CCC") < insere.indexOf("Cordialement"));
 });
