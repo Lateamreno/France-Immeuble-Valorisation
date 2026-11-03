@@ -40,7 +40,11 @@ export function useMemoire<T>(cle: string, initial: T | (() => T)) {
   useEffect(() => {
     if (!pret) return;
     try {
-      window.sessionStorage.setItem(cle, JSON.stringify(valeur));
+      const v = JSON.stringify(valeur);
+      if (window.sessionStorage.getItem(cle) !== v) {
+        window.sessionStorage.setItem(cle, v);
+        signaler();
+      }
     } catch {
       /* idem */
     }
@@ -120,4 +124,24 @@ export function oublier(prefixe: string) {
   } catch {
     /* rien à faire */
   }
+  signaler();
+}
+
+/*
+ * Le signal de la mémoire (MAV, 03/11 : « quand je lance une commercialisation
+ * ça reste ouvert sauf si je l'annule, de la même façon que les estimations »).
+ *
+ * Le sessionStorage ne prévient pas l'onglet qui l'écrit. Or le rail de la
+ * fiche doit voir, sans attendre un autre rendu, qu'une commercialisation vient
+ * de s'ouvrir ou d'être annulée dans l'écran d'à côté. Chaque écriture et
+ * chaque oubli émettent donc un événement, que `ecouterMemoire` relaie — la
+ * forme attendue par `useSyncExternalStore`.
+ */
+const EVT = "fi-memoire";
+function signaler() {
+  try { window.dispatchEvent(new Event(EVT)); } catch { /* hors navigateur */ }
+}
+export function ecouterMemoire(rappel: () => void) {
+  window.addEventListener(EVT, rappel);
+  return () => window.removeEventListener(EVT, rappel);
 }

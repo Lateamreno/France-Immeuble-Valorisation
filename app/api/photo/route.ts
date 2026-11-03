@@ -4,6 +4,7 @@
 // cache. Utilisée via next/image pour le redimensionnement.
 import { NextRequest } from "next/server";
 import sharp from "sharp";
+import { COOKIE_SESSION, lireSession } from "@/lib/auth/jeton";
 
 /* #168 — « sur la photo j'ai encore un encadrement gris des deux côtés
    latéraux ». Ce liseré n'est pas dans la mise en page : il est DANS le
@@ -99,23 +100,55 @@ export async function GET(req: NextRequest) {
     if (!key) return new Response("storage indisponible", { status: 503 });
     const upstream = await fetch(`${SB_URL}/storage/v1/object/bo-files/${s}`, {
       headers: { Authorization: `Bearer ${key}` },
-      next: { revalidate: 86400 },
+      /* Un document se régénère sous le même chemin (le PDF d'un dossier
+         refait) : il ne dort pas un jour dans le cache du serveur. */
+      ...(/\.(pdf|csv|docx?|xlsx?|txt|zip)$/i.test(s) ? { cache: "no-store" as const } : { next: { revalidate: 86400 } }),
     });
-    if (!upstream.ok) return pixel();
+    if (!upstream.ok) {
+      /* Un PDF manquant rendait le pixel transparent : une page blanche, sans
+         rien pour comprendre. Une image manquante, elle, reste le pixel. */
+      return /\.(pdf|csv|docx?|xlsx?|txt|zip)$/i.test(s)
+        ? new Response("Document introuvable.", { status: 404, headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" } })
+        : pixel();
+    }
     const type = upstream.headers.get("Content-Type") ?? "application/octet-stream";
     if (req.nextUrl.searchParams.get("trim") === "1" && type.startsWith("image/")) {
       return rogner(await upstream.arrayBuffer(), type);
     }
     const w = type.startsWith("image/") ? largeurDemandee(req) : null;
     if (w) return reduire(await upstream.arrayBuffer(), w);
-    // Un PDF doit s'ouvrir dans le lecteur du navigateur quand on clique
-    // dessus, pas se télécharger : « inline » plus un nom de fichier lisible.
-    const nom = s.split("/").pop() || "document";
+    if (type.startsWith("image/")) {
+      return new Response(upstream.body, {
+        headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400, immutable" },
+      });
+    }
+    /* Retour #595 — « il faut que ce soit pas un accès vers mon backoffice si
+       y a un hackeur derrière. Fais-moi un truc propre ».
+       Les photos restent publiques : Plein Bail, le site et l'impression des
+       dossiers les lisent ici. Un DOCUMENT (PDF du dossier, mandat signé,
+       état locatif en CSV…) ne sort plus qu'à une personne connectée au BO,
+       et n'est gardé par aucun cache partagé. Les clients, eux, reçoivent le
+       PDF en pièce jointe (lu côté serveur, sans lien) et le lien transfer.it :
+       rien ne les fait passer par ici. */
+    if (process.env.BO_AUTH?.trim().toLowerCase() === "on"
+      && !(await lireSession(req.cookies.get(COOKIE_SESSION)?.value))) {
+      return new Response("Connexion au back-office requise.", {
+        status: 401, headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+    /* Un PDF s'ouvre dans le lecteur du navigateur ; `?dl=1` le télécharge.
+       `?nom=` donne le nom lisible (« Dossier-Paris-18eme-V1.pdf ») plutôt
+       que l'identifiant technique du fichier. */
+    const brut = req.nextUrl.searchParams.get("nom") || s.split("/").pop() || "document";
+    const nom = brut.replace(/[^\p{L}\p{N}._ -]+/gu, "-").slice(0, 120) || "document";
+    const ascii = nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "-");
+    const mode = req.nextUrl.searchParams.get("dl") === "1" ? "attachment" : "inline";
     return new Response(upstream.body, {
       headers: {
         "Content-Type": type,
-        "Content-Disposition": `inline; filename="${nom.replace(/"/g, "")}"`,
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Content-Disposition": `${mode}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nom)}`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   }

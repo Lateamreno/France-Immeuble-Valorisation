@@ -9405,3 +9405,14 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .dsc-cibles { display: grid; gap: 8px; margin: 0 0 14px; max-width: 560px; }
 .dsc-cibles-t { font-family: var(--font-title); font-size: 12px; font-weight: 700; color: var(--slate); text-transform: uppercase; letter-spacing: .06em; }
 .dsc-cibles .fine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Retour #594 / MAV 03/11 — ce qui part, mot pour mot, au-dessus du bouton
+   d'envoi : objet, message, pièce jointe et lien transfer.it vérifiés. */
+.asst-part { display: grid; gap: 8px; margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--line, #d9dde2); border-radius: 8px; background: #fbfaf7; }
+.asst-part textarea { width: 100%; font-size: 13px; }
+.asst-part-l { font-size: 12.5px; line-height: 1.5; padding: 6px 10px; border-radius: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+.asst-part-l.ok { background: #eef7f0; color: #1c6b36; }
+.asst-part-l.ko { background: #fbe9e6; color: #a5281a; }
+
+/* Retour #595 : « PDF » (ouvrir) et « Télécharger » côte à côte. */
+.fbtns { display: inline-flex; gap: 6px; flex-shrink: 0; }

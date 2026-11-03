@@ -15,6 +15,7 @@ import { greffeDe } from "@/lib/bo/greffes";
 import { jourIso } from "@/lib/format";
 import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, type Societe } from "@/lib/mandat";
 import type { BienMail } from "@/lib/bo/mail-commercialisation";
+import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -4147,7 +4148,9 @@ export async function enregistrerPrix(
   const loyersMax = n(im?.fin_loyers_an_max) || loyers;
   const charges = n(im?.fin_charges_non_recup);
   const travaux = n(im?.fin_travaux);
-  const surface = n(im?.fin_surface_carrez);
+  /* `fin_surface_carrez` n'existe que sur les fiches venues de Bubble ; le BO
+     tient `surface_carrez` (bo_recompute_immeuble). */
+  const surface = n(im?.fin_surface_carrez) || n(im?.surface_carrez);
 
   const hai = Math.round(input.hai);
   const honos = Math.round(input.honosTtc);
@@ -4187,10 +4190,26 @@ export async function enregistrerPrix(
     }),
   });
 
+  /* Retour #594 — les rendements de la fiche suivent le prix. Ils ne
+     changeaient qu'à l'estimation : Paris 18, passé de 800 000 à 1 030 000 €,
+     gardait 4,4 % de potentiel au lieu de 3,6 % (carte, RCS, matching). Ce
+     sont les mêmes formules que la ligne d'historique ci-dessus. */
+  const rendements = {
+    fin_renta_ba: hai > 0 ? pc(loyers / hai) : 0,
+    fin_renta_bm: haiTravaux > 0 ? pc(loyersMax / haiTravaux) : 0,
+    fin_renta_na: hai > 0 ? pc((loyers - charges) / hai) : 0,
+    fin_renta_nm: haiTravaux > 0 ? pc((loyersMax - charges) / haiTravaux) : 0,
+    fin_renta_naema: hai > 0 ? pc((loyers - charges) / (hai * 1.075)) : 0,
+    fin_renta_naemm: haiTravaux > 0 ? pc((loyersMax - charges) / (haiTravaux * 1.075)) : 0,
+  };
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
-    p_patch: { prix_hai: hai, prix_nv: nv, prix_honos_ttc: honos, "Modified Date": now },
+    p_patch: {
+      prix_hai: hai, prix_nv: nv, prix_honos_ttc: honos, ...(loyersMax > 0 ? rendements : {}),
+      ...(surface > 0 ? { prix_hai_m2: Math.round(hai / surface) } : {}),
+      "Modified Date": now,
+    },
   });
   refresh(immeubleId);
 }
@@ -4930,6 +4949,12 @@ export async function envoyerMailsCommercialisation(input: {
       if (!r.ok) return { ok: false as const, message: r.message };
       pieces.push(r.piece);
     }
+    /* MAV (03/11) : « le PDF je veux vraiment qu'il se mette en PJ, qu'il n'y
+       ait pas de doute ». Sans pièce lisible, rien ne part : l'écran le dit
+       déjà, le serveur le garantit. */
+    if (pieces.length === 0) {
+      return { ok: false as const, message: "Le PDF du dossier n'est pas joint : aucun e-mail n'est parti. Choisissez un dossier qui a son PDF." };
+    }
     const pesee = peserPiecesJointes(pieces.map((p) => p.contenu.length));
     if (pesee.depasse) {
       return {
@@ -5436,7 +5461,6 @@ export async function biensPourProposition(immeubleIds: string[]): Promise<BienP
       const v = n(l[cle]) ?? (secours ? n(l[secours]) : undefined) ?? 0;
       return t + v;
     }, 0);
-    const loyers = somme("loyer");
     const loyersMax = somme("loyer_max", "loyer");
     const renta = n(im.fin_renta_ba);
     const prixHai = n(im.prix_hai);
@@ -5453,10 +5477,11 @@ export async function biensPourProposition(immeubleIds: string[]): Promise<BienP
         codePostal: im.adresse_zipcode,
         surfaceCarrez: im.surface_carrez,
         prixHai,
-        prixM2: n(im.prix_hai_m2) ?? (prixHai && n(im.surface_carrez) ? prixHai / n(im.surface_carrez)! : undefined),
+        prixM2: (prixHai && n(im.surface_carrez) ? prixHai / n(im.surface_carrez)! : undefined) ?? n(im.prix_hai_m2),
         occupation: im.occupation_lots,
         renta,
-        rentaPotentielle: renta !== undefined && loyers > 0 ? Math.round((renta * loyersMax / loyers) * 10) / 10 : undefined,
+        /* Retour #594 : loyers potentiels ÷ (prix HAI + travaux). */
+        rentaPotentielle: rendementPotentiel(loyersMax * 12, prixHai, n(im.fin_travaux)),
         destinations: lots.map((l) => s(l.Destination)).filter(Boolean),
         agentNom: agent?.name,
         agentTel: agent?.tel,

@@ -39,7 +39,7 @@ import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
-import { dateLien, etatLien, lienDuDossier, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
+import { dateLien, etatLien, lienDuDossier, lienPdfBo, nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { lienMaps } from "@/lib/bo/maps";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { ManquesDossier } from "@/components/dossier-manques";
@@ -58,6 +58,7 @@ import { PhotosEcran, HORS_GALERIE } from "@/components/photos";
 import { ContactPicker } from "@/components/contact-picker";
 import { SocietePicker } from "@/components/societe-picker";
 import { useQuestion } from "@/components/modale";
+import { ecouterMemoire, oublier } from "@/lib/memoire";
 import { ajouterProprietaire, definirSocieteDetentrice, retirerProprietaire } from "@/lib/bo/societes-actions";
 import { sousTitreSociete } from "@/lib/societes";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
@@ -358,6 +359,72 @@ export function BienFiche({
     setEst(null);
     try { window.sessionStorage.removeItem(cleMemoireEst); } catch { /* rien à effacer */ }
   };
+
+  /**
+   * La commercialisation lancée reste ouverte (MAV, 03/11 : « je veux que quand
+   * je lance une commercialisation ça reste ouvert sauf si je l'annule. En gros
+   * de la même façon que les estimations qui restent en cours quand je fais
+   * quelque chose d'autre sur les autres menus »).
+   *
+   * Sa saisie survivait déjà (#329, mémoire `ach:<bien>:…` et `com:<matching>:…`),
+   * mais rien ne la signalait : on revenait sur la fiche par le suivi, sans
+   * trace, et il fallait savoir la retrouver sous Commercialisation › Acheteurs.
+   * Elle a maintenant son entrée dans le rail, comme l'estimation : on y revient
+   * d'un clic, et seule sa croix l'annule.
+   */
+  const memoAch = `ach:${String(b.im._id)}`;
+  const commEnCours = useSyncExternalStore(
+    ecouterMemoire,
+    () => {
+      try {
+        const s = window.sessionStorage;
+        if (s.getItem(`${memoAch}:assistant`) === "true") return "commercialisation";
+        if ((s.getItem(`${memoAch}:reprise`) ?? "null") !== "null") return "commercialisation";
+        if ((s.getItem(`${memoAch}:resultat`) ?? "null") !== "null") return "recherche";
+      } catch { /* mémoire indisponible */ }
+      return "";
+    },
+    () => "",
+  );
+  /* De retour sur la fiche sans rubrique demandée, on retombe sur la
+     commercialisation — sauf si une estimation est ouverte : elle passe
+     d'abord, comme avant. */
+  const [commVue, setCommVue] = useState("");
+  if (commEnCours !== commVue) {
+    setCommVue(commEnCours);
+    if (commEnCours && !commVue && !ecranDansUrl && !memoEst && !contenu && !ouvrir) setSect("acheteurs");
+  }
+  /* Annuler remonte l'écran Acheteurs : son état vit dans des `useState`
+     relus de la mémoire, qu'un simple oubli ne viderait pas. */
+  const [cleAch, setCleAch] = useState(0);
+  const { confirmer: confirmerComm, question: questionComm } = useQuestion();
+  const annulerComm = async () => {
+    const ok = await confirmerComm(
+      <>
+        {commEnCours === "commercialisation"
+          ? "Annuler la commercialisation en cours ?"
+          : "Abandonner la recherche d'acquéreurs en cours ?"}
+        <br /><br />
+        La sélection et les textes non envoyés sont perdus. Les propositions déjà
+        créées et les e-mails déjà partis restent, eux, dans l&apos;historique.
+      </>,
+      { titre: commEnCours === "commercialisation" ? "Commercialisation en cours" : "Recherche en cours", oui: "Annuler", non: "Garder ouverte", danger: true },
+    );
+    if (!ok) return;
+    const mids = new Set<string>();
+    try {
+      const s = window.sessionStorage;
+      const m = s.getItem(`${memoAch}:matchId`);
+      if (m) { const v = JSON.parse(m); if (v) mids.add(String(v)); }
+      const r = s.getItem(`${memoAch}:resultat`);
+      if (r) { const v = JSON.parse(r); if (v?.matchId) mids.add(String(v.matchId)); }
+      const rp = s.getItem(`${memoAch}:reprise`);
+      if (rp) { const v = JSON.parse(rp); if (v?.matchId) mids.add(String(v.matchId)); }
+    } catch { /* mémoire illisible : on efface quand même ce qui est au nom du bien */ }
+    mids.forEach((m) => oublier(`com:${m}:`));
+    oublier(`${memoAch}:`);
+    setCleAch((k) => k + 1);
+  };
   /* Le sous-onglet aussi : revenir sur « État locatif » sans revenir sur
      « Baux », c'est encore avoir perdu sa place. Seul celui de la rubrique
      ouverte est écrit — l'adresse dit où l'on est, pas tout ce qu'on a
@@ -565,7 +632,7 @@ export function BienFiche({
               {sect === "decoupe" && operation && (
                 <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
               )}
-              {sect === "acheteurs" && <AcheteursSection b={b} />}
+              {sect === "acheteurs" && <AcheteursSection key={cleAch} b={b} />}
               {sect === "commercialisations" && (
                 <EcranCommercialisations b={b} onCommercialiser={() => setSect("acheteurs")} />
               )}
@@ -634,6 +701,21 @@ export function BienFiche({
               >✕</button>
             </div>
           )}
+          {commEnCours && (
+            <div className={`srow2 encours ouvert${sect === "acheteurs" ? " on" : ""}`}>
+              <button type="button" className="srow2-in" onClick={() => setSect("acheteurs")}>
+                <span className="sic2"><svg viewBox="0 0 24 24">{I.megaphone}</svg></span>
+                {commEnCours === "commercialisation" ? "Commercialisation en cours" : "Recherche d'acquéreurs en cours"}
+                <span className="right"><span className="pastille" /></span>
+              </button>
+              <button
+                type="button" className="srow2-x"
+                title={commEnCours === "commercialisation" ? "Annuler la commercialisation" : "Abandonner la recherche"}
+                onClick={() => { void annulerComm(); }}
+              >✕</button>
+            </div>
+          )}
+          {questionComm}
           {sections.map((s) => (
             <div key={s.key}>
               <button type="button" className={`srow2${sect === s.key ? " on" : ""}`} onClick={() => basculer(s.key)}>
@@ -2037,9 +2119,22 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
               )}
             </div>
           </div>
-          {typeof d.pdf === "string" && d.pdf && (
-            <a className="fbtn" href={(d.pdf as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
-          )}
+          {/* Retour #595 — « j'arrive pas à télécharger le PDF ici ». Le lien
+              portait l'adresse brute du coffre (« storage:… »), que le
+              navigateur ne sait pas ouvrir. Il passe par le relais, sous le
+              nom du dossier, et réservé au BO. */}
+          {(() => {
+            const u = urlPdfDossier(d);
+            if (!u) return null;
+            /* Le même nom que la pièce jointe des e-mails (« Dossier-Paris-18eme-V1.pdf »). */
+            const nom = nomPdfDossier(b.ville || String(b.im.adresse_ville ?? ""), d.version);
+            return (
+              <span className="fbtns">
+                <a className="fbtn" href={lienPdfBo(u, nom)} target="_blank" rel="noreferrer" title={`Ouvrir ${nom}`}>PDF</a>
+                <a className="fbtn" href={lienPdfBo(u, nom, true)} download={nom} title={`Télécharger ${nom}`}>Télécharger</a>
+              </span>
+            );
+          })()}
         </Row>
         {/* Le lien transfer.it du dossier et sa date (MAV, 28/09) : sur la
             dernière version toujours ; sur une ancienne, seulement s'il en a un. */}

@@ -19,6 +19,8 @@
 //
 // Module sans directive serveur : les écrans et les actions le lisent pareil.
 
+import { rendementPotentiel } from "./mail-commercialisation";
+
 export type ResumeImmeuble = {
   ville?: string;
   /** Code postal : le département en est tiré. */
@@ -88,7 +90,10 @@ const champs = (im: Record<string, unknown>): ResumeImmeuble => {
     ville: typeof im.adresse_ville === "string" ? im.adresse_ville : undefined,
     codePostal: typeof im.adresse_zipcode === "string" ? im.adresse_zipcode : undefined,
     surface: n(im.surface_carrez),
-    renta: n(im.fin_renta_ba),
+    /* Le rendement annoncé est le POTENTIEL (MAV : #452, #594, 02/11) :
+       loyers potentiels ÷ (prix HAI + travaux), recalculé sur le prix du
+       jour. À défaut de loyers potentiels, l'actuel. */
+    renta: rendementPotentiel(n(im.fin_loyers_an_max) ?? 0, n(im.prix_hai), n(im.fin_travaux)) ?? n(im.fin_renta_ba),
     prixHai: n(im.prix_hai),
   };
 };
