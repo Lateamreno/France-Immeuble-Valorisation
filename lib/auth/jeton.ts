@@ -84,9 +84,6 @@ export function cheminPublic(chemin: string): boolean {
     /* Le lien de désinscription des campagnes : le destinataire n'a pas de
        compte, son jeton suffit (lib/bo/campagnes-actions.ts). */
     || chemin === "/desabonnement" || chemin === "/api/desabonnement"
-    /* « Intéressé / Pas intéressé » des e-mails (02/11) : le lien est signé
-       pour UNE proposition et UNE réponse (lib/bo/reponse-client.ts). */
-    || chemin === "/reponse"
     /* Le relais des photos sert aussi Plein Bail, le site et les dossiers
        envoyés : à refermer par des liens signés (CLAUDE.md §10 bis). */
     || chemin === "/api/photo"
