@@ -158,8 +158,9 @@ export async function relancesDues(
         prix: typeof im.prix_hai === "number"
           ? `${Math.round(im.prix_hai as number).toLocaleString("fr-FR")} €`
           : undefined,
-        resume: resumeDepuisDoc(im),
-        court: objetDepuisDoc(im),
+        /* Les chiffres du dossier qui part (MAV, 03/11), pas ceux de la fiche. */
+        resume: resumeDepuisDoc(im, { dossier: dossiers.get(id) }),
+        court: objetDepuisDoc(im, dossiers.get(id)),
         /* Le lien transfer.it du dernier dossier et sa date (MAV, 28/09), et
            si ce dossier a un PDF à joindre. */
         ...(() => {

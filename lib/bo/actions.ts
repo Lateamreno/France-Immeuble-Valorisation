@@ -16,6 +16,7 @@ import { jourIso } from "@/lib/format";
 import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, type Societe } from "@/lib/mandat";
 import type { BienMail } from "@/lib/bo/mail-commercialisation";
 import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
+import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -2506,10 +2507,36 @@ async function fabriquerPdfDossier(immeubleId: string, dossierId: string) {
       "Modified Date": now,
     }),
   });
+  /* MAV (03/11) : « il faut que les rendements et prix au m² correspondent
+     toujours au dossier que j'envoie ». On garde, sur le dossier, les chiffres
+     que ce PDF imprime — calculés par la fonction même qui le met en page —
+     et c'est eux que l'e-mail, le SMS et la carte RCS reprennent
+     (lib/bo/chiffres-dossier.ts). Un échec ici ne coûte pas le PDF : le
+     dossier garde ses chiffres de création. */
+  let chiffresPdf: Record<string, number> | undefined;
+  try {
+    const [{ getBien }, { construireDossierVente }] = await Promise.all([
+      import("@/lib/bubble/server"),
+      import("@/lib/bo/dossier-vente"),
+    ]);
+    const [b, doc] = await Promise.all([getBien(immeubleId), bqOne("bo_dossier", dossierId)]);
+    if (b && doc) {
+      const dv = construireDossierVente(b, doc, null);
+      const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
+      chiffresPdf = Object.fromEntries(Object.entries({
+        prix_hai: num(dv.prix.hai), prix_nv: num(dv.prix.nv), honos_pct: num(dv.prix.taux),
+        surface: num(dv.surface), prix_m2: num(dv.prix.m2), occupation: num(dv.occupation),
+        renta_actuelle: num(dv.rendement.actuel.brut), renta_potentielle: num(dv.rendement.potentiel.brut),
+        travaux: num(dv.prix.travaux),
+      }).filter(([, v]) => v !== undefined)) as Record<string, number>;
+    }
+  } catch (e) {
+    console.warn("[dossier] chiffres du PDF non relevés", e instanceof Error ? e.message : e);
+  }
   await rpc("bo_patch_doc", {
     p_table: "bo_dossier",
     p_id: dossierId,
-    p_patch: { pdf: `storage:${path}`, FILE: docId },
+    p_patch: { pdf: `storage:${path}`, FILE: docId, ...(chiffresPdf ? { chiffres_pdf: { ...chiffresPdf, le: now } } : {}) },
   });
   refresh(immeubleId);
   return { documentId: docId, url: `/api/photo?s=${encodeURIComponent(path)}`, ko: Math.round(pdf.length / 1024) };
@@ -4799,6 +4826,9 @@ export async function createCommercialisation(input: CommercialisationInput) {
       ok_acheteurs: true,
       diffusion_offmarket: true,
       PROPOSITIONs: propositions.map((p) => p.id),
+      /* Les grades des cibles : ils décident de la colonne (A/B ou tous)
+         quand les e-mails partent — pas avant. */
+      notes_cibles: input.cibles.map((c) => c.note ?? null),
       "Created By": input.agentId ?? null,
       "Created Date": now,
       "Modified Date": now,
@@ -4821,24 +4851,15 @@ export async function createCommercialisation(input: CommercialisationInput) {
     }).catch(() => undefined);
   }
 
-  /* L'immeuble change de colonne sur le dashboard. C'est le geste qui manquait :
-     on créait les propositions, et le bien restait en « Préparation mandat et
-     dossier » — donc le tableau de bord ne montrait jamais où en était
-     réellement la commercialisation. */
-  const im = await bqOne("bo_immeuble", input.immeubleId).catch(() => null);
-  const cible = im ? colonneApres(String(im.Statut ?? ""), input.cibles.map((c) => c.note)) : null;
-  if (cible) {
-    await rpc("bo_patch_doc", {
-      p_table: "bo_immeuble",
-      p_id: input.immeubleId,
-      p_patch: { Statut: cible, "Modified Date": now },
-    }).catch(() => undefined);
-  }
-
+  /* L'immeuble ne change PLUS de colonne ici (MAV, 03/11) : « je ne veux pas
+     que l'immeuble passe en commercialisé A et B tant que je ne leur ai pas
+     envoyé les e-mails, sinon ça peut me donner l'impression que j'ai fait le
+     travail alors que non ». Le passage se fait au premier e-mail parti
+     (`statutApresEnvoi`) ; les grades des cibles sont gardés pour ce moment. */
   revalidatePath("/", "layout");
   revalidatePath(`/bien/${input.immeubleId}`);
   revalidatePath("/propositions");
-  return { commercialisationId: commId, propositions: propositions.length, statut: cible ?? undefined };
+  return { commercialisationId: commId, propositions: propositions.length, statut: undefined as string | undefined };
 }
 
 /**
@@ -5051,6 +5072,9 @@ export async function envoyerMailsCommercialisation(input: {
       }).catch(() => undefined);
     }
 
+    /* Le premier e-mail parti fait passer le bien en commercialisation sur
+       le dashboard (MAV, 03/11) — jamais la seule création des propositions. */
+    if (envoyes > 0) await statutApresEnvoi(input.immeubleId, input.commId).catch(() => undefined);
     if (fait >= total) revalidatePath(`/bien/${input.immeubleId}`);
     return {
       ok: envoyes > 0 || adresses.length === 0,
@@ -5159,6 +5183,92 @@ export async function apercuRcs(bien: string) {
   const c = await preparerCarte(id);
   if (!c) return { ok: false as const, message: "Bien introuvable." };
   return { ok: true as const, carte: { ...c, photo: c.photo ? photoUrlRcs(c.photo) : undefined } };
+}
+
+/* ---------- RCS de la commercialisation (MAV, 03/11) ----------
+   « Dans la commercialisation c'est des SMS et pas des RCS. Tu peux modifier
+   pour qu'on puisse envoyer les RCS comme on a dit hier, et que ça m'affiche
+   la façon dont ça va les afficher au client. » La carte est celle de l'essai
+   (lib/bo/rcs.ts), signée par l'agent du bien, avec les chiffres du dossier
+   qui part et le lien transfer.it saisi à l'écran. Un téléphone sans RCS
+   reçoit le SMS de repli. Rien ne part sans le clic de l'agent (§7.1). */
+
+async function signataireDuBien(immeubleId: string): Promise<{ nom: string; tel?: string } | undefined> {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  const { getAgents } = await import("@/lib/bubble/server");
+  const a = (await getAgents().catch(() => [])).find((x) => x.id === String(im?.AGENT ?? ""));
+  return a?.name ? { nom: a.name, tel: a.tel } : undefined;
+}
+
+/** La carte telle que l'acquéreur la verra — rien n'est envoyé. */
+export async function apercuRcsCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string }) {
+  const { preparerCarte } = await import("./rcs");
+  const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
+    dossierId: input.dossierId, lien: input.lien,
+  });
+  if (!c) return { ok: false as const, message: "Bien introuvable." };
+  return { ok: true as const, carte: { ...c, photo: c.photo ? photoUrlRcs(c.photo) : undefined } };
+}
+
+/** La carte à un seul numéro, pour la voir sur son propre téléphone. Rien n'est marqué. */
+export async function envoyerRcsEssaiCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string; numero: string }) {
+  const { telE164 } = await import("./matching");
+  const numero = telE164(input.numero);
+  if (!numero) return { ok: false as const, message: `Numéro illisible : « ${input.numero} ».` };
+  try {
+    const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
+    const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
+      dossierId: input.dossierId, lien: input.lien,
+    });
+    if (!c) return { ok: false as const, message: "Bien introuvable." };
+    const r = await envoyerCarteRcs(c, [numero], { campagne: `Essai RCS ${input.immeubleId}` });
+    return { ok: true as const, campagne: r.campagne, agent: r.agent };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Les RCS de la commercialisation, à tous les numéros ciblés, en une campagne. */
+export async function envoyerRcsCommercialisation(input: {
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[];
+}) {
+  if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
+  try {
+    const { stopsMailingvox } = await import("./sms");
+    const stops = new Set((await stopsMailingvox().catch(() => [])).map((n) => n.replace(/^00/, "+")));
+    const retenus = [...new Set(input.numeros)].filter((n) => !stops.has(n));
+    const ecartes = input.numeros.length - retenus.length;
+    if (retenus.length === 0) return { ok: false as const, message: "Tous les numéros ciblés se sont désinscrits (STOP)." };
+
+    const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
+    const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
+      dossierId: input.dossierId, lien: input.lien,
+    });
+    if (!c) return { ok: false as const, message: "Bien introuvable." };
+    const r = await envoyerCarteRcs(c, retenus, { campagne: `Commercialisation ${input.commId}` });
+    const now = new Date().toISOString();
+    /* `sms_campagne` : c'est par lui que les boutons touchés et les réponses
+       au SMS de repli retrouvent leur commercialisation (sms-retours.ts). */
+    await rpc("bo_patch_doc", {
+      p_table: "bo_commercialisation",
+      p_id: input.commId,
+      p_patch: {
+        prop_sms_sent: true,
+        sms_canal: "rcs",
+        sms_campagne: r.campagne ?? null,
+        rcs_campagne: r.campagne ?? null,
+        sms_envoyes: retenus.length,
+        sms_date: now,
+        rcs_titre: c.titre,
+        rcs_repli: c.repli,
+        "Modified Date": now,
+      },
+    }).catch(() => undefined);
+    revalidatePath(`/bien/${input.immeubleId}`);
+    return { ok: true as const, envoyes: retenus.length, ecartesStop: ecartes, campagne: r.campagne, agent: r.agent };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /* La photo vue dans l'aperçu passe par le relais du BO, comme partout. */
@@ -5320,6 +5430,123 @@ export async function envoyerSmsCommercialisation(input: {
   }
 }
 
+/**
+ * La colonne du dashboard suit les e-mails PARTIS, pas les propositions créées
+ * (MAV, 03/11). Appelée au premier e-mail envoyé, ou quand l'agent marque les
+ * e-mails envoyés à la main. Garde le statut d'avant, pour qu'une
+ * commercialisation supprimée sache où ramener le bien.
+ */
+async function statutApresEnvoi(immeubleId: string, commId: string) {
+  const [im, comm] = await Promise.all([
+    bqOne("bo_immeuble", immeubleId).catch(() => null),
+    bqOne("bo_commercialisation", commId).catch(() => null),
+  ]);
+  if (!im) return;
+  const notes = Array.isArray(comm?.notes_cibles) ? (comm!.notes_cibles as (string | null)[]).map((n) => n ?? undefined) : [];
+  const avant = String(im.Statut ?? "");
+  const cible = colonneApres(avant, notes);
+  if (!cible) return;
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { Statut: cible, "Modified Date": now } });
+  if (comm && !comm.statut_avant) {
+    await rpc("bo_patch_doc", { p_table: "bo_commercialisation", p_id: commId, p_patch: { statut_avant: avant } }).catch(() => undefined);
+  }
+  refresh(immeubleId);
+}
+
+/**
+ * Annule ET supprime une commercialisation dont rien n'est parti (MAV, 03/11 :
+ * « tant que les e-mails ne sont pas envoyés, je veux pouvoir annuler et
+ * supprimer une commercialisation »).
+ *
+ * Refusé dès qu'un e-mail, un SMS ou un RCS est parti, ou qu'une proposition a
+ * avancé (intérêt, visite, offre) : à ce stade quelqu'un a reçu quelque chose,
+ * et l'effacer réécrirait l'histoire. Sinon :
+ *   • les propositions sont supprimées (récupérables dans bo_trash) ;
+ *   • chaque recherche oublie que le bien lui a été proposé — sauf si une
+ *     autre proposition du même bien la vise encore ;
+ *   • le bien revient au statut d'avant s'il avait été poussé en
+ *     commercialisation (ancien comportement, à la création) et qu'aucune
+ *     autre commercialisation n'est partie ;
+ *   • les comptes clients du site sont redéposés (refresh).
+ * Même règle que les mandats : l'agent du dossier, ou la direction.
+ */
+export async function supprimerCommercialisation(commId: string) {
+  const comm = await bqOne("bo_commercialisation", commId).catch(() => null);
+  if (!comm) return { ok: false as const, message: "Commercialisation introuvable." };
+  const immeubleId = String(comm.IMMEUBLE ?? "");
+  const im = immeubleId ? await bqOne("bo_immeuble", immeubleId).catch(() => null) : null;
+  const { refusChangementAgent } = await import("@/lib/auth/comptes");
+  const agent = typeof comm.AGENT === "string" && comm.AGENT ? comm.AGENT : typeof im?.AGENT === "string" ? im.AGENT : null;
+  if (await refusChangementAgent(agent)) {
+    return { ok: false as const, message: "Cette commercialisation est celle d'un collègue : seul lui, ou la direction, peut la supprimer." };
+  }
+  const mailsPartis = comm.prop_sent === true
+    || (typeof comm.mails_envoyes === "number" && comm.mails_envoyes > 0)
+    || (Array.isArray(comm.mails_faits) && comm.mails_faits.length > 0);
+  if (mailsPartis) {
+    return { ok: false as const, message: "Des e-mails sont déjà partis : cette commercialisation ne se supprime plus. Ses relances, elles, s'arrêtent proposition par proposition." };
+  }
+  if (comm.prop_sms_sent === true || comm.sms_campagne || comm.rcs_campagne) {
+    return { ok: false as const, message: "Des SMS ou des RCS sont déjà partis : cette commercialisation ne se supprime plus." };
+  }
+  const propIds = Array.isArray(comm.PROPOSITIONs) ? (comm.PROPOSITIONs as unknown[]).map(String) : [];
+  const props = await bqIn("bo_proposition", propIds);
+  const avancees = props.filter((p) => String(p.Statut ?? "Envoyée") !== "Envoyée");
+  if (avancees.length > 0) {
+    return {
+      ok: false as const,
+      message: `${avancees.length} proposition${avancees.length > 1 ? "s ont" : " a"} déjà avancé (${[...new Set(avancees.map((p) => String(p.Statut)))].join(", ")}) : la commercialisation ne se supprime plus.`,
+    };
+  }
+
+  const H = { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY}` };
+  /* Les recherches : on retire le bien de « déjà proposé » sauf si une autre
+     proposition de ce bien (hors celles qu'on supprime) les vise encore. */
+  const aSupprimer = new Set(propIds);
+  const recherches = [...new Set(props.flatMap((p) => (Array.isArray(p.RECHERCHEs) ? (p.RECHERCHEs as unknown[]).map(String) : [])))];
+  for (const rid of recherches) {
+    const autres = SB_KEY ? ((await (await fetch(
+      `${SB_URL}/rest/v1/bo_proposition?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->RECHERCHEs=cs.${encodeURIComponent(JSON.stringify([rid]))}&limit=50`,
+      { headers: H, cache: "no-store" },
+    )).json().catch(() => [])) as { id: string }[]) : [];
+    if (autres.some((x) => !aSupprimer.has(x.id))) continue;
+    await rpc("bo_remove_ref", { p_table: "bo_recherche", p_id: rid, p_key: "IMMEUBLEs_proposed", p_value: immeubleId }).catch(() => undefined);
+  }
+  for (const id of propIds) {
+    await rpc("bo_delete_doc", { p_table: "bo_proposition", p_id: id }).catch(() => undefined);
+  }
+  await rpc("bo_delete_doc", { p_table: "bo_commercialisation", p_id: commId });
+
+  /* Le statut : seulement s'il avait été poussé par CETTE commercialisation
+     (ancien comportement, à la création) et qu'aucune autre n'est partie. */
+  let statutRendu: string | undefined;
+  if (im && immeubleId) {
+    const st = String(im.Statut ?? "");
+    const pousse = /^[56] - Commercialis/.test(st);
+    const autres = SB_KEY ? ((await (await fetch(
+      `${SB_URL}/rest/v1/bo_commercialisation?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&limit=200`,
+      { headers: H, cache: "no-store" },
+    )).json().catch(() => [])) as { id: string; data: Record<string, unknown> }[]) : [];
+    const autrePartie = autres.some((c) => c.id !== commId
+      && (c.data.prop_sent === true || (typeof c.data.mails_envoyes === "number" && c.data.mails_envoyes > 0) || c.data.prop_sms_sent === true));
+    if (pousse && !autrePartie) {
+      statutRendu = typeof comm.statut_avant === "string" && comm.statut_avant ? comm.statut_avant : STATUTS[4];
+      await rpc("bo_patch_doc", {
+        p_table: "bo_immeuble", p_id: immeubleId,
+        p_patch: { Statut: statutRendu, "Modified Date": new Date().toISOString() },
+      }).catch(() => undefined);
+    }
+  }
+  refresh(immeubleId);
+  revalidatePath("/propositions");
+  return {
+    ok: true as const,
+    message: `Commercialisation supprimée : ${propIds.length} proposition${propIds.length > 1 ? "s" : ""} effacée${propIds.length > 1 ? "s" : ""}`
+      + (statutRendu ? `, le bien revient en « ${statutRendu} ».` : "."),
+  };
+}
+
 /** Marque les e-mails ou les SMS d'une commercialisation comme envoyés. */
 export async function markCommercialisationSent(
   immeubleId: string,
@@ -5334,6 +5561,7 @@ export async function markCommercialisationSent(
       "Modified Date": new Date().toISOString(),
     },
   });
+  if (canal === "mail") await statutApresEnvoi(immeubleId, commId).catch(() => undefined);
   revalidatePath(`/bien/${immeubleId}`);
 }
 
@@ -5468,6 +5696,8 @@ export async function biensPourProposition(immeubleIds: string[]): Promise<BienP
     const d = dossiers.get(id);
     const lien = lienDuDossier(d);
     const src = d ? sourcePdfDossier(d) : null;
+    /* MAV (03/11) : les chiffres du texte sont ceux du dossier joint. */
+    const c = chiffresDossier(d);
     out.push({
       id,
       libelle: `${s(im.adresse_ville)}${s(im.adresse_zipcode) ? ` (${s(im.adresse_zipcode)})` : ""} - ${[s(im.adresse_numero_rue), s(im.adresse_rue)].filter(Boolean).join(" ")}`.trim(),
@@ -5475,13 +5705,13 @@ export async function biensPourProposition(immeubleIds: string[]): Promise<BienP
       mail: {
         ville: s(im.adresse_ville) || undefined,
         codePostal: im.adresse_zipcode,
-        surfaceCarrez: im.surface_carrez,
-        prixHai,
-        prixM2: (prixHai && n(im.surface_carrez) ? prixHai / n(im.surface_carrez)! : undefined) ?? n(im.prix_hai_m2),
-        occupation: im.occupation_lots,
-        renta,
+        surfaceCarrez: c?.surface ?? im.surface_carrez,
+        prixHai: c?.prixHai ?? prixHai,
+        prixM2: c?.prixM2 ?? (prixHai && n(im.surface_carrez) ? prixHai / n(im.surface_carrez)! : undefined) ?? n(im.prix_hai_m2),
+        occupation: c?.occupation ?? im.occupation_lots,
+        renta: c?.rentaActuelle ?? renta,
         /* Retour #594 : loyers potentiels ÷ (prix HAI + travaux). */
-        rentaPotentielle: rendementPotentiel(loyersMax * 12, prixHai, n(im.fin_travaux)),
+        rentaPotentielle: c?.rentaPotentielle ?? rendementPotentiel(loyersMax * 12, prixHai, n(im.fin_travaux)),
         destinations: lots.map((l) => s(l.Destination)).filter(Boolean),
         agentNom: agent?.name,
         agentTel: agent?.tel,

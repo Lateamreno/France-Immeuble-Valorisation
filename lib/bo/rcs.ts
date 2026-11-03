@@ -18,7 +18,8 @@
 import sharp from "sharp";
 import { villeArrondissement } from "@/lib/ville";
 import { departement } from "@/lib/diffusion";
-import { lienDuDossier } from "./lien-dossier";
+import { etatLien, lienDuDossier } from "./lien-dossier";
+import { chiffresDossier } from "./chiffres-dossier";
 import { NUMERO_STOP } from "./sms";
 
 const BASE = "https://v3.mailingvox.com/api";
@@ -104,7 +105,13 @@ export const longueurRepli = (t: string) => [...t].reduce((s, c) => s + ("|^€{
  * Prépare la carte d'un bien, sans rien envoyer : c'est ce que l'écran montre
  * avant le clic, et exactement ce qui partira.
  */
-export async function preparerCarte(immeubleId: string, signataire?: { nom: string; tel?: string }): Promise<CarteRcs | null> {
+export async function preparerCarte(
+  immeubleId: string,
+  signataire?: { nom: string; tel?: string },
+  /* La commercialisation : le dossier qui part (ses chiffres, MAV 03/11) et le
+     lien transfer.it tel qu'il est saisi à l'écran. */
+  envoi: { dossierId?: string; lien?: string } = {},
+): Promise<CarteRcs | null> {
   const enc = encodeURIComponent(immeubleId);
   const [im] = (await lire<{ data: Doc }>(`bo_immeuble?select=data&id=eq.${enc}&limit=1`)).map((r) => r.data);
   if (!im) return null;
@@ -118,24 +125,32 @@ export async function preparerCarte(immeubleId: string, signataire?: { nom: stri
   const dept = departement(cp) || S(im.adresse_dpt) || "";
   const type = typeCarte(im.Destinations);
   /* MAV (02/11) : « Immeuble d'habitation · Paris 18ème (75) - Prix HAI ». */
-  const prixTitre = N(im.prix_hai);
+
+  /* Le dossier qui part : celui de la commercialisation, sinon le dernier qui
+     porte un lien transfer.it (MAV : pas de lien france-immeuble.fr). Un
+     dossier sans lien n'empêche pas l'envoi : la carte part avec deux boutons
+     au lieu de trois, et l'écran le dit. */
+  const tries = dossiers.map((d) => d.data).sort((a, b) => (N(b.version) ?? 0) - (N(a.version) ?? 0));
+  const dossier = (envoi.dossierId ? tries.find((d) => S(d._id) === envoi.dossierId) : undefined)
+    ?? tries.find((d) => S(d.lien_partage)) ?? tries[0];
+  const lienSaisi = envoi.lien?.trim();
+  /* Le lien saisi à l'écran l'emporte ; s'il est celui du dossier, il garde
+     sa date d'expiration (un lien périmé ne fait pas de bouton). */
+  const lien = lienSaisi && lienSaisi !== S(dossier?.lien_partage)
+    ? etatLien(lienSaisi, undefined)
+    : lienDuDossier(dossier);
+
+  /* MAV (03/11) : « il faut que les rendements et prix au m² correspondent
+     toujours au dossier que j'envoie ». Les chiffres de la carte sont ceux du
+     dossier ; la fiche ne sert qu'à défaut. */
+  const c = chiffresDossier(dossier);
+  const surface = c?.surface ?? N(im.surface_carrez) ?? N(im.surface_sol);
+  /* La renta potentielle : tout loué au loyer max, ÷ (prix HAI + travaux). */
+  const renta = c?.rentaPotentielle ?? N(im.fin_renta_bm);
+  const prixHai = c?.prixHai ?? N(im.prix_hai);
+
   const titre = `${natureCarte(type)} · ${ville}${dept ? ` (${dept})` : ""}`
-    + (prixTitre ? ` - ${fr(Math.round(prixTitre))} € HAI` : "");
-
-  const surface = N(im.surface_carrez) ?? N(im.surface_sol);
-  /* La renta potentielle, celle des cartes du tableau de bord et du site :
-     tout loué au loyer max, ÷ (prix HAI + travaux). */
-  const renta = N(im.fin_renta_bm);
-  const prixHai = N(im.prix_hai);
-
-  /* Le dernier dossier qui porte un lien transfer.it (MAV : pas de lien
-     france-immeuble.fr). Un dossier sans lien n'empêche pas l'envoi : la
-     carte part avec deux boutons au lieu de trois, et l'écran le dit. */
-  const dossier = dossiers
-    .map((d) => d.data)
-    .sort((a, b) => (N(b.version) ?? 0) - (N(a.version) ?? 0))
-    .find((d) => S(d.lien_partage));
-  const lien = lienDuDossier(dossier);
+    + (prixHai ? ` - ${fr(Math.round(prixHai))} € HAI` : "");
 
   const sig = signataire ?? { nom: "Marc-Antoine VOCI", tel: "0630768381" };
   const telAffiche = sig.tel ? sig.tel.replace(/^\+33/, "0").replace(/\D/g, "").replace(/(\d{2})(?=\d)/g, "$1 ") : undefined;

@@ -155,10 +155,23 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
   /* Les propositions : celles de l'année, et toutes celles dont le bien est
      encore en vente. Une proposition de 2019 sur un bien vendu n'apprend rien. */
   const ilYaUnAn = Date.now() - 365 * 86_400_000;
+  /* Une proposition dont la commercialisation n'est pas encore PARTIE n'existe
+     pas pour le client (MAV, 03/11) : créée, elle peut encore être supprimée,
+     et le client ne doit pas la voir sur son compte avant d'avoir reçu
+     l'e-mail. Seules les commercialisations du BO sont concernées : celles de
+     l'ancien BO ne tenaient pas ces compteurs. */
+  const commIds = [...new Set(propositions.map((p) => S(p.data.COMMERCIALISATION)).filter((x): x is string => !!x && x.startsWith("app_")))];
+  const commsLues = commIds.length
+    ? await lireBo(`bo_commercialisation?select=id,data&id=in.(${encodeURIComponent(commIds.map((x) => `"${x}"`).join(","))})`)
+    : [];
+  const nonParties = new Set(commsLues
+    .filter((c) => !(c.data.prop_sent === true || (N(c.data.mails_envoyes) ?? 0) > 0 || c.data.prop_sms_sent === true))
+    .map((c) => c.id));
   const lp: Record<string, unknown>[] = [];
   const vus = new Set<string>();
   const propsDeposees: { p: Doc; etat: string }[] = [];
   for (const p of propositions) {
+    if (nonParties.has(S(p.data.COMMERCIALISATION) ?? "")) continue;
     const imId = S(p.data.IMMEUBLE);
     if (!imId || vus.has(imId)) continue;
     const c = await carte(imId);

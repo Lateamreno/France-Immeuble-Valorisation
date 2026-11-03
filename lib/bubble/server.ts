@@ -2513,8 +2513,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
         commentaire: S2(p.commentaire),
         immeuble: im ? {
           id: String(p.IMMEUBLE), libelle: imLabel(im), prix: euros(im.prix_hai) ?? undefined,
-          resume: resumeDepuisDoc(im),
-          court: objetDepuisDoc(im),
+          resume: resumeDepuisDoc(im, { dossier: derniers.get(String(p.IMMEUBLE)) }),
+          court: objetDepuisDoc(im, derniers.get(String(p.IMMEUBLE))),
           lien: S2(derniers.get(String(p.IMMEUBLE))?.lien_partage),
           lienExpireLe: S2(derniers.get(String(p.IMMEUBLE))?.lien_expire_le),
           dossierId: S2(derniers.get(String(p.IMMEUBLE))?._id),

@@ -15,7 +15,7 @@ import type { HistoriqueAcheteurs } from "@/components/acheteurs";
 import { dmy, euros, keur } from "@/lib/format";
 import {
   addSuivi, changerProprietaire, chargerAcheteurs, chargerHistoriqueAcheteurs, ouvrirEstimation, reactiver,
-  setApporteur, setPropositionStatut, setStatut, supprimerEstimation, updateBien,
+  setApporteur, setPropositionStatut, setStatut, supprimerCommercialisation, supprimerEstimation, updateBien,
   updateContact,
 } from "@/lib/bo/actions";
 import { ModaleMoyenContact } from "@/components/dashboard-modales";
@@ -59,6 +59,8 @@ import { ContactPicker } from "@/components/contact-picker";
 import { SocietePicker } from "@/components/societe-picker";
 import { useQuestion } from "@/components/modale";
 import { ecouterMemoire, oublier } from "@/lib/memoire";
+import { ecartsDossierMandat, mandatDeReference } from "@/lib/bo/chiffres-dossier";
+import { BoutonSupprimerCommercialisation } from "@/components/supprimer-commercialisation";
 import { ajouterProprietaire, definirSocieteDetentrice, retirerProprietaire } from "@/lib/bo/societes-actions";
 import { sousTitreSociete } from "@/lib/societes";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
@@ -233,6 +235,7 @@ export function BienFiche({
    */
   cleEcran?: string;
 }) {
+  const router = useRouter();
   /* L'estimation ouverte, s'il y en a une : elle vit ici, pas dans une route. */
   const [est, setEst] = useState<EcranEstimation | null>(ouvrir ?? null);
   const [chargement, setChargement] = useState<string | null>(null);
@@ -399,31 +402,57 @@ export function BienFiche({
   const [cleAch, setCleAch] = useState(0);
   const { confirmer: confirmerComm, question: questionComm } = useQuestion();
   const annulerComm = async () => {
+    /* Ce que la mémoire sait de la commercialisation ouverte : ses matchings,
+       et — si les propositions sont déjà créées — son identifiant et ce qui
+       en est parti. */
+    const mids = new Set<string>();
+    let commId: string | undefined;
+    let partie = false;
+    try {
+      const s = window.sessionStorage;
+      const lire = (k: string) => { const v = s.getItem(k); return v ? JSON.parse(v) : undefined; };
+      const m = lire(`${memoAch}:matchId`);
+      if (m) mids.add(String(m));
+      const r = lire(`${memoAch}:resultat`);
+      if (r?.matchId) mids.add(String(r.matchId));
+      const rp = lire(`${memoAch}:reprise`);
+      if (rp?.matchId) mids.add(String(rp.matchId));
+      if (rp?.commId) commId = String(rp.commId);
+      for (const mid of mids) {
+        commId = commId ?? (lire(`com:${mid}:commId`) ? String(lire(`com:${mid}:commId`)) : undefined);
+        if (lire(`com:${mid}:mails`) === true || lire(`com:${mid}:sms-envoyes`) === true) partie = true;
+      }
+    } catch { /* mémoire illisible : on efface quand même ce qui est au nom du bien */ }
+    /* MAV (03/11) : « tant que les e-mails ne sont pas envoyés je veux pouvoir
+       annuler et supprimer une commercialisation ». Créée et pas partie :
+       annuler la supprime. Partie : on ferme l'écran, l'historique reste. */
+    const supprimer = !!commId && !partie;
     const ok = await confirmerComm(
       <>
         {commEnCours === "commercialisation"
           ? "Annuler la commercialisation en cours ?"
           : "Abandonner la recherche d'acquéreurs en cours ?"}
         <br /><br />
-        La sélection et les textes non envoyés sont perdus. Les propositions déjà
-        créées et les e-mails déjà partis restent, eux, dans l&apos;historique.
+        {supprimer
+          ? <>Rien n&apos;est parti : la commercialisation et ses propositions seront <b>supprimées</b>, et les recherches visées pourront de nouveau recevoir ce bien.</>
+          : commId
+            ? <>Des envois sont déjà partis : l&apos;écran se ferme, la commercialisation reste dans l&apos;historique.</>
+            : <>La sélection et les textes non envoyés sont perdus.</>}
       </>,
-      { titre: commEnCours === "commercialisation" ? "Commercialisation en cours" : "Recherche en cours", oui: "Annuler", non: "Garder ouverte", danger: true },
+      { titre: commEnCours === "commercialisation" ? "Commercialisation en cours" : "Recherche en cours", oui: supprimer ? "Supprimer" : "Annuler", non: "Garder ouverte", danger: true },
     );
     if (!ok) return;
-    const mids = new Set<string>();
-    try {
-      const s = window.sessionStorage;
-      const m = s.getItem(`${memoAch}:matchId`);
-      if (m) { const v = JSON.parse(m); if (v) mids.add(String(v)); }
-      const r = s.getItem(`${memoAch}:resultat`);
-      if (r) { const v = JSON.parse(r); if (v?.matchId) mids.add(String(v.matchId)); }
-      const rp = s.getItem(`${memoAch}:reprise`);
-      if (rp) { const v = JSON.parse(rp); if (v?.matchId) mids.add(String(v.matchId)); }
-    } catch { /* mémoire illisible : on efface quand même ce qui est au nom du bien */ }
+    if (supprimer) {
+      const r = await supprimerCommercialisation(commId!);
+      if (!r.ok) {
+        await confirmerComm(<>{r.message}</>, { titre: "Suppression impossible", oui: "Compris", non: "Fermer" });
+        return;
+      }
+    }
     mids.forEach((m) => oublier(`com:${m}:`));
     oublier(`${memoAch}:`);
     setCleAch((k) => k + 1);
+    router.refresh();
   };
   /* Le sous-onglet aussi : revenir sur « État locatif » sans revenir sur
      « Baux », c'est encore avoir perdu sa place. Seul celui de la rubrique
@@ -2136,6 +2165,20 @@ function DossiersSection({ b, onAller }: { b: BienData; onAller: (s: string) => 
             );
           })()}
         </Row>
+        {/* MAV (03/11) : « tu dois me dire s'il y a une différence entre le
+            dossier que j'envoie et le mandat ». Sur la dernière version, celle
+            qui part. */}
+        {i === 0 && (() => {
+          const m = mandatDeReference(b.mandats);
+          const e = ecartsDossierMandat(d, m);
+          if (!m || e.length === 0) return null;
+          return (
+            <div className="dif-simu">
+              <b>Ce dossier diffère du mandat {m.numero ? `n°${String(m.numero)}` : ""}</b> —{" "}
+              {e.map((x) => `${x.quoi.toLowerCase()} ${x.dossier} au dossier, ${x.mandat} au mandat`).join(" ; ")}.
+            </div>
+          );
+        })()}
         {/* Le lien transfer.it du dossier et sa date (MAV, 28/09) : sur la
             dernière version toujours ; sur une ancienne, seulement s'il en a un. */}
         {(i === 0 || typeof d.lien_partage === "string") && (
@@ -2435,7 +2478,9 @@ function EcranCommercialisations({ b, onCommercialiser }: {
   onCommercialiser: () => void;
 }) {
   const { ach, erreur, chargement } = useVivier(String(b.im._id));
-  const rows = ach?.commercialisations ?? [];
+  const [supprimees, setSupprimees] = useState<Set<string>>(() => new Set());
+  const [messageSuppr, setMessageSuppr] = useState<string | null>(null);
+  const rows = (ach?.commercialisations ?? []).filter((c) => !supprimees.has(String(c._id)));
   return (
     <>
       <TitreAcheteurs cle="commercialisations" />
@@ -2458,6 +2503,7 @@ function EcranCommercialisations({ b, onCommercialiser }: {
         }}>
         + Commercialiser
       </button>
+      {messageSuppr && <div className="asst-ok">{messageSuppr}</div>}
       {chargement && <div className="fempty">Chargement des commercialisations…</div>}
       {erreur && <div className="fempty">Les commercialisations n&apos;ont pas pu être chargées.</div>}
       {ach && rows.length === 0 && <div className="fempty">Aucune commercialisation lancée sur cet immeuble.</div>}
@@ -2482,8 +2528,13 @@ function EcranCommercialisations({ b, onCommercialiser }: {
                 {c.prop_sent === true ? "E-mails envoyés" : "E-mails à envoyer"}
               </div>
               <div className={c.prop_sms_sent === true ? "vert" : "orange"}>
-                {c.prop_sms_sent === true ? "SMS envoyés" : "SMS à envoyer"}
+                {c.prop_sms_sent === true ? (c.sms_canal === "rcs" ? "RCS envoyés" : "SMS envoyés") : "RCS à envoyer"}
               </div>
+              {/* MAV (03/11) : tant que rien n'est parti, elle s'annule et se supprime. */}
+              <BoutonSupprimerCommercialisation c={c} onFait={(msg) => {
+                setSupprimees((x) => new Set(x).add(String(c._id)));
+                setMessageSuppr(msg);
+              }} />
             </div>
           </div>
         );
@@ -2506,8 +2557,8 @@ function EcranPropositions({ b }: { b: BienData }) {
         immeubleId={bien.id}
         libelle={[b.ville, b.adresse].filter(Boolean).join(" — ") || "Immeuble"}
         prix={b.prix}
-        resume={resumeDepuisDoc(b.im)}
-        court={objetDepuisDoc(b.im)}
+        resume={resumeDepuisDoc(b.im, { dossier: b.dossiers[0] })}
+        court={objetDepuisDoc(b.im, b.dossiers[0])}
         lien={typeof b.dossiers[0]?.lien_partage === "string" ? (b.dossiers[0].lien_partage as string) : undefined}
         lienExpireLe={typeof b.dossiers[0]?.lien_expire_le === "string" ? (b.dossiers[0].lien_expire_le as string) : undefined}
         dossierId={b.dossiers[0] ? String(b.dossiers[0]._id) : undefined}
@@ -2597,7 +2648,7 @@ function ModaleRelanceImmeuble({ b, onFermer }: { b: BienData; onFermer: () => v
      donc une seule rédaction, relue une fois, qui part à chacun. */
   const dossier = b.dossiers[0];
   const immeubleRelance = {
-    propositionId: "", immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im), court: objetDepuisDoc(b.im), autresIds: [],
+    propositionId: "", immeubleId, libelle, prix: b.prix, resume: resumeDepuisDoc(b.im, { dossier }), court: objetDepuisDoc(b.im, dossier), autresIds: [],
     lien: etatLienDossier?.url, lienPerime: etatLienDossier?.aRemplacer, lienExpireLe: etatLienDossier?.expireLe,
     dossierId: dossier ? String(dossier._id) : undefined,
     dossierVersion: Number(dossier?.version) || undefined,
