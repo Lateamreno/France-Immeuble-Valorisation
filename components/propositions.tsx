@@ -232,13 +232,10 @@ export function CarteProposition({
           {/* La réponse SMS de la personne, remontée par MailingVox (MAV, 28/09) :
               « Oui » en vert, « Non » en rouge, le reste tel quel. */}
           {p.retourSms && (
-            /* 02/11 : la réponse vient aussi d'un bouton RCS ou d'un lien
-               d'e-mail — l'étiquette dit d'où, « Pas intéressé » en rouge,
-               « Intéressé » en vert. */
-            <span className={`cfc-sms${/^\s*(non\b|pas int)/i.test(p.retourSms.texte) ? " non" : /^\s*(oui\b|int[ée]ress)/i.test(p.retourSms.texte) ? " oui" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
-              title={`Réponse ${p.retourSms.canal ?? "SMS"}${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
+            <span className={`cfc-sms${/^\s*oui\b/i.test(p.retourSms.texte) ? " oui" : /^\s*non\b/i.test(p.retourSms.texte) ? " non" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
+              title={`Réponse SMS${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
               <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H8l-4 4V5z" /></svg>
-              Réponse {p.retourSms.canal ?? "SMS"}{p.retourSms.le ? ` le ${p.retourSms.le}` : ""} : « {p.retourSms.texte.slice(0, 80)}{p.retourSms.texte.length > 80 ? "…" : ""} »
+              Réponse SMS{p.retourSms.le ? ` le ${p.retourSms.le}` : ""} : « {p.retourSms.texte.slice(0, 80)}{p.retourSms.texte.length > 80 ? "…" : ""} »
             </span>
           )}
         </div>

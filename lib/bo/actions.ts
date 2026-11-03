@@ -4983,29 +4983,11 @@ export async function envoyerMailsCommercialisation(input: {
     /* Quatre à la fois, sur les quatre connexions du relais (MAV, 05/10) :
        la cadence reste tenue à quatre messages par seconde par le transport
        lui-même, ce n'est pas une rafale de connexions. */
-    /* MAV (02/11) : « Intéressé / Pas intéressé » comme dans le RCS, « sans
-       changer la façon dont on les envoie ». Chaque destinataire reçoit le
-       même message, plus ses deux liens signés (sa proposition). Une adresse
-       sans proposition part comme avant. */
-    const rep = await import("./reponse-client");
-    const base = await (await import("./adresse")).adresseBo();
-    const propsParMail = await rep.propositionsDeCommercialisation(input.commId).catch(() => new Map<string, string>());
-    const manquants = adresses.filter((a) => !propsParMail.has(a.toLowerCase()));
-    if (manquants.length) {
-      const autres = await rep.propositionsParEmail(input.immeubleId, manquants).catch(() => new Map<string, string>());
-      for (const [e, id] of autres) propsParMail.set(e, id);
-    }
-    const texteDe = (to: string) => {
-      const pid = propsParMail.get(to.toLowerCase());
-      return pid
-        ? rep.avecLiens(input.message, [{ oui: rep.lienReponse(base, pid, "oui"), non: rep.lienReponse(base, pid, "non") }])
-        : input.message;
-    };
     const { parGroupes } = await import("./piece-dossier");
     await parGroupes(adresses, 4, async (to) => {
       try {
         await envoyerEnMasse({
-          to, subject: input.objet, text: texteDe(to),
+          to, subject: input.objet, text: input.message,
           replyTo: agent.email, agent, pieces, differeA,
         });
         envoyes += 1;
