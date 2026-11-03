@@ -16,8 +16,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
-import { destinataires, paquets, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
+import { destinataires, telAffiche, telE164, type Acquereur } from "@/lib/bo/matching";
 import { dateLien, expirationParDefaut, lienDuDossier, lienPdfBo, urlPdfDossier } from "@/lib/bo/lien-dossier";
+import { chiffresDossier, ecartsDossierMandat, type EcartMandat } from "@/lib/bo/chiffres-dossier";
+import { TelephoneRcs, type CarteRcsVue } from "@/components/carte-rcs";
+import { BoutonSupprimerCommercialisation } from "@/components/supprimer-commercialisation";
 import { resumeDepuisDoc, smsEnvoiDossier } from "@/lib/bo/resume-immeuble";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import {
@@ -26,7 +29,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { createCommercialisation, envoyerSmsCommercialisation, envoyerSmsEssai, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
+import { apercuRcsCommercialisation, createCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
 import { useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 
@@ -78,12 +81,13 @@ export function AssistantCommercialisation({
   const prixHai = typeof b.im.prix_hai === "number" ? (b.im.prix_hai as number) : undefined;
 
   /* Ce que l'objet et le corps ont besoin de savoir du bien (#357, #358).
-     Le rendement POTENTIEL n'est pas en base : on le déduit du rapport entre
-     les loyers de marché des lots et les loyers encaissés, appliqué au
-     rendement de la fiche. Passer par le rapport plutôt que par un nouveau
-     calcul évite de refabriquer la base de prix — et donc d'annoncer un
-     chiffre qui contredirait celui affiché sur la carte. */
-  const bienMail: BienMail = useMemo(() => {
+     MAV (03/11) : « il faut que les rendements et prix au m² correspondent
+     toujours au dossier que j'envoie ». Les chiffres viennent donc du DOSSIER
+     choisi — ceux que son PDF imprime (lib/bo/chiffres-dossier.ts) ; la fiche
+     ne sert qu'à défaut de dossier. */
+  const docChoisi = dossiers.find((x) => S(x._id) === dossier);
+  const construireBienMail = (d: Record<string, unknown> | undefined): BienMail => {
+    const c = chiffresDossier(d);
     const somme = (cle: string, repli?: string) => b.lots.reduce((t, l) => {
       const v = typeof l[cle] === "number" ? (l[cle] as number)
         : repli && typeof l[repli] === "number" ? (l[repli] as number) : 0;
@@ -95,38 +99,31 @@ export function AssistantCommercialisation({
     return {
       ville: b.ville,
       codePostal: b.im.adresse_zipcode,
-      surfaceCarrez: b.im.surface_carrez,
-      prixHai,
-      /* La fiche ne remonte pas toujours `prix_hai_m2` : à Lille il est absent
-         et l'objet sortait sans prix au m². Le calcul de secours porte sur les
-         mêmes deux nombres que Bubble utilise. */
-      /* Calculé sur le prix du jour d'abord : `prix_hai_m2` de la fiche date de
-         la dernière estimation (Paris 18 : 6 202 €/m² pour 800 000 €, alors
-         que le prix est passé à 1 030 000 €). */
-      prixM2: prixHai && typeof b.im.surface_carrez === "number" && b.im.surface_carrez > 0
+      surfaceCarrez: c?.surface ?? b.im.surface_carrez,
+      prixHai: c?.prixHai ?? prixHai,
+      /* Le prix au m² ACTUEL : prix HAI ÷ surface, sans travaux. */
+      prixM2: c?.prixM2 ?? (prixHai && typeof b.im.surface_carrez === "number" && b.im.surface_carrez > 0
         ? prixHai / b.im.surface_carrez
-        : typeof b.im.prix_hai_m2 === "number" ? b.im.prix_hai_m2 : undefined,
-      occupation: b.im.occupation_lots,
-      renta,
-      /* Retour #594 : loyers potentiels annuels ÷ (prix HAI + travaux), calculé
-         ici sur le prix du jour. L'ancien calcul (actuel × loyers max ÷ loyers)
-         ne donnait rien sur un immeuble vide, et le texte retombait sur
-         l'actuel : Paris 18 était annoncé à 1,2 %. */
-      rentaPotentielle: rendementPotentiel(loyersMax * 12, prixHai, travaux),
+        : typeof b.im.prix_hai_m2 === "number" ? b.im.prix_hai_m2 : undefined),
+      occupation: c?.occupation ?? b.im.occupation_lots,
+      renta: c?.rentaActuelle ?? renta,
+      /* Retour #594 : loyers potentiels annuels ÷ (prix HAI + travaux). */
+      rentaPotentielle: c?.rentaPotentielle ?? rendementPotentiel(loyersMax * 12, prixHai, travaux),
       destinations: b.lots.map((l) => String(l.Destination ?? "")).filter(Boolean),
       agentNom: b.agentNom,
       agentTel: b.agentTel,
     };
-  }, [b, prixHai]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const bienMail: BienMail = useMemo(() => construireBienMail(docChoisi), [b, prixHai, docChoisi]);
+  /* « Tu dois me dire s'il y a une différence entre le dossier que j'envoie
+     et le mandat » (MAV, 03/11) : prix HAI, net vendeur, honoraires. */
+  const mandatChoisi = mandats.find((m) => S(m._id) === mandat);
+  const ecartsMandat = ecartsDossierMandat(docChoisi, mandatChoisi);
 
   const [objet, setObjet] = useMemoire(`${memo}:objet`, objetCommercialisation(bienMail));
   const [message, setMessage] = useMemoire(`${memo}:message`, messageCommercialisation(bienMail, lien));
-  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b, lien));
-  /* Retour MAV : « ce que je veux faire c'est une programmation ». Vide =
-     envoi immédiat. Le format est celui d'un `datetime-local`, donc lu dans
-     le fuseau du navigateur — celui de l'agent, qui est celui qu'il a en tête. */
-  const [quandSms, setQuandSms] = useMemoire(`${memo}:quand-sms`, "");
-
+  const [sms, setSms] = useMemoire(`${memo}:sms`, smsParDefaut(b, lien, docChoisi));
   /* Retour #359, option C : l'état locatif est GÉNÉRÉ depuis la fiche, et un
      fichier déposé à la main reste possible à côté. Les deux vivent dans la
      même case — on ne joint qu'un second document, c'est l'un ou l'autre. */
@@ -188,7 +185,6 @@ export function AssistantCommercialisation({
   const [poidsDossier, setPoidsDossier] = useState<number | null | undefined>(undefined);
 
   const dest = useMemo(() => destinataires(cibles), [cibles]);
-  const lots = paquets(dest.telephones, 50);
 
   /* Retour #360 — ce qu'il faut savoir avant d'appuyer : combien de personnes
      recevront vraiment, quels doublons ont été fondus, quelles adresses sont
@@ -354,42 +350,43 @@ export function AssistantCommercialisation({
   /* Doctrine §7.1 : l'application prépare, l'agent envoie. D'où la
      confirmation qui rappelle le nombre exact de destinataires et de segments
      facturés — c'est le dernier moment où l'erreur de ciblage coûte zéro. */
-  const envoyerLesSms = async () => {
+  /* La carte RCS, préparée côté serveur à l'entrée de l'étape — exactement
+     ce qui partira : dossier choisi, lien saisi, agent du bien. */
+  const cleRcs = `${dossier}|${lien.trim()}`;
+  const [rcs, setRcs] = useState<{ cle: string; carte?: CarteRcsVue; erreur?: string } | null>(null);
+  useEffect(() => {
+    if (etape !== "SMS") return;
+    let vivant = true;
+    apercuRcsCommercialisation({ immeubleId: String(b.im._id), dossierId: dossier || undefined, lien })
+      .then((r) => { if (vivant) setRcs(r.ok ? { cle: cleRcs, carte: r.carte } : { cle: cleRcs, erreur: r.message }); })
+      .catch(() => { if (vivant) setRcs({ cle: cleRcs, erreur: "La carte n'a pas pu être préparée." }); });
+    return () => { vivant = false; };
+  }, [etape, dossier, lien, cleRcs, b.im._id]);
+  /* Une carte préparée pour un autre dossier ou un autre lien n'est pas
+     montrée : on attend celle qui correspond à l'écran. */
+  const carteRcs = rcs?.cle === cleRcs ? rcs.carte ?? null : null;
+  const erreurRcs = rcs?.cle === cleRcs ? rcs.erreur ?? null : null;
+
+  const envoyerLesRcs = async () => {
     if (!commId) return;
     const nb = dest.telephones.length;
-    const seg = Math.max(1, Math.ceil(sms.length / 160)) * nb;
-    const quand = quandSms ? new Date(quandSms) : undefined;
-    const differe = quand && !Number.isNaN(quand.getTime()) && quand.getTime() > Date.now();
     if (!(await confirmer(
       <>
-        {differe
-          ? `Programmer ce SMS pour le ${quand!.toLocaleString("fr-FR")}, à ${nb} numéro${nb > 1 ? "s" : ""} ?`
-          : `Envoyer ce SMS à ${nb} numéro${nb > 1 ? "s" : ""} ?`}
+        {`Envoyer la carte RCS à ${nb} numéro${nb > 1 ? "s" : ""} ?`}
         <br /><br />
-        {`Environ ${seg} segment${seg > 1 ? "s" : ""} facturé${seg > 1 ? "s" : ""}. `}
-        {differe
-          ? "Une campagne programmée se modifie encore chez MailingVox, mais pas depuis ici."
-          : "Un SMS parti ne se rattrape pas."}
+        Les téléphones sans RCS reçoivent le SMS de repli à la place. Un message parti ne se rattrape pas.
       </>,
-      { oui: differe ? "Programmer" : "Envoyer" },
+      { oui: "Envoyer" },
     ))) return;
     start(async () => {
-      const r = await envoyerSmsCommercialisation({
-        immeubleId: String(b.im._id), commId, texte: sms, numeros: dest.telephones,
-        quand: quandSms ? new Date(quandSms).toISOString() : undefined,
+      const r = await envoyerRcsCommercialisation({
+        immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
       });
       if (r.ok) {
         setSmsEnvoyes(true);
-        const ecartes = r.ecartesStop
-          ? ` ${r.ecartesStop} numéro${r.ecartesStop > 1 ? "s" : ""} écarté${r.ecartesStop > 1 ? "s" : ""} (désinscrits STOP).`
-          : "";
-        setEnvoi(
-          (r.programmePour
-            ? `${r.envoyes} SMS programmés pour le ${new Date(r.programmePour).toLocaleString("fr-FR")}`
-            : `${r.envoyes} SMS envoyés`)
-          + ` (${r.segments} segments).${ecartes}`
-          + (r.campagne ? ` Campagne MailingVox n°${r.campagne}.` : "")
-          + (r.echecs && r.echecs.length ? ` ${r.echecs.length} en échec : ${r.echecs.slice(0, 3).map((x) => `${x.numero} — ${x.raison}`).join(" · ")}` : ""));
+        setEnvoi(`${r.envoyes} RCS envoyés`
+          + (r.ecartesStop ? `, ${r.ecartesStop} numéro${r.ecartesStop > 1 ? "s" : ""} écarté${r.ecartesStop > 1 ? "s" : ""} (STOP)` : "")
+          + (r.campagne ? `. Campagne MailingVox n°${r.campagne}.` : "."));
       } else {
         setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
       }
@@ -427,7 +424,7 @@ export function AssistantCommercialisation({
             className={`${etape === e ? "on" : ""}${ETAPES.indexOf(etape) > i ? " ok" : ""}`}
             disabled={!commId && (e === "E-mails" || e === "SMS")}
             onClick={() => setEtape(e)}
-          ><i>{i + 1}</i> {e}</button>
+          ><i>{i + 1}</i> {e === "SMS" ? "RCS" : e}</button>
         ))}
       </div>
 
@@ -452,7 +449,17 @@ export function AssistantCommercialisation({
           {dossiers.length === 0 ? (
             <div className="fempty">Aucun dossier généré. Vous pouvez commercialiser sans dossier, mais l&apos;e-mail n&apos;aura rien à joindre.</div>
           ) : (
-            <select className="min" value={dossier} onChange={(e) => setDossier(e.target.value)}>
+            <select className="min" value={dossier} onChange={(e) => {
+              const v = e.target.value;
+              setDossier(v);
+              /* Les chiffres du texte suivent le dossier joint (MAV, 03/11) :
+                 changer de dossier refait l'objet, le message et le SMS. */
+              const d = dossiers.find((x) => S(x._id) === v);
+              const bm = construireBienMail(d);
+              setObjet(objetCommercialisation(bm));
+              setMessage(messageCommercialisation(bm, lien));
+              setSms(smsParDefaut(b, lien, d));
+            }}>
               <option value="">Sans dossier</option>
               <option value={S(dossiers[0]._id)}>{libelleDossierChiffre(dossiers[0])} — dossier actuel</option>
             </select>
@@ -547,7 +554,7 @@ export function AssistantCommercialisation({
                  remplace plus que le lien, à sa place. */
               setMessage((m) => avecLienDossier(m, lien, v));
               /* Le SMS suit le lien tant qu'il n'a pas été retouché à la main. */
-              if (sms === smsParDefaut(b, lien)) setSms(smsParDefaut(b, v));
+              if (sms === smsParDefaut(b, lien, docChoisi)) setSms(smsParDefaut(b, v, docChoisi));
             }} />
           {/* MAV (28/09) : « que tu puisses me dire attention tu fais un envoi
               d'un lien périmé, et me proposer de changer le lien ». */}
@@ -600,6 +607,7 @@ export function AssistantCommercialisation({
               ))}
             </select>
           )}
+          <EcartsMandat ecarts={ecartsMandat} mandat={mandatChoisi} dossier={docChoisi} />
           <div className="wnav">
             <button className="fadd" type="button" onClick={() => setEtape("Dossier")}>← Retour</button>
             <span className="sp" style={{ flex: 1 }} />
@@ -798,9 +806,21 @@ export function AssistantCommercialisation({
                     <button type="button" className="fadd" onClick={() => setMessage((m) => insererLienDossier(m, lien))}>Insérer le lien</button></>
                   : <>Lien transfer.it dans le message : <b>{lien.trim()}</b></>}
             </div>
+            {docChoisi && mandatChoisi && (ecartsMandat.length > 0
+              ? <EcartsMandat ecarts={ecartsMandat} mandat={mandatChoisi} dossier={docChoisi} />
+              : <div className="asst-part-l ok">Dossier V{S(docChoisi.version)} et mandat {mandatChoisi.numero ? `n°${S(mandatChoisi.numero)}` : ""} concordants : prix HAI, net vendeur et honoraires.</div>)}
           </div>
 
           <div className="wnav">
+            {/* MAV (03/11) : tant que les e-mails ne sont pas partis, la
+                commercialisation s'annule et se supprime. */}
+            {commId && (
+              <BoutonSupprimerCommercialisation
+                c={{ _id: commId, PROPOSITIONs: Array.from({ length: creees }), prop_sent: mailsEnvoyes, mails_envoyes: faits.length, prop_sms_sent: smsEnvoyes }}
+                libelle="Annuler et supprimer"
+                onFait={() => fermer()}
+              />
+            )}
             <button
               className="fadd" type="button" disabled={pending || mailsEnvoyes}
               onClick={() => commId && start(async () => {
@@ -829,6 +849,9 @@ export function AssistantCommercialisation({
                     <br /><br />
                     {pesee.message}
                     <br />
+                    {ecartsMandat.length > 0 && (
+                      <><b style={{ color: "var(--red)" }}>Le dossier diffère du mandat : {ecartsMandat.map((e) => `${e.quoi.toLowerCase()} ${e.dossier} au dossier, ${e.mandat} au mandat`).join(" ; ")}.</b><br /></>
+                    )}
                     {lienDossierChoisi && lien.trim() === lienDossierChoisi.url && lienDossierChoisi.perime && (
                       <><b style={{ color: "var(--red)" }}>Attention : le lien transfer.it du message est périmé (expiré le {dateLien(lienDossierChoisi.expireLe)}).</b><br /></>
                     )}
@@ -851,88 +874,35 @@ export function AssistantCommercialisation({
 
       {etape === "SMS" && (
         <div className="asst-b">
-          <span className="mlab">Message SMS</span>
-          <textarea className="min" rows={4} value={sms} onChange={(e) => setSms(e.target.value)} />
-          <div className="asst-note">{sms.length} caractères — au-delà de 160, l&apos;opérateur facture plusieurs SMS.</div>
-
-          <span className="mlab">Numéros ({dest.telephones.length}) — {lots.length} paquet{lots.length > 1 ? "s" : ""} de 50</span>
-          {lots.length === 0 && <div className="fempty">Aucun numéro exploitable parmi les acquéreurs ciblés.</div>}
-          {lots.map((lot, i) => (
-            <div className="asst-lot" key={i}>
-              <div className="asst-lot-h">
-                Paquet {i + 1} — {lot.length} numéros
-                <button className="fadd" type="button" onClick={() => copier(lot.map(telAffiche).join(","))}>Copier les numéros</button>
-              </div>
-              <textarea className="min mono" rows={3} readOnly value={lot.map(telAffiche).join(", ")} />
-            </div>
-          ))}
-          <div className="asst-note">
-            Numéros vérifiés et dédoublonnés (les numéros étrangers restent en international). Les saisies inexploitables
-            ont été écartées plutôt qu&apos;envoyées telles quelles. Les numéros déjà désinscrits
-            chez MailingVox sont retirés au moment de l&apos;envoi.
-          </div>
-
-          {/* La mention de désinscription. MailingVox refuse la campagne sans
-              elle (erreurs 24 et 38), et la CNIL l'impose. On le dit AVANT le
-              clic plutôt que de récupérer un code d'erreur après. */}
-          {!/\bstop\b/i.test(sms) && (
+          {/* MAV (03/11) : « dans la commercialisation c'est des SMS et pas des
+              RCS […] et que ça m'affiche la façon dont ça va les afficher au
+              client ». La carte part signée par l'agent du bien, avec les
+              chiffres du dossier joint et le lien transfer.it de l'étape
+              Dossier ; un téléphone sans RCS reçoit le SMS de repli. */}
+          <span className="mlab">Ce que reçoit chaque acquéreur</span>
+          {!carteRcs && !erreurRcs && <div className="asst-note">Préparation de la carte…</div>}
+          {erreurRcs && <div className="dif-simu">{erreurRcs}</div>}
+          {carteRcs && <TelephoneRcs carte={carteRcs} />}
+          {carteRcs && !carteRcs.lienDossier && (
             <div className="dif-simu">
-              <b>Mot « STOP » absent</b> — MailingVox refusera la campagne, et c&apos;est une
-              obligation CNIL. Ajoutez « STOP pour ne plus recevoir » à la fin du message : répondre STOP suffit,
-              pas besoin de numéro.
-            </div>
-          )}
-          {pont?.numeroStop && /\bstop au (\d{4,5})\b/i.test(sms)
-            && !sms.toLowerCase().includes(`stop au ${pont.numeroStop}`) && (
-            <div className="dif-simu">
-              <b>Numéro de désinscription différent</b> — le message annonce «&nbsp;
-              {/\bstop au (\d{4,5})\b/i.exec(sms)?.[1]}&nbsp;» alors que MailingVox route les STOP
-              vers le {pont.numeroStop}. Une opposition envoyée au mauvais numéro ne leur revient
-              pas, et on continue d&apos;écrire à quelqu&apos;un qui a dit non.
+              {carteRcs.lienPerime
+                ? "Le lien transfer.it est périmé (ou expire sous cinq jours) : la carte partirait sans le bouton « Télécharger le dossier »."
+                : "Aucun lien transfer.it : la carte partirait sans le bouton « Télécharger le dossier »."}
             </div>
           )}
 
-          {/* La programmation (demande MAV). Vide = envoi immédiat. */}
-          <span className="mlab">Envoyer</span>
-          <div className="asst-quand">
-            <label>
-              <input type="radio" name="quand-sms" checked={!quandSms}
-                onChange={() => setQuandSms("")} />
-              Tout de suite
-            </label>
-            <label>
-              <input type="radio" name="quand-sms" checked={!!quandSms}
-                onChange={() => {
-                  /* Par défaut, demain 8 h — l'heure que MAV a citée, et la
-                     première du créneau légal (8 h – 22 h). */
-                  const d = new Date();
-                  d.setDate(d.getDate() + 1);
-                  d.setHours(8, 0, 0, 0);
-                  const p = (n: number) => String(n).padStart(2, "0");
-                  setQuandSms(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T08:00`);
-                }} />
-              À une date choisie
-            </label>
-            {quandSms && (
-              <input className="min" type="datetime-local" value={quandSms}
-                onChange={(e) => setQuandSms(e.target.value)} />
-            )}
-          </div>
+          <span className="mlab">Numéros ({dest.telephones.length})</span>
+          {dest.telephones.length === 0
+            ? <div className="fempty">Aucun numéro exploitable parmi les acquéreurs ciblés.</div>
+            : <textarea className="min mono" rows={3} readOnly value={dest.telephones.map(telAffiche).join(", ")} />}
           <div className="asst-note">
-            Les SMS marketing ne sont autorisés que du <b>lundi au samedi, de 8 h à 22 h</b>, hors
-            jours fériés. MailingVox reporte d&apos;office un envoi programmé hors de ces créneaux —
-            il ne l&apos;annule pas, il le décale.
+            Numéros vérifiés et dédoublonnés. Les numéros déjà désinscrits (STOP) chez MailingVox sont
+            retirés au moment de l&apos;envoi. Les boutons touchés reviennent sur la proposition de
+            chacun : « Pas intéressé » la refuse et coupe ses relances.
           </div>
 
-          {/* L'envoi direct par MailingVox. Il ne remplace pas le marquage
-              manuel : beaucoup d'envois se font encore depuis le téléphone de
-              l'agent, et il faut pouvoir dire « c'est fait » sans passer par ici. */}
-          {pont && (
-            <div className={pont.configure ? "asst-note" : "dif-simu"}>
-              {!pont.configure && <b>Envoi automatique indisponible</b>}
-              {pont.message}
-              {pont.configure && ` Plafond par envoi : ${pont.plafond} numéros.`}
-            </div>
+          {pont && !pont.configure && (
+            <div className="dif-simu"><b>Envoi automatique indisponible</b> {pont.message}</div>
           )}
           {pont?.configure && (
             <div className="asst-essai">
@@ -941,26 +911,27 @@ export function AssistantCommercialisation({
                 <input className="min" type="tel" value={numEssai} placeholder="06 12 34 56 78"
                   onChange={(e) => setNumEssai(e.target.value)} />
                 <button className="fadd" type="button"
-                  disabled={pending || !telE164(numEssai) || !sms.trim()}
+                  disabled={pending || !telE164(numEssai) || !carteRcs?.photo}
                   onClick={() => start(async () => {
                     setEssai(null);
-                    const r = await envoyerSmsEssai({ texte: sms, numero: numEssai });
+                    const r = await envoyerRcsEssaiCommercialisation({
+                      immeubleId: String(b.im._id), dossierId: dossier || undefined, lien, numero: numEssai,
+                    });
                     setEssai(r.ok
-                      ? `Essai parti vers ${telAffiche(telE164(numEssai) ?? numEssai)} (${r.segments} segment${r.segments > 1 ? "s" : ""}).`
-                      + " Ce que vous recevez est exactement ce que recevront les acquéreurs."
+                      ? `Essai parti vers ${telAffiche(telE164(numEssai) ?? numEssai)}${r.campagne ? ` (campagne MailingVox n°${r.campagne})` : ""}. Ce que vous recevez est ce que recevront les acquéreurs.`
                       : r.message);
                   })}>
-                  M&apos;envoyer un essai
+                  M&apos;envoyer la carte
                 </button>
               </div>
               <div className="asst-note">
-                Le message tel quel, sur ce seul numéro, tout de suite. Rien n&apos;est marqué sur la
+                La carte telle quelle, sur ce seul numéro, tout de suite. Rien n&apos;est marqué sur la
                 commercialisation : l&apos;essai ne compte pas comme un envoi.
               </div>
               {essai && <div className={/^Essai parti/.test(essai) ? "asst-ok" : "dif-simu"}>{essai}</div>}
             </div>
           )}
-          {envoi && <div className="asst-ok">{envoi}</div>}
+          {envoi && <div className={/^\d+ RCS/.test(envoi) ? "asst-ok" : "dif-simu"}>{envoi}</div>}
           <div className="wnav">
             <span className="sp" style={{ flex: 1 }} />
             <button
@@ -969,15 +940,15 @@ export function AssistantCommercialisation({
                 await markCommercialisationSent(String(b.im._id), commId, "sms");
                 setSmsEnvoyes(true);
               })}
-            >{smsEnvoyes ? "SMS marqués envoyés ✓" : "Marquer les SMS comme envoyés"}</button>
+            >{smsEnvoyes ? "Marqués envoyés ✓" : "Marquer comme envoyés"}</button>
             {pont?.configure && (
               <button className="kgo" type="button"
-                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque}
-                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier (étape E-mails)" : undefined}
-                onClick={envoyerLesSms}>
+                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque || !carteRcs?.photo}
+                title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier (étape Dossier)"
+                  : !carteRcs?.photo ? "Le bien n'a pas de photo principale" : undefined}
+                onClick={envoyerLesRcs}>
                 <span className="ch">›</span>{" "}
-                {quandSms ? "Programmer" : "Envoyer"}{" "}
-                {dest.telephones.length > 1 ? `les ${dest.telephones.length} SMS` : "le SMS"}
+                Envoyer {dest.telephones.length > 1 ? `les ${dest.telephones.length} RCS` : "le RCS"}
               </button>
             )}
             <button className="fadd" type="button" onClick={fermer}>Terminer</button>
@@ -1146,6 +1117,24 @@ function PieceJointe({ d, nom, onPoids }: { d: Record<string, unknown>; nom?: st
  * `date_effet` — le miroir Bubble n'a pas de champ « signé le », et c'est
  * elle que le mandat porte comme point de départ.
  */
+/** Ce qui diffère entre le dossier envoyé et le mandat (MAV, 03/11). */
+function EcartsMandat({ ecarts, mandat, dossier }: {
+  ecarts: EcartMandat[];
+  mandat?: Record<string, unknown>;
+  dossier?: Record<string, unknown>;
+}) {
+  if (!mandat || !dossier || ecarts.length === 0) return null;
+  return (
+    <div className="dif-simu">
+      <b>Le dossier V{S(dossier.version)} diffère du mandat {mandat.numero ? `n°${S(mandat.numero)}` : ""}</b>
+      <ul className="asst-ecarts">
+        {ecarts.map((e) => <li key={e.quoi}>{e.quoi} : <b>{e.dossier}</b> au dossier, <b>{e.mandat}</b> au mandat</li>)}
+      </ul>
+      Le client lira les chiffres du dossier. Refaites le dossier, ou corrigez le mandat, avant d&apos;envoyer.
+    </div>
+  );
+}
+
 function libelleMandat(m: Record<string, unknown>): string {
   const tete = `${S(m.Type) || "Mandat"} ${m.numero ? `n°${S(m.numero)}` : "sans numéro"} — ${S(m.Statut)}`;
   const bouts = [
@@ -1159,12 +1148,12 @@ function libelleMandat(m: Record<string, unknown>): string {
 /* ---------- Messages par défaut, fusionnés depuis la fiche ---------- */
 
 
-function smsParDefaut(b: BienData, lien: string) {
+function smsParDefaut(b: BienData, lien: string, dossier?: Record<string, unknown>) {
   /* Texte validé par MAV le 28/09 (`smsEnvoiDossier`) : « France Immeuble »
      EN TÊTE — l'expéditeur est un numéro court, c'est le début du texte qui
      dit qui écrit, et c'est ce que l'aperçu de la liste de conversations
      affiche —, le résumé du bien, le lien transfer.it, Oui / Non, STOP. Le
      numéro STOP est celui que MailingVox route (`MAILINGVOX_STOP`) ; l'écran
      signale la divergence si ce littéral s'en écarte. */
-  return smsEnvoiDossier(resumeDepuisDoc(b.im, { sms: true }), lien);
+  return smsEnvoiDossier(resumeDepuisDoc(b.im, { sms: true, dossier }), lien);
 }

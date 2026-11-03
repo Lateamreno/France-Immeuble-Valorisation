@@ -15,6 +15,7 @@ import { CarteMatching, ComptesGrades, CriteresMatching, type ResumeMatching } f
 import { CIBLES, DESTINATIONS_BIEN } from "@/lib/pictos-recherche";
 import { dmy, euros, libelleDossier, S } from "@/lib/format";
 import { oublier, useMemoire } from "@/lib/memoire";
+import { BoutonSupprimerCommercialisation } from "@/components/supprimer-commercialisation";
 import { aggLocatif, pistesPrix, refsGlobales } from "@/lib/bo/marche";
 import { CurseurPrix, TableauActuelPotentiel } from "@/components/prix-marche";
 import { chargerCommercialisation, saveMatch } from "@/lib/bo/actions";
@@ -235,8 +236,11 @@ function Historique({ hist, d, onRouvrir, onRouvrirComm }: {
   onRouvrir: (m: Record<string, unknown>) => void;
   onRouvrirComm: (c: Record<string, unknown>) => void;
 }) {
-  if (hist.matchs.length === 0 && hist.commercialisations.length === 0) {
-    return <div className="fempty">Aucun matching lancé sur cet immeuble.</div>;
+  const [supprimees, setSupprimees] = useState<Set<string>>(() => new Set());
+  const [message, setMessage] = useState<string | null>(null);
+  const comms = hist.commercialisations.filter((c) => !supprimees.has(S(c._id)));
+  if (hist.matchs.length === 0 && comms.length === 0) {
+    return <div className="fempty">{message ?? "Aucun matching lancé sur cet immeuble."}</div>;
   }
   /* Les comptes par grade demandent le vivier (les contacts) : ils
      apparaissent quand il est là, les totaux du matching sont là tout de
@@ -247,10 +251,21 @@ function Historique({ hist, d, onRouvrir, onRouvrirComm }: {
     const acq = d.recherches.filter((x) => ids.has(String(x._id))).map((x) => carte(x, d.contacts, true));
     return comptesParGrade(acq).parGrade;
   };
-  const commsDe = (m: Record<string, unknown>) => hist.commercialisations.filter((c) => String(c.MATCH ?? "") === String(m._id));
+  const commsDe = (m: Record<string, unknown>) => comms.filter((c) => String(c.MATCH ?? "") === String(m._id));
+  /* Une commercialisation qui n'est pas partie se supprime d'ici (MAV, 03/11). */
+  const carteComm = (c: Record<string, unknown>) => (
+    <div key={S(c._id)} className="cm-avec-suppr">
+      <CarteCommercialisation c={c} onOuvrir={() => onRouvrirComm(c)} />
+      <BoutonSupprimerCommercialisation c={c} onFait={(msg) => {
+        setSupprimees((x) => new Set(x).add(S(c._id)));
+        setMessage(msg);
+      }} />
+    </div>
+  );
 
   return (
     <>
+      {message && <div className="asst-ok">{message}</div>}
       {hist.matchs.map((m) => (
         <div key={S(m._id)} className="cm-groupe">
           <CarteMatching
@@ -260,13 +275,13 @@ function Historique({ hist, d, onRouvrir, onRouvrirComm }: {
             total={{ mails: Number(m.mails_count) || 0, tels: Number(m.tels_count) || 0 }}
             onOuvrir={d ? () => onRouvrir(m) : undefined}
           />
-          {commsDe(m).map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={() => onRouvrirComm(c)} />)}
+          {commsDe(m).map(carteComm)}
         </div>
       ))}
       {/* Les commercialisations dont le matching n'est plus là. */}
-      {hist.commercialisations
+      {comms
         .filter((c) => !hist.matchs.some((m) => String(m._id) === String(c.MATCH ?? "")))
-        .map((c) => <CarteCommercialisation key={S(c._id)} c={c} onOuvrir={() => onRouvrirComm(c)} />)}
+        .map(carteComm)}
     </>
   );
 }
@@ -331,7 +346,7 @@ function CarteCommercialisation({ c, onOuvrir }: { c: Record<string, unknown>; o
         <span className={`cm-envoi${smsOk ? " ok" : ""}`}>
           <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H9l-5 4z" /></svg>
           <b>{smsOk ? (n(c.sms_envoyes) || "✓") : "—"}</b>
-          <span>SMS envoyés</span>
+          <span>{c.sms_canal === "rcs" ? "RCS envoyés" : "SMS / RCS envoyés"}</span>
         </span>
       </div>
     </>

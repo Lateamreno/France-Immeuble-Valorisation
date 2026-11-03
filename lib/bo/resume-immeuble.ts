@@ -20,6 +20,7 @@
 // Module sans directive serveur : les écrans et les actions le lisent pareil.
 
 import { rendementPotentiel } from "./mail-commercialisation";
+import { chiffresDossier } from "./chiffres-dossier";
 
 export type ResumeImmeuble = {
   ville?: string;
@@ -84,8 +85,21 @@ export function objetImmeuble(x: ResumeImmeuble): string {
   return [`Immeuble de ${lieuCourt(x) || "…"}`, rentaCourte(x.renta), prixCourt(x.prixHai)].filter(Boolean).join(" - ");
 }
 
-const champs = (im: Record<string, unknown>): ResumeImmeuble => {
+const champs = (im: Record<string, unknown>, dossier?: Record<string, unknown> | null): ResumeImmeuble => {
   const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+  /* MAV (03/11) : « il faut que les rendements et prix au m² correspondent
+     toujours au dossier que j'envoie ». Quand un dossier part avec le texte,
+     ses chiffres l'emportent sur ceux de la fiche. */
+  const c = chiffresDossier(dossier);
+  if (c) {
+    return {
+      ville: typeof im.adresse_ville === "string" ? im.adresse_ville : undefined,
+      codePostal: typeof im.adresse_zipcode === "string" ? im.adresse_zipcode : undefined,
+      surface: c.surface ?? n(im.surface_carrez),
+      renta: c.rentaPotentielle ?? c.rentaActuelle,
+      prixHai: c.prixHai,
+    };
+  }
   return {
     ville: typeof im.adresse_ville === "string" ? im.adresse_ville : undefined,
     codePostal: typeof im.adresse_zipcode === "string" ? im.adresse_zipcode : undefined,
@@ -99,13 +113,19 @@ const champs = (im: Record<string, unknown>): ResumeImmeuble => {
 };
 
 /** Le même résumé depuis un document `immeuble` du miroir. */
-export function resumeDepuisDoc(im: Record<string, unknown> | null | undefined, opts: { sms?: boolean } = {}): string {
-  return im ? resumeImmeuble(champs(im), opts) : "";
+export function resumeDepuisDoc(
+  im: Record<string, unknown> | null | undefined,
+  opts: { sms?: boolean; dossier?: Record<string, unknown> | null } = {},
+): string {
+  return im ? resumeImmeuble(champs(im, opts.dossier), opts) : "";
 }
 
 /** L'objet court depuis un document `immeuble` du miroir. */
-export function objetDepuisDoc(im: Record<string, unknown> | null | undefined): string {
-  return im ? objetImmeuble(champs(im)) : "";
+export function objetDepuisDoc(
+  im: Record<string, unknown> | null | undefined,
+  dossier?: Record<string, unknown> | null,
+): string {
+  return im ? objetImmeuble(champs(im, dossier)) : "";
 }
 
 const lienOuRien = (lien: string | undefined) => (lien ?? "").trim();

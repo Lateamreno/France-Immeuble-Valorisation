@@ -8,13 +8,11 @@
 import { useState, useTransition } from "react";
 import { adresseWebhookRcs, apercuRcs, envoyerRcsEssai } from "@/lib/bo/actions";
 import { copierTexte } from "@/components/copier";
+import { TelephoneRcs } from "@/components/carte-rcs";
 
 type Carte = {
   titre: string; texte: string; photo?: string; lienDossier?: string; lienPerime?: boolean; repli: string;
 };
-
-/** Le texte de la carte : `<br>` devient un vrai retour à la ligne, rien d'autre n'est interprété. */
-const lignes = (t: string) => t.split(/<br\s*\/?>/i);
 
 export function EssaiRcs({ actif }: { actif: boolean }) {
   const [bien, setBien] = useState("");
@@ -52,20 +50,7 @@ export function EssaiRcs({ actif }: { actif: boolean }) {
 
       {carte && (
         <div className="rcs-apercu">
-          <div className="rcs-carte">
-            {carte.photo
-              ? <img src={carte.photo} alt="" />
-              : <div className="rcs-sans">Pas de photo principale : la carte ne peut pas partir.</div>}
-            <div className="rcs-corps">
-              <b>{carte.titre}</b>
-              <p>{lignes(carte.texte).map((l, i) => <span key={i}>{l}<br /></span>)}</p>
-            </div>
-            <div className="rcs-boutons">
-              <span>Intéressé</span>
-              <span>Pas intéressé</span>
-              {carte.lienDossier && <span>Télécharger le dossier</span>}
-            </div>
-          </div>
+          <TelephoneRcs carte={carte} />
           <div className="rcs-cote">
             {!carte.lienDossier && (
               <p className="rcs-alerte">
@@ -74,10 +59,6 @@ export function EssaiRcs({ actif }: { actif: boolean }) {
                   : "Aucun lien transfer.it sur les dossiers de ce bien : la carte part sans le bouton « Télécharger le dossier »."}
               </p>
             )}
-            <p className="rgl-aide">
-              <b>SMS de repli</b> (téléphones sans RCS, {[...carte.repli].length} caractères) :<br />
-              {carte.repli}
-            </p>
             <button
               type="button" className="fchip prim" disabled={pending || !actif || !carte.photo}
               onClick={() => start(async () => {
