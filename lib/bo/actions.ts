@@ -4175,9 +4175,11 @@ export async function enregistrerPrix(
   const loyersMax = n(im?.fin_loyers_an_max) || loyers;
   const charges = n(im?.fin_charges_non_recup);
   const travaux = n(im?.fin_travaux);
-  /* `fin_surface_carrez` n'existe que sur les fiches venues de Bubble ; le BO
-     tient `surface_carrez` (bo_recompute_immeuble). */
-  const surface = n(im?.fin_surface_carrez) || n(im?.surface_carrez);
+  /* La surface Carrez des lots d'abord (`surface_carrez`, tenue par
+     bo_recompute_immeuble) : c'est celle que le PDF du dossier divise — le
+     prix au m² de la fiche et celui du dossier sont ainsi le même. Le
+     `fin_surface_carrez` des fiches venues de Bubble ne sert qu'à défaut. */
+  const surface = n(im?.surface_carrez) || n(im?.fin_surface_carrez);
 
   const hai = Math.round(input.hai);
   const honos = Math.round(input.honosTtc);
