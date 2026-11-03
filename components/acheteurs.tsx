@@ -354,7 +354,14 @@ function ModaleMatching({
     dossierId?: string; estimationId?: string; acquereurs: Acquereur[];
   }) => void;
 }) {
-  const estimations = b.estimations.filter((e) => S(e.Statut).startsWith("3"));
+  /* Retour #592 — « quand on clique sur à partir d'une estimation, il faudrait
+     pouvoir cliquer sur le prix que nous avions mis dans les estimations
+     précédentes ». Toutes les estimations qui portent un prix, envoyées ou
+     non, la plus récente d'abord : chacune s'affiche par son prix, et un clic
+     le reprend. (Avant : seules les envoyées, dans une liste par leur titre.) */
+  const estimations = b.estimations
+    .filter((e) => typeof e.prix_hai === "number" && (e.prix_hai as number) > 0)
+    .sort((x, y) => String(y["Created Date"] ?? "").localeCompare(String(x["Created Date"] ?? "")));
   const dossiers = b.dossiers;
   const [source, setSource] = useState<Source>(dossiers.length > 0 ? "from_doss" : "from_imm");
   const [dossierId, setDossierId] = useState(S(dossiers[0]?._id));
@@ -369,11 +376,11 @@ function ModaleMatching({
   const [occupation, setOccupation] = useState(String(base.occupation ?? ""));
   const [renta, setRenta] = useState(String(base.renta ?? ""));
 
-  const choisirSource = (s: Source) => {
+  const choisirSource = (s: Source, id?: string) => {
     setSource(s);
     const doc =
-      s === "from_doss" ? dossiers.find((x) => S(x._id) === dossierId)
-      : s === "from_est" ? estimations.find((x) => S(x._id) === estimationId)
+      s === "from_doss" ? dossiers.find((x) => S(x._id) === (id ?? dossierId))
+      : s === "from_est" ? estimations.find((x) => S(x._id) === (id ?? estimationId))
       : undefined;
     if (!doc) return;
     const n = (v: unknown) => (typeof v === "number" ? String(v) : "");
@@ -466,14 +473,24 @@ function ModaleMatching({
       </div>
 
       {source === "from_est" && estimations.length > 0 && (
-        <select className="min" value={estimationId} onChange={(e) => { setEstimationId(e.target.value); choisirSource("from_est"); }}>
-          {estimations.map((e) => (
-            <option key={S(e._id)} value={S(e._id)}>{S(e.titre) || "Estimation"} — {dmy(e["Created Date"])}</option>
-          ))}
-        </select>
+        <div className="mt-estprix" role="group" aria-label="Prix des estimations">
+          {estimations.map((e) => {
+            const id = S(e._id);
+            const on = id === estimationId;
+            const statut = S(e.Statut).replace(/^\d+\s*-\s*/, "");
+            return (
+              <button key={id} type="button" className={`mt-estprix-b${on ? " on" : ""}`} aria-pressed={on}
+                title={S(e.titre) || "Estimation"}
+                onClick={() => { setEstimationId(id); choisirSource("from_est", id); }}>
+                <b>{euros(e.prix_hai as number)}</b>
+                <span>{dmy(e["Created Date"])}{statut ? ` · ${statut}` : ""}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
       {source === "from_doss" && dossiers.length > 0 && (
-        <select className="min" value={dossierId} onChange={(e) => { setDossierId(e.target.value); choisirSource("from_doss"); }}>
+        <select className="min" value={dossierId} onChange={(e) => { setDossierId(e.target.value); choisirSource("from_doss", e.target.value); }}>
           {dossiers.map((x) => (
             <option key={S(x._id)} value={S(x._id)}>{libelleDossier(x)}</option>
           ))}
@@ -492,7 +509,7 @@ function ModaleMatching({
       </span>
       {source === "from_imm" ? (
         <CurseurPrix bornes={pistes.bornes} pRendementMax={pistes.pRendementMax}
-          pM2={pistes.pM2} hai={prixN} honosPct={honosPct}
+          pM2={pistes.pM2} hai={prixN} honosPct={honosPct} libre
           onHai={(v) => setPrix(String(v))} />
       ) : (
         <div className="mt-prixfige">

@@ -9376,3 +9376,32 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .rcs-boutons span + span { border-top: 1px solid #eceef1; }
 .rcs-cote { flex: 1 1 260px; display: grid; gap: 10px; align-content: start; }
 .rcs-alerte { margin: 0; padding: 8px 12px; border-radius: 6px; background: #fdf3e2; color: #8a5300; font-size: 12.5px; line-height: 1.45; }
+
+/* Retour #590 — le prix de la recherche d'acquéreurs se tape et se règle à la
+   molette : le montant devient une case, avec la même tenue que le chiffre. */
+.pxbar-case { display: inline-flex; align-items: baseline; gap: 4px; border-bottom: 2px dashed var(--line, #d9dde2); cursor: text; }
+.pxbar-case:focus-within { border-bottom-color: var(--gold-bo); }
+.pxbar-case input {
+  font-family: var(--font-title); font-size: 34px; font-weight: 700; color: var(--slate);
+  letter-spacing: -0.5px; line-height: 1; border: 0; background: transparent; padding: 0;
+  text-align: right; font-variant-numeric: tabular-nums; outline: none; width: auto;
+}
+.pxbar-case b { font-family: var(--font-title); font-size: 34px; font-weight: 700; color: var(--slate); line-height: 1; }
+
+/* Retour #592 — les estimations du bien, chacune par son prix : un clic le reprend. */
+.mt-estprix { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 6px; }
+.mt-estprix-b {
+  display: grid; gap: 1px; text-align: left; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line, #d9dde2); background: #fff; font: inherit; color: var(--slate);
+}
+.mt-estprix-b b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.mt-estprix-b span { font-size: 11.5px; color: var(--gray-lt); }
+.mt-estprix-b:hover { border-color: var(--gold-bo); }
+.mt-estprix-b.on { border-color: var(--gold-bo); box-shadow: inset 0 0 0 1px var(--gold-bo); background: #fbf7f1; }
+.mt-estprix-b:focus-visible { outline: 2px solid var(--gold-bo); outline-offset: 2px; }
+
+/* Retour #591 — la cible du bien, en tête du descriptif : les mêmes cartes que
+   la page 3 de l'estimation. */
+.dsc-cibles { display: grid; gap: 8px; margin: 0 0 14px; max-width: 560px; }
+.dsc-cibles-t { font-family: var(--font-title); font-size: 12px; font-weight: 700; color: var(--slate); text-transform: uppercase; letter-spacing: .06em; }
+.dsc-cibles .fine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
