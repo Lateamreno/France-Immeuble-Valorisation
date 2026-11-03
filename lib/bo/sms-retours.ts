@@ -254,32 +254,6 @@ export function estPasInteresse(texte: string, repli: boolean): boolean {
 }
 
 /**
- * Refuse la proposition et coupe ses relances (MAV, 02/11), comme « Pas pour
- * moi » depuis le compte client. Une proposition déjà avancée (visite, offre,
- * vente) ne recule pas : seules ses relances sont coupées.
- */
-async function refuserParRcs(propositionId: string, canal: string) {
-  const [p] = await lire<{ id: string; data: Doc }>(`bo_proposition?select=id,data&id=eq.${encodeURIComponent(propositionId)}&limit=1`);
-  if (!p) return;
-  const avance = /^(Visite|Offre|Vendu)/.test(String(p.data.Statut ?? ""));
-  const now = new Date().toISOString();
-  await patcher("bo_proposition", p.id, {
-    ...(avance ? {} : { Statut: "Refusée (sans offre)", motif_refus: `Pas intéressé (${canal})`, date_fin: now }),
-    stop_relances_yn: true,
-    stop_relances_le: now,
-    stop_relances_motif: `Pas intéressé (${canal})`,
-    date_modif: now,
-    "Modified Date": now,
-  });
-  /* Le compte client du site suit : la proposition y passe refusée. */
-  const contactId = S(p.data.ACHETEUR);
-  if (contactId) {
-    const { deposerCompte } = await import("./compte-site");
-    await deposerCompte(contactId).catch(() => undefined);
-  }
-}
-
-/**
  * Les événements du webhook RCS (MailingVox, 02/11) : un lot de cent au plus.
  *
  *   • `userMessageReceived` — un bouton touché (`postback`, dont le `text` est
@@ -329,11 +303,13 @@ export async function traiterEvenementsRcs(corps: unknown): Promise<number> {
         const r = await traiterReponse({ evenementId: id, numero, texte, source, campagne: canal, recuLe, brut });
         if (r.nouvelle) {
           n++;
+          if (r.cible?.propositionId) await patcher("bo_proposition", r.cible.propositionId, { retour_canal: repli ? "SMS" : "RCS" });
           /* MAV (02/11) : « si le client clique pas intéressé ça refuse la
              propal et coupe les relances ». Le bouton, ou « 2 » au SMS de repli
              (« Répondez 1 si intéressé, 2 sinon »). « Intéressé » reste rangé. */
           if (estPasInteresse(texte, repli) && r.cible?.propositionId) {
-            await refuserParRcs(r.cible.propositionId, canal);
+            const { refuserProposition } = await import("./reponse-client");
+            await refuserProposition(r.cible.propositionId, canal);
           }
         }
       } else if (statut) {

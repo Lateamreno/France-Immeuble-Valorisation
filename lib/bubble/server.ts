@@ -2179,7 +2179,7 @@ export type PropositionLigne = {
   noteLe?: string;
   /** La dernière réponse SMS de la personne, remontée par MailingVox et
    *  inscrite sur la proposition (MAV, 28/09). */
-  retourSms?: { texte: string; le?: string; lu: boolean };
+  retourSms?: { texte: string; le?: string; lu: boolean; canal?: string | null };
   /** L'adresse à laquelle le dossier est parti. */
   email?: string;
   /** Dernier geste connu (relance, envoi), ISO : la carte en tire les jours. */
@@ -2270,7 +2270,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
-        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
+        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true, canal: S2(p.retour_canal) } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: dmy(p.date_last_relance),
@@ -2528,7 +2528,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
-        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
+        retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true, canal: S2(p.retour_canal) } : undefined,
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: jjmmaa(p.date_last_relance),

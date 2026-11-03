@@ -360,6 +360,19 @@ porte un lien de désinscription (obligation de la prospection commerciale) ;
 les refus vont dans `fi_desabonnement` et sortent de **toutes** les salves.
 Lancer une campagne est réservé à la direction.
 
+**Liens « Intéressé / Pas intéressé » (02/11/26, MAV : « la même chose dans
+les e-mails, sans changer la façon dont on les envoie »).** Les e-mails de
+commercialisation et de relance portent, par destinataire, deux liens signés
+vers SA proposition (`lib/bo/reponse-client.ts`), posés à l'envoi à la place
+de la phrase « Pas intéressé ? Un mot en réponse… » (sinon avant
+« Cordialement »). Le texte relu à l'écran ne change pas, la route non plus.
+Le lien ouvre `/reponse` (public) ; **c'est le bouton de la page qui répond,
+pas l'ouverture** — les messageries suivent les liens pour les vérifier.
+« Pas intéressé » = même effet que le bouton RCS (`refuserProposition` :
+refusée, relances coupées, jumelles comprises) ; « Intéressé » est rangé sur
+la proposition (« Réponse e-mail »). Signature : HMAC dérivé de la clé de
+service, aucune variable à poser.
+
 **Commun aux deux routes :** doctrine héritée du netlinking — **validation
 humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
 automatique, jamais.

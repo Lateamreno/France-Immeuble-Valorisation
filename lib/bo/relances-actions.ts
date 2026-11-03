@@ -364,6 +364,26 @@ export async function envoyerRelances(
   const { lienDuDossier } = await import("./lien-dossier");
   const sansLien = new Set(tousImmeubles.filter((id) => { const l = lienDuDossier(dossiers.get(id)); return !l || l.aRemplacer; }));
 
+  /* MAV (02/11) : les liens « Intéressé / Pas intéressé » du RCS, dans
+     l'e-mail aussi — un par immeuble, sur la proposition de CE client. Le
+     texte relu à l'écran ne change pas ; les liens s'y ajoutent à l'envoi. */
+  const rep = await import("./reponse-client");
+  const base = await (await import("./adresse")).adresseBo();
+  const libelles = await rep.libellesImmeubles(tousImmeubles).catch(() => new Map<string, string>());
+  const propsLot = await parPaquets("bo_proposition", [...new Set(lot.flatMap((e) => e.propositionIds))])
+    .catch(() => new Map<string, Record<string, unknown>>());
+  const corpsAvecLiens = (e: (typeof lot)[number]) => {
+    const vus = new Set<string>();
+    const liens: { libelle?: string; oui: string; non: string }[] = [];
+    for (const pid of e.propositionIds) {
+      const im = S(propsLot.get(pid)?.IMMEUBLE) ?? "";
+      if (!im || vus.has(im)) continue; // une ligne par immeuble : les jumelles suivent au refus
+      vus.add(im);
+      liens.push({ libelle: libelles.get(im), oui: rep.lienReponse(base, pid, "oui"), non: rep.lienReponse(base, pid, "non") });
+    }
+    return rep.avecLiens(e.corps, liens);
+  };
+
   /* Un envoi : le message, puis le marquage de ses propositions (en
      parallèle, une écriture par ligne). Rend la ligne de journal s'il a
      échoué — rien n'est marqué relancé dans ce cas. */
@@ -379,13 +399,13 @@ export async function envoyerRelances(
         .map((p) => ({ filename: p.nom, content: p.contenu, contentType: p.type }));
       if (parRelais) {
         await mail.envoyerEnMasse({
-          to: e.email, subject: e.objet, text: e.corps,
+          to: e.email, subject: e.objet, text: corpsAvecLiens(e),
           replyTo: repondreA ?? agentMasse.email, agent: agentMasse,
           pieces: attachments.length ? attachments.map((a) => ({ nom: a.filename, contenu: a.content, type: a.contentType })) : undefined,
         });
       } else {
         await envoyerPourAgent(agentId, {
-          to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
+          to: e.email, subject: e.objet, text: corpsAvecLiens(e), replyTo: repondreA,
           attachments: attachments.length ? attachments : undefined,
           /* Retour #479 : une relance n'est pas de la correspondance. */
           copieEnvoyes: false,
