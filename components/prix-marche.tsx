@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { euros, group } from "@/lib/format";
+import { ventilerHai } from "@/lib/bareme";
 import {
   type AggLocatif, type RefsMarche,
   ecartRef, loyerM2Actuel, loyerM2Potentiel,
@@ -83,8 +84,10 @@ export function CurseurPrix({
     ? Math.max(1_000, Math.floor((Math.min(bornes.min, hai) * 0.7) / 10_000) * 10_000)
     : bornes.min;
   const max = libre ? Math.max(bornes.max, Math.ceil(hai / 1_000) * 1_000) : bornes.max;
-  const nv = honosPct >= 0 ? Math.round(hai / (1 + honosPct / 100)) : hai;
-  const honos = hai - nv;
+  /* Le barème toujours, minimum compris (MAV, 03/11). */
+  const ventil = ventilerHai(hai, honosPct >= 0 ? honosPct : undefined);
+  const nv = ventil.nv;
+  const honos = ventil.honos;
   const pos = (v: number) => `${((v - min) / (max - min || 1)) * 100}%`;
   return (
     <div className="pxbar">
@@ -127,7 +130,10 @@ export function CurseurPrix({
           <b>{euros(hai) ?? "—"}</b>
         )}
         <span>HAI</span>
-        <em>{group(nv)} € net vendeur · {group(honos)} € d&apos;honoraires ({taux(honosPct)} %)</em>
+        <em>
+          {group(nv)} € net vendeur · {group(honos)} € d&apos;honoraires ({taux(ventil.taux)} %
+          {ventil.auMinimum ? ", minimum du barème" : ""})
+        </em>
       </div>
     </div>
   );

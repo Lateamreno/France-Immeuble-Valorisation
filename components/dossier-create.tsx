@@ -12,6 +12,7 @@ import { bloquants, manquesDossier } from "@/lib/bo/completude";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
 import { useRouter } from "next/navigation";
 import { Modale } from "@/components/modale";
+import { ventilerHai } from "@/lib/bareme";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -60,7 +61,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const pct = S(num(b.im.prix_Charge_honos) ?? 5);
   const vHai = parse(hai) ?? 0;
   const vPct = parse(pct) ?? 5;
-  const nv = vHai > 0 ? Math.round(vHai / (1 + vPct / 100)) : 0;
+  /* Le barème toujours, minimum compris (MAV, 03/11). */
+  const nv = vHai > 0 ? ventilerHai(vHai, vPct).nv : 0;
 
   /* Retour #219 — « j'aimerais que, quand on génère un nouveau dossier, il
      soit demandé de le télécharger pour le vérifier avant de l'enregistrer.

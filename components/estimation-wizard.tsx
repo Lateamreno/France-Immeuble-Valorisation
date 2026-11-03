@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, group, S } from "@/lib/format";
+import { ventilerHai } from "@/lib/bareme";
 import { PICTOS_DEST } from "@/components/pictos-destination";
 import { RATTACHE } from "@/lib/referentiels";
 import { Copier } from "@/components/copier";
@@ -483,8 +484,11 @@ export function EstimationWizard({
   const hai = parse(haiStr) ?? pAuto;
   const [honosPct, setHonosPct] = useMem("honosPct", "5");
   const pct = parse(honosPct) ?? 5;
-  const nv = pct >= 0 ? Math.round(hai / (1 + pct / 100)) : hai;
-  const honos = hai - nv;
+  /* Le barème toujours, minimum compris (MAV, 03/11 : Montval-sur-Loir,
+     208 000 € HAI, sortait à ~9 900 € d'honoraires au lieu de 12 000 € TTC). */
+  const ventil = ventilerHai(hai, pct);
+  const nv = ventil.nv;
+  const honos = ventil.honos;
   const haiTravaux = hai + travauxTot;
 
   const ecart = ecartRef;
@@ -1298,6 +1302,12 @@ export function EstimationWizard({
                 depuis les retours #324/#326 : la recherche d'acquéreurs les
                 affiche aussi, et deux copies auraient fini par annoncer deux
                 rendements différents pour le même immeuble. */}
+            {ventil.auMinimum && (
+              <p className="est-min">
+                Honoraires au minimum du barème : <b>{group(ventil.honos)} € TTC</b>, soit{" "}
+                {String(ventil.taux).replace(".", ",")} % du net vendeur.
+              </p>
+            )}
             <CurseurPrix bornes={bornes} pRendementMax={pRendementMax} pM2={pM2}
               hai={hai} honosPct={pct} onHai={(v) => setHaiStr(String(v))} />
 
@@ -1729,7 +1739,7 @@ function DetailEstimation({ e }: { e: Record<string, unknown> }) {
   const hai = num(e.prix_hai) ?? 0;
   /* Toutes les estimations n'ont pas enregistré le net vendeur ; le taux
      d'honoraires, lui, y est toujours — il suffit à le retrouver. */
-  const nv = num(e.prix_nv) ?? (hai > 0 ? Math.round(hai / (1 + (num(e["honos_taux_%"]) ?? 5) / 100)) : 0);
+  const nv = num(e.prix_nv) ?? (hai > 0 ? ventilerHai(hai, num(e["honos_taux_%"])).nv : 0);
   const travaux = num(e.travaux_tot) ?? 0;
   const cases: [string, string][] = [
     ["Prix HAI", euros(hai) ?? "—"],

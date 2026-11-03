@@ -8,6 +8,7 @@
  */
 
 import { construireDossier, SFX } from "@/lib/bo/dossier";
+import { ventilerHai } from "@/lib/bareme";
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const txt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -101,7 +102,7 @@ export function lireEstimation(
   const honosPct = num(e["honos_taux_%"])
     ?? (hai && nvEnregistre && nvEnregistre > 0 ? (hai / nvEnregistre - 1) * 100 : undefined);
   const nv = nvEnregistre
-    ?? (hai && honosPct ? Math.round(hai / (1 + honosPct / 100)) : undefined);
+    ?? (hai ? ventilerHai(hai, honosPct).nv : undefined);
   const carrez = num(e.imm_carrez_tot_tot);
   const loyers = num(e.imm_loyer_hc_tot);
   /* Le bilan actuel / potentiel et les chiffres clés viennent du même calcul

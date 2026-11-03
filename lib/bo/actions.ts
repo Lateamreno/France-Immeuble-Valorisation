@@ -10,7 +10,7 @@ import {
   filtreMots, getAgentFiche, getBien, getEstimation, getPrixSecteur, motsRecherche,
 } from "@/lib/bubble/server";
 import { lireEstimation, type EstimationLecture } from "@/lib/bo/estimation-lecture";
-import { netVendeurDepuisHai } from "@/lib/bareme";
+import { netVendeurDepuisHai, ventilerHai } from "@/lib/bareme";
 import { greffeDe } from "@/lib/bo/greffes";
 import { jourIso } from "@/lib/format";
 import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, type Societe } from "@/lib/mandat";
@@ -1419,8 +1419,12 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
   const charges = (p.charges.tf_non_recup ?? 0) + (p.charges.autres_non_recup ?? 0);
   const travaux = (p.travaux.bati ?? 0) + (p.travaux.lots ?? 0);
   const hai = p.prix.hai;
-  const nv = Math.round(hai / (1 + p.prix.honos_pct / 100));
-  const honos = hai - nv;
+  /* Le barème TOUJOURS (MAV, 03/11 : Montval-sur-Loir, 208 000 € HAI, sortait
+     à ~9 900 € d'honoraires au lieu du minimum de 12 000 € TTC). Le taux
+     enregistré est le taux réel qui en découle. */
+  const ventil = ventilerHai(hai, p.prix.honos_pct);
+  const nv = ventil.nv;
+  const honos = ventil.honos;
   const haiTravaux = hai + travaux;
   const pc = (x: number) => Math.round(x * 1000) / 10; // % à 1 décimale
   const out = {
@@ -1434,7 +1438,7 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
     out_prix_m2_max: p.imm.carrez_tot > 0 ? Math.round(haiTravaux / p.imm.carrez_tot) : 0,
     out_prix_nv: nv,
     out_prix_hai_travaux: haiTravaux,
-    "out_honos_taux_%": p.prix.honos_pct,
+    "out_honos_taux_%": ventil.taux,
     out_honos_auto: true,
   };
 
@@ -1491,7 +1495,7 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
     p_doc: cleanPatch({
       IMMEUBLE: immeubleId,
       ...parDest,
-      "honos_taux_%": p.prix.honos_pct,
+      "honos_taux_%": ventil.taux,
       ESTIMATOR: agentId,
       PRIX: prixId,
       Statut: "2 - A envoyer",
@@ -3025,7 +3029,9 @@ export async function createDossier(
 ) {
   const id = newId();
   const now = new Date().toISOString();
-  const nv = Math.round(input.prix_hai / (1 + input.honos_pct / 100));
+  /* Le barème toujours, minimum compris (MAV, 03/11). */
+  const ventil = ventilerHai(input.prix_hai, input.honos_pct);
+  const nv = ventil.nv;
   const s = input.snapshot;
   await rpc("bo_insert_doc", {
     p_table: "bo_dossier",
@@ -3040,7 +3046,7 @@ export async function createDossier(
       prix_hai: input.prix_hai,
       prix_nv: nv,
       honos_ttc: input.prix_hai - nv,
-      "honos_taux_x,xx": input.honos_pct / 100,
+      "honos_taux_x,xx": ventil.taux / 100,
       surface: s.surface,
       occupation: s.occupation,
       loyer_hc_an: s.loyer_hc_an,
@@ -4182,7 +4188,11 @@ export async function enregistrerPrix(
   const surface = n(im?.surface_carrez) || n(im?.fin_surface_carrez);
 
   const hai = Math.round(input.hai);
-  const honos = Math.round(input.honosTtc);
+  /* Le barème toujours, minimum compris (MAV, 03/11) — vérifié ici, côté
+     serveur, quoi que l'écran ait envoyé : le taux qu'il proposait est gardé
+     s'il est sous le barème, mais jamais sous le minimum de la tranche. */
+  const tauxEcran = input.honosTtc > 0 && hai > input.honosTtc ? (input.honosTtc / (hai - input.honosTtc)) * 100 : undefined;
+  const honos = ventilerHai(hai, tauxEcran).honos;
   const nv = hai - honos;
   const haiTravaux = hai + travaux;
   const pc = (x: number) => Math.round(x * 1000) / 10;

@@ -9435,3 +9435,7 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .rcs-bulle { background: #fff; border-radius: 14px 14px 14px 4px; padding: 9px 12px; font-size: 13px; line-height: 1.45;
   color: #1d2433; white-space: pre-wrap; word-break: break-word; max-width: 92%; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .rcs-tel figcaption { padding: 7px 12px 9px; font-size: 11.5px; color: #5d6670; background: #fff; border-top: 1px solid #e3e6ea; }
+
+/* Honoraires au minimum du barème (MAV, 03/11). */
+.est-min { margin: 6px 0 0; font-size: 12.5px; color: var(--muted, #6c7781); }
+.est-min b { color: var(--slate, #2b2f36); }
