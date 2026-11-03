@@ -681,3 +681,58 @@ export async function controler(venteId: string, faits: FaitsVente, texte: Recit
   const { interdits } = await sourcesDe(v.data);
   return controleAnonymat([texte.titre, texte.chapo, texte.recit, faits.composition ?? ""], interdits, faits.rue);
 }
+
+/* ------------------------------------------------- Publication groupée */
+
+/**
+ * Les récits relus par Claude à la demande de MAV (03/11 : « valide les textes
+ * de tous les immeubles vendus pour qu'on puisse avoir un bon SEO tout de
+ * suite ») : `site_recit_relu_le` posé, pas encore validés depuis.
+ */
+function relusEnAttente(ventes: { id: string; data: Record<string, unknown> }[]) {
+  return ventes.filter((v) => {
+    const relu = S(v.data.site_recit_relu_le);
+    if (!relu || !S(v.data.site_recit)) return false;
+    const valide = S(v.data.site_valide_le);
+    return !valide || valide < relu;
+  });
+}
+
+/** Combien de récits relus attendent la publication. */
+export async function recitsRelusEnAttente(): Promise<number> {
+  return relusEnAttente(await lireBo("bo_vente?select=id,data")).length;
+}
+
+/**
+ * Publie, par paquets, les récits relus : chacun passe par « Valider et
+ * publier » — contrôle d'anonymat refait ici, faits corrigés compris, six faits
+ * au moins. La direction seule, d'un clic ; l'écran rappelle jusqu'à ce qu'il
+ * ne reste rien. Une vente refusée garde son brouillon et est signalée.
+ */
+export async function publierRecitsRelus(agent?: string, paquet = 4) {
+  const { estAdmin, REFUS_ADMIN } = await import("./admin");
+  if (!(await estAdmin(agent))) return { ...REFUS_ADMIN, publiees: 0, restant: 0, refus: [] as { commune: string; message: string }[] };
+  const ventes = relusEnAttente(await lireBo("bo_vente?select=id,data"));
+  const refus: { commune: string; message: string }[] = [];
+  let publiees = 0;
+  for (const v of ventes.slice(0, Math.max(1, Math.min(paquet, 8)))) {
+    const commune = S(v.data.ville) ?? "?";
+    try {
+      const o = await ouvrirVente(v.id);
+      const r = await validerEtPublier(v.id, o.faits, o.texte, agent);
+      if (r.ok) publiees++;
+      else {
+        refus.push({ commune, message: r.message });
+        /* Écartée de la file pour ce passage : sans quoi l'écran la
+           reproposerait sans fin. Elle reste à relire à la main. */
+        await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: v.id, p_patch: { site_recit_relu_le: null } }).catch(() => undefined);
+      }
+    } catch (e) {
+      refus.push({ commune, message: e instanceof Error ? e.message : String(e) });
+      await rpcBo("bo_patch_doc", { p_table: "bo_vente", p_id: v.id, p_patch: { site_recit_relu_le: null } }).catch(() => undefined);
+    }
+  }
+  const restant = relusEnAttente(await lireBo("bo_vente?select=id,data")).length;
+  revalidatePath("/ventes-site");
+  return { ok: true as const, publiees, restant, refus };
+}

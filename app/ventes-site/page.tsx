@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { dmy, euros } from "@/lib/format";
-import { listeVentes, type LigneVente } from "@/lib/bo/ventes-site";
+import { listeVentes, recitsRelusEnAttente, type LigneVente } from "@/lib/bo/ventes-site";
+import { estAdmin } from "@/lib/bo/admin";
+import { PublierRecits } from "@/components/publier-recits";
 import { Pastille } from "@/components/pastille";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ const SITE_PUBLIC = (process.env.SITE_FI_PUBLIC_URL ?? "https://france-immeuble-
  */
 export default async function VentesSitePage() {
   const { aPublier, passees, configuree } = await listeVentes().catch(() => ({ aPublier: [], passees: [], configuree: false }));
+  const [relus, admin] = await Promise.all([recitsRelusEnAttente().catch(() => 0), estAdmin().catch(() => false)]);
   const limite = Date.now() - 7 * 86_400_000;
   const avecRecit = passees.filter((v) => v.etat === "avec_recit").length;
   const brouillons = passees.filter((v) => v.etat !== "avec_recit" && v.brouillon).length;
@@ -28,6 +31,7 @@ export default async function VentesSitePage() {
         <span className="s">Les ventes affichées sur le site France Immeuble. Rien n&apos;y part sans votre validation.</span>
       </div>
       {!configuree && <div className="vs-msg ko">Le site n&apos;est pas branché ici : lecture seule.</div>}
+      {admin && configuree && <PublierRecits nombre={relus} />}
       {relectures > 0 && (
         <div className="vs-msg">
           {relectures} vente{relectures > 1 ? "s" : ""} à relire : un agent en a demandé la publication. Rien n&apos;est en ligne avant votre validation.

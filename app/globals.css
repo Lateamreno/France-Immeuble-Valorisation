@@ -9439,3 +9439,7 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* Honoraires au minimum du barème (MAV, 03/11). */
 .est-min { margin: 6px 0 0; font-size: 12.5px; color: var(--muted, #6c7781); }
 .est-min b { color: var(--slate, #2b2f36); }
+
+/* Publication groupée des récits relus (MAV, 03/11). */
+.vs-msg .kgo { margin-left: 8px; }
+.vs-refus { margin: 6px 0 0; padding-left: 18px; }
