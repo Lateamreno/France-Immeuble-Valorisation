@@ -16,6 +16,7 @@ import { PICTOS_DEST } from "@/components/pictos-destination";
 import { enregistrerPrix, updateBien } from "@/lib/bo/actions";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { Modale, useQuestion } from "@/components/modale";
+import { ventilerHai } from "@/lib/bareme";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => {
@@ -149,7 +150,8 @@ function ModalePrix({
   const [remarque, setRemarque] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
 
-  const nv = Math.round(hai / (1 + tauxHonos / 100));
+  /* Le barème toujours, minimum compris (MAV, 03/11). */
+  const nv = ventilerHai(hai, tauxHonos).nv;
   const honos = hai - nv;
   const r = rendements(hai, ctx);
 
@@ -396,7 +398,8 @@ export function PrixEcran({ b }: {
     setHaiVu(prixEnBase);
     setHai(prixEnBase);
   }
-  const nv = Math.round(hai / (1 + tauxHonos / 100));
+  /* Le barème toujours, minimum compris (MAV, 03/11). */
+  const nv = ventilerHai(hai, tauxHonos).nv;
   const honos = hai - nv;
   const r = rendements(hai, ctx);
 

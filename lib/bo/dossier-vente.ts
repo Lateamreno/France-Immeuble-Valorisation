@@ -25,6 +25,7 @@ import { descriptifRetenu } from "./descriptif";
 import { selectionDossier } from "./photos-dossier";
 import { etagesDepuisLots } from "./etages";
 import { nomComposant, situationLot } from "@/lib/referentiels";
+import { ventilerHai } from "@/lib/bareme";
 
 /* Retours #461 et #465 : les destinations PRINCIPALES font la nature du bien ;
    parkings, caves et annexes sont des accessoires — ils complètent la
@@ -90,9 +91,13 @@ export function construireDossierVente(
 
   /* --- Le prix, figé dans le dossier --- */
   const hai = N(d.prix_hai) ?? N(im.prix_hai) ?? 0;
-  const taux = N(d["honos_taux_%"]) ?? N(im.prix_Charge_honos) ?? 5;
-  const nv = hai > 0 ? Math.round(hai / (1 + taux / 100)) : 0;
+  /* Le net vendeur figé dans le dossier quand il y est ; sinon le barème,
+     minimum compris (MAV, 03/11 : « respecte le barème tout le temps »). */
+  const tauxSaisi = N(d["honos_taux_%"]) ?? (N(d["honos_taux_x,xx"]) !== undefined ? N(d["honos_taux_x,xx"])! * 100 : undefined) ?? N(im.prix_Charge_honos);
+  const nvFige = N(d.prix_nv);
+  const nv = hai > 0 ? (nvFige && nvFige < hai ? Math.round(nvFige) : ventilerHai(hai, tauxSaisi).nv) : 0;
   const honos = hai - nv;
+  const taux = nv > 0 ? Math.round((honos / nv) * 10000) / 100 : 0;
 
   /* --- L'état locatif d'aujourd'hui --- */
   const surface = lots.reduce((s, l) => s + (N(l.surface_carrez) ?? 0), 0);

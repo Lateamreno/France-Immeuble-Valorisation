@@ -12,7 +12,7 @@
 
 import { group } from "./format";
 import { RATTACHE } from "./referentiels";
-import { honorairesBareme, netVendeurDepuisHai, type Tranche } from "./bareme";
+import { honorairesBareme, honorairesDepuisNv, netVendeurDepuisHai, ventilerHai, type Tranche } from "./bareme";
 
 /* ---------------------------------------------------------------- Mandants */
 
@@ -572,6 +572,13 @@ export function ancrePrix(pilotes: ChampPrix[]): "nv" | "hai" {
  * Avant : le HAI était l'ancre quoi qu'on tape, et taper un net vendeur puis
  * un taux faisait réécrire le net vendeur qu'on venait d'écrire.
  */
+/* MAV (03/11) : « il faut que tu respectes le barème des honos tout le temps,
+   que ce soit les minimums ou les pourcentages ». Un TAUX saisi est borné par
+   le barème (jamais au-dessus) et ses honoraires ne descendent jamais sous le
+   minimum de la tranche (ventilerHai, honorairesDepuisNv). Des HONORAIRES
+   tapés en euros restent ceux tapés — les forcer pendant la frappe rendrait la
+   case inutilisable — mais l'écran signale en rouge un montant sous le
+   minimum (`sousMinimum`). */
 export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]): Prix {
   const dernier = pilotes[pilotes.length - 1] ?? "hai";
   const ancre = ancrePrix(pilotes);
@@ -590,13 +597,13 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]):
      été saisi, sinon c'est le barème qui le donne. */
   if (dernier === "hai") {
     if (!hai) return out({ nv, hai, taux, honos });
-    if (tauxSaisi && taux) { const n = hai / (1 + taux / 100); return out({ hai, taux, nv: n, honos: hai - n }); }
+    if (tauxSaisi && taux) { const r = ventilerHai(hai, taux, bareme); return out({ hai, taux: r.taux, nv: r.nv, honos: r.honos }); }
     const r = netVendeurDepuisHai(hai, bareme);
     return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux });
   }
   if (dernier === "nv") {
     if (!nv) return out({ nv, hai, taux, honos });
-    if (tauxSaisi && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+    if (tauxSaisi && taux) { const r = honorairesDepuisNv(nv, taux, bareme); return out({ nv, taux: r.taux, honos: r.honos, hai: nv + r.honos }); }
     const r = honorairesBareme(nv, bareme);
     return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos });
   }
@@ -604,18 +611,18 @@ export function resoudrePrix(p: Prix, pilotes: ChampPrix[], bareme?: Tranche[]):
   /* Un taux ou des honoraires viennent d'être saisis : l'ancre ne bouge pas,
      l'autre montant se déduit. */
   if (ancre === "nv" && nv) {
-    if (dernier === "taux" && taux !== undefined) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+    if (dernier === "taux" && taux !== undefined) { const r = honorairesDepuisNv(nv, taux, bareme); return out({ nv, taux: r.taux, honos: r.honos, hai: nv + r.honos }); }
     if (dernier === "honos" && honos !== undefined) return out({ nv, honos, hai: nv + honos, taux: (honos / nv) * 100 });
   }
   if (hai) {
-    if (dernier === "taux" && taux !== undefined) { const n = hai / (1 + taux / 100); return out({ hai, taux, nv: n, honos: hai - n }); }
+    if (dernier === "taux" && taux !== undefined) { const r = ventilerHai(hai, taux, bareme); return out({ hai, taux: r.taux, nv: r.nv, honos: r.honos }); }
     if (dernier === "honos" && honos !== undefined) { const n = hai - honos; return out({ hai, honos, nv: n, taux: n > 0 ? (honos / n) * 100 : undefined }); }
     /* Rien de saisi encore : le HAI seul renseigné se décline au barème. */
     if (!nv && !honos && !taux) { const r = netVendeurDepuisHai(hai, bareme); return out({ hai, nv: r.nv, honos: r.honos, taux: r.taux }); }
     return out({ nv, hai, taux, honos });
   }
   /* Sans HAI : on le fabrique depuis ce qu'on a. */
-  if (nv && taux) { const h = nv * (taux / 100); return out({ nv, taux, honos: h, hai: nv + h }); }
+  if (nv && taux) { const r = honorairesDepuisNv(nv, taux, bareme); return out({ nv, taux: r.taux, honos: r.honos, hai: nv + r.honos }); }
   if (nv && honos) return out({ nv, honos, taux: (honos / nv) * 100, hai: nv + honos });
   if (nv) { const r = honorairesBareme(nv, bareme); return out({ nv, honos: r.honos, taux: r.taux, hai: nv + r.honos }); }
   return out({ nv, hai, taux, honos });

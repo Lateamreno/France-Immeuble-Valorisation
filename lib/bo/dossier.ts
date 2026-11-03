@@ -1,3 +1,4 @@
+import { ventilerHai } from "@/lib/bareme";
 // Dossier d'estimation — les 6 pages envoyées au propriétaire.
 //
 // Tout se reconstruit depuis l'enregistrement d'estimation, jamais depuis la
@@ -69,8 +70,10 @@ export function construireDossier(
   const travauxLots = num(e.travaux_lots) ?? 0;
   const travaux = num(e.travaux_tot) ?? travauxBati + travauxLots;
   const hai = num(e.prix_hai) ?? 0;
-  const honosPct = num(e["honos_taux_%"]) ?? 5;
-  const nv = Math.round(hai / (1 + honosPct / 100));
+  /* Le net vendeur enregistré par l'estimation ; sinon le barème, minimum
+     compris (MAV, 03/11). */
+  const nv = num(e.prix_nv) ?? num(e.out_prix_nv) ?? ventilerHai(hai, num(e["honos_taux_%"])).nv;
+  const honosPct = nv > 0 ? Math.round(((hai - nv) / nv) * 10000) / 100 : 0;
 
   /* --- Une ligne par destination : état locatif ET références secteur --- */
   const lignes: LigneDest[] = dests.map((d) => {

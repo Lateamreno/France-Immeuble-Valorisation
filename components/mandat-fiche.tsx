@@ -16,7 +16,7 @@ import { oublier, useMemoire } from "@/lib/memoire";
 import Link from "next/link";
 import type { getMandat } from "@/lib/bubble/server";
 import { dmy, euros, group, jourIso, S } from "@/lib/format";
-import { baremeTexte, plafondTaux, type Tranche } from "@/lib/bareme";
+import { baremeTexte, plafondTaux, sousMinimum, trancheDe, type Tranche } from "@/lib/bareme";
 import { IRREVOC_DEFAUT, IRREVOC_MAX, regimeDe } from "@/lib/bo/mandat-doc";
 import { CHARGES_HONOS, TYPES_EXCLU } from "@/lib/referentiels";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
@@ -1750,6 +1750,14 @@ function OngletPrix({
           au-delà, les honoraires sont contestables.
         </p>
       )}
+      {/* MAV (03/11) : le minimum du barème, toujours. */}
+      {p.nv && p.honos !== undefined && sousMinimum(p.nv, p.honos, bareme) && (
+        <p className="mdt-alerte">
+          Honoraires sous le minimum du barème : {trancheDe(p.nv, bareme).minimum.toLocaleString("fr-FR")} € TTC
+          au moins pour ce net vendeur.
+        </p>
+      )}
+
 
       {/* La nature de la vente commande la charge des honoraires : c'est le
           droit de préemption du locataire qui décide, pas l'occupation. */}
@@ -2074,6 +2082,14 @@ function ModaleAvenant({
           Le taux dépasse le barème ({plafondTaux(p.nv!, bareme).toFixed(2).replace(".", ",")} % pour ce net vendeur).
         </p>
       )}
+      {/* MAV (03/11) : le minimum du barème, toujours. */}
+      {p.nv && p.honos !== undefined && sousMinimum(p.nv, p.honos, bareme) && (
+        <p className="mdt-alerte">
+          Honoraires sous le minimum du barème : {trancheDe(p.nv, bareme).minimum.toLocaleString("fr-FR")} € TTC
+          au moins pour ce net vendeur.
+        </p>
+      )}
+
       <div className="mdt-grid" style={{ marginTop: 14 }}>
         <Champ libelle="Prise d'effet du nouveau prix" className="mdt-ch" htmlFor="mdt-av-effet">
           <input id="mdt-av-effet" className="mi" type="date" value={dateEffet} onChange={(e) => setDateEffet(e.target.value)} />
