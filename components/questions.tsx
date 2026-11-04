@@ -157,6 +157,17 @@ export function EcranQuestions({
                     <Pastille ton="bleu">Depuis son compte sur le site</Pastille>
                   </div>
                 )}
+                {/* #120 (04/11) : le message « acheter » reste ici même quand la
+                    recherche suit — il pousse à appeler ; la recherche s'y lit. */}
+                {r.rechercheSuite && (
+                  <div className="qc-dem">
+                    {r.telephone && (
+                      <a className="qc-tel" href={`tel:${r.telephone.replace(/[^\d+]/g, "")}`}>☎ {r.telephone}</a>
+                    )}
+                    <Pastille ton="vert">Recherche déposée sur le site</Pastille>
+                    {r.contact && <Link className="qc-rech" href={`/contact/${r.contact.id}`}>Sa recherche</Link>}
+                  </div>
+                )}
                 {r.rdv && (
                   <div className="qc-dem">
                     <Pastille ton={r.rdv.etat === "confirme" ? "vert" : r.rdv.etat === "annule" ? "gris" : "orange"}>

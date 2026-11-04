@@ -190,6 +190,7 @@ Livré le 21/10 au soir (lot 3) : `BO_LEAD_ENDPOINT` =
 | Vendre / Estimer (`type: "estimation"`, `etat: "principal"` puis `"complement"`, `formulaire: "vendre"` ou `"estimer"`) | un immeuble au statut « 1 - FORMULAIRE », avec son propriétaire, **sous la même vignette** que les anciens formulaires au tableau de bord ; le complément complète la même fiche | « Site - Formulaire Vendre » ou « Site - Formulaire estimer » |
 | Recherche (`type: "recherche_acquereur"`) | le contact, retrouvé par e-mail ou créé avec la **note D**, et une recherche par élément du tableau `recherches` | « Site - Formulaire recherche » |
 | Contact depuis une fiche à vendre (`type: "contact"`, `bien`, `bienTitre`) | le contact (note D s'il est nouveau), sa **recherche** déduite du bien (département, 70 à 130 % du prix, destinations des lots ; gardée si le contact cherche déjà dans ce département) et une **demande de dossier** dans Questions, rattachée au bien et à son agent. L'envoi du dossier crée la proposition, rattachée à cette recherche (MAV, 21/10) | « Site - Fiche à vendre » |
+| Message de contact (`type: "contact"` sans `bien`, avec `projet`) | une question dans « Formulaire site » ; le contact est créé acquéreur (note D) si le projet est « acheter », vendeur si c'est « vendre ». Ce n'est pas une demande de dossier. La suite (recherche ou estimation) s'y rattache par `refContact`, voir §16 | « Site - Formulaire Contact » |
 
 ### Les champs
 
@@ -870,3 +871,30 @@ Profils Investisseur et Marchand de biens seulement (une recherche ancienne
 garde le sien), financement non demandé, `prixMax` absent = sans plafond,
 lieux : rien à changer côté BO — il lisait déjà `departements` et `villes`
 tels que décrits.
+
+## 16. Le message de contact et ce qui le suit (demande du site, 04/11, #120)
+
+Le formulaire de contact se prolonge en dépôt de recherche (« acheter ») ou en
+estimation (« vendre »). Le second envoi porte `refContact`, la `ref` du
+message. Lu par le BO depuis le 04/11 :
+
+- **Une seule personne.** La recherche ou l'estimation reprend le contact du
+  message, sans en chercher ni en créer un autre.
+- **Acheteur.** La question du message **reste ouverte** dans « Formulaire
+  site » : elle pousse à appeler (MAV, 04/11). La recherche s'y rattache ; la
+  carte affiche « Recherche déposée sur le site » et mène à la fiche contact.
+- **Vendeur.** L'estimation crée, comme toujours, le formulaire du tableau de
+  bord (« 1 - FORMULAIRE »). La question du message s'y rattache (son
+  immeuble) et se **range** avec la mention « Suite donnée sur le site » :
+  la même personne ne se traite pas à deux endroits. Le texte du message
+  rejoint les notes du bien. Une question déjà close par un agent n'est pas
+  rouverte.
+- **Ordre d'arrivée.** Si la suite arrive avant le message (la file peut les
+  inverser), elle est enregistrée tout de suite, et c'est le message qui s'y
+  rattache en arrivant. Aucun 503 pour ça.
+- **Champ inconnu ou illisible.** Un `refContact` qui n'est pas une `ref`
+  (UUID) est ignoré ; un champ inconnu n'a jamais fait refuser un lead.
+- Le message de contact **sans** `bien` n'est plus classé « demande de
+  dossier » : c'est une question, source « Site - Formulaire Contact ». Un
+  message « vendre » ne crée plus un contact acquéreur noté D.
+
