@@ -10,6 +10,7 @@
 import { NextRequest } from "next/server";
 import { tournerLaFile } from "@/lib/bo/relances-file";
 import { tournerCampagnes } from "@/lib/bo/campagnes";
+import { tournerOrdreRecits } from "@/lib/bo/ordre-recits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,9 +30,12 @@ export async function GET(req: NextRequest) {
     const debut = Date.now();
     const etat = await tournerLaFile(30_000);
     const campagne = await tournerCampagnes(50_000 - (Date.now() - debut)).catch((e) => ({ erreur: String(e) }));
+    // Un ordre de publication des récits relus donné par MAV (lib/bo/ordre-recits.ts) : sinon rien.
+    const recits = await tournerOrdreRecits().catch((e) => ({ erreur: String(e) }));
     return Response.json({
       relances: etat ? { salve: etat.id, statut: etat.statut, mails: etat.mails, sms: etat.sms } : null,
       campagne,
+      recits,
     });
   } catch (e) {
     return Response.json({ erreur: e instanceof Error ? e.message : String(e) }, { status: 500 });
