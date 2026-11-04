@@ -3876,6 +3876,8 @@ export type QuestionCard = {
     /** La recherche créée (ou retrouvée) pour la personne. */
     rechercheId?: string;
   };
+  /** #120 (04/11) : la recherche déposée sur le site à la suite du message de contact. */
+  rechercheSuite?: string;
 };
 
 export async function listQuestionsBO(
@@ -3958,6 +3960,7 @@ export async function listQuestionsBO(
             rechercheId: S2(q.RECHERCHE),
           }
         : undefined,
+      rechercheSuite: q.demande_dossier !== true ? S2(q.RECHERCHE) : undefined,
     } satisfies QuestionCard;
   });
 }

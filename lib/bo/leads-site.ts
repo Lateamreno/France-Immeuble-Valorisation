@@ -222,6 +222,61 @@ async function suiviFormulaire(id: string, p: { agentId?: string; contactId: str
   await rpc("bo_append_ref", { p_table: "bo_contact", p_id: p.contactId, p_key: "SUIVIs", p_value: id }).catch(() => undefined);
 }
 
+/* ------------------------------------------ Le message qui précède (#120) */
+
+/**
+ * Retour #120 de MAV (site, 04/11) : le formulaire de contact se prolonge en
+ * dépôt de recherche (« acheter ») ou en estimation (« vendre »). Le second
+ * envoi porte `refContact`, la `ref` du message : même personne, même
+ * demande. Le message est la question `app_site_<ref>` ; un `refContact` qui
+ * n'est pas une référence est ignoré, jamais une raison de refuser le lead.
+ */
+async function messageDuContact(b: Record<string, unknown>): Promise<{ ref: string; q: { id: string; data: Record<string, unknown> } | null } | null> {
+  const ref = reference(b.refContact);
+  if (!ref) return null;
+  const [q] = await lire(`bo_question?select=id,data&id=eq.app_site_${ref}`).catch(() => []);
+  return { ref, q: q ?? null };
+}
+
+/** Le contact du message : la suite le reprend tel quel, sans en chercher ni en créer un autre. */
+const contactDuMessage = (m: Awaited<ReturnType<typeof messageDuContact>>) =>
+  m?.q ? T(m.q.data.CONTACT) : undefined;
+
+/**
+ * Acheteur : la recherche se rattache au message, qui RESTE ouvert dans
+ * « Formulaire site » — il pousse l'agence à appeler (MAV, 04/11).
+ */
+async function lierRechercheAuMessage(questionId: string, rechercheId: string) {
+  const [q] = await lire(`bo_question?select=id,data&id=eq.${encodeURIComponent(questionId)}`).catch(() => []);
+  if (!q || T(q.data.RECHERCHE)) return;
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question", p_id: questionId,
+    p_patch: { RECHERCHE: rechercheId, "Modified Date": new Date().toISOString() },
+  });
+}
+
+const SUITE_VENTE = "Suite donnée sur le site : formulaire d'estimation reçu. Le bien est au tableau de bord, dans Formulaires à traiter.";
+
+/**
+ * Vendeur : l'estimation devient le formulaire du tableau de bord ; le message
+ * s'y rattache (son immeuble) et se range, pour ne pas traiter la même
+ * personne à deux endroits. Son texte rejoint les notes du bien : rien ne se
+ * perd. Une question que l'agent a déjà close ou rattachée n'est pas touchée.
+ */
+async function lierEstimationAuMessage(questionId: string, immeubleId: string) {
+  const [q] = await lire(`bo_question?select=id,data&id=eq.${encodeURIComponent(questionId)}`).catch(() => []);
+  if (!q) return;
+  await noterClient(immeubleId, T(q.data.message, 5000)).catch(() => undefined);
+  if (T(q.data.IMMEUBLE)) return;
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_question", p_id: questionId,
+    p_patch: q.data.ended === true
+      ? { IMMEUBLE: immeubleId, "Modified Date": now }
+      : { IMMEUBLE: immeubleId, ended: true, date_cloture: now, remarques_cloture: SUITE_VENTE, motif_cloture: "suite_site", "Modified Date": now },
+  });
+}
+
 /* ------------------------------------------------------ Notes du client */
 
 /** « (30/10/26 CLIENT) » : la date de Paris, et CLIENT à la place des initiales (#577). */
@@ -485,6 +540,12 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
   if (etat === "dossier") return recevoirDossier(ref, b);
   if (etat !== "principal" && etat !== "complement") throw new LeadPasPret(`État d'estimation inconnu : ${etat.slice(0, 40)}`);
   const complement = etat === "complement";
+  /* Le message de contact qui précède (#120), sur le principal seulement : le
+     complément et le dossier suivent la fiche, pas le message. */
+  const message = complement ? null : await messageDuContact(b);
+  const lier = async (immeubleId: string) => {
+    if (message?.q) await lierEstimationAuMessage(message.q.id, immeubleId);
+  };
   const formulaire = b.formulaire === "estimer" ? "estimer" : "vendre";
   const source = formulaire === "estimer" ? "Site - Formulaire estimer" : "Site - Formulaire Vendre";
   const immeubleId = `app_site_${ref}`;
@@ -536,7 +597,11 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
     /* Le principal après son complément (la file du site a pu les inverser) :
        la fiche existe, il lui manque le texte et le suivi du principal. */
     const suivi = `app_site_${ref}_s1`;
-    if (await existe("bo_suivi", suivi)) return { deja: true, id: immeubleId };
+    if (await existe("bo_suivi", suivi)) {
+      // Un réessai après une coupure : le rattachement au message se rejoue, il ne double rien.
+      if (await present("bo_immeuble", immeubleId)) await lier(immeubleId);
+      return { deja: true, id: immeubleId };
+    }
     const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${immeubleId}`);
     if (!im) return { deja: true, id: immeubleId };
     const texte = texteEstimation(b, false);
@@ -549,6 +614,7 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
       agentId: T(im?.data.AGENT) ?? agentId, contactId: T(im?.data.PROPRIETAIRE) ?? "", immeubleId, notes: texte,
     });
     await noterClient(immeubleId, texte);
+    await lier(immeubleId);
     return { deja: false, id: immeubleId };
   }
 
@@ -558,10 +624,11 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
   const rue = T(b.rue, 200);
   if (!ville && !cp) throw new LeadInvalide("Ni ville ni code postal : impossible de situer l'immeuble.");
   const compte = cleCompte(b.compte);
-  const { id: contactId } = await contactDuLead(ref, {
+  // #120 : la personne du message qui précède, jamais un second contact.
+  const contactId = contactDuMessage(message) ?? (await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
     source, agentId, noteD: false, vendeur: true, compte,
-  });
+  })).id;
   const lots = ["lotsHabitation", "lotsCommerces", "lotsBureaux", "lotsActivite"].map((k) => N(b[k]) ?? 0);
   const texte = texteEstimation(b, complement);
   const now = new Date().toISOString();
@@ -587,11 +654,14 @@ async function recevoirEstimation(ref: string, b: Record<string, unknown>) {
     "occupé": T(b.occupation) ? T(b.occupation) !== "Libre" : undefined,
     date_contact_form: now,
     site_lead_ref: ref,
+    // Le message qui précède (#120) : s'il arrive après, c'est lui qui retrouvera le bien.
+    site_ref_contact: message?.ref,
     "Created Date": now,
     "Modified Date": now,
   });
   await rpc("bo_append_ref", { p_table: "bo_contact", p_id: contactId, p_key: "IMMEUBLES", p_value: immeubleId }).catch(() => undefined);
   await suiviFormulaire(`app_site_${ref}_s${complement ? 2 : 1}`, { agentId, contactId, immeubleId, notes: texte });
+  await lier(immeubleId);
   // Depuis le compte : l'immeuble apparaît aussitôt, « en cours d'estimation » (§9.3).
   await rattacher(contactId, compte);
 
@@ -675,7 +745,10 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
   const agentId = await agentParDefaut();
   const source = "Site - Formulaire recherche";
   const compte = cleCompte(b.compte);
-  const contact = await contactDuLead(ref, {
+  // #120 : la recherche qui prolonge un message de contact reprend sa personne.
+  const message = await messageDuContact(b);
+  const duMessage = contactDuMessage(message);
+  const contact = duMessage ? { id: duMessage, nouveau: false } : await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
     source, agentId, noteD: true, acheteur: true, compte,
   });
@@ -701,15 +774,20 @@ async function recevoirRecherche(ref: string, b: Record<string, unknown>) {
       commentaire: oc.commentaire,
       exclusions: { destinations: [], villes: [], departements: [], regions: [] },
     }, agentId, { id, source });
+    if (message) {
+      await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: id, p_patch: { site_ref_contact: message.ref } }).catch(() => undefined);
+    }
     creees++;
   }
+  // Le message reste ouvert dans « Formulaire site » ; la recherche s'y rattache.
+  if (message?.q && recherches.length) await lierRechercheAuMessage(message.q.id, `app_site_${ref}_r1`);
   const resume = recherches.map((r, i) => {
     const prix = [N(r.prixMin), N(r.prixMax)].map((x) => (x ? eur(x) : "…")).join(" à ");
     return `Recherche ${i + 1} : ${T(r.cible) ?? "cible non précisée"}, ${L(r.departements).join(", ") || "tous départements"}, ${prix}`;
   });
   await suiviFormulaire(`app_site_${ref}_s1`, {
     agentId, contactId: contact.id,
-    notes: [`Formulaire de recherche du site${contact.nouveau ? "" : " (contact déjà connu)"}.`, ...resume].join("\n"),
+    notes: [`Formulaire de recherche du site${message?.q ? ", à la suite de son message de contact" : contact.nouveau ? "" : " (contact déjà connu)"}.`, ...resume].join("\n"),
   });
   await rattacher(contact.id, compte);
   return { deja: creees === 0 && recherches.length > 0, id: contact.id };
@@ -765,22 +843,29 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
   /* Retour #513 : la demande n'est attribuée à personne. Le contact (et sa
      recherche) va à l'agent qui la traite réellement — au premier appel, envoi
      de dossier, refus ou clôture (voir `attribuerAuTraitant`). */
-  const source = "Site - Fiche à vendre";
+  /* Deux formulaires sous le même type (#120, 04/11) : la demande de dossier
+     d'une fiche à vendre (`bien`), et le formulaire de contact de l'accueil et
+     de la page Contact, qui dit son projet. Ce dernier n'est pas une demande de
+     dossier, et un vendeur n'est pas un acquéreur. */
+  const projet = T(b.projet, 200);
+  const vendeur = !bienId && /vend/i.test(projet ?? "");
+  const acheteur = !!bienId || /achet/i.test(projet ?? "");
+  const source = bienId ? "Site - Fiche à vendre" : "Site - Formulaire Contact";
   const compte = cleCompte(b.compte);
   const contact = await contactDuLead(ref, {
     prenom: T(b.prenom, 80), nom: T(b.nom, 80), email: T(b.email, 200), telephone: T(b.telephone, 40),
-    source, noteD: true, acheteur: true, compte,
+    source, noteD: acheteur, acheteur, vendeur, compte,
   });
   const rechercheId = im ? await rechercheDeLaDemande(ref, contact, im, T(b.bienTitre, 200), undefined) : undefined;
   const now = new Date().toISOString();
   await inserer("bo_question", questionId, {
     source,
-    demande_dossier: true,
+    demande_dossier: !!bienId,
     ended: false,
-    message: T(b.message, 5000) ?? (T(b.bienTitre) ? `Demande de dossier : ${T(b.bienTitre)}` : "Demande de dossier"),
+    message: T(b.message, 5000) ?? (!bienId ? undefined : T(b.bienTitre) ? `Demande de dossier : ${T(b.bienTitre)}` : "Demande de dossier"),
     email: T(b.email, 200)?.toLowerCase(),
     "téléphone": T(b.telephone, 40),
-    Projet: T(b.projet, 200),
+    Projet: projet,
     IMMEUBLE: im ? im.id : undefined,
     bien_titre: T(b.bienTitre, 200),
     CONTACT: contact.id,
@@ -789,6 +874,15 @@ async function recevoirContact(ref: string, b: Record<string, unknown>) {
     "Created Date": now,
     "Modified Date": now,
   });
+  /* La file du site a pu faire passer la suite avant le message (#120) : la
+     recherche ou l'estimation porte alors la référence du message, et c'est
+     lui qui s'y rattache en arrivant. */
+  if (!bienId) {
+    const [rech] = await lire(`bo_recherche?select=id&data->>site_ref_contact=eq.${ref}&order=id&limit=1`).catch(() => []);
+    if (rech) await lierRechercheAuMessage(questionId, rech.id);
+    const [imm] = await lire(`bo_immeuble?select=id&data->>site_ref_contact=eq.${ref}&limit=1`).catch(() => []);
+    if (imm) await lierEstimationAuMessage(questionId, imm.id);
+  }
   await rattacher(contact.id, compte);
   return { deja: false, id: questionId };
 }
