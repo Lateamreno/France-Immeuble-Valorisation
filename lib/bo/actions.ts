@@ -17,6 +17,7 @@ import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, typ
 import type { BienMail } from "@/lib/bo/mail-commercialisation";
 import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
+import { MOTIF_TEST } from "@/lib/referentiels";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -230,6 +231,11 @@ export async function archiverImmeuble(
       envoi = { ok: false, message: `E-mail non envoyé : ${e instanceof Error ? e.message : "échec"}.` };
     }
   }
+  if (motif === MOTIF_TEST) {
+    await supprimerTest(immeubleId);
+    refresh();
+    return envoi;
+  }
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
@@ -241,6 +247,39 @@ export async function archiverImmeuble(
   });
   refresh(immeubleId);
   return envoi;
+}
+
+/**
+ * Retour #599 : un bien de test ne reste pas dans la base, il part à la
+ * corbeille (`bo_trash`, récupérable). Partent avec lui ce qui n'existe que
+ * pour lui : ses lots, ses suivis « Formulaire », et le contact que le
+ * formulaire du site a créé pour l'occasion s'il n'a rien d'autre. Un contact
+ * qui existait avant, ou qui a d'autres biens ou des recherches, reste.
+ */
+async function supprimerTest(immeubleId: string) {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  if (!im) return;
+  const q = encodeURIComponent(immeubleId);
+  const lire = async (chemin: string) => {
+    const r = await fetch(`${SB_URL}/rest/v1/${chemin}`, { headers: { apikey: SB_KEY ?? "", Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" });
+    return r.ok ? ((await r.json()) as { id: string; data: Record<string, unknown> }[]) : [];
+  };
+  const [lots, suivis] = await Promise.all([
+    lire(`bo_lot?select=id,data&data->>IMMEUBLE=eq.${q}&limit=500`),
+    lire(`bo_suivi?select=id,data&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([immeubleId]))}&limit=500`),
+  ]);
+  for (const l of lots) await rpc("bo_delete_doc", { p_table: "bo_lot", p_id: l.id }).catch(() => undefined);
+  for (const sv of suivis.filter((x) => x.data.Type === "Formulaire")) {
+    await rpc("bo_delete_doc", { p_table: "bo_suivi", p_id: sv.id }).catch(() => undefined);
+  }
+  await rpc("bo_delete_doc", { p_table: "bo_immeuble", p_id: immeubleId });
+  const proprio = typeof im.PROPRIETAIRE === "string" ? im.PROPRIETAIRE : "";
+  if (proprio.startsWith("app_site_")) {
+    const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(proprio)}`);
+    const autres = Array.isArray(c?.data.IMMEUBLES) ? (c!.data.IMMEUBLES as unknown[]).filter((x) => x !== immeubleId) : [];
+    const recherches = c ? await lire(`bo_recherche?select=id&data->>ACHETEUR=eq.${encodeURIComponent(proprio)}&limit=1`) : [];
+    if (c && !autres.length && !recherches.length) await rpc("bo_delete_doc", { p_table: "bo_contact", p_id: proprio }).catch(() => undefined);
+  }
 }
 
 /**

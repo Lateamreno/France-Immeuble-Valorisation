@@ -9,6 +9,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { apercuMailHorsSecteur } from "@/lib/bo/actions";
 import { Modale } from "@/components/modale";
+import { MOTIF_TEST } from "@/lib/referentiels";
 
 /* ---------- Validation du formulaire (mode de contact) ---------- */
 
@@ -274,6 +275,12 @@ export function ModaleArchivage({
             onKeyDown={(e) => { if (e.key === "Enter" && pret) start(() => onArchiver(motif, precision.trim(), mail)); }} />
         </div>
 
+        {motif === MOTIF_TEST && (
+          <div className="tr-mail-att rouge">
+            Ce motif supprime le bien au lieu de l&apos;archiver, avec ses lots, ses formulaires et le contact créé pour l&apos;essai s&apos;il n&apos;a rien d&apos;autre. Il ne comptera dans aucune statistique.
+          </div>
+        )}
+
         {horsSecteur && (
           <div className="tr-mail">
             <label className="tr-mail-oui">
@@ -306,7 +313,7 @@ export function ModaleArchivage({
             geste par défaut, c'est le retour #362 tout entier. */}
         <button type="button" className="vf-go" disabled={!pret}
           onClick={() => pret && start(() => onArchiver(motif, precision.trim(), mail))}>
-          <span className="ch">›</span> {mail ? "Envoyer et archiver" : "Archiver"}
+          <span className="ch">›</span> {motif === MOTIF_TEST ? "Supprimer l'essai" : mail ? "Envoyer et archiver" : "Archiver"}
         </button>
       </div>
     </Modale>
