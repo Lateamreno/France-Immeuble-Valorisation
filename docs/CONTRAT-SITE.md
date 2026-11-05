@@ -751,6 +751,43 @@ réglette (prix au m² bas / haut de la commune). Aucune adresse, aucun nom.
 Un champ absent du relevé de l'agent vaut `null` ; sans relevé, `secteur` est
 nul.
 
+### 13.4 Le PDF de l'estimation, et ce qui manque côté site (demande du BO, 05/11)
+
+MAV, 05/11 : « quand je fais une estimation, que ça envoie bien le document
+vers le compte client, avec le PDF au moins, mais aussi idéalement avec les
+prix de secteur ainsi que le prix de vente et sa molette ».
+
+**Ce que le BO fait depuis le 05/11.** Chaque estimation envoyée au
+propriétaire porte une colonne `document` : le chemin du PDF dans le seau
+privé `documents-clients` (`<compte>/estimations/<cle>.pdf`), le PDF même qui
+est parti par e-mail. Même règle que les mandats et les offres.
+
+**Constat du 05/11 dans la base du site.** `compte_estimations` n'a que
+`compte`, `cle`, `bien_cle`, `valeur`, `prix_m2`, `rendement`, `estimee_le`.
+Les colonnes du §13.3 n'ont jamais été créées, ni `document`. Tant qu'elles
+manquent, le BO dépose la ligne **sans elles** (il retire une colonne inconnue
+au lieu de faire échouer l'envoi) et le panneau « Son compte sur le site » le
+dit. Le client voit alors la valeur, mais ni le PDF ni la réglette.
+
+**À créer par le site :**
+
+| Colonne | Type | Contenu |
+|---|---|---|
+| `document` | text | chemin du PDF dans `documents-clients` (lien signé à l'affichage) |
+| `surface` | numeric | m² retenus |
+| `loyers_an` | numeric | loyers HC annuels retenus |
+| `loyer_marche` | numeric | loyer de marché habitation, €/m²/an |
+| `secteur` | jsonb | repères du secteur (format du §13.3) |
+| `valeur_basse`, `valeur_haute`, `delai_jours` | numeric | nuls pour l'instant |
+
+**À afficher :** le bouton « Télécharger l'estimation (PDF) », la valeur de
+l'agence (prix de vente honoraires inclus) et la **réglette** : le client
+bouge le prix entre les bornes du secteur (`commune_habitation.prix_m2.bas` et
+`haut` × `surface`, ou ± 20 % autour de `valeur` sans bornes), et voit le prix
+au m² et le rendement (`loyers_an / prix`) changer. La valeur de l'agence
+reste marquée sur la réglette. Le BO redépose tout de suite après la création
+des colonnes : rien à ressaisir.
+
 `compte_comparables` : pas maintenant. Repères plus fins dans
 `web.stats_villes` : donnez la liste des colonnes que vous lisez.
 

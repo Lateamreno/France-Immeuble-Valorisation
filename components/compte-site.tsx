@@ -93,6 +93,11 @@ export function CompteSite({ contactId, titre = "Son compte sur le site" }: { co
         </p>
       )}
       {vue?.erreur && <p className="espv-txt" style={{ color: "#a5341f" }}>Dernier dépôt incomplet : {vue.erreur}</p>}
+      {vue?.absentes?.length ? (
+        <p className="espv-txt" style={{ color: "#9a6a12" }}>
+          Le site ne sait pas encore afficher : {vue.absentes.join(", ")}. Le reste est bien parti.
+        </p>
+      ) : null}
       {msg && <p className="espv-txt">{msg}</p>}
       {vue?.compte && !l && <p className="espv-txt">Le site n&apos;est pas branché ici : lecture impossible.</p>}
       {vue?.compte && vide && <p className="espv-txt">Son compte est vide pour l&apos;instant.</p>}
