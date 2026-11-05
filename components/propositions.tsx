@@ -770,6 +770,11 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
           <input placeholder="Recherchez une proposition — nom, téléphone, e-mail…" value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+          {/* Retour #597 : une croix pour vider la recherche d'un clic (comme #529). */}
+          {q && (
+            <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+              onClick={() => { setQ(""); setPage(1); }}>✕</button>
+          )}
         </div>
         <VuesPropositions lignes={lignes ?? []} vue={vue} onVue={(v) => { setVue(v); setPage(1); }} />
         <select className="pgs" value={tri} onChange={(e) => setTri(e.target.value as "date" | "classe")} title="Tri">
