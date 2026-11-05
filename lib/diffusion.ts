@@ -475,7 +475,13 @@ export function lotsSite(b: BienData): LotSite[] {
       loyer_hc_mois: loue ? N(l.loyer) ?? null : null,
       /* Le BO ne tient pas les charges au lot : elles sont à l'immeuble. */
       charges_mois: null,
-      loyer_marche_mois: loue ? null : N(l.loyer_max) ?? null,
+      /* Site, 05/11 (Sin-le-Noble) : le loyer potentiel de l'annonce est la
+         somme des potentiels des lots. Un lot occupé dont le potentiel diffère
+         de son loyer le porte donc aussi, sinon les lignes ne font pas le total.
+         Le site le lit comme potentiel du lot, même occupé. */
+      loyer_marche_mois: loue
+        ? (N(l.loyer_max) !== undefined && N(l.loyer_max) !== N(l.loyer) ? N(l.loyer_max)! : null)
+        : N(l.loyer_max) ?? null,
       disponible_le: null,
       etat: ETAT_SITE[String(l.Etat ?? "")] ?? null,
       travaux: N(l.travaux) ?? null,

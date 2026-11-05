@@ -983,3 +983,13 @@ Réponse du BO, point par point.
    de suite.
 7. **Recherche « Marchand de biens » en double.** Rien à retirer pour MAV :
    ses deux doublons (02/11 et 05/11) sont déjà archivés.
+8. **Le loyer potentiel dans les lots (Sin-le-Noble).** `loyer_hc_an_potentiel`
+   était juste : c'est la somme des potentiels des lots. À Sin-le-Noble, le
+   lot 6 (stockage, bail 3/6/9) est loué 750 €/mois pour un potentiel de
+   1 000 €/mois, soit 3 000 € par an d'écart. Le BO n'envoyait le potentiel que
+   pour les lots libres. Depuis le 05/11, **confirmé** : `loyer_marche_mois`
+   porte aussi le potentiel d'un lot **occupé** quand il diffère de son loyer
+   (sinon il reste nul). Prenez-le comme potentiel du lot ; les lignes font
+   alors le total (5 031 €/mois × 12 = 60 372 €). Les annonces en ligne sont
+   redéposées au rapprochement de la nuit ; la ligne « Hausse de loyers
+   prévue, non détaillée par lot » ne devrait plus apparaître.
