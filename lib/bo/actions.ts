@@ -5993,6 +5993,18 @@ export async function enregistrerRecherche(
     regions: saisie.exclusions.regions,
   });
 
+  /* Retour #602 : le compte du site suit la recherche tout de suite. Une
+     recherche venue du site (lead) a déjà son propre dépôt ; un second est
+     sans effet. */
+  if (saisie.contactId) {
+    const acheteur = saisie.contactId;
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(acheteur).catch(() => undefined);
+      });
+    } catch { /* hors requête : la reprise de nuit s'en charge */ }
+  }
   revalidatePath("/recherches");
   if (saisie.contactId) revalidatePath(`/contact/${saisie.contactId}`);
   return id;
@@ -7033,6 +7045,17 @@ export async function supprimerRecherche(id: string, contactId?: string) {
     p_id: id,
     p_patch: { archived: true, standby: false, "Modified Date": now },
   });
+  /* Retour #602 : le compte du site apprend la suppression tout de suite, sans
+     attendre la reprise de nuit (le dépôt remplace la liste des recherches). */
+  const acheteur = contactId || String((await bqOne("bo_recherche", id).catch(() => null))?.ACHETEUR ?? "");
+  if (acheteur) {
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(acheteur).catch(() => undefined);
+      });
+    } catch { /* hors requête : la reprise de nuit s'en charge */ }
+  }
   revalidatePath("/recherches");
   revalidatePath("/propositions");
   if (contactId) revalidatePath(`/contact/${contactId}`);
