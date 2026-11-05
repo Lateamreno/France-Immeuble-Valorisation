@@ -60,7 +60,6 @@ import { SocietePicker } from "@/components/societe-picker";
 import { useQuestion } from "@/components/modale";
 import { ecouterMemoire, oublier } from "@/lib/memoire";
 import { ecartsDossierMandat, mandatDeReference } from "@/lib/bo/chiffres-dossier";
-import { BoutonSupprimerCommercialisation } from "@/components/supprimer-commercialisation";
 import { ajouterProprietaire, definirSocieteDetentrice, retirerProprietaire } from "@/lib/bo/societes-actions";
 import { sousTitreSociete } from "@/lib/societes";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
@@ -661,10 +660,11 @@ export function BienFiche({
               {sect === "decoupe" && operation && (
                 <SectionDecoupe o={operation} immeubleId={String(b.im._id)} />
               )}
-              {sect === "acheteurs" && <AcheteursSection key={cleAch} b={b} />}
-              {sect === "commercialisations" && (
-                <EcranCommercialisations b={b} onCommercialiser={() => setSect("acheteurs")} />
-              )}
+              {/* Retour #596 : « fusionner les deux et conserver un seul menu ».
+                  Commercialisations ouvre l'écran complet (matchings et
+                  commercialisations cliquables, envois, suppression) ; l'ancienne
+                  adresse « acheteurs » y mène aussi. */}
+              {(sect === "acheteurs" || sect === "commercialisations") && <AcheteursSection key={cleAch} b={b} />}
               {sect === "propositions" && <EcranPropositions b={b} />}
               {sect === "visites" && <EcranVisites b={b} />}
               {sect === "offres" && <EcranOffres b={b} />}
@@ -2387,7 +2387,7 @@ function SousMenuAcheteurs({
     cle: SectionKey, label: string, icon: React.ReactNode,
     mention: React.ReactNode, plus: (() => void) | undefined, n: number | null,
   ) => (
-    <button type="button" className={`srow2 sub acx-sub${sect === cle ? " on" : ""}`}
+    <button type="button" className={`srow2 sub acx-sub${sect === cle || (cle === "commercialisations" && sect === "acheteurs") ? " on" : ""}`}
       onClick={() => setSect(cle)}>
       <span className="sic2"><svg viewBox="0 0 24 24">{icon}</svg></span>
       {label}
@@ -2406,10 +2406,10 @@ function SousMenuAcheteurs({
 
   return (
     <>
-      {ligne("acheteurs", "Acheteurs", I.users, null, undefined, b.propositions.total)}
-      {/* Les campagnes vivent dans le vivier acquéreurs, chargé à la demande :
-         le rail ne peut pas les compter sans le charger pour chaque fiche. On
-         n'affiche donc pas de compteur ici plutôt qu'un zéro qui mentirait. */}
+      {/* Retour #596 : une seule entrée, « Commercialisations », qui reprend
+         tout ce que montrait « Acheteurs ». Les campagnes vivent dans le vivier
+         acquéreurs, chargé à la demande : pas de compteur plutôt qu'un zéro
+         qui mentirait. */}
       {ligne("commercialisations", "Commercialisations", I.megaphone, null, undefined, null)}
       {ligne("propositions", "Propositions", I.avion, null,
         () => setAjout("proposition"), b.propositions.total)}
@@ -2465,80 +2465,9 @@ function AcheteursSection({ b }: { b: BienData }) {
   }, [immeubleId]);
   return (
     <>
-      <TitreAcheteurs cle="acheteurs" />
+      <TitreAcheteurs cle="commercialisations" />
       {erreur && <div className="fempty">Le vivier acquéreurs n&apos;a pas pu être chargé.</div>}
       {hist && <Acheteurs b={b} d={ach} hist={hist} />}
-    </>
-  );
-}
-
-/** Écran 2 — les campagnes déjà lancées. */
-function EcranCommercialisations({ b, onCommercialiser }: {
-  b: BienData;
-  onCommercialiser: () => void;
-}) {
-  const { ach, erreur, chargement } = useVivier(String(b.im._id));
-  const [supprimees, setSupprimees] = useState<Set<string>>(() => new Set());
-  const [messageSuppr, setMessageSuppr] = useState<string | null>(null);
-  const rows = (ach?.commercialisations ?? []).filter((c) => !supprimees.has(String(c._id)));
-  return (
-    <>
-      <TitreAcheteurs cle="commercialisations" />
-      {/* Retour #346 — « il faut qu'on puisse lancer une commercialisation ici,
-          ça ne fonctionne pas, ça me redirige vers la page acheteur ».
-          Une commercialisation part bien d'un matching — c'est lui qui désigne
-          à qui on écrit — mais le bouton se contentait de changer d'onglet et
-          laissait l'agent devant un deuxième bouton à trouver. Il pose
-          maintenant un drapeau que l'écran Acheteurs lit à l'arrivée pour
-          ouvrir la fenêtre de lancement : un clic, une fenêtre. */}
-      <button className="acx-add" type="button"
-        onClick={() => {
-          try {
-            sessionStorage.setItem(`ach:${String(b.im._id)}:lancer`, "true");
-          } catch {
-            /* Navigation privée, stockage refusé : on bascule quand même, le
-               bouton de l'écran Acheteurs prend le relais. */
-          }
-          onCommercialiser();
-        }}>
-        + Commercialiser
-      </button>
-      {messageSuppr && <div className="asst-ok">{messageSuppr}</div>}
-      {chargement && <div className="fempty">Chargement des commercialisations…</div>}
-      {erreur && <div className="fempty">Les commercialisations n&apos;ont pas pu être chargées.</div>}
-      {ach && rows.length === 0 && <div className="fempty">Aucune commercialisation lancée sur cet immeuble.</div>}
-      {rows.map((c) => {
-        const props = Array.isArray(c.PROPOSITIONs) ? (c.PROPOSITIONs as unknown[]).length : 0;
-        return (
-          <div key={String(c._id)} className="acx-comm">
-            <span className="acx-comm-pic"><svg viewBox="0 0 24 24">{I.antenne}</svg></span>
-            <div className="acx-comm-c">
-              <div className="acx-comm-t">Commercialisation du {dmy(c["Created Date"])}</div>
-              <div className="acx-comm-p">
-                {typeof c.DOSSIER === "string" && c.DOSSIER && <span className="fchip">Dossier</span>}
-                {typeof c.MANDAT === "string" && c.MANDAT && <span className="fchip">Mandat</span>}
-                {typeof c.wetransfer_link === "string" && c.wetransfer_link && (
-                  <a className="fchip" href={c.wetransfer_link as string} target="_blank" rel="noreferrer">Lien du dossier</a>
-                )}
-              </div>
-            </div>
-            <div className="acx-comm-r">
-              <div>{props} proposition{props > 1 ? "s" : ""}</div>
-              <div className={c.prop_sent === true ? "vert" : "orange"}>
-                {c.prop_sent === true ? "E-mails envoyés" : "E-mails à envoyer"}
-              </div>
-              <div className={c.prop_sms_sent === true ? "vert" : "orange"}>
-                {c.prop_sms_sent === true ? (c.sms_canal === "rcs" ? "RCS envoyés" : "SMS envoyés") : "RCS à envoyer"}
-              </div>
-              {/* MAV (03/11) : tant que rien n'est parti, elle s'annule et se supprime. */}
-              <BoutonSupprimerCommercialisation c={c} onFait={(msg) => {
-                setSupprimees((x) => new Set(x).add(String(c._id)));
-                setMessageSuppr(msg);
-              }} />
-            </div>
-          </div>
-        );
-      })}
     </>
   );
 }
