@@ -84,16 +84,6 @@ const IC = {
   interdit: <><circle cx="12" cy="12" r="8.5" /><path d="M6.4 6.4 17.6 17.6" /></>,
 };
 
-/** L'en-tête d'une section de la modale : un picto, un titre, un filet. */
-function Section({ titre, ic }: { titre: string; ic: React.ReactNode }) {
-  return (
-    <div className="rmod-sect">
-      <span className="rmod-ic"><svg viewBox="0 0 24 24">{ic}</svg></span>
-      {titre}
-    </div>
-  );
-}
-
 /** Les initiales d'un nom, pour la vignette du client. */
 function initiales(nom: string) {
   return nom.split(/\s+/).filter(Boolean).slice(0, 2).map((m) => m[0]?.toUpperCase() ?? "").join("") || "?";
@@ -432,6 +422,14 @@ export function ModaleRechercheEdition({
   const DEST_OPT = DESTINATIONS.map((d) => ({ cle: d.cle, nom: d.cle }));
   const DPT_OPT = DEPARTEMENTS.map((d) => ({ cle: d.code, nom: d.nom }));
   const REG_OPT = REGIONS.map((r) => ({ cle: r, nom: r }));
+  /* Version C (#601) : un seul champ « Où » — la prédiction trouve une région,
+     un département (par son code ou son nom) ; le reste est une ville. */
+  const LIEU_OPT = [...REG_OPT, ...DPT_OPT];
+  /** Un pas de ± 0,5 point sur le rendement, écrit à la française. */
+  const pas = (v: string, d: number) => {
+    const n = (num(v) ?? 0) + d;
+    return n <= 0 ? "" : String(Math.round(n * 10) / 10).replace(".", ",");
+  };
 
   return (
     <>
@@ -513,87 +511,102 @@ export function ModaleRechercheEdition({
             )}
           </div>
 
-          <div className="rmod-cols">
-            {/* --- Colonne de gauche : ce qu'il cherche ------------------- */}
-            <div className="rmod-col">
-              <Section titre="Ce qu'il cherche" ic={IC.cible} />
-              <Champ libelle="Type d'opération">
-                <select className="min" value={cible} onChange={(e) => setCible(e.target.value)}>
-                  <option value="">Non précisé</option>
-                  {CIBLES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </Champ>
-
-              <Champ libelle="Destinations recherchées">
-                <ChoixMultiple options={DEST_OPT} valeur={destinations} onChange={setDestinations}
-                  placeholder="Logement, Commerce, Bureau…" />
-              </Champ>
-
-              <Section titre="Secteur" ic={IC.geo} />
-              <Champ libelle="Régions">
-                <ChoixMultiple options={REG_OPT} valeur={regions} onChange={setRegions}
-                  placeholder="Île-de-France, Hauts-de-France…" />
-              </Champ>
-              {regions.length > 0 && (
-                <p className="rm-aide">
-                  À l&apos;enregistrement, une région devient ses{" "}
-                  <b>{new Set(regions.flatMap(departementsDe)).size} départements</b> — c&apos;est
-                  ce que la base et le matching savent comparer. Vous les retrouverez donc
-                  listés ci-dessous en rouvrant la recherche.
-                </p>
-              )}
-              <Champ libelle="Départements">
-                <ChoixMultiple options={DPT_OPT} valeur={dpts} onChange={setDpts}
-                  placeholder="93, seine-saint, 2A…" />
-              </Champ>
-              <Champ libelle="Villes">
-                <ChoixMultiple options={[]} valeur={villes} onChange={setVilles} libre
-                  placeholder="Taper une ville puis Entrée…" />
-              </Champ>
-              <p className="rm-aide">
-                Rien ici veut dire <b>France entière</b> : c&apos;est une recherche sans exigence
-                de secteur, pas une recherche sans résultat.
-              </p>
+          {/* Retour #601 — version C choisie par MAV (05/11) : la recherche en
+              lignes, à lire d'un coup d'œil et à corriger au téléphone. Les
+              valeurs ressemblent à du texte tant qu'on n'y touche pas ; les
+              choix fermés sont des pastilles. Rien ne part avant « Enregistrer
+              la recherche ». */}
+          <div className="rl">
+            <div className="rl-k">Profil</div>
+            <div className="rl-v">
+              {CIBLES.map((c) => (
+                <button key={c} type="button" className={`rl-chip${cible === c ? " on" : ""}`}
+                  aria-pressed={cible === c} onClick={() => setCible(cible === c ? "" : c)}>{c}</button>
+              ))}
             </div>
 
-            {/* --- Colonne de droite : à quelles conditions --------------- */}
-            <div className="rmod-col">
-              <Section titre="À quelles conditions" ic={IC.euro} />
-              {/* Les paires « de … à » gardent leur ligne en texte : le titre y
-                  est posé EN LIGNE devant la case (12 px gris), ce que `Champ`
-                  ne dessine pas — sa variante « gauche » réserve une colonne de
-                  150 px au titre, et la grille se casserait. */}
-              <div className="rm-grille">
-                <label>Budget de <ChampChiffre valeur={prixMin} onChange={setPrixMin} unite="€" large /></label>
-                <label>à <ChampChiffre valeur={prixMax} onChange={setPrixMax} unite="€" large /></label>
-                <label>Surface de <ChampChiffre valeur={surfMin} onChange={setSurfMin} unite="m²" /></label>
-                <label>à <ChampChiffre valeur={surfMax} onChange={setSurfMax} unite="m²" /></label>
-                <label>Occupation de <ChampChiffre valeur={occMin} onChange={setOccMin} unite="%" /></label>
-                <label>à <ChampChiffre valeur={occMax} onChange={setOccMax} unite="%" /></label>
-                <label>Rendement ≥ <ChampChiffre valeur={renta} onChange={setRenta} unite="%" /></label>
-              </div>
-              <p className="rm-aide">
-                Une case laissée vide veut dire <b>pas d&apos;exigence</b> — pas « zéro » :
-                l&apos;immeuble passe le critère quoi qu&apos;il vaille.
-              </p>
+            <div className="rl-k">Destinations</div>
+            <div className="rl-v">
+              {DESTINATIONS.map((d) => {
+                const on = destinations.includes(d.cle);
+                return (
+                  <button key={d.cle} type="button" className={`rl-chip${on ? " on" : ""}`} aria-pressed={on}
+                    onClick={() => setDestinations(on ? destinations.filter((x) => x !== d.cle) : [...destinations, d.cle])}>
+                    {d.cle}
+                  </button>
+                );
+              })}
+            </div>
 
-              {/* Retour #332 — les exclusions. Repliées par défaut : elles ne
-                  servent qu'à une recherche sur dix, mais quand elles servent,
-                  elles sont la seule façon d'obtenir le bon résultat. Elles
-                  prennent les mêmes listes déroulantes que les critères
-                  positifs (#341) : le même geste des deux côtés. */}
-              <button type="button" className="rmod-excl-b" onClick={() => setVoirExclusions(!voirExclusions)}>
+            <div className="rl-k">Où</div>
+            <div className="rl-v rl-large">
+              <ChoixMultiple options={LIEU_OPT} valeur={[...regions, ...dpts, ...villes]} libre
+                onChange={(v) => {
+                  setRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
+                  setDpts(v.filter((x) => /^\d{2,3}[AB]?$/.test(x)));
+                  setVilles(v.filter((x) => !/^\d{2,3}[AB]?$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
+                }}
+                placeholder="Une région, un département (93, seine-saint…) ou une ville" />
+              {regions.length > 0 && (
+                <span className="rl-aide">
+                  À l&apos;enregistrement, une région devient ses {new Set(regions.flatMap(departementsDe)).size} départements.
+                </span>
+              )}
+              {!regions.length && !dpts.length && !villes.length && <span className="rl-aide">Rien : France entière.</span>}
+            </div>
+
+            <div className="rl-k">Budget</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={prixMin} onChange={setPrixMin} unite="€" large />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={prixMax} onChange={setPrixMax} unite="€" large />
+            </div>
+
+            <div className="rl-k">Rendement</div>
+            <div className="rl-v">
+              <span className="rl-a">au moins</span>
+              <button type="button" className="rl-pas" aria-label="Rendement moins 0,5 point"
+                onClick={() => setRenta(pas(renta, -0.5))}>−</button>
+              <ChampChiffre valeur={renta} onChange={setRenta} unite="%" />
+              <button type="button" className="rl-pas" aria-label="Rendement plus 0,5 point"
+                onClick={() => setRenta(pas(renta, 0.5))}>+</button>
+            </div>
+
+            <div className="rl-k">Occupation</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={occMin} onChange={setOccMin} unite="%" />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={occMax} onChange={setOccMax} unite="%" />
+            </div>
+
+            <div className="rl-k">Surface</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={surfMin} onChange={setSurfMin} unite="m²" />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={surfMax} onChange={setSurfMax} unite="m²" />
+            </div>
+
+            <div className="rl-k">Notes</div>
+            <div className="rl-v rl-large">
+              <textarea className="rl-notes" rows={2} value={commentaire}
+                onChange={(e) => setCommentaire(e.target.value)}
+                placeholder="Ce que l'acquéreur a dit et qu'aucune case ne dit…" />
+            </div>
+
+            <div className="rl-k">Exclusions</div>
+            <div className="rl-v rl-large">
+              {/* Retour #332 : repliées par défaut, ouvertes dès qu'il y en a. */}
+              <button type="button" className="rmod-excl-b rl-excl" onClick={() => setVoirExclusions(!voirExclusions)}>
                 <span className="rmod-ic rouge"><svg viewBox="0 0 24 24">{IC.interdit}</svg></span>
-                {voirExclusions ? "Masquer" : "Ajouter"} des exclusions
-                {nbExclusions > 0 && <b className="rm-cpt">{nbExclusions}</b>}
+                {nbExclusions > 0 ? `${nbExclusions} exclusion${nbExclusions > 1 ? "s" : ""}` : "Aucune"}
                 <span className="ch">{voirExclusions ? "▾" : "▸"}</span>
               </button>
               {voirExclusions && (
                 <div className="rm-excl">
                   <p className="rm-aide">
                     Ce que cette recherche <b>refuse</b>, quoi qu&apos;elle demande par ailleurs.
-                    Cocher « Logement » à gauche laisse passer les immeubles mixtes — c&apos;est
-                    voulu. Exclure « Commerce » ici les écarte.
+                    Cocher « Logement » laisse passer les immeubles mixtes — c&apos;est voulu.
+                    Exclure « Commerce » ici les écarte.
                   </p>
                   <Champ libelle="Destinations exclues">
                     <ChoixMultiple options={DEST_OPT} valeur={exDest} onChange={setExDest}
@@ -613,11 +626,6 @@ export function ModaleRechercheEdition({
                   </Champ>
                 </div>
               )}
-
-              <Section titre="Ce qu'aucune case ne dit" ic={IC.note} />
-              <textarea className="min" rows={4} value={commentaire}
-                onChange={(e) => setCommentaire(e.target.value)}
-                placeholder="Ce que l'acquéreur a dit et qu'aucune case ne dit…" />
             </div>
           </div>
         </div>

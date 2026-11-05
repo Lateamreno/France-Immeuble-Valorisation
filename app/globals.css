@@ -9464,3 +9464,35 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .emp-charge-etapes { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: 12.5px; color: var(--gray-txt); }
 .emp-charge-etapes .ok { color: #1f7a4d; font-weight: 600; }
 .emp-charge p { margin: 6px 0 0; font-size: 12px; color: var(--gray-txt); }
+
+/* Retour #601 — la recherche version C : une fiche en lignes, modifiable sur
+   place. Libellé à gauche, valeur à droite ; les cases ressemblent à du texte
+   tant qu'on n'y touche pas. */
+.rl { display: grid; grid-template-columns: 150px 1fr; border-top: 1px solid var(--line-lt); margin-top: 6px; }
+.rl-k, .rl-v { padding: 10px 6px; border-bottom: 1px solid var(--line-lt); }
+.rl-k { font-family: var(--font-title); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--gray-txt); display: flex; align-items: center; }
+.rl-v { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.rl-large { display: block; }
+.rl-large > * + * { margin-top: 6px; }
+.rl-chip { border: 1px solid #d7dbe0; border-radius: 99px; padding: 4px 12px; font-size: 13px; background: var(--puce-fond); color: var(--slate); cursor: pointer; font-family: var(--font-body); }
+.rl-chip:hover { border-color: var(--gold-bo); }
+.rl-chip.on { background: var(--slate); border-color: var(--slate); color: #fff; font-weight: 700; }
+.rl-a { font-size: 13px; color: var(--gray-txt); }
+.rl-aide { display: block; font-size: 12px; color: var(--gray-txt); }
+.rl-pas { width: 30px; height: 30px; border: 1px solid #cfd4d9; border-radius: 6px; background: #fff; color: var(--slate); font-weight: 700; font-size: 16px; cursor: pointer; }
+.rl-pas:hover { border-color: var(--gold-bo); }
+.rl .rm-nb { border-color: transparent; background: transparent; }
+.rl .rm-nb input { font-family: var(--font-title); font-weight: 600; font-size: 14.5px; color: #2f3a44; }
+.rl .rm-nb:hover { border-color: var(--line); }
+.rl .rm-nb:focus-within { border-color: var(--gold-bo); background: #fff; }
+.rl .rm-nb:not(.on) { border-color: var(--line); border-style: dashed; }
+.rl-notes { width: 100%; border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; font: 14px var(--font-body); color: #2f3a44; background: transparent; resize: vertical; }
+.rl-notes:hover { border-color: var(--line); }
+.rl-notes:focus { border-color: var(--gold-bo); background: #fff; outline: none; }
+.rl-notes:placeholder-shown { border: 1px dashed var(--line); }
+.rl-excl { margin: 0; }
+.rl .rmx-tags { margin-bottom: 4px; }
+@media (max-width: 640px) {
+  .rl { grid-template-columns: 1fr; }
+  .rl-k { border-bottom: 0; padding-bottom: 0; }
+}
