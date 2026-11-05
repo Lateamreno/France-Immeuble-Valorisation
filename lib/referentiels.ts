@@ -80,8 +80,13 @@ export const MOTIFS_ARCHIVAGE = [
   "Déjà vendu (via intermédiaire)", "Vendu par France Immeuble", "Mandat expiré",
   "Résiliation du mandat (par le vendeur)", "Résiliation du mandat (par France Immeuble)",
   "N'est pas propriétaire", "Agent immobilier", "Préfère vendre à la découpe", "Hors Secteur",
-  "Pas un immeuble", "Mauvaises coordonnées", "Doublon", "Autre",
+  "Pas un immeuble", "Mauvaises coordonnées", "Doublon", "C'était un test", "Autre",
 ];
+
+/* Retour #599 : « un motif test pour que je puisse supprimer tous les tests
+   sans que cela pollue la base ». Ce motif n'archive pas : il met le bien à la
+   corbeille (lib/bo/actions.ts, `archiverImmeuble`). */
+export const MOTIF_TEST = "C'était un test";
 
 /* Retour #288 — pourquoi un immeuble change de mains. « Erreur de saisie » y
    figure exprès, pour qu'une correction ne se relise pas plus tard comme une

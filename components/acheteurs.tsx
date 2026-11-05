@@ -207,7 +207,8 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
         )}
         <button className="fadd" type="button" onClick={() => setOuvrir(true)}
           title={d ? undefined : "Le vivier d'acquéreurs se charge…"}>
-          + Rechercher de nouveaux acquéreurs{d ? "" : " (vivier en cours de chargement…)"}
+          {/* Retour #596 : une commercialisation commence par le choix des acquéreurs. */}
+          + Commercialiser{d ? "" : " (vivier en cours de chargement…)"}
         </button>
       </div>
 

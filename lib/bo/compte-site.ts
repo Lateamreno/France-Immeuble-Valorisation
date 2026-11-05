@@ -330,8 +330,15 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       const valeur = N(e.data.prix_hai)!;
       const surface = N(e.data.imm_carrez_tot_tot);
       const loyers = N(e.data.imm_loyer_hc_tot) ?? 0; // annuels HC (vérifié sur les estimations envoyées)
+      const ecle = await cleDe("bo_estimation", e);
+      /* MAV, 05/11 : « que ça envoie bien le document vers le compte client,
+         avec le pdf au moins ». Le PDF rangé au coffre, celui-là même qui est
+         parti par e-mail — jamais un PDF refait. */
+      const [fichier] = S(e.data.FILE) ? await lireBo(`bo_app_document?select=id,data&id=eq.${encodeURIComponent(S(e.data.FILE)!)}`) : [];
+      const chemin = S(fichier?.data.path);
       le.push({
-        compte, cle: await cleDe("bo_estimation", e), bien_cle: cle,
+        compte, cle: ecle, bien_cle: cle,
+        document: chemin ? await deposerDocumentClient(compte, `estimations/${ecle}.pdf`, `storage:${chemin}`) : null,
         valeur,
         prix_m2: surface && surface > 0 ? Math.round(valeur / surface) : null,
         rendement: loyers > 0 ? Math.round((loyers / valeur) * 1000) / 10 : null,
@@ -591,20 +598,42 @@ async function deposerDocumentClient(compte: string, chemin: string, source: str
 /** Une table que le site n'a pas encore créée (V2) : PostgREST répond PGRST205. */
 const tableAbsente = (e: unknown) => /PGRST205|Could not find the table|does not exist/i.test(e instanceof Error ? e.message : String(e));
 
-/** Remplace, table par table, les lignes du compte par la photographie. */
-async function remplacer(s: Site, compte: string, table: TableCompte, lignes: Record<string, unknown>[]) {
-  if (lignes.length) {
-    await versSite(s, `/rest/v1/${table}?on_conflict=compte,cle`, {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(lignes),
-    });
+/** « Could not find the 'secteur' column of 'compte_estimations' » (PGRST204) : la colonne, ou rien. */
+const colonneAbsente = (e: unknown) =>
+  (e instanceof Error ? e.message : String(e)).match(/Could not find the '([^']+)' column/)?.[1] ?? null;
+
+/**
+ * Remplace, table par table, les lignes du compte par la photographie.
+ *
+ * Une colonne que le site n'a pas encore créée (contrat §13.3 : la réglette de
+ * l'estimation) ne doit pas faire refuser toute la ligne : on la retire de
+ * l'envoi, on réessaie, et on rend la liste de ce qui a été retiré pour que
+ * l'écran le dise. Le reste de la ligne (la valeur, le PDF) arrive.
+ */
+async function remplacer(s: Site, compte: string, table: TableCompte, lignes: Record<string, unknown>[]): Promise<string[]> {
+  const retirees: string[] = [];
+  let envoi = lignes;
+  for (let essai = 0; envoi.length && essai < 12; essai++) {
+    try {
+      await versSite(s, `/rest/v1/${table}?on_conflict=compte,cle`, {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(envoi),
+      });
+      break;
+    } catch (e) {
+      const col = colonneAbsente(e);
+      if (!col || col === "compte" || col === "cle") throw e;
+      retirees.push(col);
+      envoi = envoi.map((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== col)));
+    }
   }
   const gardees = lignes.map((l) => `"${String(l.cle)}"`).join(",");
   await versSite(s, `/rest/v1/${table}?compte=eq.${encodeURIComponent(compte)}${gardees ? `&cle=not.in.(${encodeURIComponent(gardees)})` : ""}`, {
     method: "DELETE",
     headers: { Prefer: "return=minimal" },
   });
+  return retirees;
 }
 
 /** Dépose tout ce que voit le compte de ce contact. Rien si pas de compte. */
@@ -616,8 +645,12 @@ export async function deposerCompte(contactId: string): Promise<{ ok: boolean; m
   if (!c || !compte) return { ok: false, message: "Ce contact n'a pas de compte sur le site." };
   const lignes = await lignesDuCompte(contactId, compte);
   const erreurs: string[] = [];
+  /* Les colonnes que le site n'a pas encore : déposé sans elles, et dit. */
+  const manquantes: string[] = [];
   for (const t of TABLES_COMPTE) {
-    await remplacer(s, compte, t, lignes[t]).catch((e) => {
+    await remplacer(s, compte, t, lignes[t]).then((r) => {
+      for (const col of r) manquantes.push(`${t}.${col}`);
+    }, (e) => {
       if (!tableAbsente(e)) erreurs.push(`${t} : ${e instanceof Error ? e.message : String(e)}`);
     });
   }
@@ -637,6 +670,7 @@ export async function deposerCompte(contactId: string): Promise<{ ok: boolean; m
   await patchBo("bo_contact", contactId, {
     site_compte_depot_le: new Date().toISOString(),
     site_compte_erreur: erreurs.length ? erreurs.join(" · ").slice(0, 500) : null,
+    site_compte_colonnes_absentes: manquantes.length ? manquantes : null,
     site_avis_cles: empreinte,
   });
   return erreurs.length ? { ok: false, message: erreurs.join(" · ") } : { ok: true, message: "Compte à jour." };

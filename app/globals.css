@@ -5731,6 +5731,12 @@ button.cfx-add {
 .rc-ct .note { margin-left: 2px; }
 
 .rc-orphelin { display: inline-flex; align-items: center; gap: 8px; }
+/* Retour #600 : supprimer une recherche sans l'ouvrir. Discrète, rouge au survol. */
+.rc-suppr { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: 6px;
+  border: 1px solid var(--line, #e4e7eb); border-radius: 6px; background: #fff; color: var(--gray-txt); cursor: pointer; }
+.rc-suppr:hover { color: #a5341f; border-color: #e7b9ae; background: #fdf3f0; }
+.rc-suppr:disabled { opacity: .5; cursor: wait; }
+.rc-suppr-i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .rc-orphelin em { font-style: normal; font-size: 12px; color: var(--gray-txt); }
 .rc-creer {
   display: inline-flex; align-items: center; gap: 5px;
@@ -9443,3 +9449,18 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* Publication groupée des récits relus (MAV, 03/11). */
 .vs-msg .kgo { margin-left: 8px; }
 .vs-refus { margin: 6px 0 0; padding-left: 18px; }
+
+/* Retour #598 : la capture du plan de parcelle depuis le cadastre. */
+.terr-capt-l { margin-top: 8px; }
+.terr-capt { font-weight: 600; }
+
+/* Retour #603 : la barre de chargement du remplissage automatique. */
+.emp-charge { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line, #e4e7eb); border-radius: 8px; background: #fbfaf6; }
+.emp-charge-barre { height: 6px; border-radius: 3px; background: #ece7da; overflow: hidden; position: relative; }
+.emp-charge-barre span { display: block; height: 100%; min-width: 12%; background: var(--gold-bo); border-radius: 3px; transition: width .4s ease; }
+.emp-charge-barre::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: emp-charge 1.2s linear infinite; }
+@keyframes emp-charge { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .emp-charge-barre::after { animation: none; } }
+.emp-charge-etapes { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: 12.5px; color: var(--gray-txt); }
+.emp-charge-etapes .ok { color: #1f7a4d; font-weight: 600; }
+.emp-charge p { margin: 6px 0 0; font-size: 12px; color: var(--gray-txt); }

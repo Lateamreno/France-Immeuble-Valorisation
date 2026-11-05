@@ -10,7 +10,7 @@ import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros, S } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
-  tensionLocservice, updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
+  tensionLocservice, updateEmplacement, updateParcelle, uploadPhotoParcelle, capturerPlanParcelle, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
@@ -270,28 +270,18 @@ function AdresseTab({ b }: { b: BienData }) {
       [`${k}_geo`]: p.lat !== undefined && p.lon !== undefined ? `${p.lat},${p.lon}` : "",
     }));
 
-  const enrichir = async () => {
-    setChargement(true);
-    setErreur(null);
-    setAvant({ poi, pop, rev });
-    try {
-      /* Deux sources en parallèle : la route serveur (chiffres de commune,
-         annuaire des entreprises) et OpenStreetMap depuis le navigateur, qui
-         connaît les gares, arrêts, écoles et commerces. */
-      const [r, osm] = await Promise.all([
-        fetch(`/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(S(im.adresse_zipcode))}&ville=${encodeURIComponent(S(im.adresse_ville))}`),
-        chercherPoi(lat!, lon!).catch(() => ({})),
-      ]);
-      if (!r.ok) throw new Error(`Récupération impossible (${r.status})`);
-      const d = (await r.json()) as Enrichissement;
-      // OpenStreetMap passe devant quand il a trouvé ; les propositions du
-      // serveur complètent la liste sans doublon de nom.
-      d.poi = { ...d.poi };
-      for (const [cle, liste] of Object.entries(osm) as [CleP, Suggestion[]][]) {
-        if (!liste?.length) continue;
-        const noms = new Set(liste.map((p) => p.nom));
-        d.poi[cle] = [...liste, ...(d.poi[cle] ?? []).filter((p) => !noms.has(p.nom))].slice(0, 8);
-      }
+  /* Retour #603 : « une barre de chargement pour m'indiquer que c'est en train
+     de tourner », et la recherche ne doit pas se perdre si l'agent change
+     d'onglet de la fiche. Elle vit donc hors de l'onglet (`REMPLISSAGES`) :
+     revenu sur Emplacement, l'écran la retrouve, montre où elle en est, et
+     applique le résultat. */
+  const [, setTic] = useState(0);
+  const enCours = REMPLISSAGES.get(immeubleId);
+  const chargementGlobal = !!enCours && !enCours.resultat && !enCours.erreur;
+  const appliquer = useRef<(d: Enrichissement) => void>(() => undefined);
+  useEffect(() => {
+    appliquer.current = (d: Enrichissement) => {
+      setAvant({ poi, pop, rev });
       setSugg(d);
       // On pré-remplit uniquement ce qui est vide : jamais d'écrasement d'une
       // saisie de l'agent.
@@ -311,11 +301,31 @@ function AdresseTab({ b }: { b: BienData }) {
         }
         return next;
       });
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : String(e));
-    } finally {
-      setChargement(false);
-    }
+    };
+  });
+  /* Abonné à la recherche de ce bien : chaque étape redessine la barre ; la
+     fin applique le résultat (une fois) et libère la place. */
+  useEffect(() => {
+    const suivre = () => {
+      const r = REMPLISSAGES.get(immeubleId);
+      setTic((n) => n + 1);
+      if (!r) return;
+      if (r.resultat) { appliquer.current(r.resultat); REMPLISSAGES.delete(immeubleId); setChargement(false); }
+      else if (r.erreur) { setErreur(r.erreur); REMPLISSAGES.delete(immeubleId); setChargement(false); }
+    };
+    const r = REMPLISSAGES.get(immeubleId);
+    if (!r) return;
+    r.abonnes.add(suivre);
+    suivre();
+    return () => { r.abonnes.delete(suivre); };
+  }, [immeubleId, enCours]);
+
+  const enrichir = () => {
+    if (REMPLISSAGES.has(immeubleId) || lat === undefined || lon === undefined) return;
+    setChargement(true);
+    setErreur(null);
+    lancerRemplissage(immeubleId, lat, lon, S(im.adresse_zipcode), S(im.adresse_ville));
+    setTic((n) => n + 1);
   };
 
   /* Ce qui est en base au chargement : la barre d'enregistrement n'apparaît
@@ -466,14 +476,26 @@ function AdresseTab({ b }: { b: BienData }) {
             </a>
           ))}
           {lat !== undefined && lon !== undefined && (
-            <button type="button" className="emp-lien auto" disabled={chargement} onClick={enrichir}>
-              {chargement ? "Recherche…" : "⟳ Remplir automatiquement"}
+            <button type="button" className="emp-lien auto" disabled={chargement || chargementGlobal} onClick={enrichir}>
+              {chargement || chargementGlobal ? "Recherche…" : "⟳ Remplir automatiquement"}
             </button>
           )}
           {avant && (
             <button type="button" className="emp-lien" onClick={annulerAuto}>↩ Annuler le remplissage</button>
           )}
         </div>
+        {chargementGlobal && enCours && (
+          <div className="emp-charge" role="status" aria-live="polite">
+            <div className="emp-charge-barre">
+              <span style={{ width: `${Math.round(((Number(enCours.etapes.commune) + Number(enCours.etapes.osm)) / 2) * 100)}%` }} />
+            </div>
+            <div className="emp-charge-etapes">
+              <span className={enCours.etapes.commune ? "ok" : undefined}>{enCours.etapes.commune ? "✓" : "…"} Chiffres de la commune et entreprises</span>
+              <span className={enCours.etapes.osm ? "ok" : undefined}>{enCours.etapes.osm ? "✓" : "…"} Gares, arrêts, écoles et commerces (OpenStreetMap)</span>
+            </div>
+            <p>Vous pouvez changer d&apos;onglet de la fiche : la recherche continue et se remplit à votre retour sur Emplacement.</p>
+          </div>
+        )}
       </div>
       {erreur && <div className="warnbox" style={{ color: "var(--red)", borderColor: "var(--red)" }}>{erreur}</div>}
 
@@ -739,6 +761,50 @@ const idNouvelle = () => `nouveau-${++nouvelles}`;
 /** Parcelle proposée par le cadastre IGN sous le point d'adresse (#80). */
 type ParcelleIGN = { ref: string; superficie?: number; idu?: string; commune?: string };
 
+
+/* --------------------------------------------- Le remplissage (#603) */
+
+type Remplissage = {
+  etapes: { commune: boolean; osm: boolean };
+  resultat?: Enrichissement;
+  erreur?: string;
+  abonnes: Set<() => void>;
+};
+/** Une recherche par bien, qui survit au changement d'onglet de la fiche. */
+const REMPLISSAGES = new Map<string, Remplissage>();
+
+function lancerRemplissage(immeubleId: string, lat: number, lon: number, cp: string, ville: string) {
+  const r: Remplissage = { etapes: { commune: false, osm: false }, abonnes: new Set() };
+  REMPLISSAGES.set(immeubleId, r);
+  const prevenir = () => r.abonnes.forEach((f) => f());
+  /* Deux sources en parallèle : la route serveur (chiffres de commune,
+     annuaire des entreprises) et OpenStreetMap depuis le navigateur, qui
+     connaît les gares, arrêts, écoles et commerces. */
+  const serveur = fetch(`/api/geo?lat=${lat}&lon=${lon}&cp=${encodeURIComponent(cp)}&ville=${encodeURIComponent(ville)}`)
+    .then(async (x) => {
+      if (!x.ok) throw new Error(`Récupération impossible (${x.status})`);
+      return (await x.json()) as Enrichissement;
+    })
+    .finally(() => { r.etapes.commune = true; prevenir(); });
+  /* 30 s au plus : un miroir OpenStreetMap qui ne répond pas ne doit pas
+     laisser la barre tourner sans fin ; le reste se remplit quand même. */
+  const osm = chercherPoi(lat, lon, AbortSignal.timeout(30_000)).catch(() => ({})).finally(() => { r.etapes.osm = true; prevenir(); });
+  Promise.all([serveur, osm])
+    .then(([d, o]) => {
+      // OpenStreetMap passe devant quand il a trouvé ; les propositions du
+      // serveur complètent la liste sans doublon de nom.
+      d.poi = { ...d.poi };
+      for (const [cle, liste] of Object.entries(o) as [CleP, Suggestion[]][]) {
+        if (!liste?.length) continue;
+        const noms = new Set(liste.map((p) => p.nom));
+        d.poi[cle] = [...liste, ...(d.poi[cle] ?? []).filter((p) => !noms.has(p.nom))].slice(0, 8);
+      }
+      r.resultat = d;
+    })
+    .catch((e) => { r.erreur = e instanceof Error ? e.message : String(e); })
+    .finally(prevenir);
+}
+
 function ParcellesTab({ b }: { b: BienData }) {
   const im = b.im;
   const immeubleId = String(im._id);
@@ -785,6 +851,13 @@ function ParcellesTab({ b }: { b: BienData }) {
     setParcs(parcs.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const ajouterParc = (d?: Partial<Brouillon>) =>
     setParcs([...parcs, { id: idNouvelle(), ref: "", sup: "", nouveau: true, ...d }]);
+  /* Retour #598 : une parcelle du cadastre remplit d'abord une ligne restée
+     vide, au lieu d'en ajouter une à côté. */
+  const remplirParc = (d: Partial<Brouillon>) => {
+    const vide = parcs.find((x) => !x.ref.trim());
+    if (vide) majParc(vide.id, { ref: d.ref ?? "", sup: d.sup ?? vide.sup, idu: d.idu });
+    else ajouterParc(d);
+  };
 
   /* Retour #454 : Annuler remet ce que la fiche porte. */
   const annulerPlu = () => {
@@ -810,7 +883,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         }
         const avant = parcServies.find((p) => p.id === d.id);
         if (avant && (avant.ref !== d.ref || avant.sup !== d.sup)) {
-          await updateParcelle(immeubleId, d.id, { ref_cadastre: d.ref.trim() || undefined, superficie: parse(d.sup) ?? null });
+          await updateParcelle(immeubleId, d.id, { ref_cadastre: d.ref.trim() || undefined, superficie: parse(d.sup) ?? null, idu: d.idu });
         }
       }
       if (facadeT !== facadeServie) await updateEmplacement(immeubleId, { ter_facade: parse(facadeT) });
@@ -952,7 +1025,9 @@ function ParcellesTab({ b }: { b: BienData }) {
           grise au bout d'une rangée de liens. */}
       {/* #554 : une fois les parcelles là, le remplissage automatique n'a
           plus rien à proposer — il disparaît. */}
-      {lat !== undefined && lon !== undefined && parcServies.length === 0 && parcs.length === 0 && (
+      {/* Retour #598 : le bouton restait caché dès qu'une ligne de parcelle
+          existait, même vide. Il reste là tant qu'aucune n'a de référence. */}
+      {lat !== undefined && lon !== undefined && !parcs.some((d) => d.ref.trim()) && (
         <button type="button" className="terr-auto" disabled={rechCadastre}
           onClick={chercherParcelles}>
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -963,7 +1038,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         </button>
       )}
 
-      {proposees !== null && parcServies.length === 0 && (
+      {proposees !== null && !parcServies.some((d) => d.ref.trim()) && (
         <div className="terr-prop">
           {proposees.length === 0 ? (
             <p>Le cadastre ne rend aucune parcelle sous ce point : à saisir à la main.</p>
@@ -975,7 +1050,7 @@ function ParcellesTab({ b }: { b: BienData }) {
                   <button
                     key={p.idu ?? p.ref} type="button" className="mopt"
                     disabled={pending || dejaLa(p.ref)}
-                    onClick={() => ajouterParc({ ref: p.ref, sup: S(p.superficie), idu: p.idu })}
+                    onClick={() => remplirParc({ ref: p.ref, sup: S(p.superficie), idu: p.idu })}
                   >
                     {dejaLa(p.ref) ? "✓ " : "+ "}{p.ref}
                     {p.superficie !== undefined && ` · ${p.superficie.toLocaleString("fr-FR")} m²`}
@@ -1122,6 +1197,22 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
     });
   };
 
+  /* Retour #598 : la capture du cadastre, parcelle entourée, sans copier-coller. */
+  const capturer = () =>
+    start(async () => {
+      setErreur(null);
+      try {
+        setUrl(await capturerPlanParcelle(immeubleId));
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : "capture impossible");
+      }
+    });
+  const boutonCadastre = (
+    <button type="button" className="mopt terr-capt" disabled={pending} onClick={capturer}>
+      {pending ? "Capture du cadastre…" : url ? "Refaire depuis le cadastre" : "Capturer depuis le cadastre"}
+    </button>
+  );
+
   return (
     <>
       <div className="fsub">Plan de la parcelle</div>
@@ -1131,6 +1222,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Plan de la parcelle" /></a>
           <div className="mrow">
+            {boutonCadastre}
             <button type="button" className="mopt" disabled={pending} onClick={() => input.current?.click()}>
               Remplacer
             </button>
@@ -1166,6 +1258,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           <span>Cliquez, collez une capture, ou glissez le fichier ici</span>
         </div>
       )}
+      {!url && <div className="mrow terr-capt-l">{boutonCadastre}</div>}
       <input ref={input} type="file" accept="image/*" hidden
         onChange={(e) => envoyer(e.target.files?.[0])} />
       {question}

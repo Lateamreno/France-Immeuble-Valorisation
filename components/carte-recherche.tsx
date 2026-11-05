@@ -9,11 +9,12 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { RechercheCard } from "@/lib/bubble/server";
 import { VignetteContact } from "@/components/vignette-contact";
-import { Modale } from "@/components/modale";
+import { Modale, useQuestion } from "@/components/modale";
+import { Corbeille } from "@/components/pictos";
 import { Avatar } from "@/components/avatar";
 import { Champ } from "@/components/champ";
 import { DESTINATIONS_RECHERCHE } from "@/components/pictos-destination";
-import { autresRecherchesEnCours, mettreRecherchesEnAttente, reactiverRecherche } from "@/lib/bo/actions";
+import { autresRecherchesEnCours, mettreRecherchesEnAttente, reactiverRecherche, supprimerRecherche } from "@/lib/bo/actions";
 
 /* Les quatre destinations du BO, dans son ordre. Un picto éteint dit « pas
    recherché » — l'absence de picto ne dirait rien du tout. */
@@ -44,6 +45,8 @@ export function CarteRecherche({
   sansContact = false,
   /** Mention posée à droite des destinations (« Mandat de recherche actif »). */
   mention,
+  /** Retour #600 : la corbeille sur la carte, sans ouvrir la recherche. */
+  supprimable = false,
 }: {
   r: RechercheCard;
   choisi?: boolean;
@@ -58,7 +61,26 @@ export function CarteRecherche({
   clicCarte?: boolean;
   sansContact?: boolean;
   mention?: string;
+  supprimable?: boolean;
 }) {
+  const router = useRouter();
+  const { confirmer, question } = useQuestion();
+  const [suppression, startSuppression] = useTransition();
+  const supprimer = async () => {
+    const ok = await confirmer(
+      <>
+        La recherche sera <b>archivée</b> : elle sort des recherches en cours, du matching et des
+        envois. Les propositions encore en attente passeront <b>refusées</b>, motif « N&apos;est plus en
+        recherche ».
+      </>,
+      { titre: "Supprimer cette recherche ?", oui: "Supprimer", danger: true },
+    );
+    if (!ok) return;
+    startSuppression(async () => {
+      await supprimerRecherche(r.id, r.contact?.id);
+      router.refresh();
+    });
+  };
   const clicSurCarte = clicCarte && onModifier
     ? (e: React.MouseEvent<HTMLDivElement>) => {
         if ((e.target as HTMLElement).closest("button, a, input, label")) return;
@@ -115,6 +137,12 @@ export function CarteRecherche({
             </span>
           )}
           <span style={{ flex: 1 }} />
+          {supprimable && r.group !== "archivees" && (
+            <button type="button" className="rc-suppr" disabled={suppression}
+              title="Supprimer cette recherche" aria-label="Supprimer cette recherche" onClick={supprimer}>
+              <Corbeille className="rc-suppr-i" />
+            </button>
+          )}
           {sansContact ? null : r.contact ? (
             /* La vignette partagée (retour du 24/09), avec la classe de
                l'acquéreur dans la puce. */
@@ -159,6 +187,7 @@ export function CarteRecherche({
           <Puce label="Rendement" valeur={r.renta} />
         </div>
       </div>
+      {question}
     </div>
   );
 }

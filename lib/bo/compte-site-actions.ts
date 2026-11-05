@@ -18,6 +18,8 @@ export type VueCompte = {
   rattacheLe?: string;
   depotLe?: string;
   erreur?: string;
+  /** Colonnes que le site n'a pas encore créées : déposé sans elles. */
+  absentes?: string[];
   lignes: LignesCompte | null;
   /** Le fil des messages, lu dans le BO : il fait foi, même avant que le site
    *  ait sa table `compte_messages`. */
@@ -40,6 +42,7 @@ export async function voirCompteSite(contactId: string): Promise<VueCompte> {
     rattacheLe: typeof c.data.site_compte_le === "string" ? c.data.site_compte_le : undefined,
     depotLe: typeof c.data.site_compte_depot_le === "string" ? c.data.site_compte_depot_le : undefined,
     erreur: typeof c.data.site_compte_erreur === "string" ? c.data.site_compte_erreur : undefined,
+    absentes: Array.isArray(c.data.site_compte_colonnes_absentes) ? (c.data.site_compte_colonnes_absentes as string[]) : undefined,
     lignes: await lireCompteSurLeSite(compte),
     messages: (await lireMessages(contactId)),
     profil: c.data.profil_investisseur && typeof c.data.profil_investisseur === "object"
