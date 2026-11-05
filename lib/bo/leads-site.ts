@@ -15,6 +15,7 @@
 // un réessai retrouve ce qui existe et ne crée rien de plus. Aucun e-mail ne
 // part vers le visiteur, et rien ne se publie : on enregistre, c'est tout.
 
+import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { deposerCompte, effacerCompte, effacerPieceDuSite, lirePieceDuSite } from "@/lib/bo/compte-site";
@@ -400,15 +401,37 @@ function resumeDossier(lots: Record<string, unknown>[], taxe?: number, teom?: nu
  * la sienne. Le 200 ne part qu'après relecture des lots en base.
  */
 async function recevoirDossier(ref: string, b: Record<string, unknown>) {
-  const immeubleId = `app_site_${ref}`;
-  const [im] = await lire(`bo_immeuble?select=id,data&id=eq.${immeubleId}`);
-  if (!im) {
-    /* Supprimé par l'agent : rien à quoi rattacher le dossier, et le réessayer
-       ne le ferait pas revenir. */
-    if (await existe("bo_immeuble", immeubleId)) return { deja: true, id: immeubleId };
-    throw new LeadPasPret("Le formulaire de cette estimation n'est pas encore arrivé.");
+  /* Site, 05/11 : l'état locatif se renvoie autant que le client veut, et
+     peut viser un immeuble déjà déposé (`bien`, la clé de `compte_biens`) —
+     la `ref` est alors calculée par le site et ne désigne aucune estimation. */
+  const cleBien = cleCompte(b.bien);
+  let im: { id: string; data: Record<string, unknown> } | undefined;
+  if (cleBien) {
+    const compte = cleCompte(b.compte);
+    const contactId = compte ? await contactParCompte(compte) : null;
+    if (!contactId) throw new LeadPasPret("Compte pas encore rattaché à un contact.");
+    im = await immeubleDuCompte(contactId, cleBien);
+  } else {
+    [im] = await lire(`bo_immeuble?select=id,data&id=eq.app_site_${ref}`);
+    if (!im) {
+      /* Supprimé par l'agent : rien à quoi rattacher le dossier, et le réessayer
+         ne le ferait pas revenir. */
+      if (await existe("bo_immeuble", `app_site_${ref}`)) return { deja: true, id: `app_site_${ref}` };
+      throw new LeadPasPret("Le formulaire de cette estimation n'est pas encore arrivé.");
+    }
   }
-  if (im.data.site_dossier_ref === ref) return { deja: true, id: immeubleId };
+  const immeubleId = im.id;
+
+  /* Un envoi déjà rangé (réessai de la file) se reconnaît à son contenu : le
+     même état locatif ne refait rien ; un état locatif différent remplace le
+     précédent. */
+  const empreinte = createHash("sha256").update(JSON.stringify([b.lots ?? null, b.taxeFonciere ?? null, b.teom ?? null, b.commentaire ?? null])).digest("hex").slice(0, 12);
+  if (im.data.site_dossier_empreinte === empreinte) return { deja: true, id: immeubleId };
+  if (!im.data.site_dossier_empreinte && im.data.site_dossier_ref === ref) {
+    // Envoi d'avant le 05/11, sans empreinte : on la pose, sans rien refaire.
+    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_empreinte: empreinte } });
+    return { deja: true, id: immeubleId };
+  }
 
   const lotsSite = Array.isArray(b.lots) ? (b.lots as Record<string, unknown>[]).filter((l) => l && typeof l === "object").slice(0, 200) : [];
   const taxe = N(b.taxeFonciere);
@@ -416,22 +439,27 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
   const commentaire = T(b.commentaire, 5000);
 
   const existants = await lire(`bo_lot?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&limit=500`);
-  const saisisParAgent = existants.filter((l) => l.data.site_dossier !== ref);
+  /* Les lots venus du site, et ceux qu'un agent a saisis ou retouchés : on ne
+     remplace que ce qui vient du site et n'a pas été touché depuis. */
+  const duSite = existants.filter((l) => T(l.data.site_dossier));
+  const retouche = (l: { data: Record<string, unknown> }) =>
+    Date.parse(String(l.data["Modified Date"] ?? "")) - Date.parse(String(l.data["Created Date"] ?? "")) > 60_000;
+  const agentAPrisLaMain = existants.some((l) => !T(l.data.site_dossier)) || duSite.some(retouche);
   const now = new Date().toISOString();
   let lotsCrees = 0;
-  if (lotsSite.length && saisisParAgent.length === 0) {
-    /* Un réessai interrompu a pu laisser une partie des lots : on ne crée que
-       ceux qui manquent (un identifiant passé par la corbeille ne se recrée pas). */
-    const deja = new Set(existants.map((l) => l.id));
+  if (lotsSite.length && !agentAPrisLaMain) {
+    for (const l of duSite) await rpc("bo_delete_doc", { p_table: "bo_lot", p_id: l.id });
+    /* Un identifiant passé par la corbeille ne se recrée pas : chaque version
+       de l'état locatif a les siens. */
     for (const [i, l] of lotsSite.entries()) {
-      const id = `app_site_${ref}_l${i + 1}`;
-      if (deja.has(id)) continue;
+      const id = `app_site_${ref}_${empreinte}_l${i + 1}`;
+      if (await existe("bo_lot", id)) continue;
       await rpc("bo_insert_doc", {
         p_table: "bo_lot", p_id: id,
-        p_doc: sansVides({ IMMEUBLE: immeubleId, ...lotDuSite(l, i + 1), site_dossier: ref, "Created Date": now, "Modified Date": now }),
+        p_doc: sansVides({ IMMEUBLE: immeubleId, ...lotDuSite(l, i + 1), site_dossier: ref, site_dossier_empreinte: empreinte, "Created Date": now, "Modified Date": now }),
       });
     }
-    const relus = await lire(`bo_lot?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>site_dossier=eq.${ref}&limit=500`);
+    const relus = await lire(`bo_lot?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>site_dossier_empreinte=eq.${empreinte}&limit=500`);
     if (relus.length !== lotsSite.length) throw new Error(`Lots du dossier : ${relus.length} en base sur ${lotsSite.length} envoyés.`);
     lotsCrees = relus.length;
   }
@@ -439,13 +467,22 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
   /* La taxe foncière, au bon endroit : une charge « Taxe Foncière » de
      l'immeuble, la TEOM en part récupérable. Jamais par-dessus celle de l'agent. */
   if (taxe) {
-    const charges = await lire(`bo_charge?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>Type_charge=eq.${encodeURIComponent("Taxe Foncière")}&limit=1`);
+    const charges = await lire(`bo_charge?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>Type_charge=eq.${encodeURIComponent("Taxe Foncière")}&limit=5`);
+    const valeurs = { total_an: taxe, recup_an: teom, non_recup_an: Math.max(0, taxe - (teom ?? 0)) };
+    const duVendeur = charges.find((c) => String(c.data.commentaire ?? "").startsWith("Déclarée par le vendeur"));
     if (charges.length === 0) {
-      await inserer("bo_charge", `app_site_${ref}_tf`, {
-        IMMEUBLE: immeubleId, Type_charge: "Taxe Foncière",
-        total_an: taxe, recup_an: teom, non_recup_an: Math.max(0, taxe - (teom ?? 0)),
+      await inserer("bo_charge", `app_site_${ref}_${empreinte}_tf`, {
+        IMMEUBLE: immeubleId, Type_charge: "Taxe Foncière", ...valeurs,
         commentaire: "Déclarée par le vendeur sur le site", "Created Date": now, "Modified Date": now,
       });
+    } else if (duVendeur && charges.length === 1) {
+      /* La sienne, pas reprise par un agent depuis notre dernier passage
+         (`site_maj_le`) : le nouvel envoi la remplace. */
+      const depuis = Date.parse(String(duVendeur.data.site_maj_le ?? duVendeur.data["Created Date"] ?? ""));
+      const touchee = Date.parse(String(duVendeur.data["Modified Date"] ?? "")) - depuis > 60_000;
+      if (!touchee) {
+        await rpc("bo_patch_doc", { p_table: "bo_charge", p_id: duVendeur.id, p_patch: { ...valeurs, site_maj_le: now, "Modified Date": now } });
+      }
     }
   }
   await rpc("bo_recompute_immeuble", { p_id: immeubleId });
@@ -461,11 +498,11 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
       }).join("\n")
     : "";
   await noterClient(immeubleId, [commentaire, `${resume}${detail}`].filter(Boolean).join("\n\n"));
-  const [s1] = await lire(`bo_suivi?select=id,data&id=eq.app_site_${ref}_s1`);
+  const [s1] = await lire(`bo_suivi?select=id,data&id=eq.${immeubleId.startsWith("app_site_") ? `${immeubleId}_s1` : `app_site_${ref}_s1`}`);
   if (s1 && !String(s1.data.notes ?? "").includes(resume)) {
     await rpc("bo_patch_doc", { p_table: "bo_suivi", p_id: s1.id, p_patch: { notes: `${String(s1.data.notes ?? "")}\n\n${resume}`.trim(), "Modified Date": now } });
   }
-  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_le: now, "Modified Date": now } });
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_empreinte: empreinte, site_dossier_le: now, "Modified Date": now } });
   const contactId = T(im.data.PROPRIETAIRE);
   if (contactId) await rattacher(contactId, cleCompte(b.compte));
   return { deja: false, id: immeubleId };
@@ -1085,7 +1122,10 @@ async function recevoirDocument(ref: string, b: Record<string, unknown>) {
      Avec `estimation` (point 3 du 30/10) : une pièce du dossier vendeur,
      rattachée à l'immeuble né de cette estimation, avant même qu'il paraisse
      dans le compte — le vendeur n'est alors pas forcément connecté. */
-  const refEstimation = reference(b.estimation);
+  /* Site, 05/11 : le champ s'appelle désormais `refEstimation` ; l'ancien nom
+     `estimation` reste lu. */
+  const champEstimation = b.refEstimation ?? b.estimation;
+  const refEstimation = reference(champEstimation);
   let compte: string | null;
   let contactId: string;
   let im: { id: string; data: Record<string, unknown> };
@@ -1100,7 +1140,7 @@ async function recevoirDocument(ref: string, b: Record<string, unknown>) {
     compte = cleCompte(b.compte);
     contactId = T(im.data.PROPRIETAIRE) ?? "";
     /* Le chemin ne peut viser que le dossier de CETTE estimation (ou du compte). */
-    prefixe = compte ?? String(b.estimation).trim().toLowerCase();
+    prefixe = compte ?? String(champEstimation).trim().toLowerCase();
   } else {
     const c = await contactDuCompte(b);
     compte = c.compte;
@@ -1580,6 +1620,24 @@ async function recevoirCompteSupprime(_ref: string, b: Record<string, unknown>) 
 
 /* -------------------------------------------------------------- Entrée */
 
+/**
+ * Site, 05/11 (retour #271) : le client renomme sa recherche au crayon. Pas
+ * d'e-mail à l'agence ; le nom est gardé sur la recherche (`site_nom`) et
+ * redéposé. Un nom vide rend son titre d'origine.
+ */
+async function recevoirRechercheNom(_ref: string, b: Record<string, unknown>) {
+  const { contactId } = await contactDuCompte(b);
+  const cle = cleCompte(b.cle);
+  if (!cle) throw new LeadInvalide("Clé de recherche absente ou illisible.");
+  const [r] = await lire(`bo_recherche?select=id,data&data->>site_cle=eq.${cle}&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&limit=1`);
+  if (!r) throw new LeadInvalide("Recherche inconnue pour ce compte.");
+  const nom = T(b.nom, 80) ?? null;
+  if ((T(r.data.site_nom) ?? null) === nom) return { deja: true, id: r.id };
+  await rpc("bo_patch_doc", { p_table: "bo_recherche", p_id: r.id, p_patch: { site_nom: nom } });
+  after(() => deposerCompte(contactId).then(() => undefined, () => undefined));
+  return { deja: false, id: r.id };
+}
+
 export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: boolean; id: string }> {
   const ref = reference(b.ref);
   if (!ref) throw new LeadInvalide("Référence absente ou qui n'est pas un UUID.");
@@ -1598,6 +1656,7 @@ export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: 
     case "offre_acquereur": return recevoirOffreAcquereur(ref, b);
     case "profil_investisseur": return recevoirProfilInvestisseur(ref, b);
     case "coordonnees": return recevoirCoordonnees(ref, b);
+    case "recherche_nom": return recevoirRechercheNom(ref, b);
     /* Règle du 30/10 (§11.1) : un type que le BO ne sait pas encore lire est
        gardé en file par le site (503), jamais jeté. */
     default: throw new LeadPasPret(`Type d'envoi pas encore lu par le BO : ${String(b.type).slice(0, 40)}`);

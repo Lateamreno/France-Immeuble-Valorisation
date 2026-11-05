@@ -2020,6 +2020,16 @@ export async function updateContact(contactId: string, patch: ContactPatch) {
   if (Object.keys(clean).length === 0) return;
   await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: clean });
   if (typeof clean.agent === "boolean") await alignerRecherchesAgent(contactId, clean.agent);
+  /* Site, 05/11 (retour #270) : passer le client en C ouvre son accès sur le
+     site ; la note et l'agent attitré partent tout de suite à son compte. */
+  if ("Note" in clean || "SUIVI" in clean) {
+    try {
+      after(async () => {
+        const { deposerCompte } = await import("./compte-site");
+        await deposerCompte(contactId).catch(() => undefined);
+      });
+    } catch { /* hors requête : la reprise de nuit s'en charge */ }
+  }
   revalidatePath(`/contact/${contactId}`);
   revalidatePath("/contacts");
 }
