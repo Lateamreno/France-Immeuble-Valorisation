@@ -426,12 +426,18 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
      même état locatif ne refait rien ; un état locatif différent remplace le
      précédent. */
   const empreinte = createHash("sha256").update(JSON.stringify([b.lots ?? null, b.taxeFonciere ?? null, b.teom ?? null, b.commentaire ?? null])).digest("hex").slice(0, 12);
-  if (im.data.site_dossier_empreinte === empreinte) return { deja: true, id: immeubleId };
+  /* Lot 85 du site (05/11) : `enCours: true` = la saisie continue, déposée
+     toutes les 45 s au plus. Les lots suivent, mais ni note ni alerte : c'est
+     le dépôt final (sans `enCours`) qui écrit dans les notes du bien. */
+  const enCours = b.enCours === true;
+  const final = T(im.data.site_dossier_final) === empreinte;
+  if (im.data.site_dossier_empreinte === empreinte && (enCours || final)) return { deja: true, id: immeubleId };
   if (!im.data.site_dossier_empreinte && im.data.site_dossier_ref === ref) {
     // Envoi d'avant le 05/11, sans empreinte : on la pose, sans rien refaire.
-    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_empreinte: empreinte } });
+    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_empreinte: empreinte, site_dossier_final: empreinte } });
     return { deja: true, id: immeubleId };
   }
+  const memesLots = im.data.site_dossier_empreinte === empreinte;
 
   const lotsSite = Array.isArray(b.lots) ? (b.lots as Record<string, unknown>[]).filter((l) => l && typeof l === "object").slice(0, 200) : [];
   const taxe = N(b.taxeFonciere);
@@ -441,27 +447,39 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
   const existants = await lire(`bo_lot?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&limit=500`);
   /* Les lots venus du site, et ceux qu'un agent a saisis ou retouchés : on ne
      remplace que ce qui vient du site et n'a pas été touché depuis. */
-  const duSite = existants.filter((l) => T(l.data.site_dossier));
+  const duSite = existants.filter((l) => T(l.data.site_dossier))
+    .sort((x, y) => (N(x.data.site_rang) ?? 999) - (N(y.data.site_rang) ?? 999) || x.id.localeCompare(y.id));
+  /* Retouché par un agent = modifié après notre dernier passage (`site_maj_le`). */
   const retouche = (l: { data: Record<string, unknown> }) =>
-    Date.parse(String(l.data["Modified Date"] ?? "")) - Date.parse(String(l.data["Created Date"] ?? "")) > 60_000;
+    Date.parse(String(l.data["Modified Date"] ?? "")) - Date.parse(String(l.data.site_maj_le ?? l.data["Created Date"] ?? "")) > 60_000;
   const agentAPrisLaMain = existants.some((l) => !T(l.data.site_dossier)) || duSite.some(retouche);
   const now = new Date().toISOString();
   let lotsCrees = 0;
-  if (lotsSite.length && !agentAPrisLaMain) {
-    for (const l of duSite) await rpc("bo_delete_doc", { p_table: "bo_lot", p_id: l.id });
-    /* Un identifiant passé par la corbeille ne se recrée pas : chaque version
-       de l'état locatif a les siens. */
+  if (lotsSite.length && !agentAPrisLaMain && !memesLots) {
+    /* Mis à jour sur place, ligne à ligne : un brouillon toutes les 45 s ne
+       doit pas remplir la corbeille. Les lots en trop s'en vont, ceux qui
+       manquent se créent. */
     for (const [i, l] of lotsSite.entries()) {
-      const id = `app_site_${ref}_${empreinte}_l${i + 1}`;
-      if (await existe("bo_lot", id)) continue;
-      await rpc("bo_insert_doc", {
-        p_table: "bo_lot", p_id: id,
-        p_doc: sansVides({ IMMEUBLE: immeubleId, ...lotDuSite(l, i + 1), site_dossier: ref, site_dossier_empreinte: empreinte, "Created Date": now, "Modified Date": now }),
-      });
+      const champs = { IMMEUBLE: immeubleId, ...lotDuSite(l, i + 1), site_dossier: ref, site_dossier_empreinte: empreinte, site_rang: i + 1, site_maj_le: now, "Modified Date": now };
+      const avant = duSite[i];
+      if (avant) {
+        await rpc("bo_patch_doc", {
+          p_table: "bo_lot", p_id: avant.id,
+          // Ce que le client a vidé se vide aussi (null), au lieu de garder l'ancienne valeur.
+          p_patch: Object.fromEntries(Object.entries(champs).map(([k, v]) => [k, v === undefined || v === "" ? null : v])),
+        });
+      } else {
+        let id = `app_site_${ref}_${empreinte}_l${i + 1}`;
+        if (await existe("bo_lot", id)) id = `${id}_${Date.now().toString(36)}`;
+        await rpc("bo_insert_doc", { p_table: "bo_lot", p_id: id, p_doc: sansVides({ ...champs, "Created Date": now }) });
+      }
     }
+    for (const l of duSite.slice(lotsSite.length)) await rpc("bo_delete_doc", { p_table: "bo_lot", p_id: l.id });
     const relus = await lire(`bo_lot?select=id&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&data->>site_dossier_empreinte=eq.${empreinte}&limit=500`);
     if (relus.length !== lotsSite.length) throw new Error(`Lots du dossier : ${relus.length} en base sur ${lotsSite.length} envoyés.`);
     lotsCrees = relus.length;
+  } else if (memesLots && !agentAPrisLaMain) {
+    lotsCrees = duSite.length;
   }
 
   /* La taxe foncière, au bon endroit : une charge « Taxe Foncière » de
@@ -497,12 +515,17 @@ async function recevoirDossier(ref: string, b: Record<string, unknown>) {
         return `- Lot ${x.numero} : ${[x.Type_lot ?? x.Destination, x.surface_carrez ?? x.surface_sol ? `${x.surface_carrez ?? x.surface_sol} m²` : null, x.Type_bail === "Vide" ? `libre${x.loyer_max ? `, loyer potentiel ${eur(x.loyer_max)}/mois HC` : ""}` : `${x.Type_bail}${x.loyer ? `, ${eur(x.loyer)}/mois HC` : ""}`, x.Type_dpe ? `DPE ${x.Type_dpe}` : null].filter(Boolean).join(", ")}`;
       }).join("\n")
     : "";
+  if (enCours) {
+    // Saisie pas terminée : les lots suivent, les notes attendent le dépôt final.
+    await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_empreinte: empreinte, site_dossier_en_cours_le: now } });
+    return { deja: false, id: immeubleId };
+  }
   await noterClient(immeubleId, [commentaire, `${resume}${detail}`].filter(Boolean).join("\n\n"));
   const [s1] = await lire(`bo_suivi?select=id,data&id=eq.${immeubleId.startsWith("app_site_") ? `${immeubleId}_s1` : `app_site_${ref}_s1`}`);
   if (s1 && !String(s1.data.notes ?? "").includes(resume)) {
     await rpc("bo_patch_doc", { p_table: "bo_suivi", p_id: s1.id, p_patch: { notes: `${String(s1.data.notes ?? "")}\n\n${resume}`.trim(), "Modified Date": now } });
   }
-  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_empreinte: empreinte, site_dossier_le: now, "Modified Date": now } });
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { site_dossier_ref: ref, site_dossier_empreinte: empreinte, site_dossier_final: empreinte, site_dossier_en_cours_le: null, site_dossier_le: now, "Modified Date": now } });
   const contactId = T(im.data.PROPRIETAIRE);
   if (contactId) await rattacher(contactId, cleCompte(b.compte));
   return { deja: false, id: immeubleId };

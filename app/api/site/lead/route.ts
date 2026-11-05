@@ -65,7 +65,6 @@ export async function POST(req: Request) {
   if (!process.env.BO_LEAD_TOKEN) return json(503, { ok: false, message: "BO_LEAD_TOKEN n'est pas posé côté BO." });
   if (!jetonValide(req.headers.get("authorization"))) return json(401, { ok: false, message: "Jeton refusé." });
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "inconnue";
-  if (await debitDepasse(ip)) return json(429, { ok: false, message: "Trop d'envois, réessayez dans une minute." });
 
   const brut = await req.text();
   if (brut.length > 64_000) return json(413, { ok: false, message: "Formulaire trop long." });
@@ -76,6 +75,12 @@ export async function POST(req: Request) {
     return json(422, { ok: false, message: "Corps illisible : JSON attendu." });
   }
   if (!corps || typeof corps !== "object" || Array.isArray(corps)) return json(422, { ok: false, message: "Objet JSON attendu." });
+  /* Site, 05/11 (lot 85) : l'état locatif en cours de saisie part toutes les
+     45 s au plus, et tous les dépôts viennent des mêmes serveurs du site. Ces
+     brouillons ne comptent pas dans le débit ; le jeton reste la porte. */
+  const c0 = corps as Record<string, unknown>;
+  const brouillon = c0.type === "estimation" && c0.etat === "dossier" && c0.enCours === true;
+  if (!brouillon && await debitDepasse(ip)) return json(429, { ok: false, message: "Trop d'envois, réessayez dans une minute." });
 
   try {
     const r = await recevoirLead(corps as Record<string, unknown>);

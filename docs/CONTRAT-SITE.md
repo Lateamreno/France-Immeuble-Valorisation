@@ -964,6 +964,12 @@ Réponse du BO, point par point.
    Jamais ce qu'un agent a saisi ou retouché : dans ce cas, les lots déclarés
    vont dans les notes du bien. Avec `bien` (clé de `compte_biens`), l'envoi
    vise cet immeuble, après vérification qu'il appartient bien au compte.
+3 bis. **L'état locatif pendant la saisie (lot 85).** `enCours: true` est lu :
+   chaque brouillon met à jour les lots (sur place, ligne à ligne : rien ne
+   part à la corbeille) et la taxe déclarée, sans note ni alerte. Le dépôt
+   final (sans `enCours`) écrit le résumé dans les notes du bien. Un dépôt
+   identique au précédent répond 200 « déjà ». Les brouillons ne comptent pas
+   dans la limite de débit de `/api/site/lead`.
 4. **Pièces d'un immeuble pas encore déposé.** `refEstimation` est lu (l'ancien
    nom `estimation` aussi). Immeuble pas encore arrivé : 503, la file réessaie.
 5. **Nom d'une recherche.** `recherche_nom` est lu : le nom est gardé sur la
