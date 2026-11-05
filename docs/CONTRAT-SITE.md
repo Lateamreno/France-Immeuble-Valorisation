@@ -935,3 +935,45 @@ message. Lu par le BO depuis le 04/11 :
   dossier » : c'est une question, source « Site - Formulaire Contact ». Un
   message « vendre » ne crée plus un contact acquéreur noté D.
 
+
+## 17. « Mes immeubles » et fiabilité des dépôts (demande du site, 05/11)
+
+Réponse du BO, point par point.
+
+1. **Le compte vidé le 05/11 à 00:41:34.** La projection était juste : entre
+   00:40:05 et 00:40:50, MAV a supprimé lui-même, dans le BO, les quatre
+   recherches de ce compte (il vérifiait que le site recevait les
+   suppressions, retour #602). Ses trois immeubles étaient archivés, il n'a
+   aucun message. Les `DELETE` sans dépôt sont le geste normal du BO : il
+   retire ce qui n'est plus dans la photographie. Le compte est donc à jour,
+   vide ; rien à redéposer qui manquerait.
+   **Le risque signalé était réel, il est fermé.** La lecture du BO rendait une
+   liste vide en cas d'erreur. Désormais elle lève : si une seule lecture de la
+   photographie échoue, le BO ne touche à rien sur le site, note l'erreur sur
+   le contact et le passage suivant réessaie. Une ligne n'est retirée que si
+   elle a disparu du BO.
+2. **Un immeuble dès l'estimation.** `compte_biens` portait déjà l'immeuble au
+   « 1 - FORMULAIRE » (`etape = "estimation"`), déposé dès l'arrivée d'une
+   `estimation` avec `compte` ou au rattachement du compte. Il porte maintenant
+   `ref` : la `ref` de l'estimation, au format UUID envoyé par le site.
+   L'estimation chiffrée part dans `compte_estimations` dès qu'elle est envoyée
+   au propriétaire, avec son PDF (§13.4).
+3. **État locatif renvoyable.** Chaque envoi `etat: "dossier"` est reconnu à
+   son contenu : le même contenu (réessai de la file) ne refait rien, un contenu
+   différent remplace les lots venus du site et la taxe foncière déclarée.
+   Jamais ce qu'un agent a saisi ou retouché : dans ce cas, les lots déclarés
+   vont dans les notes du bien. Avec `bien` (clé de `compte_biens`), l'envoi
+   vise cet immeuble, après vérification qu'il appartient bien au compte.
+4. **Pièces d'un immeuble pas encore déposé.** `refEstimation` est lu (l'ancien
+   nom `estimation` aussi). Immeuble pas encore arrivé : 503, la file réessaie.
+5. **Nom d'une recherche.** `recherche_nom` est lu : le nom est gardé sur la
+   recherche, et un nom vide l'efface. Le BO le redépose déjà dans
+   `compte_recherches.nom` : créez la colonne quand vous voulez, il la remplit
+   sans autre changement (tant qu'elle manque, il la retire de l'envoi).
+6. **Le passage en C ouvre l'accès.** `compte_agent.appele` vaut `true` dès que
+   l'acquéreur est noté A, B ou C, sans attendre qu'un appel soit noté. Les
+   champs sont ceux de l'agent attitré, sinon ceux de l'agent par défaut de
+   l'agence. Changer la note ou l'agent d'un contact redépose son compte tout
+   de suite.
+7. **Recherche « Marchand de biens » en double.** Rien à retirer pour MAV :
+   ses deux doublons (02/11 et 05/11) sont déjà archivés.

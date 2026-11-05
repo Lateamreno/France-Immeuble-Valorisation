@@ -33,13 +33,22 @@ function site(): Site | null {
   return { url, cle };
 }
 
+/**
+ * Une lecture du BO. Elle LÈVE en cas d'échec, jamais une liste vide : la
+ * demande du site du 05/11 (« ne jamais vider une table du compte quand la
+ * lecture du contact a échoué »). Une lecture qui rendait [] sur une erreur
+ * passait pour « rien à déposer » et le dépôt effaçait tout le compte.
+ */
 async function lireBo(chemin: string): Promise<Doc[]> {
-  if (!BO_KEY) return [];
+  if (!BO_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : lecture du BO impossible.");
   const res = await fetch(`${BO_URL}/rest/v1/${chemin}`, {
     headers: { apikey: BO_KEY, Authorization: `Bearer ${BO_KEY}` },
     cache: "no-store",
   });
-  return res.ok ? res.json() : [];
+  if (!res.ok) throw new Error(`Lecture du BO ${res.status} : ${(await res.text()).slice(0, 160)}`);
+  const d = await res.json();
+  if (!Array.isArray(d)) throw new Error("Lecture du BO : réponse inattendue.");
+  return d as Doc[];
 }
 
 async function patchBo(table: string, id: string, patch: Record<string, unknown>) {
@@ -77,6 +86,20 @@ async function cleDe(table: string, d: Doc): Promise<string> {
   const cle = randomUUID();
   await patchBo(table, d.id, { site_cle: cle });
   return cle;
+}
+
+/** « 3f2a…9c » (forme rangée au BO) → « 3f2a…-…-…-…-…9c », la `ref` telle que le site l'a envoyée. */
+function refSite(v: unknown): string | null {
+  const h = typeof v === "string" ? v.trim().toLowerCase().replace(/-/g, "") : "";
+  return /^[0-9a-f]{32}$/.test(h) ? `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}` : null;
+}
+
+/** L'agent qui paraît quand le client n'a pas encore d'agent attitré. */
+async function agentParDefaut(): Promise<string | undefined> {
+  const { getAgents } = await import("@/lib/bubble/server");
+  const { AGENT_DEFAUT_INITIALES } = await import("./agent-defaut");
+  const agents = await getAgents().catch(() => []);
+  return (agents.find((a) => a.initials === AGENT_DEFAUT_INITIALES) ?? agents[0])?.id;
 }
 
 export const TABLES_COMPTE = [
@@ -148,6 +171,9 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       occupation_max: pct(r.data.occup_max),
       destinations: Array.isArray(r.data.Destinations) ? r.data.Destinations : [],
       commentaire: S(r.data.commentaire) ?? null,
+      /* Le nom que le client a donné à sa recherche (site, 05/11). Tant que
+         la colonne n'existe pas sur le site, le dépôt la retire et le dit. */
+      nom: S(r.data.site_nom) ?? null,
       maj_le,
     });
   }
@@ -258,6 +284,10 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
       visites: st >= 5 ? visites.length : null,
       offres: st >= 5 ? offres.length : null,
       bien: c.bien,
+      /* Site, 05/11 : la `ref` de l'estimation dont l'immeuble est issu. Le
+         site cache alors sa propre copie (`compte_saisies`) et affiche notre
+         fiche à la place — sans elle, le client verrait l'immeuble deux fois. */
+      ref: refSite(im.data.site_lead_ref),
       /* Les dates de la frise (demande du site, 31/10). L'offre qui compte
          est la plus avancée ; une offre refusée n'en donne aucune. */
       ...frise(offres),
@@ -383,8 +413,12 @@ export async function lignesDuCompte(contactId: string, compte: string): Promise
      D n'a pas encore été appelé : pas d'agent, pas d'off-market. La lettre ne
      part jamais, seulement le oui ou non. */
   const [ct] = await lireBo(`bo_contact?select=id,data&id=eq.${cid}`);
-  const appele = !!ct && S(ct.data.Note) !== "D" && !!S(ct.data.SUIVI);
-  const [ag] = appele ? await lireBo(`bo_agentfi?select=id,data&id=eq.${encodeURIComponent(S(ct!.data.SUIVI)!)}`) : [];
+  /* Site, 05/11 (retour #270) : l'accès s'ouvre dès que le client est passé
+     en C — ou mieux —, même si personne n'est encore attitré ; c'est alors
+     l'agent par défaut de l'agence qui paraît. */
+  const appele = !!ct && ["A", "B", "C"].includes((S(ct.data.Note) ?? "").toUpperCase());
+  const agentId = appele ? (S(ct!.data.SUIVI) ?? (await agentParDefaut())) : undefined;
+  const [ag] = agentId ? await lireBo(`bo_agentfi?select=id,data&id=eq.${encodeURIComponent(agentId)}`) : [];
   const photo = S(ag?.data.photo);
   const la: Record<string, unknown>[] = ct ? [{
     compte, cle: await cleDe("bo_contact", ct),
@@ -643,7 +677,16 @@ export async function deposerCompte(contactId: string): Promise<{ ok: boolean; m
   const [c] = await lireBo(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
   const compte = S(c?.data.site_compte);
   if (!c || !compte) return { ok: false, message: "Ce contact n'a pas de compte sur le site." };
-  const lignes = await lignesDuCompte(contactId, compte);
+  /* La photographie d'abord, entière : si une seule lecture échoue, on ne
+     touche à RIEN sur le site et le passage suivant réessaie (site, 05/11). */
+  let lignes: LignesCompte;
+  try {
+    lignes = await lignesDuCompte(contactId, compte);
+  } catch (e) {
+    const message = `Lecture du BO en échec, rien n'a été touché sur le site : ${e instanceof Error ? e.message : String(e)}`;
+    await patchBo("bo_contact", contactId, { site_compte_erreur: message.slice(0, 500) }).catch(() => undefined);
+    return { ok: false, message };
+  }
   const erreurs: string[] = [];
   /* Les colonnes que le site n'a pas encore : déposé sans elles, et dit. */
   const manquantes: string[] = [];
