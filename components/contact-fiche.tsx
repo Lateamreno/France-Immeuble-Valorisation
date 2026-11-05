@@ -566,7 +566,7 @@ export function ContactFiche({ d, echanges = [] }: {
             const actives = d.recherches.filter((r) => r.group !== "archivees");
             const anciennes = d.recherches.filter((r) => r.group === "archivees");
             const carte = (r: (typeof d.recherches)[number]) => (
-              <CarteRecherche key={r.id} r={r} onDetail={setDetail} onModifier={setEdition} clicCarte sansContact
+              <CarteRecherche key={r.id} r={r} onDetail={setDetail} onModifier={setEdition} clicCarte sansContact supprimable
                 mention={d.mandatRechercheActif && r.group !== "archivees" ? "Mandat de recherche actif" : undefined} />
             );
             return (

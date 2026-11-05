@@ -5731,6 +5731,12 @@ button.cfx-add {
 .rc-ct .note { margin-left: 2px; }
 
 .rc-orphelin { display: inline-flex; align-items: center; gap: 8px; }
+/* Retour #600 : supprimer une recherche sans l'ouvrir. Discrète, rouge au survol. */
+.rc-suppr { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: 6px;
+  border: 1px solid var(--line, #e4e7eb); border-radius: 6px; background: #fff; color: var(--gray-txt); cursor: pointer; }
+.rc-suppr:hover { color: #a5341f; border-color: #e7b9ae; background: #fdf3f0; }
+.rc-suppr:disabled { opacity: .5; cursor: wait; }
+.rc-suppr-i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .rc-orphelin em { font-style: normal; font-size: 12px; color: var(--gray-txt); }
 .rc-creer {
   display: inline-flex; align-items: center; gap: 5px;
