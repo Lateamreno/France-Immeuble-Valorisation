@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="France Immeuble">
+  <!-- Production : pastille dorée, immeuble sombre. Le doré tranche avec le
+       noir et blanc du tableau de bord Vercel dans la barre d'onglets. -->
+  <rect width="32" height="32" rx="7" fill="#b6a359"/>
+  <rect x="6" y="8" width="20" height="20" fill="#121110"/>
+  <g fill="#b6a359">
+    <rect x="8" y="10.5" width="4" height="4" rx=".6"/>
+    <rect x="14" y="10.5" width="4" height="4" rx=".6"/>
+    <rect x="20" y="10.5" width="4" height="4" rx=".6"/>
+    <rect x="8" y="16" width="4" height="4" rx=".6"/>
+    <rect x="20" y="16" width="4" height="4" rx=".6"/>
+    <rect x="14" y="21.5" width="4" height="6.5" rx=".6"/>
+  </g>
+</svg>
