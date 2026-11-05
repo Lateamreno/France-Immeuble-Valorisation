@@ -10,7 +10,7 @@ import { Picto as PictoOnglet } from "@/components/pictos";
 import { euros, S } from "@/lib/format";
 import {
   addParcelle, deleteParcelle, saveAdresse, saveSecteurDest, supprimerPhotoParcelle,
-  tensionLocservice, updateEmplacement, updateParcelle, uploadPhotoParcelle, type EmplacementPatch,
+  tensionLocservice, updateEmplacement, updateParcelle, uploadPhotoParcelle, capturerPlanParcelle, type EmplacementPatch,
 } from "@/lib/bo/actions";
 import { oublier, useMemoire, useMemoireServie } from "@/lib/memoire";
 import { CartesSituation } from "@/components/carte";
@@ -785,6 +785,13 @@ function ParcellesTab({ b }: { b: BienData }) {
     setParcs(parcs.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const ajouterParc = (d?: Partial<Brouillon>) =>
     setParcs([...parcs, { id: idNouvelle(), ref: "", sup: "", nouveau: true, ...d }]);
+  /* Retour #598 : une parcelle du cadastre remplit d'abord une ligne restée
+     vide, au lieu d'en ajouter une à côté. */
+  const remplirParc = (d: Partial<Brouillon>) => {
+    const vide = parcs.find((x) => !x.ref.trim());
+    if (vide) majParc(vide.id, { ref: d.ref ?? "", sup: d.sup ?? vide.sup, idu: d.idu });
+    else ajouterParc(d);
+  };
 
   /* Retour #454 : Annuler remet ce que la fiche porte. */
   const annulerPlu = () => {
@@ -810,7 +817,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         }
         const avant = parcServies.find((p) => p.id === d.id);
         if (avant && (avant.ref !== d.ref || avant.sup !== d.sup)) {
-          await updateParcelle(immeubleId, d.id, { ref_cadastre: d.ref.trim() || undefined, superficie: parse(d.sup) ?? null });
+          await updateParcelle(immeubleId, d.id, { ref_cadastre: d.ref.trim() || undefined, superficie: parse(d.sup) ?? null, idu: d.idu });
         }
       }
       if (facadeT !== facadeServie) await updateEmplacement(immeubleId, { ter_facade: parse(facadeT) });
@@ -952,7 +959,9 @@ function ParcellesTab({ b }: { b: BienData }) {
           grise au bout d'une rangée de liens. */}
       {/* #554 : une fois les parcelles là, le remplissage automatique n'a
           plus rien à proposer — il disparaît. */}
-      {lat !== undefined && lon !== undefined && parcServies.length === 0 && parcs.length === 0 && (
+      {/* Retour #598 : le bouton restait caché dès qu'une ligne de parcelle
+          existait, même vide. Il reste là tant qu'aucune n'a de référence. */}
+      {lat !== undefined && lon !== undefined && !parcs.some((d) => d.ref.trim()) && (
         <button type="button" className="terr-auto" disabled={rechCadastre}
           onClick={chercherParcelles}>
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -963,7 +972,7 @@ function ParcellesTab({ b }: { b: BienData }) {
         </button>
       )}
 
-      {proposees !== null && parcServies.length === 0 && (
+      {proposees !== null && !parcServies.some((d) => d.ref.trim()) && (
         <div className="terr-prop">
           {proposees.length === 0 ? (
             <p>Le cadastre ne rend aucune parcelle sous ce point : à saisir à la main.</p>
@@ -975,7 +984,7 @@ function ParcellesTab({ b }: { b: BienData }) {
                   <button
                     key={p.idu ?? p.ref} type="button" className="mopt"
                     disabled={pending || dejaLa(p.ref)}
-                    onClick={() => ajouterParc({ ref: p.ref, sup: S(p.superficie), idu: p.idu })}
+                    onClick={() => remplirParc({ ref: p.ref, sup: S(p.superficie), idu: p.idu })}
                   >
                     {dejaLa(p.ref) ? "✓ " : "+ "}{p.ref}
                     {p.superficie !== undefined && ` · ${p.superficie.toLocaleString("fr-FR")} m²`}
@@ -1122,6 +1131,22 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
     });
   };
 
+  /* Retour #598 : la capture du cadastre, parcelle entourée, sans copier-coller. */
+  const capturer = () =>
+    start(async () => {
+      setErreur(null);
+      try {
+        setUrl(await capturerPlanParcelle(immeubleId));
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : "capture impossible");
+      }
+    });
+  const boutonCadastre = (
+    <button type="button" className="mopt terr-capt" disabled={pending} onClick={capturer}>
+      {pending ? "Capture du cadastre…" : url ? "Refaire depuis le cadastre" : "Capturer depuis le cadastre"}
+    </button>
+  );
+
   return (
     <>
       <div className="fsub">Plan de la parcelle</div>
@@ -1131,6 +1156,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Plan de la parcelle" /></a>
           <div className="mrow">
+            {boutonCadastre}
             <button type="button" className="mopt" disabled={pending} onClick={() => input.current?.click()}>
               Remplacer
             </button>
@@ -1166,6 +1192,7 @@ function PhotoParcelle({ immeubleId, source }: { immeubleId: string; source: str
           <span>Cliquez, collez une capture, ou glissez le fichier ici</span>
         </div>
       )}
+      {!url && <div className="mrow terr-capt-l">{boutonCadastre}</div>}
       <input ref={input} type="file" accept="image/*" hidden
         onChange={(e) => envoyer(e.target.files?.[0])} />
       {question}

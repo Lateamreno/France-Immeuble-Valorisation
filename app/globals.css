@@ -9449,3 +9449,7 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 /* Publication groupée des récits relus (MAV, 03/11). */
 .vs-msg .kgo { margin-left: 8px; }
 .vs-refus { margin: 6px 0 0; padding-left: 18px; }
+
+/* Retour #598 : la capture du plan de parcelle depuis le cadastre. */
+.terr-capt-l { margin-top: 8px; }
+.terr-capt { font-weight: 600; }

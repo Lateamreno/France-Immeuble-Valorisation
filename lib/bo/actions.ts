@@ -1195,7 +1195,7 @@ export async function reporterCadastre(
 export async function updateParcelle(
   immeubleId: string,
   parcelleId: string,
-  patch: { ref_cadastre?: string; superficie?: number | null; facade?: number | null },
+  patch: { ref_cadastre?: string; superficie?: number | null; facade?: number | null; idu?: string },
 ) {
   await rpc("bo_patch_doc", {
     p_table: "bo_parcelle",
@@ -1226,6 +1226,106 @@ export async function uploadPhotoParcelle(immeubleId: string, fd: FormData) {
     p_id: immeubleId,
     p_patch: { ter_parcelle_img: `storage:${path}` },
   });
+  refresh(immeubleId);
+  return `/api/photo?s=${encodeURIComponent(path)}`;
+}
+
+/**
+ * Retour #598 : « on peut pas avoir une capture du cadastre et de la parcelle
+ * concernée automatiquement ? » Si : la vue aérienne de l'IGN, le plan
+ * cadastral par-dessus, et la (les) parcelle(s) du bien entourée(s) en rouge,
+ * avec leur référence. Les parcelles viennent de la fiche (leur identifiant
+ * cadastral), sinon de celle qui se trouve sous le point d'adresse.
+ * L'image prend la place du « plan de la parcelle » ; l'agent peut toujours
+ * la remplacer par la sienne.
+ */
+export async function capturerPlanParcelle(immeubleId: string): Promise<string> {
+  const { pngDepuisHtml } = await import("./pdf");
+  const adr = await bqOne("bo_adresse", await idAdresse(immeubleId));
+  const geo = adr?.geo as { lat?: number; lng?: number } | undefined;
+  const lat = typeof geo?.lat === "number" ? geo.lat : undefined;
+  const lon = typeof geo?.lng === "number" ? geo.lng : undefined;
+  if (lat === undefined || lon === undefined) throw new Error("Adresse non géocodée : impossible de situer la parcelle.");
+
+  type Feature = { geometry?: { type: string; coordinates: unknown }; properties?: { section?: string; numero?: string; idu?: string; com_abs?: string } };
+  const carto = async (q: string): Promise<Feature[]> => {
+    const r = await fetch(`https://apicarto.ign.fr/api/cadastre/parcelle?${q}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (!r?.ok) return [];
+    return (((await r.json().catch(() => null)) as { features?: Feature[] } | null)?.features ?? []);
+  };
+  const lire = async (chemin: string) => {
+    const r = await fetch(`${SB_URL}/rest/v1/${chemin}`, { headers: { apikey: SB_KEY ?? "", Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" });
+    return r.ok ? ((await r.json()) as { id: string; data: Record<string, unknown> }[]) : [];
+  };
+  // Les parcelles de la fiche, par leur identifiant cadastral (INSEE + préfixe + section + numéro).
+  const fiche = await lire(`bo_parcelle?select=id,data&data->>IMMEUBLE=eq.${encodeURIComponent(immeubleId)}&limit=20`);
+  let features: Feature[] = [];
+  for (const p of fiche) {
+    const idu = typeof p.data.idu === "string" ? p.data.idu.trim() : "";
+    const m = idu.match(/^(\d[\dAB]\d{3})(\d{3})([A-Z0-9]{2})(\d{4})$/);
+    if (!m) continue;
+    features.push(...(await carto(`code_insee=${m[1]}&com_abs=${m[2]}&section=${m[3]}&numero=${m[4]}`)));
+  }
+  if (!features.length) features = await carto(`geom=${encodeURIComponent(JSON.stringify({ type: "Point", coordinates: [lon, lat] }))}`);
+
+  // Les anneaux extérieurs, en [lon, lat].
+  const anneaux: { pts: [number, number][]; ref: string }[] = [];
+  for (const f of features) {
+    const g = f.geometry;
+    const polys = g?.type === "MultiPolygon" ? (g.coordinates as [number, number][][][]) : g?.type === "Polygon" ? [g.coordinates as [number, number][][]] : [];
+    const pr = f.properties ?? {};
+    const ref = [pr.section, pr.numero ? String(parseInt(pr.numero, 10)) : ""].filter(Boolean).join(" ");
+    for (const poly of polys) if (poly[0]?.length) anneaux.push({ pts: poly[0], ref });
+  }
+
+  // Le cadre : la parcelle et ses abords, au format 3:2, jamais moins de 70 m de large.
+  const W = 900, H = 600;
+  const kx = Math.cos((lat * Math.PI) / 180) * 111_320; // m par degré de longitude
+  const ky = 110_574; // m par degré de latitude
+  const tous = anneaux.flatMap((a) => a.pts);
+  let [x0, x1, y0, y1] = tous.length
+    ? [Math.min(...tous.map((p) => p[0])), Math.max(...tous.map((p) => p[0])), Math.min(...tous.map((p) => p[1])), Math.max(...tous.map((p) => p[1]))]
+    : [lon, lon, lat, lat];
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  let largeurM = Math.max(70, (x1 - x0) * kx * 2.2, (y1 - y0) * ky * 2.2 * (W / H));
+  largeurM = Math.min(largeurM, 1200);
+  const hauteurM = largeurM * (H / W);
+  [x0, x1] = [cx - largeurM / 2 / kx, cx + largeurM / 2 / kx];
+  [y0, y1] = [cy - hauteurM / 2 / ky, cy + hauteurM / 2 / ky];
+
+  const wms = (couche: string, format: string, transparent: boolean) =>
+    `https://data.geopf.fr/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${couche}&STYLES=&CRS=CRS:84` +
+    `&BBOX=${x0},${y0},${x1},${y1}&WIDTH=${W}&HEIGHT=${H}&FORMAT=${encodeURIComponent(format)}${transparent ? "&TRANSPARENT=true" : ""}`;
+  const X = (v: number) => (((v - x0) / (x1 - x0)) * W).toFixed(1);
+  const Y = (v: number) => (((y1 - v) / (y1 - y0)) * H).toFixed(1);
+  const formes = anneaux.map((a) =>
+    `<polygon points="${a.pts.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ")}" fill="rgba(220,38,38,.18)" stroke="#dc2626" stroke-width="4" stroke-linejoin="round"/>`).join("");
+  const etiquettes = anneaux.filter((a) => a.ref).map((a) => {
+    const mx = a.pts.reduce((t, p) => t + p[0], 0) / a.pts.length, my = a.pts.reduce((t, p) => t + p[1], 0) / a.pts.length;
+    return `<div style="position:absolute;left:${X(mx)}px;top:${Y(my)}px;transform:translate(-50%,-50%);background:#fff;color:#b91c1c;border:2px solid #dc2626;border-radius:6px;padding:2px 8px;font:700 15px Arial,sans-serif">${a.ref}</div>`;
+  }).join("");
+  // Sans parcelle trouvée, le point d'adresse.
+  const point = anneaux.length ? "" : `<circle cx="${X(lon)}" cy="${Y(lat)}" r="9" fill="#dc2626" stroke="#fff" stroke-width="3"/>`;
+  const echelle = Math.round(largeurM / 9 / 5) * 5 || 5; // une barre d'environ 1/9 de la largeur
+  const html =
+    `<body style="margin:0"><div style="position:relative;width:${W}px;height:${H}px;overflow:hidden;background:#eee">` +
+    `<img src="${wms("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg", false)}" width="${W}" height="${H}" style="position:absolute;inset:0">` +
+    `<img src="${wms("CADASTRALPARCELS.PARCELLAIRE_EXPRESS", "image/png", true)}" width="${W}" height="${H}" style="position:absolute;inset:0">` +
+    `<svg width="${W}" height="${H}" style="position:absolute;inset:0">${formes}${point}</svg>${etiquettes}` +
+    `<div style="position:absolute;left:14px;bottom:12px;background:rgba(255,255,255,.9);border-radius:4px;padding:4px 8px;font:12px Arial,sans-serif;color:#222">` +
+    `<div style="width:${((echelle / largeurM) * W).toFixed(0)}px;height:5px;border:2px solid #222;border-top:0"></div>${echelle} m · Source : IGN, cadastre</div>` +
+    `</div></body>`;
+  const png = await pngDepuisHtml(html, W, H);
+
+  if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : upload impossible");
+  const path = `photos/${immeubleId}/parcelle-cadastre-${Date.now()}.png`;
+  const up = await fetch(`${SB_URL}/storage/v1/object/bo-files/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SB_KEY}`, "Content-Type": "image/png", "x-upsert": "true" },
+    body: new Uint8Array(png),
+  });
+  if (!up.ok) throw new Error(`Upload storage ${up.status}: ${(await up.text()).slice(0, 200)}`);
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: { ter_parcelle_img: `storage:${path}` } });
   refresh(immeubleId);
   return `/api/photo?s=${encodeURIComponent(path)}`;
 }
