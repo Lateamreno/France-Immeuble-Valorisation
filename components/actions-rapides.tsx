@@ -98,6 +98,10 @@ function ChoixBien({
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.5-4.5" /></svg>
         <input autoFocus placeholder="Ville, rue, numéro…" value={q}
           onChange={(e) => setQ(e.target.value)} />
+        {q && (
+          <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+            onClick={() => setQ("")}>✕</button>
+        )}
       </div>
       <div className="arp-biens">
         {pending && visibles.length === 0 && <div className="fempty">Recherche…</div>}

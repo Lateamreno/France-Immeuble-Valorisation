@@ -171,6 +171,11 @@ export function EcranRecherches({
             placeholder="Un mot-clé, une ville, un nom, un e-mail, un téléphone…"
             value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }}
           />
+          {/* Retour #597 : une croix pour vider la recherche d'un clic (comme #529). */}
+          {q && (
+            <button type="button" className="lst-raz" title="Effacer la recherche" aria-label="Effacer la recherche"
+              onClick={() => { setQ(""); setPage(1); }}>✕</button>
+          )}
         </div>
         <div className="lstx-sw" role="group" aria-label="Vue">
           {([["en_cours", "En cours"], ["en_attente", "En attente"], ["archivees", "Archivées"]] as const).map(([k, l]) => (
