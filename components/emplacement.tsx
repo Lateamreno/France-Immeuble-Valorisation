@@ -786,7 +786,9 @@ function lancerRemplissage(immeubleId: string, lat: number, lon: number, cp: str
       return (await x.json()) as Enrichissement;
     })
     .finally(() => { r.etapes.commune = true; prevenir(); });
-  const osm = chercherPoi(lat, lon).catch(() => ({})).finally(() => { r.etapes.osm = true; prevenir(); });
+  /* 30 s au plus : un miroir OpenStreetMap qui ne répond pas ne doit pas
+     laisser la barre tourner sans fin ; le reste se remplit quand même. */
+  const osm = chercherPoi(lat, lon, AbortSignal.timeout(30_000)).catch(() => ({})).finally(() => { r.etapes.osm = true; prevenir(); });
   Promise.all([serveur, osm])
     .then(([d, o]) => {
       // OpenStreetMap passe devant quand il a trouvé ; les propositions du
