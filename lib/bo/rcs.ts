@@ -21,6 +21,8 @@ import { departement } from "@/lib/diffusion";
 import { etatLien, lienDuDossier } from "./lien-dossier";
 import { chiffresDossier } from "./chiffres-dossier";
 import { NUMERO_STOP } from "./sms";
+import { introVersCarte, longueurRepli, refusRepli } from "./rcs-texte";
+export { longueurRepli };
 
 const BASE = "https://v3.mailingvox.com/api";
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -96,10 +98,14 @@ export type CarteRcs = {
   lienPerime?: boolean;
   repli: string;
   signature: { nom: string; tel?: string };
+  /** L'accroche en texte simple, telle qu'elle part (MAV, 09/11 : modifiable). */
+  intro: string;
+  /** Ce qui suit l'accroche dans `texte` (chiffres et signature), au format MailingVox. */
+  suite: string;
+  /** Le SMS de repli tel que le BO le fabrique, avant toute retouche. */
+  repliAuto: string;
 };
 
-/** Le nombre de caractères facturés d'un SMS de repli (doc MailingVox : ces signes comptent double). */
-export const longueurRepli = (t: string) => [...t].reduce((s, c) => s + ("|^€{}[~]\\".includes(c) ? 2 : 1), 0);
 
 /**
  * Prépare la carte d'un bien, sans rien envoyer : c'est ce que l'écran montre
@@ -110,7 +116,9 @@ export async function preparerCarte(
   signataire?: { nom: string; tel?: string },
   /* La commercialisation : le dossier qui part (ses chiffres, MAV 03/11) et le
      lien transfer.it tel qu'il est saisi à l'écran. */
-  envoi: { dossierId?: string; lien?: string } = {},
+  /* MAV (09/11) : l'accroche et le SMS de repli se retouchent à l'écran. Les
+     chiffres, la photo et les boutons restent fabriqués : ils suivent le dossier. */
+  envoi: { dossierId?: string; lien?: string; intro?: string; repli?: string } = {},
 ): Promise<CarteRcs | null> {
   const enc = encodeURIComponent(immeubleId);
   const [im] = (await lire<{ data: Doc }>(`bo_immeuble?select=data&id=eq.${enc}&limit=1`)).map((r) => r.data);
@@ -160,11 +168,12 @@ export async function preparerCarte(
     renta ? `Renta potentielle : ${fr(renta, 1)} %` : null,
     prixHai ? `Prix HAI : ${fr(Math.round(prixHai))} €` : null,
   ].filter(Boolean);
-  const texte = [
-    INTRO,
+  const introCarte = envoi.intro?.trim() ? introVersCarte(envoi.intro) : INTRO;
+  const suite = [
     lignes.join("<br>"),
     [sig.nom, telAffiche].filter(Boolean).join("<br>"),
   ].filter(Boolean).join("<br><br>");
+  const texte = [introCarte, suite].filter(Boolean).join("<br><br>");
 
   /* Le repli : 145 caractères au plus (MailingVox refuse un repli trop long —
      erreur 134). Avec le lien transfer.it du dossier : MAV (02/11) « tu peux
@@ -189,7 +198,8 @@ export async function preparerCarte(
     `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Repondez 1 si interesse, 2 sinon. ${stop}`,
     `France Immeuble: ${lieu}, ${chiffresCourts(true)}. 1=interesse 2=non. ${stop}`,
   ];
-  const repli = candidats.find((t) => longueurRepli(t) <= 145) ?? candidats.at(-1)!;
+  const repliAuto = candidats.find((t) => longueurRepli(t) <= 145) ?? candidats.at(-1)!;
+  const repli = envoi.repli?.trim() ? envoi.repli.trim() : repliAuto;
 
   const photoBrute = S(photos[0]?.data.image) ?? S(photos[0]?.data.compressed) ?? S(im.photo_main_compressed);
   return {
@@ -202,6 +212,9 @@ export async function preparerCarte(
     lienPerime: !!lien?.aRemplacer,
     repli,
     signature: sig,
+    intro: introCarte.replace(/<br>/g, "\n"),
+    suite,
+    repliAuto,
   };
 }
 
@@ -322,7 +335,8 @@ export async function envoyerCarteRcs(
   const uniques = [...new Set(numeros.filter((n) => /^\+\d{8,15}$/.test(n)))];
   if (uniques.length === 0) throw new Error("Aucun numéro valide.");
   if (!c.photo) throw new Error("Ce bien n'a pas de photo principale : la carte RCS en exige une.");
-  if (longueurRepli(c.repli) > 145) throw new Error("Le SMS de repli dépasse 145 caractères.");
+  const refus = refusRepli(c.repli, NUMERO_STOP);
+  if (refus) throw new Error(`Rien n'est parti : ${refus}.`);
 
   const agent = await agentRcs();
   if (!agent) throw new Error("Aucun agent RCS lisible chez MailingVox (rcs-agents) : l'expéditeur vérifié n'est pas visible par l'API.");

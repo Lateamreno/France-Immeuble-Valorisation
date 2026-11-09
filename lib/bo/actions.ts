@@ -5370,24 +5370,24 @@ async function signataireDuBien(immeubleId: string): Promise<{ nom: string; tel?
 }
 
 /** La carte telle que l'acquéreur la verra — rien n'est envoyé. */
-export async function apercuRcsCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string }) {
+export async function apercuRcsCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string; intro?: string; repli?: string }) {
   const { preparerCarte } = await import("./rcs");
   const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
-    dossierId: input.dossierId, lien: input.lien,
+    dossierId: input.dossierId, lien: input.lien, intro: input.intro, repli: input.repli,
   });
   if (!c) return { ok: false as const, message: "Bien introuvable." };
   return { ok: true as const, carte: { ...c, photo: c.photo ? photoUrlRcs(c.photo) : undefined } };
 }
 
 /** La carte à un seul numéro, pour la voir sur son propre téléphone. Rien n'est marqué. */
-export async function envoyerRcsEssaiCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string; numero: string }) {
+export async function envoyerRcsEssaiCommercialisation(input: { immeubleId: string; dossierId?: string; lien?: string; intro?: string; repli?: string; numero: string }) {
   const { telE164 } = await import("./matching");
   const numero = telE164(input.numero);
   if (!numero) return { ok: false as const, message: `Numéro illisible : « ${input.numero} ».` };
   try {
     const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
     const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
-      dossierId: input.dossierId, lien: input.lien,
+      dossierId: input.dossierId, lien: input.lien, intro: input.intro, repli: input.repli,
     });
     if (!c) return { ok: false as const, message: "Bien introuvable." };
     const r = await envoyerCarteRcs(c, [numero], { campagne: `Essai RCS ${input.immeubleId}` });
@@ -5399,7 +5399,7 @@ export async function envoyerRcsEssaiCommercialisation(input: { immeubleId: stri
 
 /** Les RCS de la commercialisation, à tous les numéros ciblés, en une campagne. */
 export async function envoyerRcsCommercialisation(input: {
-  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[];
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; intro?: string; repli?: string; numeros: string[];
 }) {
   if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
   try {
@@ -5419,7 +5419,7 @@ export async function envoyerRcsCommercialisation(input: {
 /** MAV (09/11) : les RCS programmés comme les e-mails — à l'heure dite, le
  *  cron de chaque minute les envoie (lib/bo/rcs-programmes.ts). */
 export async function programmerRcsCommercialisation(input: {
-  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[]; quand: string;
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; intro?: string; repli?: string; numeros: string[]; quand: string;
 }) {
   try {
     const { programmerRcs } = await import("./rcs-programmes");

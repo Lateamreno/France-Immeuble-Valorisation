@@ -29,6 +29,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { horsCreneauLegal } from "@/lib/bo/creneau-legal";
+import { introVersCarte, longueurRepli, refusRepli } from "@/lib/bo/rcs-texte";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
@@ -66,6 +67,11 @@ export function AssistantCommercialisation({
   /* MAV (09/11) : « j'ai une case pour programmer les RCS à la même date et
      même heure » que les e-mails, sur la page des e-mails. */
   const [rcsAvecMails, setRcsAvecMails] = useMemoire(`${memo}:rcs-avec-mails`, false);
+  /* MAV (09/11) : l'accroche de la carte et le SMS de repli se retouchent ici.
+     Vide = le texte fabriqué par le BO. */
+  const [rcsIntro, setRcsIntro] = useMemoire(`${memo}:rcs-intro`, "");
+  const [rcsRepli, setRcsRepli] = useMemoire(`${memo}:rcs-repli`, "");
+  const textesRcs = { intro: rcsIntro.trim() || undefined, repli: rcsRepli.trim() || undefined };
   /* MAV (09/11) : « je veux que les propositions se créent que quand l'e-mail
      au moins a été envoyé ». L'étape Acheteurs ne crée plus rien : elle
      valide la liste, et c'est l'envoi (ou la programmation) des e-mails qui
@@ -381,11 +387,24 @@ export function AssistantCommercialisation({
   }, [etape, dossier, lien, cleRcs, b.im._id, rcsAvecMails]);
   /* Une carte préparée pour un autre dossier ou un autre lien n'est pas
      montrée : on attend celle qui correspond à l'écran. */
-  const carteRcs = rcs?.cle === cleRcs ? rcs.carte ?? null : null;
+  const carteBrute = rcs?.cle === cleRcs ? rcs.carte ?? null : null;
+  /* La carte telle qu'elle partira, retouches comprises : l'accroche saisie
+     prend la place de celle du BO, le repli saisi celle du repli fabriqué. */
+  const carteRcs: CarteRcsVue | null = carteBrute
+    ? {
+      ...carteBrute,
+      texte: carteBrute.suite !== undefined && rcsIntro.trim()
+        ? [introVersCarte(rcsIntro), carteBrute.suite].filter(Boolean).join("<br><br>")
+        : carteBrute.texte,
+      repli: rcsRepli.trim() || carteBrute.repliAuto || carteBrute.repli,
+    }
+    : null;
+  const refusRepliRcs = carteRcs ? refusRepli(carteRcs.repli) : null;
   const erreurRcs = rcs?.cle === cleRcs ? rcs.erreur ?? null : null;
 
   const envoyerLesRcs = async () => {
     const nb = dest.telephones.length;
+    if (refusRepliRcs) { setEnvoi(`Rien n'est parti : ${refusRepliRcs}.`); return; }
     if (quandRcs) {
       const d = new Date(quandRcs);
       if (!Number.isFinite(d.getTime())) { setEnvoi("Date d'envoi illisible."); return; }
@@ -401,7 +420,7 @@ export function AssistantCommercialisation({
         const commId = await assurerCommercialisation();
         const r = await programmerRcsCommercialisation({
           immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
-          quand: d.toISOString(),
+          quand: d.toISOString(), ...textesRcs,
         });
         if (r.ok) {
           setRcsProg({ etat: "attente", quand: r.quand, numeros: r.numeros });
@@ -423,7 +442,7 @@ export function AssistantCommercialisation({
     start(async () => {
       const commId = await assurerCommercialisation();
       const r = await envoyerRcsCommercialisation({
-        immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
+        immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones, ...textesRcs,
       });
       if (r.ok) {
         setSmsEnvoyes(true);
@@ -435,6 +454,37 @@ export function AssistantCommercialisation({
       }
     });
   };
+
+  /* L'aperçu de la carte et ses deux textes retouchables : sur la page des
+     e-mails (case « programmer aussi les RCS ») comme sur l'étape RCS. */
+  const editeurRcs = carteRcs && (
+    <div className="asst-rcs-ed">
+      <TelephoneRcs carte={carteRcs} />
+      <label className="asst-rcs-champ">
+        <span className="mlab">Texte de la carte</span>
+        <textarea className="min" rows={5} value={rcsIntro || carteRcs.intro || ""}
+          onChange={(e) => setRcsIntro(e.target.value)} />
+        {rcsIntro.trim() && (
+          <button type="button" className="fadd" onClick={() => setRcsIntro("")}>Revenir au texte d&apos;origine</button>
+        )}
+      </label>
+      <label className="asst-rcs-champ">
+        <span className="mlab">SMS de repli (téléphones sans RCS)</span>
+        <textarea className="min" rows={3} value={rcsRepli || carteRcs.repliAuto || carteRcs.repli}
+          onChange={(e) => setRcsRepli(e.target.value)} />
+        <span className={refusRepliRcs ? "asst-rcs-compte ko" : "asst-rcs-compte"}>
+          {longueurRepli(carteRcs.repli)} / 145 caractères{refusRepliRcs ? ` — ${refusRepliRcs}` : ""}
+        </span>
+        {rcsRepli.trim() && (
+          <button type="button" className="fadd" onClick={() => setRcsRepli("")}>Revenir au SMS fabriqué</button>
+        )}
+      </label>
+      <div className="asst-note">
+        La photo, le titre, les chiffres, votre signature et les boutons suivent le dossier : ils ne se
+        modifient pas ici. Retouchez-les à la source (étape Dossier, photo principale).
+      </div>
+    </div>
+  );
 
   return (
     <div className="asst">
@@ -845,8 +895,9 @@ export function AssistantCommercialisation({
                 {erreurRcs && <div className="dif-simu">{erreurRcs}</div>}
                 {carteRcs && !carteRcs.photo && <div className="dif-simu">Le bien n&apos;a pas de photo principale : la carte RCS en exige une.</div>}
                 {carteRcs?.photo && !hors && (
-                  <div className="asst-note">La carte RCS est celle de l&apos;étape RCS, telle qu&apos;elle y est affichée ; elle partira seule à l&apos;heure dite, et s&apos;annule depuis l&apos;étape RCS tant qu&apos;elle n&apos;est pas partie.</div>
+                  <div className="asst-note">Voici la carte qui partira seule à l&apos;heure dite. Elle s&apos;annule depuis l&apos;étape RCS tant qu&apos;elle n&apos;est pas partie.</div>
                 )}
+                {editeurRcs}
               </>
             );
           })()}
@@ -930,6 +981,7 @@ export function AssistantCommercialisation({
                   const hors = horsCreneauLegal(d!);
                   if (hors) { setEnvoiMail(`Cette heure tombe ${hors} : les RCS ne partent que du lundi au samedi, de 8 h à 22 h, hors jours fériés. Changez l'heure ou décochez la case RCS.`); return; }
                   if (!carteRcs?.photo) { setEnvoiMail("La carte RCS n'est pas prête (photo principale absente ou carte en préparation). Décochez la case RCS ou attendez la carte."); return; }
+                  if (refusRepliRcs) { setEnvoiMail(`Rien n'est parti : ${refusRepliRcs}. Corrigez le SMS de repli ou décochez la case RCS.`); return; }
                 }
                 if (!(await confirmer(
                   <>
@@ -963,7 +1015,7 @@ export function AssistantCommercialisation({
                   if (avecRcs) {
                     const r = await programmerRcsCommercialisation({
                       immeubleId: String(b.im._id), commId: id, dossierId: dossier || undefined, lien,
-                      numeros: dest.telephones, quand: d!.toISOString(),
+                      numeros: dest.telephones, quand: d!.toISOString(), ...textesRcs,
                     });
                     if (r.ok) setRcsProg({ etat: "attente", quand: r.quand, numeros: r.numeros });
                     else setEnvoi(`Les RCS n'ont pas été programmés : ${r.message}`);
@@ -990,7 +1042,9 @@ export function AssistantCommercialisation({
           <span className="mlab">Ce que reçoit chaque acquéreur</span>
           {!carteRcs && !erreurRcs && <div className="asst-note">Préparation de la carte…</div>}
           {erreurRcs && <div className="dif-simu">{erreurRcs}</div>}
-          {carteRcs && <TelephoneRcs carte={carteRcs} />}
+          {carteRcs && (smsEnvoyes || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi"
+            ? <TelephoneRcs carte={carteRcs} />
+            : editeurRcs)}
           {carteRcs && !carteRcs.lienDossier && (
             <div className="dif-simu">
               {carteRcs.lienPerime
@@ -1023,7 +1077,7 @@ export function AssistantCommercialisation({
                   onClick={() => start(async () => {
                     setEssai(null);
                     const r = await envoyerRcsEssaiCommercialisation({
-                      immeubleId: String(b.im._id), dossierId: dossier || undefined, lien, numero: numEssai,
+                      immeubleId: String(b.im._id), dossierId: dossier || undefined, lien, numero: numEssai, ...textesRcs,
                     });
                     setEssai(r.ok
                       ? `Essai parti vers ${telAffiche(telE164(numEssai) ?? numEssai)}${r.campagne ? ` (campagne MailingVox n°${r.campagne})` : ""}. Ce que vous recevez est ce que recevront les acquéreurs.`
