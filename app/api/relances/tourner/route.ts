@@ -3,7 +3,8 @@
 // lancée est fermée ou suspendue, c'est lui qui la finit.
 //
 // Il vide aussi la file des campagnes du module Mailing (lib/bo/campagnes.ts),
-// sur le temps que les relances lui laissent.
+// sur le temps que les relances lui laissent, et envoie les RCS programmés
+// des commercialisations arrivés à leur heure (lib/bo/rcs-programmes.ts).
 //
 // Protégé par le secret du cron : sans lui, n'importe qui pourrait faire
 // tourner l'automate en boucle. Même règle que la relève des mails.
@@ -11,6 +12,7 @@ import { NextRequest } from "next/server";
 import { tournerLaFile } from "@/lib/bo/relances-file";
 import { tournerCampagnes } from "@/lib/bo/campagnes";
 import { tournerOrdreRecits } from "@/lib/bo/ordre-recits";
+import { tournerRcsProgrammes } from "@/lib/bo/rcs-programmes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +30,8 @@ export async function GET(req: NextRequest) {
   if (!autorise(req)) return Response.json({ erreur: "Secret absent ou faux." }, { status: 401 });
   try {
     const debut = Date.now();
+    // Les RCS programmés d'une commercialisation, arrivés à leur heure (MAV, 09/11) : d'abord, c'est l'heure dite qui compte.
+    const rcs = await tournerRcsProgrammes().catch((e) => ({ erreur: String(e) }));
     const etat = await tournerLaFile(30_000);
     const campagne = await tournerCampagnes(50_000 - (Date.now() - debut)).catch((e) => ({ erreur: String(e) }));
     // Un ordre de publication des récits relus donné par MAV (lib/bo/ordre-recits.ts) : sinon rien.
@@ -36,6 +40,7 @@ export async function GET(req: NextRequest) {
       relances: etat ? { salve: etat.id, statut: etat.statut, mails: etat.mails, sms: etat.sms } : null,
       campagne,
       recits,
+      rcs,
     });
   } catch (e) {
     return Response.json({ erreur: e instanceof Error ? e.message : String(e) }, { status: 500 });
