@@ -479,29 +479,58 @@ export async function recapSalveRelances(r: {
   destinataires: string[];
   arretee?: boolean;
   smsTexte?: string;
+  /** Envoi différé (ISO) : les e-mails sont confiés à SendGrid, ils partiront à cette heure-là. */
+  programmePour?: string;
+  /** Les RCS de la commercialisation, programmés ou partis (MAV, 09/11). */
+  rcs?: { etat: "programme" | "parti" | "echec"; quand?: string; numeros: number; texte?: string; repli?: string; erreur?: string };
 }): Promise<{ ok: boolean; adresse?: string; message?: string }> {
   const mail = await import("@/lib/bo/mail");
   const adresse = await mail.adresseCopieCachee(r.agentId);
   if (!adresse) return { ok: false, message: "aucune adresse pour le récapitulatif (MAIL_COPIE ou boîte de l'agent)" };
   const quand = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" });
   const pl = (n: number, m: string) => `${n} ${m}${n > 1 ? "s" : ""}`;
-  const etat = r.arretee ? "arrêtée avant la fin" : "terminée";
-  const bilanMails = r.mails.total ? `${r.mails.fait} / ${r.mails.total} e-mail${r.mails.total > 1 ? "s" : ""} envoyé${r.mails.fait > 1 ? "s" : ""}${r.mails.echecs ? ` · ${pl(r.mails.echecs, "échec")}` : ""}` : "pas d'e-mail";
+  /* MAV (09/11) : un récapitulatif d'envoi PROGRAMMÉ disait « salve terminée,
+     76 / 76 e-mails envoyés, pas de SMS » la veille au soir, alors que rien
+     n'était parti et que 68 RCS attendaient la même heure. Il dit maintenant
+     ce qui est programmé, pour quand, et ce qui attend côté RCS. */
+  const date = (iso?: string) => iso
+    ? new Date(iso).toLocaleString("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })
+    : "";
+  const differe = !!r.programmePour && Date.parse(r.programmePour) > Date.now() - 60_000;
+  const etat = r.arretee ? "arrêtée avant la fin" : differe ? `programmée pour le ${date(r.programmePour)}` : "terminée";
+  const bilanMails = r.mails.total
+    ? differe
+      ? `${r.mails.fait} / ${r.mails.total} e-mail${r.mails.total > 1 ? "s" : ""} programmé${r.mails.fait > 1 ? "s" : ""} pour le ${date(r.programmePour)} (confiés à SendGrid, ils partiront à cette heure-là)${r.mails.echecs ? ` · ${pl(r.mails.echecs, "échec")}` : ""}`
+      : `${r.mails.fait} / ${r.mails.total} e-mail${r.mails.total > 1 ? "s" : ""} envoyé${r.mails.fait > 1 ? "s" : ""}${r.mails.echecs ? ` · ${pl(r.mails.echecs, "échec")}` : ""}`
+    : "pas d'e-mail";
   const bilanSms = r.sms.total ? `${r.sms.fait} / ${r.sms.total} SMS envoyé${r.sms.fait > 1 ? "s" : ""}${r.sms.echecs ? ` · ${pl(r.sms.echecs, "échec")}` : ""}` : "pas de SMS";
-  const sujet = `Récapitulatif — ${r.titre} : ${bilanMails}${r.sms.total ? `, ${bilanSms}` : ""}`;
+  const bilanRcs = r.rcs
+    ? r.rcs.etat === "programme"
+      ? `${pl(r.rcs.numeros, "numéro")} programmé${r.rcs.numeros > 1 ? "s" : ""} pour le ${date(r.rcs.quand)}, envoyés par le BO à cette heure-là (annulables depuis l'étape RCS de la commercialisation jusque-là)`
+      : r.rcs.etat === "parti"
+        ? `${r.rcs.numeros} RCS envoyé${r.rcs.numeros > 1 ? "s" : ""}${r.rcs.quand ? ` le ${date(r.rcs.quand)}` : ""}`
+        : `l'envoi programmé n'est pas parti : ${r.rcs.erreur ?? "raison inconnue"}`
+    : undefined;
+  const sujetRcs = r.rcs?.etat === "programme" ? `, ${r.rcs.numeros} RCS programmés` : r.rcs?.etat === "parti" ? `, ${r.rcs.numeros} RCS envoyés` : "";
+  const sujet = differe
+    ? `Récapitulatif — ${r.titre} : ${r.mails.fait} e-mails programmés pour le ${date(r.programmePour)}${sujetRcs}`
+    : `Récapitulatif — ${r.titre} : ${bilanMails}${r.sms.total ? `, ${bilanSms}` : ""}${sujetRcs}`;
   const lignes = [
-    `${r.titre} — salve ${etat} le ${quand}.`,
+    `${r.titre} — salve ${etat}${differe ? ` (confiée le ${quand})` : ` le ${quand}`}.`,
+    ...(differe ? [``, `Rien n'est encore parti : les e-mails${r.rcs?.etat === "programme" ? " et les RCS" : ""} partiront le ${date(r.programmePour)}. Une salve confiée à SendGrid ne s'annule plus.`] : []),
     ``,
     `E-mails : ${bilanMails}.`,
-    `SMS : ${bilanSms}.`,
+    bilanRcs ? `RCS : ${bilanRcs}.` : `SMS : ${bilanSms}.`,
     `Route : ${r.voie === "masse" ? `relais SendGrid${r.expediteur ? `, expéditeur ${r.expediteur}` : ""}` : "votre boîte"}.`,
     ``,
-    `Objet envoyé : ${r.objet}`,
+    `Objet ${differe ? "programmé" : "envoyé"} : ${r.objet}`,
     ``,
-    `--- Message envoyé ---`,
+    `--- Message ${differe ? "programmé" : "envoyé"} ---`,
     r.corps.trim(),
     `--- fin du message ---`,
     ...(r.smsTexte ? [``, `--- SMS envoyé ---`, r.smsTexte.trim(), `--- fin du SMS ---`] : []),
+    ...(r.rcs?.texte ? [``, `--- Texte de la carte RCS ---`, r.rcs.texte.trim(), `--- fin de la carte ---`] : []),
+    ...(r.rcs?.repli ? [``, `--- SMS de repli (téléphones sans RCS) ---`, r.rcs.repli.trim(), `--- fin du SMS de repli ---`] : []),
     ``,
     r.journal.length ? `Échecs et remarques (${r.journal.length}) :` : `Aucun échec.`,
     ...r.journal.slice(0, 60).map((l) => `  • ${l}`),
@@ -510,7 +539,9 @@ export async function recapSalveRelances(r: {
     `Destinataires (${r.destinataires.length}) :`,
     ...r.destinataires.map((d) => `  • ${d}`),
     ``,
-    `Ce récapitulatif est envoyé automatiquement par le back-office à la fin de chaque salve de relances.`,
+    differe
+      ? `Ce récapitulatif est envoyé automatiquement par le back-office dès que la salve est confiée à SendGrid.`
+      : `Ce récapitulatif est envoyé automatiquement par le back-office à la fin de chaque salve de relances.`,
   ];
   const texte = lignes.join("\n");
   try {
