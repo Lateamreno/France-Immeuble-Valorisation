@@ -8,6 +8,8 @@
 // côte à côte, parce que l'acquéreur n'a pas tous le même téléphone : la carte
 // sur un téléphone qui lit le RCS, le SMS de repli sur les autres.
 
+import { longueurRepli } from "@/lib/bo/rcs-texte";
+
 export type CarteRcsVue = {
   titre: string;
   /** `<br>` pour les retours à la ligne (format MailingVox). */
@@ -60,7 +62,7 @@ export function TelephoneRcs({ carte }: { carte: CarteRcsVue }) {
         <div className="rcs-tel-fil">
           <div className="rcs-bulle">{carte.repli}</div>
         </div>
-        <figcaption>Sans RCS : ce SMS à la place ({[...carte.repli].length} caractères)</figcaption>
+        <figcaption>Sans RCS : ce SMS à la place ({longueurRepli(carte.repli)} caractères facturés)</figcaption>
       </figure>
     </div>
   );
