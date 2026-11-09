@@ -28,6 +28,7 @@ import {
   messageCommercialisation, objetCommercialisation, rendementPotentiel, type BienMail,
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
+import { horsCreneauLegal } from "@/lib/bo/creneau-legal";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
@@ -62,6 +63,14 @@ export function AssistantCommercialisation({
   /* MAV (09/11) : les RCS se programment comme les e-mails. Vide = tout de
      suite. `rcsProg` : la programmation enregistrée, relue sur le serveur. */
   const [quandRcs, setQuandRcs] = useMemoire(`${memo}:quand-rcs`, "");
+  /* MAV (09/11) : « j'ai une case pour programmer les RCS à la même date et
+     même heure » que les e-mails, sur la page des e-mails. */
+  const [rcsAvecMails, setRcsAvecMails] = useMemoire(`${memo}:rcs-avec-mails`, false);
+  /* MAV (09/11) : « je veux que les propositions se créent que quand l'e-mail
+     au moins a été envoyé ». L'étape Acheteurs ne crée plus rien : elle
+     valide la liste, et c'est l'envoi (ou la programmation) des e-mails qui
+     crée la commercialisation et ses propositions (`assurerCommercialisation`). */
+  const [acheteursValides, setAcheteursValides] = useMemoire(`${memo}:acheteurs-valides`, false);
   const [rcsProg, setRcsProg] = useState<{ etat: string; quand: string; numeros: number; erreur?: string } | null>(null);
 
   const dossiers = b.dossiers;
@@ -235,8 +244,7 @@ export function AssistantCommercialisation({
   const pdfDossier = piecesJointes.find((p) => /^Dossier-/.test(p.nom));
   const lienAbsent = !!lien.trim() && !message.includes(lien.trim());
 
-  const envoyerParLots = async (adresses: string[], quand?: string) => {
-    if (!commId) return;
+  const envoyerParLots = async (commId: string, adresses: string[], quand?: string) => {
     const total = faits.length + adresses.length;
     const avant = faits.length;
     setFaitsAvant(avant);
@@ -299,38 +307,42 @@ export function AssistantCommercialisation({
     [prixHai, prixDossier, prixMandat].filter((v) => v !== undefined).length > 1 &&
     new Set([prixHai, prixDossier, prixMandat].filter((v) => v !== undefined)).size > 1;
 
-  const creer = () =>
-    start(async () => {
-      const res = await createCommercialisation({
-        immeubleId: String(b.im._id),
-        agentId: String(b.im.AGENT ?? "") || undefined,
-        matchId,
-        dossierId: dossier || undefined,
-        mandatId: mandat || undefined,
-        lienPartage: lien || undefined,
-        objet,
-        message,
-        smsTexte: sms,
-        cibles: cibles.map((a) => ({
-          rechercheId: a.rechercheId,
-          contactId: a.contactId,
-          email: a.email,
-          telephone: a.telephone,
-          /* Le grade décide de la colonne du dashboard après l'envoi : A/B
-             seulement → « Commercialisés aux clients A et B », dès qu'un C, un
-             D ou un sans-grade est dedans → « à tous les clients ». */
-          note: a.note,
-        })),
-      });
-      /* Le lien tapé ici devient celui du dossier, valable 89 jours : les
-         relances le retrouveront (MAV, 28/09). */
-      if (dossier && lien.trim() && lien.trim() !== lienDossierChoisi?.url) {
-        await majLienDossier(String(b.im._id), dossier, lien.trim(), expirationParDefaut()).catch(() => undefined);
-      }
-      setCommId(res.commercialisationId);
-      setCreees(res.propositions);
-      setEtape("E-mails");
+  /* La commercialisation et ses propositions n'existent qu'au départ des
+     e-mails (MAV, 09/11). Appelée par « Envoyer / Programmer », « Marquer
+     envoyés à la main » et l'envoi RCS : rend l'identifiant, existant ou neuf.
+     Ce qui est enregistré, c'est l'objet et le message tels qu'ils partent. */
+  const assurerCommercialisation = async (): Promise<string> => {
+    if (commId) return commId;
+    const res = await createCommercialisation({
+      immeubleId: String(b.im._id),
+      agentId: String(b.im.AGENT ?? "") || undefined,
+      matchId,
+      dossierId: dossier || undefined,
+      mandatId: mandat || undefined,
+      lienPartage: lien || undefined,
+      objet,
+      message,
+      smsTexte: sms,
+      cibles: cibles.map((a) => ({
+        rechercheId: a.rechercheId,
+        contactId: a.contactId,
+        email: a.email,
+        telephone: a.telephone,
+        /* Le grade décide de la colonne du dashboard après l'envoi : A/B
+           seulement → « Commercialisés aux clients A et B », dès qu'un C, un
+           D ou un sans-grade est dedans → « à tous les clients ». */
+        note: a.note,
+      })),
     });
+    /* Le lien tapé ici devient celui du dossier, valable 89 jours : les
+       relances le retrouveront (MAV, 28/09). */
+    if (dossier && lien.trim() && lien.trim() !== lienDossierChoisi?.url) {
+      await majLienDossier(String(b.im._id), dossier, lien.trim(), expirationParDefaut()).catch(() => undefined);
+    }
+    setCommId(res.commercialisationId);
+    setCreees(res.propositions);
+    return res.commercialisationId;
+  };
 
   const copier = (txt: string) => navigator.clipboard?.writeText(txt);
 
@@ -346,7 +358,7 @@ export function AssistantCommercialisation({
   });
   const [essai, setEssai] = useState<string | null>(null);
   useEffect(() => {
-    if (etape !== "SMS" || pont) return;
+    if ((etape !== "SMS" && etape !== "E-mails") || pont) return;
     let vivant = true;
     etatEnvoiSms().then((e) => { if (vivant) setPont(e); }).catch(() => undefined);
     return () => { vivant = false; };
@@ -360,20 +372,19 @@ export function AssistantCommercialisation({
   const cleRcs = `${dossier}|${lien.trim()}`;
   const [rcs, setRcs] = useState<{ cle: string; carte?: CarteRcsVue; erreur?: string } | null>(null);
   useEffect(() => {
-    if (etape !== "SMS") return;
+    if (etape !== "SMS" && !(etape === "E-mails" && rcsAvecMails)) return;
     let vivant = true;
     apercuRcsCommercialisation({ immeubleId: String(b.im._id), dossierId: dossier || undefined, lien })
       .then((r) => { if (vivant) setRcs(r.ok ? { cle: cleRcs, carte: r.carte } : { cle: cleRcs, erreur: r.message }); })
       .catch(() => { if (vivant) setRcs({ cle: cleRcs, erreur: "La carte n'a pas pu être préparée." }); });
     return () => { vivant = false; };
-  }, [etape, dossier, lien, cleRcs, b.im._id]);
+  }, [etape, dossier, lien, cleRcs, b.im._id, rcsAvecMails]);
   /* Une carte préparée pour un autre dossier ou un autre lien n'est pas
      montrée : on attend celle qui correspond à l'écran. */
   const carteRcs = rcs?.cle === cleRcs ? rcs.carte ?? null : null;
   const erreurRcs = rcs?.cle === cleRcs ? rcs.erreur ?? null : null;
 
   const envoyerLesRcs = async () => {
-    if (!commId) return;
     const nb = dest.telephones.length;
     if (quandRcs) {
       const d = new Date(quandRcs);
@@ -387,6 +398,7 @@ export function AssistantCommercialisation({
         { oui: "Programmer" },
       ))) return;
       start(async () => {
+        const commId = await assurerCommercialisation();
         const r = await programmerRcsCommercialisation({
           immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
           quand: d.toISOString(),
@@ -409,6 +421,7 @@ export function AssistantCommercialisation({
       { oui: "Envoyer" },
     ))) return;
     start(async () => {
+      const commId = await assurerCommercialisation();
       const r = await envoyerRcsCommercialisation({
         immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
       });
@@ -452,7 +465,7 @@ export function AssistantCommercialisation({
           <button
             key={e} type="button"
             className={`${etape === e ? "on" : ""}${ETAPES.indexOf(etape) > i ? " ok" : ""}`}
-            disabled={!commId && (e === "E-mails" || e === "SMS")}
+            disabled={(e === "E-mails" && !commId && !acheteursValides) || (e === "SMS" && !commId)}
             onClick={() => setEtape(e)}
           ><i>{i + 1}</i> {e === "SMS" ? "RCS" : e}</button>
         ))}
@@ -670,16 +683,23 @@ export function AssistantCommercialisation({
             <button className="fadd" type="button" onClick={() => setEtape("Mandat")}>← Retour</button>
             <span className="sp" style={{ flex: 1 }} />
             <button
-              className="kgo" type="button" disabled={pending || cibles.length === 0}
-              style={pending ? { opacity: 0.5 } : undefined} onClick={creer}
-            ><span className="ch">›</span> Créer {cibles.length} propositions</button>
+              className="kgo" type="button" disabled={cibles.length === 0}
+              onClick={() => { setAcheteursValides(true); setEtape("E-mails"); }}
+            ><span className="ch">›</span> Continuer vers les e-mails</button>
           </div>
         </div>
       )}
 
       {etape === "E-mails" && (
         <div className="asst-b">
-          <div className="asst-ok">✓ {creees} propositions créées.</div>
+          {commId
+            ? <div className="asst-ok">✓ {creees} propositions créées.</div>
+            : (
+              <div className="asst-note">
+                Rien n&apos;est encore créé : les {cibles.length} propositions le seront au moment où
+                les e-mails partent (ou sont programmés).
+              </div>
+            )}
 
           {/* Retour #360 : le compte, et ce qui n'y est pas. */}
           <div className="asst-rec">
@@ -803,6 +823,35 @@ export function AssistantCommercialisation({
               s&apos;annule plus depuis ici.
             </div>
           )}
+          {quandMail && pont?.configure && !smsEnvoyes && !(rcsProg && (rcsProg.etat === "attente" || rcsProg.etat === "envoi")) && (
+            <label className="asst-rcs-avec">
+              <input type="checkbox" checked={rcsAvecMails} disabled={dest.telephones.length === 0}
+                onChange={(e) => setRcsAvecMails(e.target.checked)} />
+              <span>
+                Programmer aussi <b>{dest.telephones.length > 1 ? `les ${dest.telephones.length} RCS` : "le RCS"}</b> à la même date et même heure
+                {dest.telephones.length === 0 && " — aucun numéro exploitable"}
+              </span>
+            </label>
+          )}
+          {quandMail && rcsAvecMails && (() => {
+            const d = new Date(quandMail);
+            const hors = Number.isFinite(d.getTime()) ? horsCreneauLegal(d) : null;
+            return (
+              <>
+                {hors && <div className="dif-simu">Cette heure tombe {hors} : les RCS ne partent que du lundi au samedi, de 8 h à 22 h, hors jours fériés.</div>}
+                {!carteRcs && !erreurRcs && <div className="asst-note">Préparation de la carte RCS…</div>}
+                {erreurRcs && <div className="dif-simu">{erreurRcs}</div>}
+                {carteRcs && !carteRcs.photo && <div className="dif-simu">Le bien n&apos;a pas de photo principale : la carte RCS en exige une.</div>}
+                {carteRcs?.photo && !hors && (
+                  <div className="asst-note">La carte RCS est celle de l&apos;étape RCS, telle qu&apos;elle y est affichée ; elle partira seule à l&apos;heure dite, et s&apos;annule depuis l&apos;étape RCS tant qu&apos;elle n&apos;est pas partie.</div>
+                )}
+              </>
+            );
+          })()}
+          {envoi && /^Les RCS n'ont pas/.test(envoi) && <div className="dif-simu">{envoi}</div>}
+          {rcsProg?.etat === "attente" && (
+            <div className="asst-ok">{`RCS programmés pour le ${new Date(rcsProg.quand).toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })}.`}</div>
+          )}
           {envoiMail && <div className="asst-ok">{envoiMail}</div>}
 
           {/* Retour #594 — « assure-toi bien que quand je modifie un titre ou un
@@ -853,7 +902,8 @@ export function AssistantCommercialisation({
             )}
             <button
               className="fadd" type="button" disabled={pending || mailsEnvoyes}
-              onClick={() => commId && start(async () => {
+              onClick={() => start(async () => {
+                const commId = await assurerCommercialisation();
                 await markCommercialisationSent(String(b.im._id), commId, "mail");
                 setMailsEnvoyes(true);
                 setEtape("SMS");
@@ -867,15 +917,24 @@ export function AssistantCommercialisation({
                 : lienAbsent ? "Le lien transfer.it doit figurer dans le message"
                 : !pdfDossier ? "Le PDF du dossier doit être joint" : undefined}
               onClick={async () => {
-                if (!commId) return;
                 const n = restantes.length;
                 const d = quandMail ? new Date(quandMail) : undefined;
                 const differe = d && !Number.isNaN(d.getTime()) && d.getTime() > Date.now();
+                /* La case RCS ne vaut que pour un envoi programmé. Tout est
+                   vérifié AVANT de créer quoi que ce soit. */
+                const avecRcs = !!differe && rcsAvecMails && !smsEnvoyes && dest.telephones.length > 0
+                  && !(rcsProg && (rcsProg.etat === "attente" || rcsProg.etat === "envoi"));
+                if (avecRcs) {
+                  const hors = horsCreneauLegal(d!);
+                  if (hors) { setEnvoiMail(`Cette heure tombe ${hors} : les RCS ne partent que du lundi au samedi, de 8 h à 22 h, hors jours fériés. Changez l'heure ou décochez la case RCS.`); return; }
+                  if (!carteRcs?.photo) { setEnvoiMail("La carte RCS n'est pas prête (photo principale absente ou carte en préparation). Décochez la case RCS ou attendez la carte."); return; }
+                }
                 if (!(await confirmer(
                   <>
                     {differe
-                      ? `Programmer cet e-mail pour le ${d!.toLocaleString("fr-FR")}, à ${n} personne${n > 1 ? "s" : ""} ?`
+                      ? `Programmer cet e-mail pour le ${d!.toLocaleString("fr-FR")}, à ${n} personne${n > 1 ? "s" : ""}${avecRcs ? `, et la carte RCS à ${dest.telephones.length} numéro${dest.telephones.length > 1 ? "s" : ""} à la même heure` : ""} ?`
                       : `Envoyer cet e-mail à ${n} personne${n > 1 ? "s" : ""} ?`}
+                    {!commId && <><br /><br />{`Les ${cibles.length} propositions sont créées à ce moment-là.`}</>}
                     <br /><br />
                     {pesee.message}
                     <br />
@@ -891,7 +950,24 @@ export function AssistantCommercialisation({
                   </>,
                   { oui: differe ? "Programmer" : "Envoyer" },
                 ))) return;
-                void envoyerParLots(restantes, differe ? d!.toISOString() : undefined);
+                start(async () => {
+                  let id: string;
+                  try {
+                    id = await assurerCommercialisation();
+                  } catch (e) {
+                    setEnvoiMail(e instanceof Error ? e.message : "La commercialisation n'a pas pu être créée.");
+                    return;
+                  }
+                  if (avecRcs) {
+                    const r = await programmerRcsCommercialisation({
+                      immeubleId: String(b.im._id), commId: id, dossierId: dossier || undefined, lien,
+                      numeros: dest.telephones, quand: d!.toISOString(),
+                    });
+                    if (r.ok) setRcsProg({ etat: "attente", quand: r.quand, numeros: r.numeros });
+                    else setEnvoi(`Les RCS n'ont pas été programmés : ${r.message}`);
+                  }
+                  void envoyerParLots(id, restantes, differe ? d!.toISOString() : undefined);
+                });
               }}
             >
               <span className="ch">›</span>{" "}
