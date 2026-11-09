@@ -5054,6 +5054,14 @@ export async function etatMailsCommercialisation(commId: string) {
     echecs: Array.isArray(doc?.mails_echecs) ? (doc!.mails_echecs as { email: string; raison: string }[]) : [],
     termine: doc?.prop_sent === true,
     smsEnvoyes: doc?.prop_sms_sent === true,
+    /* L'envoi RCS programmé, s'il y en a un : l'écran le montre (et
+       l'annule) au lieu de proposer un second envoi. */
+    rcsProgramme: (() => {
+      const p = doc?.rcs_programme as { etat?: string; quand?: string; numeros?: unknown[]; erreur?: string } | null | undefined;
+      return p?.etat && p.quand
+        ? { etat: p.etat, quand: p.quand, numeros: Array.isArray(p.numeros) ? p.numeros.length : 0, erreur: p.erreur }
+        : null;
+    })(),
   };
 }
 
@@ -5395,38 +5403,38 @@ export async function envoyerRcsCommercialisation(input: {
 }) {
   if (input.numeros.length === 0) return { ok: false as const, message: "Aucun numéro exploitable." };
   try {
-    const { stopsMailingvox } = await import("./sms");
-    const stops = new Set((await stopsMailingvox().catch(() => [])).map((n) => n.replace(/^00/, "+")));
-    const retenus = [...new Set(input.numeros)].filter((n) => !stops.has(n));
-    const ecartes = input.numeros.length - retenus.length;
-    if (retenus.length === 0) return { ok: false as const, message: "Tous les numéros ciblés se sont désinscrits (STOP)." };
+    const comm = await bqOne("bo_commercialisation", input.commId).catch(() => null);
+    const prog = comm?.rcs_programme as { etat?: string } | null | undefined;
+    if (prog?.etat === "attente" || prog?.etat === "envoi") {
+      return { ok: false as const, message: "Un envoi est programmé : annulez la programmation avant d'envoyer tout de suite." };
+    }
+    const { envoyerRcsDeCommercialisation } = await import("./rcs-programmes");
+    const r = await envoyerRcsDeCommercialisation(input);
+    return { ok: true as const, ...r };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
 
-    const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
-    const c = await preparerCarte(input.immeubleId, await signataireDuBien(input.immeubleId), {
-      dossierId: input.dossierId, lien: input.lien,
-    });
-    if (!c) return { ok: false as const, message: "Bien introuvable." };
-    const r = await envoyerCarteRcs(c, retenus, { campagne: `Commercialisation ${input.commId}` });
-    const now = new Date().toISOString();
-    /* `sms_campagne` : c'est par lui que les boutons touchés et les réponses
-       au SMS de repli retrouvent leur commercialisation (sms-retours.ts). */
-    await rpc("bo_patch_doc", {
-      p_table: "bo_commercialisation",
-      p_id: input.commId,
-      p_patch: {
-        prop_sms_sent: true,
-        sms_canal: "rcs",
-        sms_campagne: r.campagne ?? null,
-        rcs_campagne: r.campagne ?? null,
-        sms_envoyes: retenus.length,
-        sms_date: now,
-        rcs_titre: c.titre,
-        rcs_repli: c.repli,
-        "Modified Date": now,
-      },
-    }).catch(() => undefined);
-    revalidatePath(`/bien/${input.immeubleId}`);
-    return { ok: true as const, envoyes: retenus.length, ecartesStop: ecartes, campagne: r.campagne, agent: r.agent };
+/** MAV (09/11) : les RCS programmés comme les e-mails — à l'heure dite, le
+ *  cron de chaque minute les envoie (lib/bo/rcs-programmes.ts). */
+export async function programmerRcsCommercialisation(input: {
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[]; quand: string;
+}) {
+  try {
+    const { programmerRcs } = await import("./rcs-programmes");
+    const p = await programmerRcs(input);
+    return { ok: true as const, quand: p.quand, numeros: p.numeros.length };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function annulerRcsProgrammeCommercialisation(commId: string) {
+  try {
+    const { annulerRcs } = await import("./rcs-programmes");
+    await annulerRcs(commId);
+    return { ok: true as const };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
   }

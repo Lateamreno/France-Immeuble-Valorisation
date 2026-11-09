@@ -29,7 +29,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { oublier, useMemoire } from "@/lib/memoire";
-import { apercuRcsCommercialisation, createCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
+import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
 import { useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 
@@ -59,6 +59,10 @@ export function AssistantCommercialisation({
   const [creees, setCreees] = useMemoire(`${memo}:creees`, 0);
   const [mailsEnvoyes, setMailsEnvoyes] = useMemoire(`${memo}:mails`, false);
   const [smsEnvoyes, setSmsEnvoyes] = useMemoire(`${memo}:sms-envoyes`, false);
+  /* MAV (09/11) : les RCS se programment comme les e-mails. Vide = tout de
+     suite. `rcsProg` : la programmation enregistrée, relue sur le serveur. */
+  const [quandRcs, setQuandRcs] = useMemoire(`${memo}:quand-rcs`, "");
+  const [rcsProg, setRcsProg] = useState<{ etat: string; quand: string; numeros: number; erreur?: string } | null>(null);
 
   const dossiers = b.dossiers;
   const [dossier, setDossier] = useMemoire(`${memo}:dossier`, dossierId ?? S(dossiers[0]?._id));
@@ -170,6 +174,7 @@ export function AssistantCommercialisation({
         setFaits(e.faits);
         if (e.termine) setMailsEnvoyes(true);
         if (e.smsEnvoyes) setSmsEnvoyes(true);
+        setRcsProg(e.rcsProgramme);
         if (e.faits.length > 0 && !e.termine) {
           setProgres((p) => p?.enCours ? p : { fait: e.faits.length, total: e.total ?? e.faits.length, echecs: e.echecs.length, enCours: false });
         }
@@ -370,6 +375,31 @@ export function AssistantCommercialisation({
   const envoyerLesRcs = async () => {
     if (!commId) return;
     const nb = dest.telephones.length;
+    if (quandRcs) {
+      const d = new Date(quandRcs);
+      if (!Number.isFinite(d.getTime())) { setEnvoi("Date d'envoi illisible."); return; }
+      if (!(await confirmer(
+        <>
+          {`Programmer la carte RCS pour le ${d.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })}, à ${nb} numéro${nb > 1 ? "s" : ""} ?`}
+          <br /><br />
+          Elle partira seule à cette heure-là, telle qu&apos;elle est affichée. Vous pourrez l&apos;annuler d&apos;ici tant qu&apos;elle n&apos;est pas partie.
+        </>,
+        { oui: "Programmer" },
+      ))) return;
+      start(async () => {
+        const r = await programmerRcsCommercialisation({
+          immeubleId: String(b.im._id), commId, dossierId: dossier || undefined, lien, numeros: dest.telephones,
+          quand: d.toISOString(),
+        });
+        if (r.ok) {
+          setRcsProg({ etat: "attente", quand: r.quand, numeros: r.numeros });
+          setEnvoi(null);
+        } else {
+          setEnvoi(r.message);
+        }
+      });
+      return;
+    }
     if (!(await confirmer(
       <>
         {`Envoyer la carte RCS à ${nb} numéro${nb > 1 ? "s" : ""} ?`}
@@ -931,11 +961,70 @@ export function AssistantCommercialisation({
               {essai && <div className={/^Essai parti/.test(essai) ? "asst-ok" : "dif-simu"}>{essai}</div>}
             </div>
           )}
+          {pont?.configure && !smsEnvoyes && !(rcsProg && (rcsProg.etat === "attente" || rcsProg.etat === "envoi")) && (
+            <>
+              <span className="mlab">Envoyer</span>
+              <div className="asst-quand">
+                <label>
+                  <input type="radio" name="quand-rcs" checked={!quandRcs} onChange={() => setQuandRcs("")} />
+                  Tout de suite
+                </label>
+                <label>
+                  <input type="radio" name="quand-rcs" checked={!!quandRcs}
+                    onChange={() => {
+                      /* Par défaut : l'heure choisie pour les e-mails, sinon demain 9 h 30. */
+                      if (quandMail) { setQuandRcs(quandMail); return; }
+                      const d = new Date();
+                      d.setDate(d.getDate() + 1);
+                      const p = (n: number) => String(n).padStart(2, "0");
+                      setQuandRcs(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T09:30`);
+                    }} />
+                  À une date choisie
+                </label>
+                {quandRcs && (
+                  <input className="min" type="datetime-local" value={quandRcs}
+                    onChange={(e) => setQuandRcs(e.target.value)} />
+                )}
+              </div>
+              {quandRcs && (
+                <div className="asst-note">
+                  Du lundi au samedi, de 8 h à 22 h, hors jours fériés. Le BO garde la carte et l&apos;envoie
+                  lui-même à l&apos;heure dite, à la minute près ; les numéros passés en STOP d&apos;ici là
+                  sont retirés au moment de l&apos;envoi.
+                </div>
+              )}
+            </>
+          )}
+          {rcsProg && (rcsProg.etat === "attente" || rcsProg.etat === "envoi") && (
+            <div className="asst-ok">
+              {rcsProg.etat === "envoi"
+                ? "Les RCS programmés sont en train de partir."
+                : `${rcsProg.numeros} RCS programmé${rcsProg.numeros > 1 ? "s" : ""} pour le ${new Date(rcsProg.quand).toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })}.`}
+              {rcsProg.etat === "attente" && commId && (
+                <>
+                  {" "}
+                  <button className="fadd" type="button" disabled={pending}
+                    onClick={() => start(async () => {
+                      const r = await annulerRcsProgrammeCommercialisation(commId);
+                      if (r.ok) setRcsProg(null);
+                      else setEnvoi(r.message);
+                    })}>Annuler la programmation</button>
+                </>
+              )}
+            </div>
+          )}
+          {rcsProg?.etat === "echec" && (
+            <div className="dif-simu">L&apos;envoi programmé n&apos;est pas parti : {rcsProg.erreur ?? "raison inconnue"}</div>
+          )}
+          {rcsProg?.etat === "parti" && !envoi && (
+            <div className="asst-ok">{`${rcsProg.numeros} RCS partis comme programmé, le ${new Date(rcsProg.quand).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}.`}</div>
+          )}
           {envoi && <div className={/^\d+ RCS/.test(envoi) ? "asst-ok" : "dif-simu"}>{envoi}</div>}
           <div className="wnav">
             <span className="sp" style={{ flex: 1 }} />
             <button
-              className="fadd" type="button" disabled={pending || smsEnvoyes}
+              className="fadd" type="button"
+              disabled={pending || smsEnvoyes || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi"}
               onClick={() => commId && start(async () => {
                 await markCommercialisationSent(String(b.im._id), commId, "sms");
                 setSmsEnvoyes(true);
@@ -943,12 +1032,13 @@ export function AssistantCommercialisation({
             >{smsEnvoyes ? "Marqués envoyés ✓" : "Marquer comme envoyés"}</button>
             {pont?.configure && (
               <button className="kgo" type="button"
-                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque || !carteRcs?.photo}
+                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque || !carteRcs?.photo
+                  || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi"}
                 title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier (étape Dossier)"
                   : !carteRcs?.photo ? "Le bien n'a pas de photo principale" : undefined}
                 onClick={envoyerLesRcs}>
                 <span className="ch">›</span>{" "}
-                Envoyer {dest.telephones.length > 1 ? `les ${dest.telephones.length} RCS` : "le RCS"}
+                {quandRcs ? "Programmer" : "Envoyer"} {dest.telephones.length > 1 ? `les ${dest.telephones.length} RCS` : "le RCS"}
               </button>
             )}
             <button className="fadd" type="button" onClick={fermer}>Terminer</button>
