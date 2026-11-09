@@ -29,6 +29,9 @@ export type RcsProgramme = {
   immeubleId: string;
   dossierId?: string;
   lien?: string;
+  /** L'accroche et le SMS de repli retouchés à l'écran (MAV, 09/11), sinon absents. */
+  intro?: string;
+  repli?: string;
   numeros: string[];
   programme_le: string;
   par?: string;
@@ -82,7 +85,7 @@ async function signataire(immeubleId: string): Promise<{ nom: string; tel?: stri
  * même de l'envoi — c'est-à-dire, pour un envoi programmé, à l'heure dite.
  */
 export async function envoyerRcsDeCommercialisation(input: {
-  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[];
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; intro?: string; repli?: string; numeros: string[];
 }): Promise<{ envoyes: number; ecartesStop: number; campagne?: string; agent: string }> {
   if (input.numeros.length === 0) throw new Error("Aucun numéro exploitable.");
   const { stopsMailingvox } = await import("./sms");
@@ -93,7 +96,7 @@ export async function envoyerRcsDeCommercialisation(input: {
 
   const { preparerCarte, envoyerCarteRcs } = await import("./rcs");
   const c = await preparerCarte(input.immeubleId, await signataire(input.immeubleId), {
-    dossierId: input.dossierId, lien: input.lien,
+    dossierId: input.dossierId, lien: input.lien, intro: input.intro, repli: input.repli,
   });
   if (!c) throw new Error("Bien introuvable.");
   const r = await envoyerCarteRcs(c, retenus, { campagne: `Commercialisation ${input.commId}` });
@@ -119,7 +122,7 @@ export async function envoyerRcsDeCommercialisation(input: {
 
 /** Ce que l'agent valide d'un seul geste : la liste, la carte, l'heure. */
 export async function programmerRcs(input: {
-  immeubleId: string; commId: string; dossierId?: string; lien?: string; numeros: string[]; quand: string; par?: string;
+  immeubleId: string; commId: string; dossierId?: string; lien?: string; intro?: string; repli?: string; numeros: string[]; quand: string; par?: string;
 }): Promise<RcsProgramme> {
   const d = new Date(input.quand);
   if (!Number.isFinite(d.getTime())) throw new Error("Date d'envoi illisible.");
@@ -129,6 +132,11 @@ export async function programmerRcs(input: {
   if (hors) throw new Error(`Cette heure tombe ${hors} : les SMS et RCS de prospection ne partent que du lundi au samedi, de 8 h à 22 h, hors jours fériés.`);
   const numeros = [...new Set(input.numeros)];
   if (numeros.length === 0) throw new Error("Aucun numéro exploitable.");
+  if (input.repli?.trim()) {
+    const { refusRepli } = await import("./rcs-texte");
+    const refus = refusRepli(input.repli);
+    if (refus) throw new Error(`Rien n'est programmé : ${refus}.`);
+  }
 
   const comm = await lireUn("bo_commercialisation", input.commId);
   if (!comm) throw new Error("Commercialisation introuvable.");
@@ -142,6 +150,8 @@ export async function programmerRcs(input: {
     immeubleId: input.immeubleId,
     dossierId: input.dossierId,
     lien: input.lien,
+    intro: input.intro?.trim() || undefined,
+    repli: input.repli?.trim() || undefined,
     numeros,
     programme_le: new Date().toISOString(),
     par: input.par,
@@ -191,7 +201,7 @@ export async function tournerRcsProgrammes(): Promise<{ partis: number; echecs: 
       if (hors) throw new Error(`Non envoyé : l'heure est passée et l'on est maintenant ${hors}. Reprogrammez.`);
       if (retard > 6 * 3_600_000) throw new Error("Non envoyé : plus de six heures de retard sur l'heure prévue. Reprogrammez.");
       const r = await envoyerRcsDeCommercialisation({
-        immeubleId: p.immeubleId, commId: l.id, dossierId: p.dossierId, lien: p.lien, numeros: p.numeros,
+        immeubleId: p.immeubleId, commId: l.id, dossierId: p.dossierId, lien: p.lien, intro: p.intro, repli: p.repli, numeros: p.numeros,
       });
       await patcher(l.id, {
         rcs_programme: { ...p, etat: "parti", envoye_le: new Date().toISOString(), envoyes: r.envoyes, campagne: r.campagne ?? null },

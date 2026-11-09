@@ -16,6 +16,11 @@ export type CarteRcsVue = {
   lienDossier?: string;
   lienPerime?: boolean;
   repli: string;
+  /** L'accroche en texte simple, ce qui suit (chiffres, signature) et le repli
+   *  fabriqué : de quoi retoucher l'accroche et le repli à l'écran (MAV, 09/11). */
+  intro?: string;
+  suite?: string;
+  repliAuto?: string;
 };
 
 /** Le texte de la carte : `<br>` devient un vrai retour à la ligne, rien d'autre n'est interprété. */
