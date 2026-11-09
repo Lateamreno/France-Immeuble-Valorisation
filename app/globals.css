@@ -7703,6 +7703,9 @@ body.hors-bo {
 .asst-quand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
 .asst-quand label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--slate-2); cursor: pointer; }
 .asst-quand input[type="radio"] { accent-color: var(--gold-bo); }
+/* MAV (09/11) : les RCS programmés à la même heure que les e-mails, d'une case. */
+.asst-rcs-avec { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line, #e3e0d8); border-radius: 6px; font-size: 12.5px; color: var(--slate-2); cursor: pointer; }
+.asst-rcs-avec input { accent-color: var(--gold-bo); margin-top: 2px; }
 .asst-quand .min { width: auto; flex: none; }
 
 /* Retour #360 — les anomalies de destinataires, avant l'envoi.
