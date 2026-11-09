@@ -449,14 +449,42 @@ export async function tournerLaFile(budgetMs = BUDGET_MS): Promise<EtatSalve | n
   return etats[0] ?? null;
 }
 
+/** Les RCS d'une commercialisation, pour le récapitulatif : programmés, partis, ou en échec. */
+async function rcsDeCommercialisation(commId: string): Promise<{
+  etat: "programme" | "parti" | "echec"; quand?: string; numeros: number; texte?: string; repli?: string; erreur?: string;
+} | undefined> {
+  if (!SB_KEY) return undefined;
+  const res = await fetch(`${SB_URL}/rest/v1/bo_commercialisation?id=eq.${encodeURIComponent(commId)}&select=data&limit=1`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+  });
+  if (!res.ok) return undefined;
+  const d = ((await res.json()) as { data: Record<string, unknown> }[])[0]?.data;
+  if (!d) return undefined;
+  const p = d.rcs_programme as { etat?: string; quand?: string; numeros?: unknown[]; intro?: string; repli?: string; erreur?: string } | null | undefined;
+  const repli = typeof d.rcs_repli === "string" ? d.rcs_repli : undefined;
+  if (p?.etat === "attente" || p?.etat === "envoi") {
+    return { etat: "programme", quand: p.quand, numeros: Array.isArray(p.numeros) ? p.numeros.length : 0, texte: p.intro, repli: p.repli };
+  }
+  if (p?.etat === "echec") return { etat: "echec", quand: p.quand, numeros: Array.isArray(p.numeros) ? p.numeros.length : 0, erreur: p.erreur };
+  if (d.prop_sms_sent === true && d.sms_canal === "rcs") {
+    return { etat: "parti", quand: typeof d.sms_date === "string" ? d.sms_date : undefined, numeros: Number(d.sms_envoyes) || 0, repli };
+  }
+  return undefined;
+}
+
 /** Le récapitulatif dans la boîte de l'agent, une fois, à la fin. */
 async function recapituler(l: SalveLigne) {
   if (l.recap) return;
   if (l.fait_mail + l.fait_sms + l.echecs_mail + l.echecs_sms === 0) return;
   const { recapSalveRelances } = await import("./relances-actions");
+  /* Une commercialisation : l'heure programmée des e-mails, et ses RCS
+     (programmés à la même heure, ou déjà partis). */
+  const ch = l.genre === "commercialisation" ? (l.charge as ChargeCommercialisation) : null;
+  const rcs = ch?.commId ? await rcsDeCommercialisation(ch.commId).catch(() => undefined) : undefined;
   let recap: string;
   try {
     const r = await recapSalveRelances({
+      programmePour: ch?.quand, rcs,
       titre: l.titre, agentId: l.agent_id ?? undefined, voie: l.voie, expediteur: l.expediteur ?? undefined,
       objet: l.objet ?? "", corps: l.corps ?? "",
       mails: { fait: l.fait_mail, total: l.genre === "commercialisation" ? ((l.charge as ChargeCommercialisation).destinataires?.length ?? 0) : l.mails.length, echecs: l.echecs_mail },
