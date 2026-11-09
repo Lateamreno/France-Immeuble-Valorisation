@@ -668,7 +668,8 @@ export function AssistantCommercialisation({
             <span className="off">{cibles.length - dest.joignables.length} injoignables</span>
           </div>
           <div className="asst-note">
-            Une proposition sera créée pour chaque acquéreur ciblé, et l&apos;immeuble sera marqué
+            Rien n&apos;est créé à cette étape. C&apos;est au départ des e-mails (ou à leur programmation)
+            qu&apos;une proposition est créée pour chaque acquéreur ciblé, et que l&apos;immeuble est marqué
             « déjà proposé » sur sa recherche — il n&apos;apparaîtra plus dans les prochains matchings.
           </div>
           <span className="mlab">Objet de l&apos;e-mail</span>
@@ -696,8 +697,9 @@ export function AssistantCommercialisation({
             ? <div className="asst-ok">✓ {creees} propositions créées.</div>
             : (
               <div className="asst-note">
-                Rien n&apos;est encore créé : les {cibles.length} propositions le seront au moment où
-                les e-mails partent (ou sont programmés).
+                {cibles.length > 1
+                  ? <>Rien n&apos;est encore créé : les {cibles.length} propositions le seront au moment où les e-mails partent (ou sont programmés).</>
+                  : <>Rien n&apos;est encore créé : la proposition le sera au moment où l&apos;e-mail part (ou est programmé).</>}
               </div>
             )}
 
