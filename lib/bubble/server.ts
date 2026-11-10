@@ -2187,6 +2187,9 @@ export type PropositionLigne = {
   /** La dernière réponse SMS de la personne, remontée par MailingVox et
    *  inscrite sur la proposition (MAV, 28/09). */
   retourSms?: { texte: string; le?: string; lu: boolean };
+  /** Les boutons de la carte RCS touchés (MAV, 10/11), ISO. */
+  rcsDossierLe?: string;
+  rcsInteresseLe?: string;
   /** L'adresse à laquelle le dossier est parti. */
   email?: string;
   /** Dernier geste connu (relance, envoi), ISO : la carte en tire les jours. */
@@ -2278,6 +2281,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
+        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: dmy(p.date_last_relance),
@@ -2536,6 +2540,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
+        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: jjmmaa(p.date_last_relance),
