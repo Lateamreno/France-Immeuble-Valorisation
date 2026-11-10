@@ -41,7 +41,8 @@ function FenetreDelegation({ immeubleId, m, onFermer }: { immeubleId: string; m?
 
   const h = Number(honos.replace(/\s/g, "").replace(",", "."));
   const p = Number(partage.replace(",", "."));
-  const part = h > 0 && p > 0 ? Math.round((h * p) / 100) : undefined;
+  const partageInvalide = partage.trim() !== "" && !(p > 0 && p <= 100);
+  const part = h > 0 && p > 0 && p <= 100 ? Math.round((h * p) / 100) : undefined;
 
   const enregistrer = () => {
     setErreur(null);
@@ -68,7 +69,7 @@ function FenetreDelegation({ immeubleId, m, onFermer }: { immeubleId: string; m?
       pied={(
         <>
           <button type="button" className="fbtn" onClick={onFermer}>Annuler</button>
-          <button type="button" className="kgo" disabled={pending || (!m && !fichier)} onClick={enregistrer}>
+          <button type="button" className="kgo" disabled={pending || partageInvalide || (!m && !fichier)} onClick={enregistrer}>
             <span className="ch">›</span> {pending ? "Enregistrement…" : m ? "Enregistrer" : "Ajouter la délégation"}
           </button>
         </>
@@ -78,10 +79,12 @@ function FenetreDelegation({ immeubleId, m, onFermer }: { immeubleId: string; m?
         <Champ libelle="Date de signature" obligatoire>
           <input className="mi" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Champ>
-        <Champ libelle="Honoraires TTC" obligatoire aide="Les honoraires de l'opération, en euros.">
+        <Champ libelle="Honoraires TTC (€)" obligatoire aide="Les honoraires de l'opération, en euros.">
           <input className="mi" inputMode="decimal" value={honos} placeholder="ex. 30 000" onChange={(e) => setHonos(e.target.value)} />
         </Champ>
-        <Champ libelle="Partage des honoraires" obligatoire aide={part !== undefined ? `Soit ${euros(part)} pour France Immeuble.` : "La part qui revient à France Immeuble, en %."}>
+        <Champ libelle="Partage des honoraires (%)" obligatoire
+          erreur={partageInvalide ? "Un pourcentage entre 1 et 100." : undefined}
+          aide={part !== undefined ? `Soit ${euros(part)} pour France Immeuble.` : "La part qui revient à France Immeuble, en %."}>
           <input className="mi" inputMode="decimal" value={partage} onChange={(e) => setPartage(e.target.value)} />
         </Champ>
         <Champ libelle={m ? "Remplacer le PDF de la délégation" : "La délégation signée (PDF)"} obligatoire={!m} large>
