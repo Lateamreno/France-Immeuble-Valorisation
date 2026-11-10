@@ -1742,7 +1742,7 @@ export async function listMandats(): Promise<ListCard[]> {
   await loadInitials();
   const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }, [
     "IMMEUBLEs", "MANDANTs", "Statut", "AGENT", "Type", "Type_exclu", "date_effet", "date_fin", "numero",
-    "prix_hai", "prénom_m1", "nom_m1", "Modified Date",
+    "prix_hai", "prénom_m1", "nom_m1", "Modified Date", "delegation", "honos_ttc", "partage_honos_pct", "date_signature",
   ]).catch(() => []);
   /* Perf n° 1 et 4 (24/09) : libellés d'immeubles et mandants en deux
      lectures maigres, lancées ensemble. */
@@ -1761,7 +1761,9 @@ export async function listMandats(): Promise<ListCard[]> {
       id: String(m._id),
       href: `/mandat/${m._id}`,
       avatar: initialsOf(m.AGENT), avatarCouleur: couleurOf(m.AGENT),
-      title: `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${dmy(m.date_effet) ?? ""}${m.date_fin ? `-${dmy(m.date_fin)}` : ""}`.trim(),
+      title: m.delegation === true
+        ? `Délégation de mandat · signée le ${dmy(m.date_signature) ?? "—"}`
+        : `${m.Type ?? "Vente"} ${m.Type_exclu ?? ""} ${dmy(m.date_effet) ?? ""}${m.date_fin ? `-${dmy(m.date_fin)}` : ""}`.trim(),
       sub: imLabel(im) || undefined,
       note: m.numero ? `#${m.numero}` : "Pas de numéro",
       acquereur: mandant || undefined,
@@ -1769,7 +1771,9 @@ export async function listMandats(): Promise<ListCard[]> {
       badge: st
         ? { label: st, tone: ["En cours", "Vendu"].includes(st) ? "green" : ["Annulé", "Expiré"].includes(st) ? "red" : "orange" }
         : undefined,
-      right: [euros(m.prix_hai) ?? ""].filter(Boolean),
+      right: m.delegation === true
+        ? [`honos ${euros(m.honos_ttc) ?? "n.c."}${m.partage_honos_pct ? ` · ${String(m.partage_honos_pct).replace(".", ",")} %` : ""}`]
+        : [euros(m.prix_hai) ?? ""].filter(Boolean),
       // Le BO isole les mandats « A signer » dans leur propre onglet.
       group: ["A rédiger", "Attente infos", "Attente signature", "A signer"].includes(st)
         ? "a_signer"

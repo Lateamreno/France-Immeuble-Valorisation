@@ -9505,3 +9505,11 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
   .rl { grid-template-columns: 1fr; }
   .rl-k { border-bottom: 0; padding-bottom: 0; }
 }
+
+/* MAV (10/11) : « + Ajouter un mandat » et « + Ajouter une délégation », côte à côte. */
+.mdts-ajouts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 14px; }
+.mdts-ajouts .fbtn { margin: 0 !important; }
+.dlg-grille { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.dlg-grille .chp.large { grid-column: 1 / -1; }
+@media (max-width: 560px) { .dlg-grille { grid-template-columns: 1fr; } }
+.dlg-note { margin: 12px 0 0; font-size: 12.5px; color: var(--slate-2); }
