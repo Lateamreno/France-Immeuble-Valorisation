@@ -3184,9 +3184,13 @@ export async function createDossier(
 ) {
   const id = newId();
   const now = new Date().toISOString();
-  /* Le barème toujours, minimum compris (MAV, 03/11). */
-  const ventil = ventilerHai(input.prix_hai, input.honos_pct);
-  const nv = ventil.nv;
+  /* Le barème toujours, minimum compris (MAV, 03/11)… sauf au prix de la
+     fiche, dont le net vendeur est déjà vérifié (taux signé d'un mandat). */
+  const imD = await bqOne("bo_immeuble", immeubleId);
+  const nvFiche = typeof imD?.prix_nv === "number" && imD.prix_hai === input.prix_hai && imD.prix_nv > 0 && imD.prix_nv < input.prix_hai ? imD.prix_nv : undefined;
+  const ventilB = ventilerHai(input.prix_hai, input.honos_pct);
+  const nv = nvFiche ?? ventilB.nv;
+  const ventil = { taux: nv > 0 ? Math.round(((input.prix_hai - nv) / nv) * 10000) / 100 : 0 };
   const s = input.snapshot;
   await rpc("bo_insert_doc", {
     p_table: "bo_dossier",
