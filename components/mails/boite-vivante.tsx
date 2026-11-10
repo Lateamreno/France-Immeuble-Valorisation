@@ -146,6 +146,32 @@ export function BoiteVivante({
       .catch((e) => setPjErreur(e instanceof Error ? e.message : String(e)))
       .finally(() => setPjEnCours(null));
   };
+  /* #607 (MAV, 09/11) : « je ne peux pas tout télécharger en ZIP ». Les
+     pièces descendent une à une (chacune sous la limite d'une réponse), et
+     l'archive se fabrique dans le navigateur. */
+  const [zipEnCours, setZipEnCours] = useState(false);
+  const toutTelecharger = async (m: MessageComplet) => {
+    setZipEnCours(true); setPjErreur(null);
+    try {
+      const { fabriquerZip } = await import("@/lib/zip");
+      const fichiers: { nom: string; octets: Uint8Array }[] = [];
+      for (const p of m.pieces) {
+        const r = await pieceJointe(agentId, role, m.uid, p.part);
+        if (!r) throw new Error(`« ${p.nom} » introuvable dans la boîte.`);
+        fichiers.push({ nom: r.nom || p.nom, octets: Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0)) });
+      }
+      const url = URL.createObjectURL(fabriquerZip(fichiers));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(m.objet || "pieces-jointes").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "pieces-jointes"}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setPjErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setZipEnCours(false);
+    }
+  };
   /** L'en-tête du message qu'on est en train d'ouvrir. */
   const [enAttente, setEnAttente] = useState<Entete | null>(null);
   const [chargement, setChargement] = useState(!dejaLu);
@@ -463,6 +489,13 @@ export function BoiteVivante({
                         📎 {p.nom} ({Math.max(1, Math.round(p.taille / 1024))} Ko){pjEnCours === p.part ? " …" : ""}
                       </button>
                     ))}
+                    {ouvert.pieces.length > 1 && (
+                      <button type="button" className="gm-pj-b zip" disabled={zipEnCours}
+                        title="Toutes les pièces jointes dans une archive ZIP"
+                        onClick={() => toutTelecharger(ouvert)}>
+                        {zipEnCours ? "Archive en cours…" : `⬇ Tout télécharger (ZIP, ${ouvert.pieces.length})`}
+                      </button>
+                    )}
                     {pjErreur && <i className="gm-pj-err">{pjErreur}</i>}
                   </span>
                 )}

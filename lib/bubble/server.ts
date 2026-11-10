@@ -1272,7 +1272,10 @@ export async function getBien(id: string): Promise<BienData | null> {
       fetchAll("estimation", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
       fetchAll("mandat", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
       fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50).catch(() => []),
-      bq("proposition", { constraints: [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], limit: 10 }),
+      /* #604 : les plus récentes d'abord. Sans tri, les dix montrées étaient
+         dix quelconques : une proposition qu'on venait de créer n'y figurait
+         pas, et l'on croyait qu'il fallait recharger la page. */
+      bq("proposition", { constraints: [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], limit: 10, sort: "Created Date", desc: true }),
       fetchAll("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: id }], 50),
       fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: id }], 50),
       // Historique des prix : chaque changement laisse une ligne (#93).
@@ -2617,8 +2620,19 @@ export async function getContact(id: string): Promise<ContactData | null> {
          C : on l'a contacté — une proposition partie ou un suivi écrit. */
       const abouti = offres.find((o) =>
         ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"].includes(String(o.Statut ?? "")));
+      /* #605 (MAV, 05/11) : « un client qui n'a pas encore été appelé ne peut
+         être automatiquement en C. De toute façon les propriétaires ne sont pas
+         forcément acheteurs, donc le mieux c'est de ne pas mettre de note pour
+         les vendeurs. » Un vendeur qui n'est pas aussi acheteur n'est jamais
+         classé d'office ; et les suivis que le site écrit tout seul (formulaire,
+         compte client) ne valent pas un contact de l'agence. */
+      if (c.vendeur === true && c.acheteur !== true) return undefined;
+      const suivisAgence = suivis.filter((s) => {
+        const canaux = Array.isArray(s.Canals) ? (s.Canals as unknown[]).map(String) : [String(s.Canals ?? "")];
+        return String(s.Type ?? "") !== "Formulaire" && !canaux.some((k) => k === "Formulaire" || k === "Site");
+      });
       const merite = abouti ? "A" : offres.length > 0 || visites.length > 0 ? "B"
-        : propositions.length > 0 || suivis.length > 0 ? "C" : undefined;
+        : propositions.length > 0 || suivisAgence.length > 0 ? "C" : undefined;
       if (!merite || rangNote(merite) >= rangNote(S2(c.Note))) return undefined;
       const st = String(abouti?.Statut ?? "");
       const quand = jjmmaa(abouti?.date_acte ?? abouti?.date_compromis ?? abouti?.date);

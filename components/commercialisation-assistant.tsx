@@ -347,6 +347,7 @@ export function AssistantCommercialisation({
     }
     setCommId(res.commercialisationId);
     setCreees(res.propositions);
+    window.dispatchEvent(new Event("bo:propositions"));
     return res.commercialisationId;
   };
 

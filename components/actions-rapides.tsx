@@ -323,6 +323,8 @@ export function ModaleProposition({
             }, undefined, p.id);
           }
         }
+        /* #604 : les listes de propositions ouvertes se relisent. */
+        window.dispatchEvent(new Event("bo:propositions"));
         if (surEnvoi) { surEnvoi(); return; }
         /* Retour #521 : « quoi que je fasse sur la fiche client, j'y reste ».
            La proposition est créée, la page courante se met à jour. */
