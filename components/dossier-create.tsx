@@ -62,7 +62,8 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const vHai = parse(hai) ?? 0;
   const vPct = parse(pct) ?? 5;
   /* Le barème toujours, minimum compris (MAV, 03/11). */
-  const nv = vHai > 0 ? ventilerHai(vHai, vPct).nv : 0;
+  const nvFiche = num(b.im.prix_hai) === vHai && (num(b.im.prix_nv) ?? 0) > 0 && (num(b.im.prix_nv) ?? 0) < vHai ? num(b.im.prix_nv) : undefined;
+  const nv = vHai > 0 ? nvFiche ?? ventilerHai(vHai, vPct).nv : 0;
 
   /* Retour #219 — « j'aimerais que, quand on génère un nouveau dossier, il
      soit demandé de le télécharger pour le vérifier avant de l'enregistrer.
@@ -247,7 +248,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
                 </div>
                 <div>
                   <span>Honoraires</span>
-                  <b>{vPct.toString().replace(".", ",")} % TTC</b>
+                  <b>{(nv > 0 ? Math.round(((vHai - nv) / nv) * 100) / 100 : vPct).toString().replace(".", ",")} % TTC</b>
                 </div>
                 <span className="fine">
                   Repris de la fiche — ils se modifient sur <b>Description et prix</b>.

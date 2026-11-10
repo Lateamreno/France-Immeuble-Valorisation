@@ -95,7 +95,10 @@ export function construireDossierVente(
      minimum compris (MAV, 03/11 : « respecte le barème tout le temps »). */
   const tauxSaisi = N(d["honos_taux_%"]) ?? (N(d["honos_taux_x,xx"]) !== undefined ? N(d["honos_taux_x,xx"])! * 100 : undefined) ?? N(im.prix_Charge_honos);
   const nvFige = N(d.prix_nv);
-  const nv = hai > 0 ? (nvFige && nvFige < hai ? Math.round(nvFige) : ventilerHai(hai, tauxSaisi).nv) : 0;
+  /* Au prix de la fiche, le net vendeur DE LA FICHE : il a déjà été vérifié
+     (barème, ou taux signé d'un mandat — 43 bd de Sébastopol, 6 %, MAV 10/11). */
+  const nvFiche = N(im.prix_hai) === hai && (N(im.prix_nv) ?? 0) > 0 && N(im.prix_nv)! < hai ? N(im.prix_nv)! : undefined;
+  const nv = hai > 0 ? (nvFige && nvFige < hai ? Math.round(nvFige) : nvFiche ?? ventilerHai(hai, tauxSaisi).nv) : 0;
   const honos = hai - nv;
   const taux = nv > 0 ? Math.round((honos / nv) * 10000) / 100 : 0;
 
