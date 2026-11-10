@@ -248,7 +248,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
                 </div>
                 <div>
                   <span>Honoraires</span>
-                  <b>{(nv > 0 ? Math.round(((vHai - nv) / nv) * 100) / 100 : vPct).toString().replace(".", ",")} % TTC</b>
+                  <b>{(nv > 0 ? Math.round(((vHai - nv) / nv) * 10000) / 100 : vPct).toString().replace(".", ",")} % TTC</b>
                 </div>
                 <span className="fine">
                   Repris de la fiche — ils se modifient sur <b>Description et prix</b>.
