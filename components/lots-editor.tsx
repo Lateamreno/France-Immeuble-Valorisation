@@ -35,6 +35,8 @@ import { ModaleDpe } from "@/components/dpe-modale";
 import { Modale } from "@/components/modale";
 import { useSaisieOuverte } from "@/components/barre-enregistrer";
 import { ClaudeDrive } from "@/components/claude-drive";
+import { loyerSecteurDuLot } from "@/lib/bo/loyer-secteur-actions";
+import type { LoyerSecteur } from "@/lib/bo/loyer-secteur";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -866,6 +868,24 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   }, []);
   /** Lot ouvert en plein écran sur téléphone (null = la liste de cartes). */
   const [lotOuvert, setLotOuvert] = useState<string | null>(null);
+  /* #608 (MAV, 10/11) : au clic sur le loyer potentiel d'un lot, le loyer HC
+     du secteur pour sa typologie et ses m², le calcul au survol. Mis de côté
+     par lot (destination, type, surface) : recliquer ne relance rien. */
+  const [sugg, setSugg] = useState<{ id: string; cle: string } | null>(null);
+  const [suggCache, setSuggCache] = useState<Record<string, LoyerSecteur | "…">>({});
+  const cleSugg = (r: Row) => `${r.Destination}|${r.Type_lot}|${N(r.surface_carrez) || N(r.surface_sol) || 0}`;
+  const proposerLoyer = (r: Row) => {
+    const cle = cleSugg(r);
+    setSugg({ id: r.id, cle });
+    if (suggCache[cle]) return;
+    setSuggCache((c) => ({ ...c, [cle]: "…" }));
+    loyerSecteurDuLot({
+      immeubleId: String(b.im._id), destination: r.Destination, typeLot: r.Type_lot,
+      surface: N(r.surface_carrez) || N(r.surface_sol) || undefined,
+    })
+      .then((res) => setSuggCache((c) => ({ ...c, [cle]: res })))
+      .catch(() => setSuggCache((c) => ({ ...c, [cle]: { ok: false, raison: "Le calcul n'a pas abouti." } })));
+  };
 
   const compacte = compact;
   const toggleDest = (d: string) =>
@@ -1571,9 +1591,23 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const n = (s: string) => parseFloat(String(s ?? "").replace(/\s/g, "").replace(",", "."));
         const up = Number.isFinite(n(r.loyer_max)) && n(r.loyer_max) > (Number.isFinite(n(r.loyer)) ? n(r.loyer) : 0);
         return (
-          <td key={c} className={cls(c, "na", up && "up")}>
-            <CaseNombre value={r.loyer_max} onChange={(v) => edit(r.id, "loyer_max", v)} />
+          <td key={c} className={cls(c, "na", up && "up", sugg?.id === r.id && "sugg-on")}>
+            <CaseNombre value={r.loyer_max} onChange={(v) => edit(r.id, "loyer_max", v)}
+              onFocus={() => proposerLoyer(r)}
+              onBlur={() => setTimeout(() => setSugg((s) => (s?.id === r.id ? null : s)), 150)} />
             <i>€</i>
+            {sugg?.id === r.id && (() => {
+              const res = suggCache[sugg.cle];
+              if (!res || res === "…") return <div className="lsugg">Loyer du secteur…</div>;
+              if (!res.ok) return <div className="lsugg ko">{res.raison}</div>;
+              return (
+                <div className="lsugg" data-detail={res.detail.join("\n")}>
+                  <span>Secteur : <b>{res.loyer.toLocaleString("fr-FR")} € {res.source === "carte" ? "CC" : "HC"}</b>/mois</span>
+                  <button type="button" onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { edit(r.id, "loyer_max", String(res.loyer)); setSugg(null); }}>Reprendre</button>
+                </div>
+              );
+            })()}
           </td>
         );
       }

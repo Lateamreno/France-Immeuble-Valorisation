@@ -675,6 +675,15 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   const [pending, start] = useTransition();
   const rafraichir = () => setVersion((v) => v + 1);
 
+  /* #604 : une proposition créée ailleurs sur la page (barre du bas, fiche,
+     commercialisation) annonce `bo:propositions` ; la liste se relit, sans
+     recharger la page. */
+  useEffect(() => {
+    const relire = () => setVersion((v) => v + 1);
+    window.addEventListener("bo:propositions", relire);
+    return () => window.removeEventListener("bo:propositions", relire);
+  }, []);
+
   useEffect(() => {
     let vivant = true;
     chargerPropositionsDuBien(immeubleId)

@@ -487,11 +487,33 @@ function extraitDe(structure: unknown, parties?: Map<string, Buffer>): string {
   return /^[A-Za-z0-9+/=\s]{80,}$/.test(propre) ? "" : propre.slice(0, 160);
 }
 
+/**
+ * Une partie est-elle une pièce jointe ? #607 (MAV, 09/11) : « je ne vois pas
+ * les PJ de l'e-mail ». Seules les parties marquées `attachment` comptaient ;
+ * or Apple Mail et Outlook envoient souvent un PDF en `inline` (ou sans
+ * disposition), avec son nom de fichier. Est donc une pièce : toute partie
+ * finale marquée `attachment`, ou qui porte un nom de fichier — sauf le texte
+ * du message lui-même et les images insérées dans le HTML (signature, logo :
+ * `inline` avec un Content-ID), qui ne sont pas des documents.
+ */
+function estPiece(s: unknown): boolean {
+  if (!s || typeof s !== "object") return false;
+  const n = s as Noeud & { id?: string; dispositionParameters?: { filename?: string }; parameters?: { name?: string } };
+  if (n.childNodes && n.childNodes.length) return false;
+  if (n.disposition === "attachment") return true;
+  const nom = n.dispositionParameters?.filename || n.parameters?.name;
+  if (!nom) return false;
+  const type = String(n.type ?? "").toLowerCase();
+  if (!n.disposition && type.startsWith("text/")) return false;
+  if (type.startsWith("image/") && n.id && n.disposition !== "attachment") return false;
+  return true;
+}
+
 /** Nombre de pièces jointes déclarées dans la structure du message. */
 function compterPJ(s: unknown): number {
   if (!s || typeof s !== "object") return 0;
   const n = s as { disposition?: string; childNodes?: unknown[] };
-  const ici = n.disposition === "attachment" ? 1 : 0;
+  const ici = estPiece(n) ? 1 : 0;
   const enfants = (n.childNodes ?? []).reduce<number>((t, e) => t + compterPJ(e), 0);
   return ici + enfants;
 }
@@ -618,7 +640,7 @@ function piecesDe(s: unknown): PieceJointe[] {
     size?: number;
   };
   const enfants = (n.childNodes ?? []).flatMap(piecesDe);
-  if (n.disposition !== "attachment") return enfants;
+  if (!estPiece(n)) return enfants;
   return [
     {
       nom: n.dispositionParameters?.filename || n.parameters?.name || "pièce jointe",

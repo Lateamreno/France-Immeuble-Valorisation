@@ -8,52 +8,23 @@ import { dmy, euros, S } from "@/lib/format";
 import { addOffre, addVisite, noterRetourVendeur, setOffreStatut, setVisiteStatut } from "@/lib/bo/actions";
 import { transmettreOffre } from "@/lib/bo/compte-site-actions";
 import { Modale, useQuestion } from "@/components/modale";
+import { ModaleVisite } from "@/components/actions-rapides";
 
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
 
 /* ---------- Visites ---------- */
 
+/* #606 (MAV, 09/11) : « ici il faut que ce soit la même modale que la
+   création de visite classique, sauf que c'est l'immeuble en question qui est
+   déjà prérempli ». La fenêtre est celle de la barre du bas (ModaleVisite :
+   acquéreur choisi dans les contacts, source, date et heure), l'immeuble posé. */
 export function AddVisiteButton({ b }: { b: BienData }) {
   const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-  const [date, setDate] = useState("");
-  const [heure, setHeure] = useState("14:00");
-  const [visiteur, setVisiteur] = useState("");
-  const [comment, setComment] = useState("");
+  const bien = { id: String(b.im._id), libelle: b.adresse || b.ville || "Immeuble" };
   return (
     <>
       <button className="fadd" type="button" onClick={() => setOpen(true)}>+ Programmer une visite</button>
-      {open && (
-        <Modale
-          titre="Programmer une visite" onFermer={() => setOpen(false)} fermeDehors={false}
-          pied={
-            <button
-              className="kgo" type="button" disabled={pending || !date}
-              style={pending || !date ? { opacity: 0.5 } : undefined}
-              onClick={() =>
-                start(async () => {
-                  await addVisite(String(b.im._id), String(b.im.AGENT ?? ""), {
-                    date: `${date}T${heure || "14:00"}:00`,
-                    visiteur: visiteur || undefined,
-                    commentaire_interne: comment || undefined,
-                    source: "BO",
-                  });
-                  setOpen(false);
-                })
-              }
-            ><span className="ch">›</span> Programmer la visite</button>
-          }
-        >
-          <div className="mrow" style={{ alignItems: "center" }}>
-            <label style={{ fontSize: 12 }}>Date <input className="min" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-            <label style={{ fontSize: 12 }}>Heure <input className="min" type="time" value={heure} onChange={(e) => setHeure(e.target.value)} /></label>
-          </div>
-          <span className="mlab">Visiteur</span>
-          <input className="min" placeholder="Nom du visiteur / acquéreur" value={visiteur} onChange={(e) => setVisiteur(e.target.value)} />
-          <span className="mlab">Commentaire interne</span>
-          <textarea className="min" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
-        </Modale>
-      )}
+      {open && <ModaleVisite bien={bien} onFermer={() => setOpen(false)} />}
     </>
   );
 }
