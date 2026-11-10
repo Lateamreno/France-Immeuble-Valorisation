@@ -455,12 +455,23 @@ part du module Mailing (« rester à part pour mailing »). Quatre lots : 1 lire
 du site et réseaux sociaux.
 
 - **Lot 1 (livré le 10/11), lecture seule** : `app/acquisition/page.tsx`,
-  `lib/bo/google-ads.ts`. Accès par **compte de service** Google Cloud (les
-  jetons développeur ont disparu le 09/09/26), niveau d'accès API « Explorer »,
-  « Lecture seule » dans Google Ads. Variables `GOOGLE_ADS_SA_JSON`,
-  `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC, facultatif),
-  `GOOGLE_ADS_API_VERSION` (v26). Posées par MAV lui-même ; guide : artifact
-  « Brancher Google Ads au BO ».
+  `lib/bo/google-ads.ts`. Les jetons développeur ont disparu le 09/09/26 :
+  l'accès passe par le projet Google Cloud (niveau API « Explorer »).
+  **Connexion OAuth** (revirement du 10/11) : l'organisation Google de FI
+  interdit les clés de compte de service (`iam.disableServiceAccountKeyCreation`),
+  donc MAV clique « Connecter Google Ads » sur la page Acquisition ; le jeton
+  de renouvellement est gardé chiffré (`MAIL_CRYPTO_KEY`) dans `fi_google_ads`
+  (`lib/bo/google-ads-oauth.ts`, routes `/api/google-ads/{connexion,retour}`).
+  Variables `GOOGLE_ADS_OAUTH_CLIENT_ID` / `_SECRET`, `GOOGLE_ADS_CUSTOMER_ID`,
+  `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC, facultatif), `GOOGLE_ADS_API_VERSION`
+  (v26). La voie compte de service (`GOOGLE_ADS_SA_JSON`) reste lue si une clé
+  existe un jour. Posées par MAV lui-même ; guide : artifact « Brancher Google
+  Ads au BO ».
+- **Ciblage voulu par MAV (10/11)** : n'apparaître que sur « estimer / vendre
+  immeuble Paris » et proches, jamais sur « vendre immeuble » seul ni pour la
+  province. Moyens : mots-clés en correspondance exacte / expression qui
+  contiennent la ville, exclusions, zone géographique en « Présence » seule.
+  C'est la première proposition du lot 2.
 - **Le coût par mandat** vient de l'origine des formulaires : le site joint
   `attribution` (gclid, UTM, page d'arrivée, référent) à chaque formulaire
   (contrat site §18), rangé dans `fi_lead_origine` ; une estimation du site

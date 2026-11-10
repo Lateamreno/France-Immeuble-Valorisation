@@ -7,6 +7,7 @@ import Link from "next/link";
 import { exigerDirection } from "@/lib/auth/comptes";
 import { etatAds, lireAds, type LectureAds } from "@/lib/bo/google-ads";
 import { CANAUX, TYPES_FORMULAIRE, canalDe, cheminArrivee, periodeDe, type Canal } from "@/lib/bo/acquisition";
+import { deconnecterGoogleAds } from "@/lib/bo/google-ads-actions";
 import { immeublesSousMandat, originesDepuis, premiereOrigine, type LeadOrigine } from "@/lib/bo/lead-origine";
 
 export const dynamic = "force-dynamic";
@@ -42,13 +43,14 @@ const deLaCampagne = (o: LeadOrigine, c: { id: string; nom: string }) => {
 };
 
 export default async function AcquisitionPage({ searchParams }: {
-  searchParams: Promise<{ onglet?: string; jours?: string; frais?: string }>;
+  searchParams: Promise<{ onglet?: string; jours?: string; frais?: string; ads?: string }>;
 }) {
   await exigerDirection();
   const sp = await searchParams;
   const onglet = ONGLETS.some((o) => o.k === sp.onglet && !o.lot) ? sp.onglet! : "vue";
   const periode = periodeDe(Number(sp.jours) || 30);
-  const etat = etatAds();
+  const etat = await etatAds();
+  const retour = sp.ads ? RETOURS[sp.ads] : undefined;
 
   const [ads, origines, depuis] = await Promise.all([
     etat.pret ? lireAds(periode, sp.frais === "1").catch((e): LectureAds | string => (e instanceof Error ? e.message : String(e))) : null,
@@ -103,6 +105,11 @@ export default async function AcquisitionPage({ searchParams }: {
             <span className="acq-etat off">Google Ads pas encore branché</span>
           )}
           {etat.pret && <Link className="acq-actu" href={lien({ frais: "1" })}>Actualiser</Link>}
+          {etat.pret && etat.mode === "oauth" && (
+            <form action={deconnecterGoogleAds}>
+              <button type="submit" className="acq-lien" title={`Connecté avec ${etat.identite}`}>Déconnecter</button>
+            </form>
+          )}
         </div>
       </div>
       <div className="acq-per-txt">
@@ -118,7 +125,11 @@ export default async function AcquisitionPage({ searchParams }: {
         ))}
       </nav>
 
-      {!etat.pret && <Branchement manque={etat.manque} erreur={etat.erreur} />}
+      {retour && <div className={retour[0] === "ok" ? "acq-ok" : "acq-err"}>{retour[1]}</div>}
+      {!etat.pret && <Branchement manque={etat.manque} erreur={etat.erreur} connectable={etat.connectable} />}
+      {lecture?.erreurs.compte && etat.pret && etat.mode === "oauth" && (
+        <a className="acq-guide" href="/api/google-ads/connexion">Reconnecter Google Ads</a>
+      )}
       {erreurGlobale && <div className="acq-err"><b>Google n&apos;a pas répondu.</b> {erreurGlobale}</div>}
       {lecture?.erreurs.compte && <div className="acq-err"><b>Lecture du compte impossible.</b> {lecture.erreurs.compte}</div>}
 
@@ -192,14 +203,34 @@ function Kpi({ l, v, d, fort }: { l: string; v: string; d?: string; fort?: boole
   );
 }
 
-function Branchement({ manque, erreur }: { manque: string[]; erreur?: string }) {
+/** Ce que dit la page au retour de chez Google (`?ads=`). */
+const RETOURS: Record<string, ["ok" | "ko", string]> = {
+  connecte: ["ok", "Google Ads est connecté. Le BO lit le compte en lecture seule."],
+  refuse: ["ko", "Autorisation refusée chez Google : rien n'a été connecté."],
+  etat: ["ko", "La demande a expiré ou ne venait pas de ce BO. Cliquez à nouveau « Connecter Google Ads »."],
+  portee: ["ko", "Google n'a pas donné l'accès à Google Ads : cochez la case Google Ads sur l'écran d'autorisation."],
+  sans_renouvellement: ["ko", "Google n'a pas remis de jeton durable. Retirez l'accès du BO dans votre compte Google (Sécurité › Applications tierces), puis reconnectez."],
+  enregistrement: ["ko", "Connexion reçue mais pas enregistrée (MAIL_CRYPTO_KEY absente ?)."],
+  erreur_google: ["ko", "Google a refusé la connexion. Vérifiez que l'adresse de retour du client OAuth est exactement celle indiquée dans le guide."],
+  client_absent: ["ko", "Le client OAuth n'est pas posé dans Vercel (GOOGLE_ADS_OAUTH_CLIENT_ID et _SECRET)."],
+};
+
+function Branchement({ manque, erreur, connectable }: { manque: string[]; erreur?: string; connectable: boolean }) {
   return (
     <div className="acq-branche">
       <b>Google Ads n&apos;est pas encore branché.</b>
-      <p>Le BO lit le compte avec un compte de service Google Cloud, en lecture seule. Le guide pas à pas prend une vingtaine de minutes ; la clé va directement de votre ordinateur à Vercel.</p>
+      {connectable ? (
+        <p>Tout est prêt côté BO : connectez-vous avec le compte Google qui gère les annonces. Le BO ne demande que la lecture.</p>
+      ) : (
+        <p>Il faut d&apos;abord créer le client OAuth dans le projet Google Cloud et le poser dans Vercel : le guide pas à pas prend une dizaine de minutes.</p>
+      )}
       {erreur && <p className="acq-err-l">{erreur}</p>}
       {manque.length > 0 && <p>Variables attendues dans Vercel : {manque.map((m, i) => <span key={m}>{i ? ", " : ""}<code>{m}</code></span>)}.</p>}
-      <a className="acq-guide" href={GUIDE} target="_blank" rel="noreferrer">Ouvrir le guide de branchement</a>
+      {connectable && !manque.length ? (
+        <a className="acq-guide" href="/api/google-ads/connexion">Connecter Google Ads</a>
+      ) : (
+        <a className="acq-guide" href={GUIDE} target="_blank" rel="noreferrer">Ouvrir le guide de branchement</a>
+      )}
     </div>
   );
 }

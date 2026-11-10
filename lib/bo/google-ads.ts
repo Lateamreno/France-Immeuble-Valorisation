@@ -1,20 +1,26 @@
 // Google Ads en lecture (Acquisition, lot 1 — MAV, 10/11).
 //
-// Le BO lit le compte avec un COMPTE DE SERVICE Google Cloud : depuis le
-// 9 septembre 2026, Google a retiré les jetons développeur, l'accès à l'API
-// passe par le projet Cloud (niveau « Explorer », 2 880 opérations par jour).
-// Le compte de service a « Lecture seule » dans Google Ads : ce module ne sait
+// Deux façons d'entrer, la première trouvée sert :
+//  1. OAUTH (la voie retenue le 10/11) : MAV clique « Connecter Google Ads »
+//     sur la page Acquisition, avec le compte Google qui gère les annonces. Le
+//     BO garde le jeton de renouvellement chiffré (lib/bo/google-ads-oauth.ts).
+//     Raison : l'organisation Google interdit les clés de compte de service.
+//  2. Compte de service (GOOGLE_ADS_SA_JSON), si un jour la clé existe.
+// Depuis le 9 septembre 2026, Google a retiré les jetons développeur : l'accès
+// à l'API passe par le projet Cloud (niveau « Explorer »). Ce module ne sait
 // QUE lire, et rien ici n'écrit chez Google. Les changements viendront au
 // lot 2, par « À valider », jamais d'office.
 //
 // Variables (posées par MAV dans Vercel, jamais dans la conversation) :
-//   GOOGLE_ADS_SA_JSON            la clé JSON du compte de service, entière
+//   GOOGLE_ADS_OAUTH_CLIENT_ID / _SECRET  le client OAuth du projet Cloud
+//   GOOGLE_ADS_SA_JSON            (autre voie) la clé JSON du compte de service
 //   GOOGLE_ADS_CUSTOMER_ID        le compte lu (avec ou sans tirets)
 //   GOOGLE_ADS_LOGIN_CUSTOMER_ID  le compte administrateur (MCC), s'il y en a un
 //   GOOGLE_ADS_API_VERSION        v26 par défaut
 //
 // Module serveur seulement (node:crypto) : jamais importé par un composant client.
 import { createSign } from "node:crypto";
+import { clientOAuth, lireConnexion } from "@/lib/bo/google-ads-oauth";
 
 const VERSION = process.env.GOOGLE_ADS_API_VERSION?.trim() || "v26";
 const chiffres = (v?: string) => (v ?? "").replace(/\D/g, "");
@@ -22,33 +28,54 @@ const chiffres = (v?: string) => (v ?? "").replace(/\D/g, "");
 type CleCompteService = { client_email: string; private_key: string; token_uri?: string };
 
 export type EtatAds =
-  | { pret: true; compte: string; mcc?: string; identite: string }
-  | { pret: false; manque: string[]; erreur?: string };
+  | { pret: true; compte: string; mcc?: string; identite: string; mode: "oauth" | "service" }
+  /** `connectable` : le client OAuth est posé, il ne manque que le clic « Connecter ». */
+  | { pret: false; manque: string[]; erreur?: string; connectable: boolean };
 
 function cle(): CleCompteService | { erreur: string } | null {
   const brut = process.env.GOOGLE_ADS_SA_JSON?.trim();
   if (!brut) return null;
   try {
     const j = JSON.parse(brut) as Partial<CleCompteService>;
-    if (!j.client_email || !j.private_key) return { erreur: "La clé JSON ne contient ni client_email ni private_key : est-ce bien le fichier de l'étape 5 ?" };
+    if (!j.client_email || !j.private_key) return { erreur: "La clé JSON ne contient ni client_email ni private_key." };
     return { client_email: j.client_email, private_key: j.private_key, token_uri: j.token_uri };
   } catch {
     return { erreur: "GOOGLE_ADS_SA_JSON n'est pas un JSON lisible : collez le fichier entier, accolades comprises." };
   }
 }
 
+/* La connexion OAuth est relue en base au plus une fois par minute. */
+let connexionEnCache: { quand: number; valeur: Awaited<ReturnType<typeof lireConnexion>> } | null = null;
+async function connexion() {
+  if (!connexionEnCache || Date.now() - connexionEnCache.quand > 60_000) {
+    connexionEnCache = { quand: Date.now(), valeur: await lireConnexion() };
+  }
+  return connexionEnCache.valeur;
+}
+/** Après « Connecter » ou « Déconnecter » : oublier ce qui était en mémoire. */
+export function oublierCacheAds() {
+  connexionEnCache = null;
+  jetonEnCache = null;
+}
+
 /** Ce qui manque pour lire Google Ads — rien ne part chez Google ici. */
-export function etatAds(): EtatAds {
-  const k = cle();
+export async function etatAds(): Promise<EtatAds> {
   const compte = chiffres(process.env.GOOGLE_ADS_CUSTOMER_ID);
-  const manque: string[] = [];
-  if (!k) manque.push("GOOGLE_ADS_SA_JSON");
-  if (!compte) manque.push("GOOGLE_ADS_CUSTOMER_ID");
-  else if (compte.length !== 10) return { pret: false, manque: [], erreur: "GOOGLE_ADS_CUSTOMER_ID doit compter dix chiffres." };
-  if (k && "erreur" in k) return { pret: false, manque, erreur: k.erreur };
-  if (manque.length || !k) return { pret: false, manque };
   const mcc = chiffres(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID) || undefined;
-  return { pret: true, compte, mcc, identite: k.client_email };
+  const client = clientOAuth();
+  const k = cle();
+  const manque: string[] = [];
+  if (!client && !k) manque.push("GOOGLE_ADS_OAUTH_CLIENT_ID", "GOOGLE_ADS_OAUTH_CLIENT_SECRET");
+  if (!compte) manque.push("GOOGLE_ADS_CUSTOMER_ID");
+  else if (compte.length !== 10) return { pret: false, manque: [], erreur: "GOOGLE_ADS_CUSTOMER_ID doit compter dix chiffres.", connectable: !!client };
+  if (client) {
+    const c = await connexion();
+    if (c && compte) return { pret: true, compte, mcc, identite: c.email ?? "compte Google connecté", mode: "oauth" };
+    if (!k) return { pret: false, manque, connectable: true };
+  }
+  if (k && "erreur" in k) return { pret: false, manque, erreur: k.erreur, connectable: !!client };
+  if (manque.length || !k) return { pret: false, manque, connectable: !!client };
+  return { pret: true, compte, mcc, identite: k.client_email, mode: "service" };
 }
 
 /* ------------------------------------------------------------ Jeton */
@@ -59,14 +86,40 @@ let jetonEnCours: Promise<string> | null = null;
 
 const b64url = (v: string | Buffer) => Buffer.from(v).toString("base64url");
 
-/** Jeton OAuth du compte de service (JWT signé RS256, échangé chez Google). */
-async function jeton(): Promise<string> {
+async function jeton(mode: "oauth" | "service"): Promise<string> {
   if (jetonEnCache && jetonEnCache.expire > Date.now() + 60_000) return jetonEnCache.valeur;
-  jetonEnCours ??= nouveauJeton().finally(() => { jetonEnCours = null; });
+  jetonEnCours ??= (mode === "oauth" ? jetonOAuth() : jetonService()).finally(() => { jetonEnCours = null; });
   return jetonEnCours;
 }
 
-async function nouveauJeton(): Promise<string> {
+async function echanger(url: string, corps: Record<string, string>, quoi: string): Promise<string> {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(corps),
+    cache: "no-store",
+  });
+  const j = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error_description?: string; error?: string };
+  if (!r.ok || !j.access_token) {
+    if (j.error === "invalid_grant") throw new Error(`${quoi} : l'autorisation a expiré ou a été retirée. Cliquez « Reconnecter Google Ads ».`);
+    throw new Error(`${quoi} : ${j.error_description ?? j.error ?? r.status}`);
+  }
+  jetonEnCache = { valeur: j.access_token, expire: Date.now() + (j.expires_in ?? 3600) * 1000 };
+  return j.access_token;
+}
+
+/** Jeton d'accès renouvelé depuis la connexion « Connecter Google Ads ». */
+async function jetonOAuth(): Promise<string> {
+  const client = clientOAuth();
+  const c = await connexion();
+  if (!client || !c) throw new Error("Google Ads n'est pas connecté.");
+  return echanger("https://oauth2.googleapis.com/token", {
+    grant_type: "refresh_token", refresh_token: c.refresh, client_id: client.id, client_secret: client.secret,
+  }, "Google refuse la connexion");
+}
+
+/** Jeton du compte de service (JWT signé RS256, échangé chez Google). */
+async function jetonService(): Promise<string> {
   const k = cle();
   if (!k || "erreur" in k) throw new Error(k && "erreur" in k ? k.erreur : "GOOGLE_ADS_SA_JSON absente.");
   const aud = k.token_uri || "https://oauth2.googleapis.com/token";
@@ -80,19 +133,10 @@ async function nouveauJeton(): Promise<string> {
     exp: maintenant + 3600,
   }));
   const signe = createSign("RSA-SHA256").update(`${entete}.${corps}`).sign(k.private_key.replace(/\\n/g, "\n"));
-  const r = await fetch(aud, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${entete}.${corps}.${b64url(signe)}`,
-    }),
-    cache: "no-store",
-  });
-  const j = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error_description?: string; error?: string };
-  if (!r.ok || !j.access_token) throw new Error(`Google refuse le compte de service : ${j.error_description ?? j.error ?? r.status}`);
-  jetonEnCache = { valeur: j.access_token, expire: Date.now() + (j.expires_in ?? 3600) * 1000 };
-  return j.access_token;
+  return echanger(aud, {
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    assertion: `${entete}.${corps}.${b64url(signe)}`,
+  }, "Google refuse le compte de service");
 }
 
 /* ------------------------------------------------------------- GAQL */
@@ -107,22 +151,25 @@ function erreurGoogle(statut: number, corps: unknown): string {
   const code = detail?.errorCode ? Object.values(detail.errorCode)[0] : undefined;
   const texte = detail?.message ?? e?.message ?? `HTTP ${statut}`;
   if (code === "USER_PERMISSION_DENIED" || code === "CUSTOMER_NOT_ENABLED") {
-    return `${texte} — le compte de service a-t-il bien reçu l'accès dans Google Ads (Administration › Accès et sécurité) ?`;
+    return `${texte} — le compte connecté a-t-il bien accès à ce compte Google Ads (et faut-il un GOOGLE_ADS_LOGIN_CUSTOMER_ID pour un compte administrateur) ?`;
   }
   if (code === "DEVELOPER_TOKEN_NOT_APPROVED" || /test account/i.test(texte)) {
     return `${texte} — l'accès « Explorer » n'est pas encore accordé au projet Google Cloud.`;
+  }
+  if (statut === 403 && /has not been used|is disabled/i.test(texte)) {
+    return `${texte} — activez « Google Ads API » dans le projet Google Cloud (API et services › Bibliothèque).`;
   }
   return code ? `${texte} (${code})` : texte;
 }
 
 /** Une requête GAQL en flux : toutes les lignes, toutes les pages. */
 export async function gaql(requete: string): Promise<Ligne[]> {
-  const e = etatAds();
+  const e = await etatAds();
   if (!e.pret) throw new Error("Google Ads n'est pas branché.");
   const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${e.compte}/googleAds:searchStream`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${await jeton()}`,
+      Authorization: `Bearer ${await jeton(e.mode)}`,
       "Content-Type": "application/json",
       ...(e.mcc ? { "login-customer-id": e.mcc } : {}),
     },
