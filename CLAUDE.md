@@ -471,14 +471,29 @@ du site et réseaux sociaux.
   immeuble Paris » et proches, jamais sur « vendre immeuble » seul ni pour la
   province. Moyens : mots-clés en correspondance exacte / expression qui
   contiennent la ville, exclusions, zone géographique en « Présence » seule.
-  C'est la première proposition du lot 2.
+  À proposer à MAV dès la connexion, puis appliquer sur son accord.
 - **Le coût par mandat** vient de l'origine des formulaires : le site joint
   `attribution` (gclid, UTM, page d'arrivée, référent) à chaque formulaire
   (contrat site §18), rangé dans `fi_lead_origine` ; une estimation du site
   devient l'immeuble `app_site_<ref>`, dont on lit le mandat signé.
-- **Garde-fous du lot 2, posés d'avance** : rien ne change chez Google sans
-  le clic « Appliquer » de MAV ; un plafond de dépense par jour que rien ne
-  dépasse ; jamais plus de ±30 % d'enchère en un seul changement.
+- **Lot 2 (livré le 10/11) : l'écriture, depuis le BO ET depuis Claude**
+  (MAV : « je veux aussi l'écriture […] depuis Claude qui a accès au BO, tu
+  pourras lire dans cette conversation et modifier au besoin les annonces »).
+  Une seule porte : `lib/bo/google-ads-ecriture.ts` (`appliquer`), garde-fous
+  purs dans `google-ads-changements.ts`, journal `fi_ads_journal` (source
+  `bo` ou `claude`, motif, geste inverse → bouton « Annuler »). Le BO : boutons
+  de la page Acquisition › Google Ads, chacun confirmé. Claude :
+  `/api/claude/ads` (GET lit, POST applique ; clé `BO_CLAUDE_TOKEN` injectée
+  par l'environnement, jamais vue). **Claude ne modifie que sur une demande
+  de MAV dans la conversation**, avec un `motif` qui la cite, et peut d'abord
+  vérifier sans rien changer (`essai`). C'est la validation humaine du §7.1,
+  donnée dans la conversation au lieu d'un clic.
+- **Garde-fous (mêmes pour le BO et Claude)** : un plafond de dépense par
+  jour (somme des budgets actifs), posé par la direction dans le BO seul —
+  sans lui, aucune hausse ni réactivation ; +30 % de budget et 30 points de
+  modulation d'enchère au plus par changement ; pas de requête large ; une
+  annonce n'envoie que vers france-immeuble.fr ; les listes d'exclusions
+  partagées et les budgets partagés se modifient dans Google Ads.
 
 ### 7.7 Relances clients — position de MAV (10/11), à cadrer avant de coder
 

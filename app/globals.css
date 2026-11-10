@@ -9599,3 +9599,24 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .acq-url a { color: var(--slate); overflow-wrap: anywhere; }
 .acq-ok { background: #e6f4e3; color: #2a7a22; border-radius: 4px; padding: 9px 12px; font-size: 13px; margin: 8px 0; }
 .acq-lien { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--gray-txt); text-decoration: underline; cursor: pointer; }
+/* Acquisition, lot 2 : les gestes d'écriture */
+.acq-btn { font: 600 11.5px var(--font-title); color: var(--slate); background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.acq-btn:hover:not(:disabled) { border-color: var(--slate); }
+.acq-btn:disabled { opacity: .5; cursor: default; }
+.acq-btn.danger { color: var(--red); }
+.acq-btn.plein { background: var(--slate); color: #fff; border-color: var(--slate); }
+.acq-actions { white-space: nowrap; }
+.acq-actions > * + * { margin-left: 4px; }
+.acq-msg { font-size: 11.5px; margin-left: 6px; }
+.acq-msg.ok { color: #2a7a22; }
+.acq-msg.ko { color: var(--red); white-space: normal; }
+.acq-ajout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.acq-ajout select, .acq-ajout input { font: 13px var(--font-body); border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: #fff; color: var(--slate); min-width: 0; }
+.acq-ajout input { flex: 1 1 180px; }
+.acq-zones { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.acq-zones li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.acq-zones li > span { flex: 1 1 200px; }
+.acq-plafond { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; background: #fff; border: 1px solid var(--gold-bo); border-radius: 6px; padding: 9px 13px; font-size: 13px; color: var(--slate); margin: 10px 0 0; }
+.acq-pill.claude { background: #efe9fb; color: #5b3fa0; }
+.acq-chip { display: inline-flex; align-items: center; gap: 4px; }
+.acq-chip .acq-btn { border: 0; background: none; padding: 0 2px; font-size: 13px; line-height: 1; color: var(--gray-txt); }
