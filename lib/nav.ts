@@ -42,6 +42,9 @@ export const NAV: NavItem[] = [
      copropriété — la cible de la découpe. Elle vit à côté des Recherches,
      qui sont la demande, quand celle-ci est l'offre à aller chercher. */
   { href: "/prospection", label: "Prospection" },
+  /* Acquisition (MAV, 10/11) : faire venir vendeurs et acquéreurs — Google
+     Ads d'abord, puis tests, articles du site et réseaux. Direction seule. */
+  { href: "/acquisition", label: "Acquisition" },
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },
   { href: "/mailing", label: "Mailing" },
