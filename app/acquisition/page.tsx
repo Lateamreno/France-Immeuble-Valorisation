@@ -209,7 +209,7 @@ function Kpi({ l, v, d, fort }: { l: string; v: string; d?: string; fort?: boole
 
 /** Ce que dit la page au retour de chez Google (`?ads=`). */
 const RETOURS: Record<string, ["ok" | "ko", string]> = {
-  connecte: ["ok", "Google Ads est connecté. Le BO lit le compte en lecture seule."],
+  connecte: ["ok", "Google Ads est connecté. Le BO lit le compte ; chaque modification se confirme et reste au journal."],
   refuse: ["ko", "Autorisation refusée chez Google : rien n'a été connecté."],
   etat: ["ko", "La demande a expiré ou ne venait pas de ce BO. Cliquez à nouveau « Connecter Google Ads »."],
   portee: ["ko", "Google n'a pas donné l'accès à Google Ads : cochez la case Google Ads sur l'écran d'autorisation."],
@@ -224,7 +224,7 @@ function Branchement({ manque, erreur, connectable }: { manque: string[]; erreur
     <div className="acq-branche">
       <b>Google Ads n&apos;est pas encore branché.</b>
       {connectable ? (
-        <p>Tout est prêt côté BO : connectez-vous avec le compte Google qui gère les annonces. Le BO ne demande que la lecture.</p>
+        <p>Tout est prêt côté BO : connectez-vous avec le compte Google qui gère les annonces. Le BO lira le compte et ne modifiera rien sans votre confirmation (ou votre demande à Claude), sous les garde-fous.</p>
       ) : (
         <p>Il faut d&apos;abord créer le client OAuth dans le projet Google Cloud et le poser dans Vercel : le guide pas à pas prend une dizaine de minutes.</p>
       )}
