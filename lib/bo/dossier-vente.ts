@@ -26,6 +26,7 @@ import { selectionDossier } from "./photos-dossier";
 import { etagesDepuisLots } from "./etages";
 import { nomComposant, situationLot } from "@/lib/referentiels";
 import { ventilerHai } from "@/lib/bareme";
+import { prixSecteurPrincipal } from "./prix-secteur-principal";
 
 /* Retours #461 et #465 : les destinations PRINCIPALES font la nature du bien ;
    parkings, caves et annexes sont des accessoires — ils complètent la
@@ -300,7 +301,11 @@ export function construireDossierVente(
       habitants: N(im.emp_population),
       revenus: N(im.emp_revenus),
       tension: S(im.emp_tension_locative),
-      prix: N(b.secteur?.["0 - prix"]),
+      /* #615 : le prix au m² de l'affectation principale, pas toujours des logements. */
+      ...(() => {
+        const p = prixSecteurPrincipal(lots, b.secteur);
+        return { prix: p.valeur, prixLibelle: p.libelle, prixSource: p.source };
+      })(),
     },
 
     /* Page 4 — état technique */

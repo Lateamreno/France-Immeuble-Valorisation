@@ -283,7 +283,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
               unite="k€/habitant/an" />
             <Stat picto={I.thermo} label="Tension locative" source="LOCservice"
               valeur={nc(d.ville_stats.tension)} />
-            <Stat picto={I.graphique} label="Prix des logements" source="Notaires"
+            <Stat picto={I.graphique} label={d.ville_stats.prixLibelle} source={d.ville_stats.prixSource}
               valeur={d.ville_stats.prix !== undefined ? group(d.ville_stats.prix) : "n.c."} unite="€/m²" />
           </div>
         </div>
