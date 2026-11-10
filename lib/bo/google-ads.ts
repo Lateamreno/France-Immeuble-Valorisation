@@ -359,7 +359,7 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
       "SELECT campaign.name, campaign.resource_name, campaign_criterion.resource_name, campaign_criterion.type, campaign_criterion.location.geo_target_constant, campaign_criterion.proximity.radius, campaign_criterion.proximity.radius_units, campaign_criterion.proximity.address.city_name, campaign_criterion.negative, campaign_criterion.bid_modifier FROM campaign_criterion WHERE campaign_criterion.type IN ('LOCATION', 'PROXIMITY') AND campaign.status != 'REMOVED'",
     ), [] as Ligne[]),
     essai("zonesPerf", () => gaql(
-      `SELECT segments.geo_target_department, metrics.clicks, metrics.cost_micros, metrics.conversions FROM geographic_view WHERE ${quand}`,
+      `SELECT segments.geo_target_region, metrics.clicks, metrics.cost_micros, metrics.conversions FROM geographic_view WHERE ${quand}`,
     ), [] as Ligne[]),
     essai("exclusions", async () => {
       const [camp, groupe, listes] = await Promise.all([
@@ -413,7 +413,7 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
      un seul aller-retour pour leur donner un nom. */
   const geo = await essai("zones", () => noms([
     ...zonesBrutes.map((r) => s(o(r.campaignCriterion?.location).geoTargetConstant)),
-    ...zonesPerfBrutes.map((r) => s(r.segments?.geoTargetDepartment)),
+    ...zonesPerfBrutes.map((r) => s(r.segments?.geoTargetRegion)),
   ]), new Map<string, { nom: string; type: string }>());
 
   const zones = zonesBrutes.map((r): Zone => {
@@ -433,7 +433,7 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
 
   const parDep = new Map<string, ZonePerf>();
   for (const r of zonesPerfBrutes) {
-    const res = s(r.segments?.geoTargetDepartment);
+    const res = s(r.segments?.geoTargetRegion);
     const nom = geo.get(res)?.nom.split(",")[0] ?? (res || "Non déterminé");
     const z = parDep.get(nom) ?? { nom, clics: 0, cout: 0, conversions: 0 };
     z.clics += n(r.metrics?.clicks); z.cout += euros(r.metrics?.costMicros); z.conversions += n(r.metrics?.conversions);

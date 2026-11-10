@@ -430,10 +430,10 @@ function OngletAds({ lecture, leads, plafond, journal }: { lecture: LectureAds; 
             </table>
           </div>
         </Section>
-        <Section titre="Résultats par département" erreur={e.zonesPerf} vide={!lecture.zonesPerf.length} sous="Où sont les gens qui ont cliqué.">
+        <Section titre="Résultats par région" erreur={e.zonesPerf} vide={!lecture.zonesPerf.length} sous="Où sont les gens qui ont cliqué.">
           <div className="eqp-table acq-haut">
             <table>
-              <thead><tr><th>Département</th><th className="num">Clics</th><th className="num">Dépense</th><th className="num">Conv.</th></tr></thead>
+              <thead><tr><th>Région</th><th className="num">Clics</th><th className="num">Dépense</th><th className="num">Conv.</th></tr></thead>
               <tbody>
                 {lecture.zonesPerf.map((z) => (
                   <tr key={z.nom}><td>{z.nom}</td><td className="num">{nb(z.clics)}</td><td className="num">{eur(z.cout)}</td><td className="num">{nb(z.conversions)}</td></tr>
