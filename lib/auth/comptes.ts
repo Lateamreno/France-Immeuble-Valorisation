@@ -104,6 +104,17 @@ export async function peutReviser(): Promise<boolean> {
   return !authActive();
 }
 
+/**
+ * Acquisition (Google Ads…) : à Marc-Antoine SEUL (MAV, 10/11 : « je veux
+ * que la page et le menu Acquisition ne soient disponibles que pour moi »).
+ * Le même compte que l'outil de correction.
+ */
+export const estMav = peutReviser;
+
+export async function exigerMav() {
+  if (!(await estMav())) redirect("/");
+}
+
 /** Pour les pages réservées à la direction : un agent revient au tableau de bord. */
 export async function exigerDirection() {
   if (!(await estDirection())) redirect("/");

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { estDirection } from "@/lib/auth/comptes";
+import { estMav } from "@/lib/auth/comptes";
 import { SCOPES_ADS, adresseRetour, clientOAuth } from "@/lib/bo/google-ads-oauth";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const origine = new URL(req.url).origin;
-  if (!(await estDirection())) return NextResponse.redirect(`${origine}/`);
+  if (!(await estMav())) return NextResponse.redirect(`${origine}/`);
   const client = clientOAuth();
   if (!client) return NextResponse.redirect(`${origine}/acquisition?ads=client_absent`);
   const etat = randomBytes(24).toString("base64url");

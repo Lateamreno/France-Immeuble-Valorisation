@@ -85,7 +85,7 @@ export default async function RootLayout({
         <SalveRelancesProvider>
           <div className="shell">
             <Burger />
-            <Rail mode={await lireMode()} direction={session.direction} nom={session.nom} connecte={!!compte} />
+            <Rail mode={await lireMode()} direction={session.direction} mav={session.outrepasser} nom={session.nom} connecte={!!compte} />
             <div className="main">
               {children}
               <QuickCreate agents={agents.filter((a) => a.actif)} />

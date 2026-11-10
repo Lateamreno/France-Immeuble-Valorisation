@@ -44,10 +44,14 @@ export const IC: Record<string, React.ReactNode> = {
 };
 
 /** Les écrans réservés à la direction (MAV, 27/10) : réglages et chiffres de l'agence. */
-const DIRECTION_SEULE = new Set(["/reglages", "/analytics", "/acquisition"]);
+const DIRECTION_SEULE = new Set(["/reglages", "/analytics"]);
+/** Réservé à Marc-Antoine seul (MAV, 10/11) : l'Acquisition. */
+const MAV_SEUL = new Set(["/acquisition"]);
 
-export function Rail({ mode = "bloc", direction = true, nom, connecte = false }: {
+export function Rail({ mode = "bloc", direction = true, mav = false, nom, connecte = false }: {
   mode?: Mode;
+  /** Vrai pour Marc-Antoine seul : l'entrée Acquisition. */
+  mav?: boolean;
   /** Faux pour un agent : les entrées de direction disparaissent du menu. */
   direction?: boolean;
   nom?: string;
@@ -86,7 +90,7 @@ export function Rail({ mode = "bloc", direction = true, nom, connecte = false }:
       </div>
       <div className="modelab">{decoupe ? "Opérations de découpe" : "Vente en bloc"}</div>
 
-      {(decoupe ? NAV_DECOUPE : NAV).filter((it) => direction || !DIRECTION_SEULE.has(it.href)).map((it) => {
+      {(decoupe ? NAV_DECOUPE : NAV).filter((it) => (direction || !DIRECTION_SEULE.has(it.href)) && (mav || !MAV_SEUL.has(it.href))).map((it) => {
         if (it.tool === "switch-onoff") {
           return (
             <div className="srow" key={it.href}>
