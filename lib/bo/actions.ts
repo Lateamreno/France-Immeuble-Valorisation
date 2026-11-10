@@ -1681,11 +1681,16 @@ export async function createEstimation(immeubleId: string, agentId: string, p: E
     }),
   });
 
-  // Le prix estimé devient le prix affiché de la fiche (comme dans le BO).
+  /* Le prix estimé devient le prix affiché de la fiche (comme dans le BO)…
+     SAUF sous mandat signé (#612, MAV 10/11 : « j'ai fait une estimation
+     après prise du mandat et ça a modifié le prix automatiquement, c'est pas
+     bon, c'est toujours le mandat qui prévaut ») : l'estimation est gardée,
+     le prix de la fiche ne bouge pas. */
+  const sousMandat = await mandatSigneDe(immeubleId).catch(() => null);
   await rpc("bo_patch_doc", {
     p_table: "bo_immeuble",
     p_id: immeubleId,
-    p_patch: {
+    p_patch: sousMandat ? { prix_hai_estim: hai } : {
       prix_hai_estim: hai,
       prix_hai: hai,
       prix_nv: nv,
@@ -3263,6 +3268,30 @@ async function mandatsOu(filtre: string, limit = 5): Promise<Record<string, unkn
 }
 
 /**
+ * Le mandat de vente (ou la délégation) SIGNÉ et en vigueur d'un immeuble, ou
+ * null. #612 (MAV, 10/11) : « c'est toujours le mandat qui prévaut » — son
+ * prix et ses honoraires sont contractuels.
+ */
+async function mandatSigneDe(immeubleId: string): Promise<Record<string, unknown> | null> {
+  const ms = await mandatsOu(`data->IMMEUBLEs=cs.${encodeURIComponent(`["${immeubleId}"]`)}`, 30);
+  const signes = ms.filter((m) =>
+    ["Vente", "Délégation"].includes(String(m.Type ?? "Vente"))
+    && (m.date_signature || m.pdf_signed)
+    && !["Annulé", "Expiré", "Vendu"].includes(String(m.Statut ?? "")));
+  return signes.sort((a, b) =>
+    String(b.date_signature ?? b["Created Date"] ?? "").localeCompare(String(a.date_signature ?? a["Created Date"] ?? "")))[0] ?? null;
+}
+
+/** Le taux d'honoraires d'un mandat (en % du net vendeur), s'il le porte. */
+function tauxDuMandat(m: Record<string, unknown> | null): number | undefined {
+  if (!m) return undefined;
+  const nv = typeof m.prix_nv === "number" ? m.prix_nv : 0;
+  const h = typeof m.honos_ttc === "number" ? m.honos_ttc : undefined;
+  if (nv > 0 && h !== undefined) return (h / nv) * 100;
+  return typeof m.honos_taux === "number" ? m.honos_taux : undefined;
+}
+
+/**
  * Le mandat dont un nouveau mandat hérite (retour MAV du 21/09).
  *
  * « Quand on fait un nouveau mandat après en avoir fait un, il faut que ça
@@ -4186,12 +4215,12 @@ async function prixDuMandatSurFiche(mandatId: string, immeubleId: string, motif:
   const honos = typeof m.honos_ttc === "number" && m.honos_ttc >= 0 ? m.honos_ttc : nv ? hai - nv : 0;
   const im = await bqOne("bo_immeuble", immeubleId);
   if (im && Math.abs((n(im.prix_hai) ?? 0) - hai) < 1 && Math.abs((n(im.prix_honos_ttc) ?? 0) - honos) < 1) return;
-  await enregistrerPrix(immeubleId, {
+  await ecrirePrix(immeubleId, {
     hai, honosTtc: honos, motif,
     remarque: m.delegation === true
       ? `Prix de la délégation de mandat${m.numero ? ` n° ${String(m.numero)}` : ""}.`
       : `Prix du mandat${m.numero ? ` n° ${String(m.numero)}` : ""}, repris à la signature.`,
-  });
+  }, true);
 }
 
 /* ---------------------------------------------------- Avenants au mandat
@@ -4453,6 +4482,20 @@ export async function enregistrerPrix(
   immeubleId: string,
   input: { hai: number; honosTtc: number; motif: string; remarque?: string },
 ) {
+  return ecrirePrix(immeubleId, input, false);
+}
+
+/**
+ * `contractuel` : les honoraires viennent d'un mandat ou d'une délégation
+ * SIGNÉS (#611, MAV 10/11 : « j'ai signé la déleg à 6 % TTC d'honos et il
+ * m'affiche pas le bon prix ») — ils s'imposent tels quels, le barème ne les
+ * réécrit pas. Jamais exporté : l'écran Prix, lui, reste sous le barème.
+ */
+async function ecrirePrix(
+  immeubleId: string,
+  input: { hai: number; honosTtc: number; motif: string; remarque?: string },
+  contractuel: boolean,
+) {
   const im = await bqOne("bo_immeuble", immeubleId);
   const n = (v: unknown) => (typeof v === "number" ? v : 0);
   const loyers = n(im?.fin_loyers_an);
@@ -4470,7 +4513,14 @@ export async function enregistrerPrix(
      serveur, quoi que l'écran ait envoyé : le taux qu'il proposait est gardé
      s'il est sous le barème, mais jamais sous le minimum de la tranche. */
   const tauxEcran = input.honosTtc > 0 && hai > input.honosTtc ? (input.honosTtc / (hai - input.honosTtc)) * 100 : undefined;
-  const honos = ventilerHai(hai, tauxEcran).honos;
+  /* Le taux du mandat signé en vigueur passe tel quel, même au-dessus du
+     barème : il a été signé (#611, #612). Vérifié ici sur le mandat lui-même,
+     jamais sur la seule parole de l'écran. */
+  const tauxMandat = contractuel ? undefined : tauxDuMandat(await mandatSigneDe(immeubleId).catch(() => null));
+  const auTauxDuMandat = tauxMandat !== undefined && tauxEcran !== undefined && Math.abs(tauxEcran - tauxMandat) < 0.05;
+  const honos = (contractuel || auTauxDuMandat) && input.honosTtc >= 0 && input.honosTtc < hai
+    ? Math.round(input.honosTtc)
+    : ventilerHai(hai, tauxEcran).honos;
   const nv = hai - honos;
   const haiTravaux = hai + travaux;
   const pc = (x: number) => Math.round(x * 1000) / 10;

@@ -223,7 +223,7 @@ export type RepriseEstimation = {
 };
 
 export function EstimationWizard({
-  b, secteur, envoiActif, reprise, onFermer, onAller,
+  b, secteur, envoiActif, reprise, onFermer, onAller, onEtat,
 }: {
   b: BienData;
   secteur: Record<string, unknown> | null;
@@ -238,6 +238,9 @@ export function EstimationWizard({
    *  reste monté : on y revient par le rail). */
   /** `onglet` ouvre un sous-onglet de la section (les Charges de l'état locatif). */
   onAller?: (section: SectionFiche, onglet?: string) => void;
+  /** #613 : la fiche suit l'état réel — « enregistrée » (elle attend son
+   *  envoi), puis « close » (envoyée ou interne : elle est finie). */
+  onEtat?: (etat: "enregistree" | "close", estId?: string) => void;
 }) {
   const router = useRouter();
   const im = b.im;
@@ -836,6 +839,7 @@ export function EstimationWizard({
         if (estId && !envoye) await supprimerEstimation(immeubleId, estId).catch(() => {});
         const id = await createEstimation(immeubleId, String(im.AGENT ?? ""), payload);
         setEstId(id);
+        onEtat?.("enregistree", id);
         setEmpreintePdf(empreinte);
         setStep(4);
         // Le dossier 6 pages part ensuite dans le coffre : c'est la pièce
@@ -866,7 +870,8 @@ export function EstimationWizard({
         setMarque(statut === "3 - Envoyée"
           ? "Estimation marquée comme envoyée."
           : "Estimation classée en interne.");
-        setTimeout(() => router.push(`/bien/${immeubleId}`), 1100);
+        /* #613 : finie, elle n'est plus « en cours » nulle part. */
+        setTimeout(() => { onEtat?.("close"); router.push(`/bien/${immeubleId}`); }, 1100);
       } catch (e) {
         setMarqueKo(e instanceof Error ? e.message : "erreur inconnue");
       }

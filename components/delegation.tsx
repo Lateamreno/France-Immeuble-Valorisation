@@ -82,7 +82,7 @@ function FenetreDelegation({ immeubleId, m, onFermer }: { immeubleId: string; m?
     <Modale
       titre={m ? `Délégation de mandat${m.numero ? ` n° ${String(m.numero)}` : ""}` : "Ajouter une délégation de mandat"}
       onFermer={onFermer}
-      largeur={640}
+      largeur={780}
       pied={(
         <>
           <button type="button" className="fbtn" onClick={onFermer}>Annuler</button>
@@ -115,7 +115,14 @@ function FenetreDelegation({ immeubleId, m, onFermer }: { immeubleId: string; m?
           <input className="mi" inputMode="decimal" value={partage} onChange={(e) => setPartage(e.target.value)} />
         </Champ>
         <Champ libelle={m ? "Remplacer le PDF de la délégation" : "La délégation signée (PDF)"} obligatoire={!m} large>
-          <input type="file" accept="application/pdf" onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
+          {/* #610 (MAV, 10/11) : « un bouton pour ajouter le pdf, on sait pas ce
+              qu'il faut faire » — le champ fichier brut ressemblait à une case
+              vide. Un vrai bouton, puis le nom du fichier choisi. */}
+          <label className={`dlg-pdf${fichier ? " choisi" : ""}`}>
+            <input type="file" accept="application/pdf" hidden onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm0 2.5L17.5 8H14V4.5zM12 11v4.2l1.6-1.6 1.1 1.1L11.3 18l-3.4-3.3 1.1-1.1 1.5 1.6V11H12z" /></svg>
+            {fichier ? <><b>{fichier.name}</b><span>Changer</span></> : <b>{m ? "Choisir le nouveau PDF" : "Ajouter le PDF signé"}</b>}
+          </label>
         </Champ>
       </div>
       <p className="dlg-note">

@@ -360,8 +360,14 @@ export function BienFiche({
   }, [est, cleMemoireEst]);
   const fermerEst = () => {
     setEst(null);
+    setEstEnregistree(false);
     try { window.sessionStorage.removeItem(cleMemoireEst); } catch { /* rien à effacer */ }
   };
+  /* #613 (MAV, 10/11) : une estimation déjà enregistrée n'est plus « en
+     cours » — elle attend son envoi ; et une fois envoyée ou classée interne,
+     elle est finie et le bandeau disparaît. */
+  const [estEnregistree, setEstEnregistree] = useState(false);
+  const libelleEst = est ? (est.mode === "neuve" && estEnregistree ? "Estimation à envoyer" : LIBELLE_EST[est.mode]) : undefined;
 
   /**
    * La commercialisation lancée reste ouverte (MAV, 03/11 : « je veux que quand
@@ -593,6 +599,12 @@ export function BienFiche({
                   /* #395 — un manque du dossier renvoie à la section qui le
                      comble ; l'estimation reste montée, on y revient par le rail. */
                   onAller={(s, onglet) => { if (onglet) majSous(s)(onglet); setSect(s); }}
+                  onEtat={(etat, id) => {
+                    if (etat === "close") { fermerEst(); return; }
+                    setEstEnregistree(true);
+                    /* Au retour sur la fiche, c'est elle qu'on rouvre, en reprise. */
+                    try { if (id) window.sessionStorage.setItem(cleMemoireEst, JSON.stringify({ mode: "reprise", eid: id })); } catch { /* rien */ }
+                  }}
                 />
               )}
             </div>
@@ -617,7 +629,7 @@ export function BienFiche({
               {sect === "prix" && (
                 <PrixSection b={b}
                   tab={sous.prix} onTab={majSous("prix")}
-                  ouverte={est ? LIBELLE_EST[est.mode] : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
+                  ouverte={est ? libelleEst : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
                   onReprendre={() => setSect("encours")} />
               )}
               {sect === "photos" && <PhotosSection b={b} />}
@@ -628,7 +640,7 @@ export function BienFiche({
                   onOuvrir={ouvrirEst}
                   enCours={chargement}
                   erreur={erreurEst}
-                  ouverte={est ? LIBELLE_EST[est.mode] : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
+                  ouverte={est ? libelleEst : contenu && !contenuFige ? contenuLabel ?? "Estimation en cours" : undefined}
                   onReprendre={() => setSect("encours")}
                 />
               )}
@@ -722,7 +734,7 @@ export function BienFiche({
             <div className={`srow2 encours ouvert${sect === "encours" ? " on" : ""}`}>
               <button type="button" className="srow2-in" onClick={() => setSect("encours")}>
                 <span className="sic2"><svg viewBox="0 0 24 24">{I.calc}</svg></span>
-                {LIBELLE_EST[est.mode]}
+                {libelleEst}
                 <span className="right"><span className="pastille" /></span>
               </button>
               <button
