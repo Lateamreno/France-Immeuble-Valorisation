@@ -4,7 +4,7 @@
 // formulaire jusqu'au mandat, le coût d'un formulaire et d'un mandat.
 // Les onglets des lots suivants sont posés mais fermés : rien n'y agit encore.
 import Link from "next/link";
-import { exigerDirection } from "@/lib/auth/comptes";
+import { exigerMav } from "@/lib/auth/comptes";
 import { etatAds, lireAds, type LectureAds } from "@/lib/bo/google-ads";
 import { CANAUX, TYPES_FORMULAIRE, canalDe, cheminArrivee, periodeDe, type Canal } from "@/lib/bo/acquisition";
 import { deconnecterGoogleAds } from "@/lib/bo/google-ads-actions";
@@ -47,7 +47,8 @@ const deLaCampagne = (o: LeadOrigine, c: { id: string; nom: string }) => {
 export default async function AcquisitionPage({ searchParams }: {
   searchParams: Promise<{ onglet?: string; jours?: string; frais?: string; ads?: string }>;
 }) {
-  await exigerDirection();
+  /* Marc-Antoine seul (MAV, 10/11). */
+  await exigerMav();
   const sp = await searchParams;
   const onglet = ONGLETS.some((o) => o.k === sp.onglet && !o.lot) ? sp.onglet! : "vue";
   const periode = periodeDe(Number(sp.jours) || 30);

@@ -1,18 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { compteCourant, estDirection } from "@/lib/auth/comptes";
+import { compteCourant, estMav } from "@/lib/auth/comptes";
 import { oublierConnexion } from "@/lib/bo/google-ads-oauth";
 import { chercherZonesGoogle, oublierCacheAds } from "@/lib/bo/google-ads";
 import { annuler, appliquer, poserPlafond, type Resultat } from "@/lib/bo/google-ads-ecriture";
 import type { Changement } from "@/lib/bo/google-ads-changements";
 
-async function direction(): Promise<string | null> {
-  if (!(await estDirection())) throw new Error("Réservé à la direction.");
+async function direction(): Promise<string | null> { /* Marc-Antoine seul (10/11) */
+  if (!(await estMav())) throw new Error("Réservé à Marc-Antoine.");
   return (await compteCourant())?.email ?? null;
 }
 
-/** « Déconnecter Google Ads » : le BO oublie le jeton (direction seule). */
+/** « Déconnecter Google Ads » : le BO oublie le jeton (Marc-Antoine seul). */
 export async function deconnecterGoogleAds(): Promise<void> {
   await direction();
   await oublierConnexion();

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { compteCourant, estDirection } from "@/lib/auth/comptes";
+import { compteCourant, estMav } from "@/lib/auth/comptes";
 import { adresseRetour, clientOAuth, enregistrerConnexion } from "@/lib/bo/google-ads-oauth";
 import { oublierCacheAds } from "@/lib/bo/google-ads";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     res.cookies.delete({ name: "fi_ads_etat", path: "/api/google-ads" });
     return res;
   };
-  if (!(await estDirection())) return NextResponse.redirect(`${origine}/`);
+  if (!(await estMav())) return NextResponse.redirect(`${origine}/`);
   if (u.searchParams.get("error")) return vers(u.searchParams.get("error") === "access_denied" ? "refuse" : "erreur_google");
   const attendu = req.headers.get("cookie")?.match(/(?:^|;\s*)fi_ads_etat=([^;]+)/)?.[1];
   if (!attendu || attendu !== u.searchParams.get("state")) return vers("etat");

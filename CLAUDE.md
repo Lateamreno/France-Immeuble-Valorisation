@@ -449,8 +449,12 @@ arbitrage de MAV, ne pas y revenir sans lui.
 
 ### 7.6 Acquisition — Google Ads, puis tests, articles, réseaux
 
-Décidé avec MAV le 10/11/26 : un menu **Acquisition** (direction seule), à
-part du module Mailing (« rester à part pour mailing »). Quatre lots : 1 lire,
+Décidé avec MAV le 10/11/26 : un menu **Acquisition**, à part du module
+Mailing (« rester à part pour mailing »). **Réservé à MAV seul**
+(ma.voci@france-immeuble.fr, revirement du 10/11 : « que la page et le menu
+Acquisition ne soient disponibles que pour moi ») : menu, page, actions et
+connexion Google passent par `estMav` / `exigerMav` (lib/auth/comptes.ts),
+pas par le rôle direction. Quatre lots : 1 lire,
 2 ajuster d'un clic (« À valider »), 3 tests A/B jugés aux mandats, 4 articles
 du site et réseaux sociaux.
 
@@ -489,7 +493,7 @@ du site et réseaux sociaux.
   vérifier sans rien changer (`essai`). C'est la validation humaine du §7.1,
   donnée dans la conversation au lieu d'un clic.
 - **Garde-fous (mêmes pour le BO et Claude)** : un plafond de dépense par
-  jour (somme des budgets actifs), posé par la direction dans le BO seul —
+  jour (somme des budgets actifs), posé par MAV dans le BO seul —
   sans lui, aucune hausse ni réactivation ; +30 % de budget et 30 points de
   modulation d'enchère au plus par changement ; pas de requête large ; une
   annonce n'envoie que vers france-immeuble.fr ; les listes d'exclusions
