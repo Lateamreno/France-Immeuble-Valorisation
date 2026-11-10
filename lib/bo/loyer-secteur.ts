@@ -70,17 +70,25 @@ export function calculerLoyerSecteur(entree: {
   const detail: string[] = [];
   let source: "retenu" | "ville" | "carte" = retenu ? "retenu" : "ville";
   if (base) {
-    detail.push(`${retenu ? "Loyer retenu du secteur" : "Loyer moyen de la ville (pas de valeur retenue)"} : ${parM2(base)}.`);
+    detail.push(`Base : ${retenu ? "loyer retenu du secteur" : "loyer moyen de la ville (pas de valeur retenue)"}, ${parM2(base)}.`);
   }
 
   if (destination === "Logement") {
     const typo = typologieDuLot(typeLot);
     const valTypo = carte ? carte[typo] ?? carte.tous : undefined;
     if (base && carte?.tous && valTypo && typo !== "tous") {
-      const coef = valTypo / carte.tous;
-      detail.push(`Typologie ${typeLot || "n.c."} : ${LIBELLE_TYPOLOGIE[typo]} à ${carte.commune}, ${fr(valTypo, 1)} €/m² contre ${fr(carte.tous, 1)} €/m² tous appartements (Carte des loyers ${carte.millesime}), soit × ${fr(coef, 2)}.`);
+      /* MAV (10/11) : « pourquoi il a trouvé 27,5 et applique 26 ? ». Les
+         chiffres du ministère ne s'appliquent jamais tels quels : ce sont des
+         loyers d'annonce, charges comprises, qui ne donnent que l'ÉCART entre
+         la typologie et la moyenne. Le détail le dit en toutes lettres. */
+      /* Arrondi à deux décimales AVANT de multiplier : le calcul affiché se
+         refait à la main et tombe juste. */
+      const coef = Math.round((valTypo / carte.tous) * 100) / 100;
+      const ecart = Math.round((coef - 1) * 100);
+      const avant = base;
       base = base * coef;
-      detail.push(`Loyer au m² du lot : ${parM2(base)}.`);
+      detail.push(`Correctif ${typeLot || "de typologie"} : à ${carte.commune}, la Carte des loyers ${carte.millesime} donne ${fr(valTypo, 1)} €/m² pour les ${LIBELLE_TYPOLOGIE[typo]} contre ${fr(carte.tous, 1)} €/m² tous appartements, soit ${ecart >= 0 ? "+" : ""}${ecart} % (× ${fr(coef, 2)}). Ces loyers d'annonce, charges comprises, ne servent qu'à mesurer cet écart : ils ne s'appliquent pas tels quels.`);
+      detail.push(`${fr(avant, 2)} × ${fr(coef, 2)} = ${parM2(base)} pour ce lot.`);
     } else if (base && typo === "tous") {
       detail.push(`Typologie ${typeLot || "non renseignée"} : pas de correctif (valeur tous appartements).`);
     } else if (!base && valTypo && carte) {
