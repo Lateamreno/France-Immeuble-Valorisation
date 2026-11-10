@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { jetonClaudeValide } from "@/lib/bo/claude-demandes";
-import { chercherZonesGoogle, etatAds, lireAds } from "@/lib/bo/google-ads";
+import { chercherZonesGoogle, etatAds, gaql, lireAds } from "@/lib/bo/google-ads";
 import { annuler, appliquer, lireJournal, lirePlafond } from "@/lib/bo/google-ads-ecriture";
 import { periodeDe } from "@/lib/bo/acquisition";
 import type { Changement } from "@/lib/bo/google-ads-changements";
@@ -18,6 +18,7 @@ export const maxDuration = 60;
  *
  *   GET  ?jours=7|30|90          l'état, le plafond, la lecture et le journal
  *   GET  ?zone=Paris             chercher une zone Google à cibler
+ *   GET  ?gaql=SELECT…           une lecture libre (searchStream : lecture seule par nature)
  *   POST { changements, motif, essai? }   appliquer (essai = vérifier sans changer)
  *   POST { annuler: <id du journal> }
  */
@@ -36,6 +37,11 @@ export async function GET(req: NextRequest) {
   const etat = await etatAds();
   if (!etat.pret) return json(409, { ok: false, message: "Google Ads n'est pas connecté (page Acquisition du BO).", etat });
   try {
+    const requete = u.searchParams.get("gaql");
+    if (requete) {
+      if (!/^\s*select\s/i.test(requete)) return json(422, { ok: false, message: "Une requête GAQL commence par SELECT." });
+      return json(200, { ok: true, lignes: await gaql(requete) });
+    }
     const zone = u.searchParams.get("zone");
     if (zone) return json(200, { ok: true, zones: await chercherZonesGoogle(zone) });
     const [lecture, plafond, journal] = await Promise.all([
