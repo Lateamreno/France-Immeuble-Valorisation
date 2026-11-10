@@ -17,6 +17,7 @@ import { lireAvenants, lireMandants, prixEnVigueur, type Avenant, type Prix, typ
 import type { BienMail } from "@/lib/bo/mail-commercialisation";
 import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
+import { refusPrixDelegation } from "@/lib/bo/delegation-prix";
 import { MOTIF_TEST } from "@/lib/referentiels";
 
 const SB_URL =
@@ -4054,7 +4055,7 @@ export async function marquerMandatSigne(
  * délégation reçue dans son propre registre des mandats (Hoguet). Pas de
  * mandant, pas de prix : ils sont chez l'agence délégante.
  */
-type DelegationSaisie = { date: string; honos: number; partage: number };
+type DelegationSaisie = { date: string; nv: number; hai: number; taux: number; honos: number; partage: number };
 
 function lireDelegation(fd: FormData): DelegationSaisie | string {
   const date = String(fd.get("date") ?? "").trim();
@@ -4063,11 +4064,17 @@ function lireDelegation(fd: FormData): DelegationSaisie | string {
     const v = Number(String(fd.get(k) ?? "").replace(/\s/g, "").replace(",", "."));
     return Number.isFinite(v) ? v : NaN;
   };
-  const honos = nombre("honos");
-  if (!(honos > 0)) return "Indiquez les honoraires (en euros TTC).";
+  /* MAV (10/11) : le prix comme dans les mandats ; les honoraires sont TTC,
+     en pourcentage du net vendeur. Le serveur revérifie la cohérence. */
+  const prix = { nv: nombre("nv"), hai: nombre("hai"), taux: nombre("taux"), honos: nombre("honos") };
+  const refus = refusPrixDelegation(prix);
+  if (refus) return refus;
   const partage = nombre("partage");
   if (!(partage > 0 && partage <= 100)) return "Le partage des honoraires est un pourcentage entre 1 et 100.";
-  return { date, honos: Math.round(honos), partage: Math.round(partage * 100) / 100 };
+  return {
+    date, nv: Math.round(prix.nv), hai: Math.round(prix.hai), taux: Math.round(prix.taux * 100) / 100,
+    honos: Math.round(prix.honos), partage: Math.round(partage * 100) / 100,
+  };
 }
 
 async function deposerPdfDelegation(mandatId: string, fd: FormData): Promise<string | undefined> {
@@ -4103,6 +4110,9 @@ export async function ajouterDelegation(immeubleId: string, fd: FormData) {
         Statut: "En cours",
         date_signature: signee,
         date_effet: signee,
+        prix_nv: s.nv,
+        prix_hai: s.hai,
+        honos_taux: s.taux,
         honos_ttc: s.honos,
         partage_honos_pct: s.partage,
         pdf_signed: pdf,
@@ -4113,6 +4123,8 @@ export async function ajouterDelegation(immeubleId: string, fd: FormData) {
     });
     /* Le numéro au registre : séquentiel, immuable, sans trou (§8.1). */
     await rpc("bo_reserve_mandat_numero", { p_id: id });
+    /* Comme à la signature d'un mandat (#580) : le prix devient celui de la fiche. */
+    await prixDuMandatSurFiche(id, immeubleId, "Délégation de mandat").catch(() => undefined);
     refresh(immeubleId);
     revalidatePath("/mandats");
     return { ok: true as const, id };
@@ -4136,12 +4148,16 @@ export async function modifierDelegation(mandatId: string, immeubleId: string, f
       p_patch: {
         date_signature: signee,
         date_effet: signee,
+        prix_nv: s.nv,
+        prix_hai: s.hai,
+        honos_taux: s.taux,
         honos_ttc: s.honos,
         partage_honos_pct: s.partage,
         ...(pdf ? { pdf_signed: pdf } : {}),
         "Modified Date": new Date().toISOString(),
       },
     });
+    await prixDuMandatSurFiche(mandatId, immeubleId, "Délégation de mandat").catch(() => undefined);
     refresh(immeubleId);
     revalidatePath("/mandats");
     return { ok: true as const };
@@ -4159,7 +4175,8 @@ export async function modifierDelegation(mandatId: string, immeubleId: string, f
  */
 async function prixDuMandatSurFiche(mandatId: string, immeubleId: string, motif: string) {
   const m = await bqOne("bo_mandat", mandatId);
-  if (!m || String(m.Type ?? "Vente") !== "Vente") return;
+  /* Une délégation porte aussi un prix de vente (MAV, 10/11). */
+  if (!m || !["Vente", "Délégation"].includes(String(m.Type ?? "Vente"))) return;
   const ims = Array.isArray(m.IMMEUBLEs) ? (m.IMMEUBLEs as unknown[]) : [];
   if (ims.length > 1) return;
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
@@ -4171,7 +4188,9 @@ async function prixDuMandatSurFiche(mandatId: string, immeubleId: string, motif:
   if (im && Math.abs((n(im.prix_hai) ?? 0) - hai) < 1 && Math.abs((n(im.prix_honos_ttc) ?? 0) - honos) < 1) return;
   await enregistrerPrix(immeubleId, {
     hai, honosTtc: honos, motif,
-    remarque: `Prix du mandat${m.numero ? ` n° ${String(m.numero)}` : ""}, repris à la signature.`,
+    remarque: m.delegation === true
+      ? `Prix de la délégation de mandat${m.numero ? ` n° ${String(m.numero)}` : ""}.`
+      : `Prix du mandat${m.numero ? ` n° ${String(m.numero)}` : ""}, repris à la signature.`,
   });
 }
 

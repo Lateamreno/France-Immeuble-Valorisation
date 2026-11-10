@@ -2089,7 +2089,8 @@ function MandatsSection({ b, ouvert, onRevenir }: {
               <div className="grow">
                 <div className="t">Délégation de mandat {m.numero ? `· #${m.numero}` : "· Pas de numéro"}</div>
                 <div className="s">
-                  Signée le {dmy(m.date_signature) ?? "—"} · honos {euros(m.honos_ttc) ?? "n.c."}
+                  Signée le {dmy(m.date_signature) ?? "—"}{m.prix_hai ? ` · ${euros(m.prix_hai)} HAI` : ""} · honos {euros(m.honos_ttc) ?? "n.c."}
+                  {m.honos_taux ? ` (${String(m.honos_taux).replace(".", ",")} % du net vendeur)` : ""}
                   {m.partage_honos_pct !== undefined && m.partage_honos_pct !== null ? ` · partage ${String(m.partage_honos_pct).replace(".", ",")} %` : ""}
                   {part !== undefined ? ` (${euros(part)} pour FI)` : ""}
                 </div>

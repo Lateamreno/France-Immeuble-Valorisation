@@ -1742,7 +1742,7 @@ export async function listMandats(): Promise<ListCard[]> {
   await loadInitials();
   const rows = await fetchAll("mandat", undefined, 300, { field: "Modified Date", desc: true }, [
     "IMMEUBLEs", "MANDANTs", "Statut", "AGENT", "Type", "Type_exclu", "date_effet", "date_fin", "numero",
-    "prix_hai", "prénom_m1", "nom_m1", "Modified Date", "delegation", "honos_ttc", "partage_honos_pct", "date_signature",
+    "prix_hai", "prénom_m1", "nom_m1", "Modified Date", "delegation", "honos_ttc", "honos_taux", "partage_honos_pct", "date_signature",
   ]).catch(() => []);
   /* Perf n° 1 et 4 (24/09) : libellés d'immeubles et mandants en deux
      lectures maigres, lancées ensemble. */
@@ -1772,7 +1772,7 @@ export async function listMandats(): Promise<ListCard[]> {
         ? { label: st, tone: ["En cours", "Vendu"].includes(st) ? "green" : ["Annulé", "Expiré"].includes(st) ? "red" : "orange" }
         : undefined,
       right: m.delegation === true
-        ? [`honos ${euros(m.honos_ttc) ?? "n.c."}${m.partage_honos_pct ? ` · ${String(m.partage_honos_pct).replace(".", ",")} %` : ""}`]
+        ? [euros(m.prix_hai) ?? "", `honos ${euros(m.honos_ttc) ?? "n.c."}${m.partage_honos_pct ? ` · partage ${String(m.partage_honos_pct).replace(".", ",")} %` : ""}`].filter(Boolean)
         : [euros(m.prix_hai) ?? ""].filter(Boolean),
       // Le BO isole les mandats « A signer » dans leur propre onglet.
       group: ["A rédiger", "Attente infos", "Attente signature", "A signer"].includes(st)
