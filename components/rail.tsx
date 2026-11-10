@@ -27,6 +27,8 @@ export const IC: Record<string, React.ReactNode> = {
   "/suivi": <path d="M12 3a9 9 0 1 0 8.5 12h-2.2A6.9 6.9 0 1 1 12 5.1c1.9 0 3.6.8 4.9 2L14 10h7V3l-2.6 2.6A8.9 8.9 0 0 0 12 3zm-1 4.5v5.2l4.2 2.5.8-1.3-3.5-2.1V7.5H11z" />,
   /* #552 : un € pour la Prospection, qui n'avait pas de picto. */
   "/prospection": <path d="M19.14 5.87A8 8 0 1 0 19.14 18.13L17.86 16.6A6 6 0 1 1 17.86 7.4ZM3 9h11v1.8H3zM3 13.2h11V15H3z" />,
+  /* Acquisition : le porte-voix. */
+  "/acquisition": <path d="M18 4.2v15.6c0 .6-.6 1-1.2.8L11 18H8.6l.9 3.3a.8.8 0 0 1-.8 1H6.9a.8.8 0 0 1-.8-.6L5 18a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3h6l5.8-2.6c.6-.2 1.2.2 1.2.8zM20 9.5a2.5 2.5 0 0 1 0 5v-5z" />,
   "/objectifs": <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2.2a6.8 6.8 0 1 1 0 13.6 6.8 6.8 0 0 1 0-13.6zm-1 1.9v5.5l4.4 2.6.9-1.4-3.6-2.2V7.1H11z" />,
   "/decoupe": <path d="M4 3h7v7H4V3zm9 0h7v7h-7V3zM4 14h7v7H4v-7zm9 0h7v7h-7v-7z" />,
   "/decoupe/operations": <path d="M5 2h11a1 1 0 0 1 1 1v18h3v2H4v-2h1V3a1 1 0 0 1 0-1zm2.5 3v2h2V5h-2zm4 0v2h2V5h-2zm-4 3.6v2h2v-2h-2zm4 0v2h2v-2h-2zm-2 7.4V21h4v-5h-4z" />,
@@ -42,7 +44,7 @@ export const IC: Record<string, React.ReactNode> = {
 };
 
 /** Les écrans réservés à la direction (MAV, 27/10) : réglages et chiffres de l'agence. */
-const DIRECTION_SEULE = new Set(["/reglages", "/analytics"]);
+const DIRECTION_SEULE = new Set(["/reglages", "/analytics", "/acquisition"]);
 
 export function Rail({ mode = "bloc", direction = true, nom, connecte = false }: {
   mode?: Mode;

@@ -993,3 +993,43 @@ Réponse du BO, point par point.
    alors le total (5 031 €/mois × 12 = 60 372 €). Les annonces en ligne sont
    redéposées au rapprochement de la nuit ; la ligne « Hausse de loyers
    prévue, non détaillée par lot » ne devrait plus apparaître.
+
+## 18. L'origine du visiteur avec chaque formulaire (demande du BO, 10/11)
+
+Le BO ouvre une page **Acquisition** (Google Ads d'abord) qui mesure ce que
+coûte un formulaire, puis un mandat. Il suit déjà le formulaire jusqu'au
+mandat ; il lui manque **par où le visiteur est arrivé**. Demande à la session
+du site :
+
+1. **Garder l'origine à l'arrivée sur le site**, pour la durée de la visite et
+   30 jours (cookie première partie ou `localStorage`, premier contact qui fait
+   foi) : `gclid`, `gbraid`, `wbraid` (clics Google Ads, dont iPhone),
+   `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, la
+   **page d'arrivée** (URL complète de la première page vue) et le
+   **référent** (`document.referrer` de cette première page).
+2. **Joindre un objet `attribution`** à chaque envoi `/api/site/lead` de type
+   `estimation` (envoi principal), `recherche_acquereur`, `contact`, `compte`,
+   `rendez_vous`, `offre_acquereur` :
+
+   ```json
+   "attribution": {
+     "gclid": "Cj0KCQ…", "gbraid": null, "wbraid": null,
+     "utm_source": "google", "utm_medium": "cpc", "utm_campaign": "21345678901",
+     "utm_term": "vendre immeuble", "utm_content": null,
+     "landing": "https://www.france-immeuble.fr/estimer?gclid=Cj0KCQ…",
+     "referrer": "https://www.google.fr/"
+   }
+   ```
+
+   Champs absents ou `null` : acceptés. Aucun champ n'est obligatoire, et un
+   formulaire sans `attribution` reste enregistré comme avant.
+3. **Consentement** : l'identifiant du clic est une donnée de mesure. Le site
+   ne le garde que si le bandeau cookies l'autorise ; sinon il envoie
+   l'objet sans `gclid`/`gbraid`/`wbraid` (les UTM et la page d'arrivée
+   restent utiles et ne désignent personne).
+
+**Côté BO, déjà en place (10/11)** : `attribution` est lu sur ces types et
+rangé dans une table interne (`fi_lead_origine`), le premier envoi d'une `ref`
+faisant foi. Rien ne change dans les réponses de `/api/site/lead`. Le BO en
+tire le canal (Google Ads, recherche naturelle, réseaux, e-mail, autre site,
+direct), et, pour une estimation devenue mandat signé, le coût par mandat.

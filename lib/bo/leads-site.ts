@@ -23,6 +23,7 @@ import { capturerFacadeRue, enregistrerRecherche, saveAdresse } from "@/lib/bo/a
 import { getAgents } from "@/lib/bubble/server";
 import { AGENT_DEFAUT_INITIALES } from "@/lib/bo/agent-defaut";
 import { CIBLES } from "@/lib/referentiels";
+import { noterOrigine } from "@/lib/bo/lead-origine";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -1664,6 +1665,14 @@ async function recevoirRechercheNom(_ref: string, b: Record<string, unknown>) {
 export async function recevoirLead(b: Record<string, unknown>): Promise<{ deja: boolean; id: string }> {
   const ref = reference(b.ref);
   if (!ref) throw new LeadInvalide("Référence absente ou qui n'est pas un UUID.");
+  const r = await rangerLead(ref, b);
+  /* Acquisition (lot 1) : d'où vient le formulaire. Après la réponse, et
+     sans jamais la faire échouer — c'est une mesure, pas un enregistrement. */
+  after(() => noterOrigine(ref, b, r.id).catch((e) => console.error("[lead-origine]", e)));
+  return r;
+}
+
+async function rangerLead(ref: string, b: Record<string, unknown>): Promise<{ deja: boolean; id: string }> {
   switch (b.type) {
     case "estimation": return recevoirEstimation(ref, b);
     case "recherche_acquereur": return recevoirRecherche(ref, b);

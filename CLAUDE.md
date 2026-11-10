@@ -447,6 +447,40 @@ arbitrage de MAV, ne pas y revenir sans lui.
   On ne pousse QUE des numéros, et QUE des oppositions — jamais une liste de
   contacts, jamais une adresse e-mail (celles-là regardent SendGrid).
 
+### 7.6 Acquisition — Google Ads, puis tests, articles, réseaux
+
+Décidé avec MAV le 10/11/26 : un menu **Acquisition** (direction seule), à
+part du module Mailing (« rester à part pour mailing »). Quatre lots : 1 lire,
+2 ajuster d'un clic (« À valider »), 3 tests A/B jugés aux mandats, 4 articles
+du site et réseaux sociaux.
+
+- **Lot 1 (livré le 10/11), lecture seule** : `app/acquisition/page.tsx`,
+  `lib/bo/google-ads.ts`. Accès par **compte de service** Google Cloud (les
+  jetons développeur ont disparu le 09/09/26), niveau d'accès API « Explorer »,
+  « Lecture seule » dans Google Ads. Variables `GOOGLE_ADS_SA_JSON`,
+  `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC, facultatif),
+  `GOOGLE_ADS_API_VERSION` (v26). Posées par MAV lui-même ; guide : artifact
+  « Brancher Google Ads au BO ».
+- **Le coût par mandat** vient de l'origine des formulaires : le site joint
+  `attribution` (gclid, UTM, page d'arrivée, référent) à chaque formulaire
+  (contrat site §18), rangé dans `fi_lead_origine` ; une estimation du site
+  devient l'immeuble `app_site_<ref>`, dont on lit le mandat signé.
+- **Garde-fous du lot 2, posés d'avance** : rien ne change chez Google sans
+  le clic « Appliquer » de MAV ; un plafond de dépense par jour que rien ne
+  dépasse ; jamais plus de ±30 % d'enchère en un seul changement.
+
+### 7.7 Relances clients — position de MAV (10/11), à cadrer avant de coder
+
+« Certaines catégories mériteraient qu'on fasse en automatique […] peut-être
+tout en automatique si on valide les messages et qu'on ne fait pas d'actions
+trop répétitives. Il faut qu'il y ait tout dans le suivi pour que je sache ce
+qu'on a envoyé et quand. […] voir si le client répond à nos e-mails (comme dans
+l'onglet suivi de vente) et ce qu'il répond. » C'est une **exception à
+cadrer** à la règle « validation humaine avant tout envoi » (§7.1) : messages
+validés une fois par catégorie, cadence plafonnée, chaque envoi et chaque
+réponse visibles dans le suivi du contact. Rien n'est codé tant que MAV n'a
+pas validé le cadrage.
+
 ---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)
