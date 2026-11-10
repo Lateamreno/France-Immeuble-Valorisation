@@ -42,14 +42,50 @@ const dateFr = (v: unknown) => {
 /* ---------- Bloc prix : net vendeur + honoraires + HAI + molette ---------- */
 
 function BlocPrix({
-  nv, honos, hai, onHai, onReinit, reference,
+  nv, honos, hai, onHai, onReinit, reference, edition,
 }: {
   nv: number; honos: number; hai: number;
   onHai: (v: number) => void;
   onReinit: () => void;
   reference: number;
+  /** #612 (MAV, 10/11) : « je veux pouvoir modifier le prix à la volée » —
+   *  dans la fenêtre « Nouveau prix », le net vendeur, les honoraires et le
+   *  taux se saisissent aussi ; le HAI suit. */
+  edition?: { onNv: (v: number) => void; onHonos: (v: number) => void; onTaux: (v: number) => void };
 }) {
   const taux = nv > 0 ? Math.round((honos / nv) * 1000) / 10 : 0;
+  if (edition) {
+    return (
+      <>
+        <div className="pxl">
+          <span className="pxl-c">
+            <span className="pxl-lab">Net vendeur</span>
+            <SaisieMontant valeur={nv} onValide={edition.onNv} />
+          </span>
+          <span className="pxl-op">+</span>
+          <span className="pxl-c">
+            <span className="pxl-lab">Honoraires TTC</span>
+            <SaisieMontant valeur={honos} onValide={edition.onHonos} />
+            <SaisieMontant valeur={taux} onValide={edition.onTaux} decimal suffixe="%" etroit />
+          </span>
+          <span className="pxl-op">=</span>
+          <span className="pxl-c">
+            <span className="pxl-lab">Prix HAI</span>
+            <SaisieMontant valeur={hai} onValide={onHai} />
+            <button type="button" className="pxl-raz" title="Revenir au dernier prix enregistré" onClick={onReinit}>
+              <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6" /><path d="M20 4v5h-5" /></svg>
+            </button>
+          </span>
+        </div>
+        <input
+          className="pxl-range" type="range" min={Math.round(reference * 0.7)} max={Math.round(reference * 1.3)} step={1000}
+          value={Math.min(Math.round(reference * 1.3), Math.max(Math.round(reference * 0.7), hai))}
+          onChange={(e) => onHai(Number(e.target.value))}
+          aria-label="Faire varier le prix"
+        />
+      </>
+    );
+  }
   // La molette couvre 30 % de part et d'autre du prix de référence : au-delà,
   // ce n'est plus une négociation, c'est un autre bien.
   const bas = Math.round(reference * 0.7);
@@ -84,6 +120,33 @@ function BlocPrix({
         onChange={(e) => onHai(Number(e.target.value))}
         aria-label="Faire varier le prix"
       />
+    </>
+  );
+}
+
+/** Une case chiffrée qui se saisit librement et ne recalcule qu'en sortant (ou Entrée). */
+function SaisieMontant({ valeur, onValide, decimal, suffixe, etroit }: {
+  valeur: number; onValide: (v: number) => void; decimal?: boolean; suffixe?: string; etroit?: boolean;
+}) {
+  const affiche = decimal ? fr1(valeur) : group(valeur);
+  const [brouillon, setBrouillon] = useState<string | null>(null);
+  const valider = () => {
+    if (brouillon === null) return;
+    const v = parse(brouillon);
+    setBrouillon(null);
+    if (v !== undefined && v >= 0) onValide(v);
+  };
+  return (
+    <>
+      <input
+        className={`pxl-in${etroit ? " etroit" : ""}`} inputMode={decimal ? "decimal" : "numeric"}
+        value={brouillon ?? affiche}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setBrouillon(e.target.value)}
+        onBlur={valider}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); valider(); } }}
+      />
+      {suffixe && <em>{suffixe}</em>}
     </>
   );
 }
@@ -129,14 +192,46 @@ function TableauRendement({
   );
 }
 
+/** Le mandat (ou la délégation) signé et en vigueur : son prix fait foi (#612). */
+type MandatPrix = { hai: number; nv: number; honos: number; taux: number; libelle: string };
+
+function mandatPrixDe(mandats: Record<string, unknown>[]): MandatPrix | null {
+  const signes = mandats.filter((m) =>
+    ["Vente", "Délégation"].includes(String(m.Type ?? "Vente"))
+    && (m.date_signature || m.pdf_signed)
+    && !["Annulé", "Expiré", "Vendu"].includes(String(m.Statut ?? "")));
+  const m = [...signes].sort((a, b) =>
+    String(b.date_signature ?? b["Created Date"] ?? "").localeCompare(String(a.date_signature ?? a["Created Date"] ?? "")))[0];
+  const hai = num(m?.prix_hai);
+  if (!m || !hai) return null;
+  const nvM = num(m.prix_nv);
+  const honos = num(m.honos_ttc) ?? (nvM ? hai - nvM : undefined);
+  const nv = nvM ?? (honos !== undefined ? hai - honos : undefined);
+  if (!nv || honos === undefined) return null;
+  const deleg = String(m.Type) === "Délégation";
+  return { hai, nv, honos, taux: (honos / nv) * 100, libelle: `${deleg ? "La délégation" : "Le mandat"}${m.numero ? ` n° ${S(m.numero)}` : ""}` };
+}
+
+/** Net vendeur et honoraires d'un HAI : au taux du mandat signé s'il s'agit
+ *  de lui (contractuel), sinon au barème, minimum compris (MAV, 03/11). */
+function ventiler(hai: number, taux: number, mandat: MandatPrix | null) {
+  if (mandat && Math.abs(taux - mandat.taux) < 0.05) {
+    const nv = Math.round(hai / (1 + taux / 100));
+    return { nv, honos: hai - nv };
+  }
+  const v = ventilerHai(hai, taux);
+  return { nv: v.nv, honos: v.honos };
+}
+
 /* ---------- Fenêtre « Nouveau prix » (#94) ---------- */
 
 function ModalePrix({
-  b, ctx, refs, depart, tauxHonos, propose, motifDepart, onFermer, onEnregistre,
+  b, ctx, refs, depart, tauxHonos, propose, motifDepart, onFermer, onEnregistre, mandat,
 }: {
   b: BienData; ctx: ContexteRendement;
   refs: { loyer?: number; prix?: number; renta?: number };
   depart: number; tauxHonos: number;
+  mandat: MandatPrix | null;
   /** Prix HAI proposé d'emblée — le prix arrêté par le propriétaire (#56). */
   propose?: number;
   motifDepart?: string;
@@ -149,11 +244,21 @@ function ModalePrix({
   const [motif, setMotif] = useState(motifDepart ?? MOTIFS_PRIX[0]);
   const [remarque, setRemarque] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
+  const [taux, setTaux] = useState(tauxHonos);
+  const [sansAvenant, setSansAvenant] = useState(false);
 
-  /* Le barème toujours, minimum compris (MAV, 03/11). */
-  const nv = ventilerHai(hai, tauxHonos).nv;
-  const honos = hai - nv;
+  const { nv, honos } = ventiler(hai, taux, mandat);
   const r = rendements(hai, ctx);
+  const plafonne = nv > 0 && Math.abs((honos / nv) * 100 - taux) > 0.05;
+  /* #612 : sous mandat signé, c'est le mandat qui fait foi. Un autre prix se
+     fait par avenant ; à défaut, on le dit, et il faut le justifier. */
+  const horsMandat = !!mandat && Math.abs(hai - mandat.hai) > 1;
+  const bloque = horsMandat && (!sansAvenant || !remarque.trim());
+  const edition = {
+    onNv: (v: number) => setHai(Math.round(v * (1 + taux / 100))),
+    onHonos: (h: number) => { if (nv > 0) setTaux((h / nv) * 100); setHai(nv + Math.round(h)); },
+    onTaux: (t: number) => { setTaux(t); setHai(Math.round(nv * (1 + t / 100))); },
+  };
 
   return (
     <Modale
@@ -161,7 +266,7 @@ function ModalePrix({
       pied={
         <>
           <span />
-          <button className="savebar-go" type="button" disabled={pending || hai <= 0}
+          <button className="savebar-go" type="button" disabled={pending || hai <= 0 || bloque}
             onClick={() =>
               start(async () => {
                 setErreur(null);
@@ -182,7 +287,18 @@ function ModalePrix({
       <div className="pxm-bien">
         <b>{b.ville}</b> — {b.adresse}
       </div>
-      <BlocPrix nv={nv} honos={honos} hai={hai} onHai={setHai} onReinit={() => setHai(depart)} reference={depart} />
+      <BlocPrix nv={nv} honos={honos} hai={hai} onHai={setHai} onReinit={() => { setHai(depart); setTaux(tauxHonos); }} reference={depart} edition={edition} />
+      {plafonne && <p className="px-simu">Honoraires ramenés au barème de l&apos;agence (minimum compris) : {fr1(nv > 0 ? (honos / nv) * 100 : 0)} %.</p>}
+      {horsMandat && mandat && (
+        <div className="px-mandat">
+          <b>{mandat.libelle} fixe {euros(mandat.hai)} HAI</b> ({euros(mandat.nv)} net vendeur + {euros(mandat.honos)} d&apos;honoraires, {fr1(mandat.taux)} %).
+          {" "}Un autre prix se fait par <b>avenant signé</b> : il se rédige dans l&apos;onglet Mandats, et le prix de la fiche suit à sa signature.
+          <div className="px-mandat-a">
+            <Link className="fbtn" href={`/bien/${String(b.im._id)}?ecran=mandats`}>Faire un avenant</Link>
+            <label><input type="checkbox" checked={sansAvenant} onChange={(e) => setSansAvenant(e.target.checked)} /> Changer le prix de la fiche sans avenant (expliquez pourquoi dans les remarques)</label>
+          </div>
+        </div>
+      )}
       <div className="pxt-row">
         <TableauRendement titre="Actuel" col={r.actuel} refs={refs} />
         <TableauRendement titre="Potentiel" col={r.potentiel} refs={refs} />
@@ -354,11 +470,14 @@ export function PrixEcran({ b }: {
     renta: num(sect["0 - renta _%"]),
   };
 
-  const dernier = b.prixHisto[0];
-  const prixEnBase = num(im.prix_hai) ?? num(dernier?.in_prix_hai) ?? 0;
+  const prixEnBase = num(im.prix_hai) ?? num(b.prixHisto[0]?.in_prix_hai) ?? 0;
+  /* La ligne d'historique du prix EN FICHE (une estimation faite sous mandat
+     laisse sa ligne sans changer le prix, #612). */
+  const dernier = b.prixHisto.find((p) => num(p.in_prix_hai) === prixEnBase) ?? b.prixHisto[0];
   const honosEnBase = num(im.prix_honos_ttc) ?? num(dernier?.in_honos_ttc) ?? 0;
   const nvEnBase = Math.max(0, prixEnBase - honosEnBase);
-  const tauxHonos = nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5;
+  const mandat = useMemo(() => mandatPrixDe(b.mandats), [b.mandats]);
+  const tauxHonos = mandat?.taux ?? (nvEnBase > 0 ? (honosEnBase / nvEnBase) * 100 : 5);
 
 
   /* Le taux d'occupation des pastilles de synthèse (#338). Il se compte en
@@ -377,7 +496,7 @@ export function PrixEcran({ b }: {
      (et qui, sur un lot préemptable, doit rester charge vendeur, §8.2). */
   const chargeHonos = useMemo(() => {
     const signes = b.mandats.filter(
-      (m) => String(m.Type ?? "Vente") === "Vente"
+      (m) => ["Vente", "Délégation"].includes(String(m.Type ?? "Vente"))
         && (m.date_signature || m.pdf_signed)
         && String(m.Statut ?? "") !== "Annulé",
     );
@@ -398,9 +517,8 @@ export function PrixEcran({ b }: {
     setHaiVu(prixEnBase);
     setHai(prixEnBase);
   }
-  /* Le barème toujours, minimum compris (MAV, 03/11). */
-  const nv = ventilerHai(hai, tauxHonos).nv;
-  const honos = hai - nv;
+  /* Le barème toujours, minimum compris (MAV, 03/11) — sauf le taux signé d'un mandat. */
+  const { nv, honos } = ventiler(hai, tauxHonos, mandat);
   const r = rendements(hai, ctx);
 
   /* Marge de négociation : le net vendeur minimum est une saisie. */
@@ -548,7 +666,7 @@ export function PrixEcran({ b }: {
 
       {modale && (
         <ModalePrix
-          b={b} ctx={ctx} refs={refs} depart={prixEnBase} tauxHonos={tauxHonos}
+          b={b} ctx={ctx} refs={refs} depart={prixEnBase} tauxHonos={tauxHonos} mandat={mandat}
           propose={duVendeur ?? undefined}
           motifDepart={duVendeur !== null ? "Prix souhaité par le vendeur" : undefined}
           onFermer={() => { setModale(false); setDuVendeur(null); }}

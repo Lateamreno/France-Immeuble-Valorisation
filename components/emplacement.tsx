@@ -476,8 +476,12 @@ function AdresseTab({ b }: { b: BienData }) {
             </a>
           ))}
           {lat !== undefined && lon !== undefined && (
+            /* #609 (MAV, 10/11) : « plus voyant, avec de la couleur et un picto ». */
             <button type="button" className="emp-lien auto" disabled={chargement || chargementGlobal} onClick={enrichir}>
-              {chargement || chargementGlobal ? "Recherche…" : "⟳ Remplir automatiquement"}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20 15 9M14 4v3M18.5 5.5l-2 2M20 10h-3M9.5 4.5l1.5 1.5" />
+              </svg>
+              {chargement || chargementGlobal ? "Recherche…" : "Remplir automatiquement"}
             </button>
           )}
           {avant && (
