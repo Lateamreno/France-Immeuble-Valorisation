@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getBien, getMandat, getOperation } from "@/lib/bubble/server";
 import { BienFiche } from "@/components/bien-fiche";
 import { MandatFiche } from "@/components/mandat-fiche";
@@ -33,6 +34,9 @@ export default async function MandatDansFiche({
       </div>
     );
   }
+  /* Une délégation de mandat n'a pas de fiche de rédaction : elle se lit et se
+     corrige dans l'onglet Mandats de la fiche (MAV, 10/11). */
+  if (d.m.delegation === true || String(d.m.Type ?? "") === "Délégation") redirect(`/bien/${id}?ecran=mandats`);
   const operation = await getOperation(id).catch(() => null);
   /* Le barème vient des Réglages de l'agence : sans ça, l'écran de réglage
      serait décoratif et le mandat continuerait sur les valeurs du code. */

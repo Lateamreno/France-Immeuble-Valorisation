@@ -4040,6 +4040,116 @@ export async function marquerMandatSigne(
   }
 }
 
+/* ---------------------------------------------------- Délégations de mandat
+ *
+ * MAV (10/11) : « j'ai reçu 2 délégations de mandat. J'aimerais que dans
+ * l'onglet mandat on puisse ajouter les délégations et que ça compte donc
+ * comme un mandat. On indique juste la date de signature, les honos et le
+ * pourcentage de partage d'honos puis on ajoute le mandat en PDF. »
+ *
+ * Une délégation est un `bo_mandat` comme les autres — même liste, même
+ * pastille « mandat signé », même diffusion — reconnaissable à `delegation`
+ * et à son type « Délégation ». Elle naît signée (Statut « En cours »,
+ * verrouillée) et prend un numéro au registre : le délégataire inscrit la
+ * délégation reçue dans son propre registre des mandats (Hoguet). Pas de
+ * mandant, pas de prix : ils sont chez l'agence délégante.
+ */
+type DelegationSaisie = { date: string; honos: number; partage: number };
+
+function lireDelegation(fd: FormData): DelegationSaisie | string {
+  const date = String(fd.get("date") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}/.test(date)) return "La date de signature est obligatoire.";
+  const nombre = (k: string) => {
+    const v = Number(String(fd.get(k) ?? "").replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(v) ? v : NaN;
+  };
+  const honos = nombre("honos");
+  if (!(honos > 0)) return "Indiquez les honoraires (en euros TTC).";
+  const partage = nombre("partage");
+  if (!(partage > 0 && partage <= 100)) return "Le partage des honoraires est un pourcentage entre 1 et 100.";
+  return { date, honos: Math.round(honos), partage: Math.round(partage * 100) / 100 };
+}
+
+async function deposerPdfDelegation(mandatId: string, fd: FormData): Promise<string | undefined> {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) return undefined;
+  if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) throw new Error("La délégation se dépose en PDF.");
+  const path = `mandats/${mandatId}/delegation-${Date.now()}-${safeName(file.name)}`;
+  await uploadToBucket(path, file);
+  return `/api/photo?s=${encodeURIComponent(path)}`;
+}
+
+export async function ajouterDelegation(immeubleId: string, fd: FormData) {
+  try {
+    const s = lireDelegation(fd);
+    if (typeof s === "string") return { ok: false as const, message: s };
+    const file = fd.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false as const, message: "Ajoutez le PDF de la délégation." };
+    const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+    if (!im) return { ok: false as const, message: "Immeuble introuvable." };
+    const id = newId();
+    const pdf = await deposerPdfDelegation(id, fd);
+    const now = new Date().toISOString();
+    const signee = new Date(`${s.date.slice(0, 10)}T12:00:00`).toISOString();
+    await rpc("bo_insert_doc", {
+      p_table: "bo_mandat",
+      p_id: id,
+      p_doc: {
+        IMMEUBLEs: [immeubleId],
+        AGENT: typeof im.AGENT === "string" && im.AGENT ? im.AGENT : null,
+        Type: "Délégation",
+        Type_exclu: "",
+        delegation: true,
+        Statut: "En cours",
+        date_signature: signee,
+        date_effet: signee,
+        honos_ttc: s.honos,
+        partage_honos_pct: s.partage,
+        pdf_signed: pdf,
+        locked: true,
+        "Created Date": now,
+        "Modified Date": now,
+      },
+    });
+    /* Le numéro au registre : séquentiel, immuable, sans trou (§8.1). */
+    await rpc("bo_reserve_mandat_numero", { p_id: id });
+    refresh(immeubleId);
+    revalidatePath("/mandats");
+    return { ok: true as const, id };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Corrige une délégation : date, honoraires, partage, et le PDF s'il est redéposé. Le numéro ne bouge pas. */
+export async function modifierDelegation(mandatId: string, immeubleId: string, fd: FormData) {
+  try {
+    const m = await bqOne("bo_mandat", mandatId).catch(() => null);
+    if (!m || m.delegation !== true) return { ok: false as const, message: "Délégation introuvable." };
+    const s = lireDelegation(fd);
+    if (typeof s === "string") return { ok: false as const, message: s };
+    const signee = new Date(`${s.date.slice(0, 10)}T12:00:00`).toISOString();
+    const pdf = await deposerPdfDelegation(mandatId, fd);
+    await rpc("bo_patch_doc", {
+      p_table: "bo_mandat",
+      p_id: mandatId,
+      p_patch: {
+        date_signature: signee,
+        date_effet: signee,
+        honos_ttc: s.honos,
+        partage_honos_pct: s.partage,
+        ...(pdf ? { pdf_signed: pdf } : {}),
+        "Modified Date": new Date().toISOString(),
+      },
+    });
+    refresh(immeubleId);
+    revalidatePath("/mandats");
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * Retour #580 : à la signature, le prix du mandat devient le prix de la fiche,
  * sans qu'on ait à passer par « Modifier le prix ». Il laisse sa ligne dans

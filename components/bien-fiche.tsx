@@ -34,6 +34,7 @@ import type { EstimationLecture } from "@/lib/bo/estimation-lecture";
 import { LocatifTabs, ONGLETS_LOCATIF } from "@/components/locatif";
 import { SuiviModal } from "@/components/suivi-modal";
 import { AddMandatButton } from "@/components/mandat-create";
+import { AjouterDelegation, ModifierDelegation, estDelegation, partFi } from "@/components/delegation";
 import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
@@ -2074,9 +2075,33 @@ function MandatsSection({ b, ouvert, onRevenir }: {
   return (
     <>
       <SectTitle icon={I.brief} title="Mandats" />
-      <AddMandatButton b={b} />
+      {/* MAV (10/11) : les délégations de mandat reçues comptent comme des mandats. */}
+      <div className="mdts-ajouts">
+        <AddMandatButton b={b} />
+        <AjouterDelegation immeubleId={String(b.im._id)} />
+      </div>
       {b.mandats.map((m) => {
         const st = String(m.Statut ?? "");
+        if (estDelegation(m)) {
+          const part = partFi(m);
+          return (
+            <Row key={m._id as string}>
+              <div className="grow">
+                <div className="t">Délégation de mandat {m.numero ? `· #${m.numero}` : "· Pas de numéro"}</div>
+                <div className="s">
+                  Signée le {dmy(m.date_signature) ?? "—"} · honos {euros(m.honos_ttc) ?? "n.c."}
+                  {m.partage_honos_pct !== undefined && m.partage_honos_pct !== null ? ` · partage ${String(m.partage_honos_pct).replace(".", ",")} %` : ""}
+                  {part !== undefined ? ` (${euros(part)} pour FI)` : ""}
+                </div>
+              </div>
+              <PastilleStatut statut={st} plein />
+              {typeof m.pdf_signed === "string" && m.pdf_signed && (
+                <a className="fbtn" href={(m.pdf_signed as string).replace(/^\/\//, "https://")} target="_blank" rel="noreferrer">PDF</a>
+              )}
+              <ModifierDelegation immeubleId={String(b.im._id)} m={m} />
+            </Row>
+          );
+        }
         /* #174 — « je suis ressorti du mandat pour faire des modifications
            dans le bien et je ne peux donc plus y accéder depuis la page
            mandat ». On y était déjà : le lien pointait sur l'adresse

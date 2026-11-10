@@ -104,7 +104,8 @@ export function statutCible(b: BienData, mandat: Record<string, unknown> | null)
  * et non annulé prime ; à défaut, le plus récent.
  */
 export function mandatEnVigueur(mandats: Record<string, unknown>[]): Record<string, unknown> | null {
-  const vente = mandats.filter((m) => String(m.Type ?? "Vente") === "Vente");
+  /* Une délégation de mandat reçue compte comme un mandat de vente (MAV, 10/11). */
+  const vente = mandats.filter((m) => ["Vente", "Délégation"].includes(String(m.Type ?? "Vente")));
   const signes = vente.filter(
     (m) => (m.date_signature || m.pdf_signed) && String(m.Statut ?? "") !== "Annulé",
   );
