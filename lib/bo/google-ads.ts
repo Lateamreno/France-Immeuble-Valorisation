@@ -181,29 +181,68 @@ export async function gaql(requete: string): Promise<Ligne[]> {
   return (Array.isArray(corps) ? corps : []).flatMap((lot: { results?: Ligne[] }) => lot.results ?? []);
 }
 
+/**
+ * Une écriture chez Google (lot 2) : `service` = campaignCriteria,
+ * adGroupCriteria, campaigns, campaignBudgets, ads. Ne passe QUE par
+ * lib/bo/google-ads-ecriture.ts, qui garde, applique et journalise.
+ * `essai` = validateOnly : Google vérifie sans rien changer.
+ */
+export async function muter(service: string, operations: unknown[], essai = false): Promise<string[]> {
+  const e = await etatAds();
+  if (!e.pret) throw new Error("Google Ads n'est pas branché.");
+  const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${e.compte}/${service}:mutate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${await jeton(e.mode)}`,
+      "Content-Type": "application/json",
+      ...(e.mcc ? { "login-customer-id": e.mcc } : {}),
+    },
+    body: JSON.stringify({ operations, validateOnly: essai }),
+    cache: "no-store",
+  });
+  const corps = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(erreurGoogle(r.status, corps));
+  return ((corps as { results?: { resourceName?: string }[] } | null)?.results ?? []).map((x) => x.resourceName ?? "");
+}
+
 /* ------------------------------------------------------- Lecture */
 
 const n = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v ? Number(v) : 0) || 0;
 const s = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
 const euros = (micros: unknown) => n(micros) / 1_000_000;
+const o = (v: unknown) => (v ?? {}) as Record<string, unknown>;
 
 export type Periode = { du: string; au: string; jours: number };
 
+/* Chaque objet porte sa `ressource` (le nom Google, ex. customers/1/campaigns/2) :
+   c'est elle que vise une modification. */
 export type Campagne = {
-  id: string; nom: string; statut: string; canal: string; budgetJour: number;
+  id: string; ressource: string; nom: string; statut: string; canal: string;
+  budgetJour: number; budgetRessource: string; budgetPartage: boolean;
+  /** PRESENCE = seulement les gens qui sont dans la zone ; PRESENCE_OR_INTEREST = aussi ceux qui s'y intéressent. */
+  zoneMode: string;
   impressions: number; clics: number; cout: number; conversions: number;
 };
+export type Groupe = { ressource: string; nom: string; campagne: string; campagneRessource: string; statut: string };
+export type Annonce = { ressource: string; groupe: string; campagne: string; statut: string; type: string; urls: string[]; titres: string[] };
 export type Jour = { date: string; cout: number; clics: number; conversions: number };
-export type TermeRecherche = { terme: string; statut: string; campagne: string; impressions: number; clics: number; cout: number; conversions: number };
-export type MotCle = { texte: string; correspondance: string; campagne: string; groupe: string; qualite: number | null; clics: number; cout: number; conversions: number };
-export type Zone = { campagne: string; nom: string; type: string; exclue: boolean; modulation: number | null };
+export type TermeRecherche = { terme: string; statut: string; campagne: string; campagneRessource: string; impressions: number; clics: number; cout: number; conversions: number };
+export type MotCle = {
+  ressource: string; texte: string; correspondance: string; statut: string;
+  campagne: string; groupe: string; groupeRessource: string; qualite: number | null;
+  clics: number; cout: number; conversions: number;
+};
+export type Zone = { ressource: string; campagne: string; campagneRessource: string; nom: string; type: string; exclue: boolean; modulation: number | null };
 export type ZonePerf = { nom: string; clics: number; cout: number; conversions: number };
-export type Exclusion = { texte: string; correspondance: string; portee: string };
+/** `ressource` absente : exclusion d'une liste partagée, à modifier dans Google Ads. */
+export type Exclusion = { ressource: string | null; texte: string; correspondance: string; portee: string };
 export type PageArrivee = { url: string; impressions: number; clics: number; cout: number; conversions: number };
 
 export type LectureAds = {
   compte: { nom: string; devise: string; fuseau: string; id: string } | null;
   campagnes: Campagne[];
+  groupes: Groupe[];
+  annonces: Annonce[];
   jours: Jour[];
   termes: TermeRecherche[];
   motsCles: MotCle[];
@@ -216,7 +255,7 @@ export type LectureAds = {
   lu: string;
 };
 
-const CORRESPONDANCE: Record<string, string> = { EXACT: "exact", PHRASE: "expression", BROAD: "large" };
+export const CORRESPONDANCE: Record<string, string> = { EXACT: "exact", PHRASE: "expression", BROAD: "large" };
 
 async function noms(ressources: string[]): Promise<Map<string, { nom: string; type: string }>> {
   const uniques = [...new Set(ressources.filter(Boolean))];
@@ -225,7 +264,7 @@ async function noms(ressources: string[]): Promise<Map<string, { nom: string; ty
     const lot = uniques.slice(i, i + 200).map((r) => `'${r.replace(/'/g, "")}'`).join(", ");
     const rows = await gaql(`SELECT geo_target_constant.resource_name, geo_target_constant.name, geo_target_constant.canonical_name, geo_target_constant.target_type FROM geo_target_constant WHERE geo_target_constant.resource_name IN (${lot})`);
     for (const r of rows) {
-      const g = r.geoTargetConstant ?? {};
+      const g = o(r.geoTargetConstant);
       /* « Hauts-de-Seine,Ile-de-France,France » → « Hauts-de-Seine, Ile-de-France » */
       const nom = (s(g.canonicalName) || s(g.name)).split(",").filter((x) => x && x !== "France").join(", ");
       out.set(s(g.resourceName), { nom, type: s(g.targetType) });
@@ -234,9 +273,25 @@ async function noms(ressources: string[]): Promise<Map<string, { nom: string; ty
   return out;
 }
 
+/** Les zones Google dont le nom contient `q` (France), pour en ajouter une. */
+export async function chercherZonesGoogle(q: string): Promise<{ ressource: string; nom: string; type: string }[]> {
+  const t = q.trim().replace(/['\\%]/g, "");
+  if (t.length < 2) return [];
+  const rows = await gaql(`SELECT geo_target_constant.resource_name, geo_target_constant.canonical_name, geo_target_constant.target_type, geo_target_constant.status FROM geo_target_constant WHERE geo_target_constant.country_code = 'FR' AND geo_target_constant.name LIKE '%${t}%' LIMIT 25`);
+  return rows.map((r) => {
+    const g = o(r.geoTargetConstant);
+    return { ressource: s(g.resourceName), nom: s(g.canonicalName).split(",").filter((x) => x && x !== "France").join(", "), type: s(g.targetType), statut: s(g.status) };
+  }).filter((z) => z.statut !== "REMOVAL_PLANNED").map((z) => ({ ressource: z.ressource, nom: z.nom, type: z.type }));
+}
+
 const cache = new Map<string, { quand: number; valeur: LectureAds }>();
 
-/** Tout ce que le lot 1 montre, lu en une fois (10 minutes de cache par période). */
+/** Après une modification : la prochaine lecture repart de Google. */
+export function viderCacheLecture() {
+  cache.clear();
+}
+
+/** Tout ce que montre la page, lu en une fois (10 minutes de cache par période). */
 export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
   const cleCache = `${p.du}|${p.au}`;
   const deja = cache.get(cleCache);
@@ -253,58 +308,70 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
     }
   };
 
-  const [compte, campagnes, jours, termes, motsCles, zonesBrutes, zonesPerfBrutes, exclusions, pages] = await Promise.all([
+  /* Deux lectures par objet : sa STRUCTURE (sans date, pour voir aussi ce qui
+     n'a rien dépensé) et ses CHIFFRES sur la période, recollés par ressource. */
+  const [compte, structCampagnes, chiffresCampagnes, groupes, annonces, jours, termes, structMotsCles, chiffresMotsCles, zonesBrutes, zonesPerfBrutes, exclusions, pages] = await Promise.all([
     essai("compte", async () => {
       const [r] = await gaql("SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer");
-      const c = r?.customer ?? {};
+      const c = o(r?.customer);
       return { id: s(c.id), nom: s(c.descriptiveName), devise: s(c.currencyCode), fuseau: s(c.timeZone) };
     }, null),
-    essai("campagnes", async () => (await gaql(
-      `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${quand} AND campaign.status != 'REMOVED'`,
-    )).map((r): Campagne => ({
-      id: s(r.campaign?.id), nom: s(r.campaign?.name), statut: s(r.campaign?.status), canal: s(r.campaign?.advertisingChannelType),
-      budgetJour: euros(r.campaignBudget?.amountMicros),
-      impressions: n(r.metrics?.impressions), clics: n(r.metrics?.clicks), cout: euros(r.metrics?.costMicros), conversions: n(r.metrics?.conversions),
-    })).sort((a, b) => b.cout - a.cout), [] as Campagne[]),
+    essai("campagnes", () => gaql(
+      "SELECT campaign.resource_name, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign.geo_target_type_setting.positive_geo_target_type, campaign_budget.resource_name, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign WHERE campaign.status != 'REMOVED'",
+    ), [] as Ligne[]),
+    essai("campagnes", () => gaql(
+      `SELECT campaign.resource_name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM campaign WHERE ${quand} AND campaign.status != 'REMOVED'`,
+    ), [] as Ligne[]),
+    essai("groupes", async () => (await gaql(
+      "SELECT ad_group.resource_name, ad_group.name, ad_group.status, campaign.name, campaign.resource_name FROM ad_group WHERE ad_group.status != 'REMOVED' AND campaign.status != 'REMOVED'",
+    )).map((r): Groupe => ({
+      ressource: s(r.adGroup?.resourceName), nom: s(r.adGroup?.name), statut: s(r.adGroup?.status),
+      campagne: s(r.campaign?.name), campagneRessource: s(r.campaign?.resourceName),
+    })), [] as Groupe[]),
+    essai("annonces", async () => (await gaql(
+      "SELECT ad_group_ad.ad.resource_name, ad_group_ad.ad.type, ad_group_ad.ad.final_urls, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.status, ad_group.name, campaign.name FROM ad_group_ad WHERE ad_group_ad.status != 'REMOVED' AND campaign.status != 'REMOVED'",
+    )).map((r): Annonce => {
+      const ad = o(o(r.adGroupAd).ad);
+      return {
+        ressource: s(ad.resourceName), type: s(ad.type), statut: s(o(r.adGroupAd).status),
+        urls: (Array.isArray(ad.finalUrls) ? ad.finalUrls : []).map(s),
+        titres: (Array.isArray(o(ad.responsiveSearchAd).headlines) ? (o(ad.responsiveSearchAd).headlines as unknown[]) : []).map((h) => s(o(h).text)).filter(Boolean),
+        groupe: s(r.adGroup?.name), campagne: s(r.campaign?.name),
+      };
+    }), [] as Annonce[]),
     essai("jours", async () => (await gaql(
       `SELECT segments.date, metrics.cost_micros, metrics.clicks, metrics.conversions FROM customer WHERE ${quand}`,
     )).map((r): Jour => ({ date: s(r.segments?.date), cout: euros(r.metrics?.costMicros), clics: n(r.metrics?.clicks), conversions: n(r.metrics?.conversions) }))
       .sort((a, b) => a.date.localeCompare(b.date)), [] as Jour[]),
     essai("termes", async () => (await gaql(
-      `SELECT search_term_view.search_term, search_term_view.status, campaign.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view WHERE ${quand} ORDER BY metrics.cost_micros DESC LIMIT 200`,
+      `SELECT search_term_view.search_term, search_term_view.status, campaign.name, campaign.resource_name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view WHERE ${quand} ORDER BY metrics.cost_micros DESC LIMIT 200`,
     )).map((r): TermeRecherche => ({
-      terme: s(r.searchTermView?.searchTerm), statut: s(r.searchTermView?.status), campagne: s(r.campaign?.name),
+      terme: s(r.searchTermView?.searchTerm), statut: s(r.searchTermView?.status), campagne: s(r.campaign?.name), campagneRessource: s(r.campaign?.resourceName),
       impressions: n(r.metrics?.impressions), clics: n(r.metrics?.clicks), cout: euros(r.metrics?.costMicros), conversions: n(r.metrics?.conversions),
     })), [] as TermeRecherche[]),
-    essai("motsCles", async () => (await gaql(
-      `SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.quality_info.quality_score, campaign.name, ad_group.name, metrics.clicks, metrics.cost_micros, metrics.conversions FROM keyword_view WHERE ${quand} AND ad_group_criterion.status != 'REMOVED' ORDER BY metrics.cost_micros DESC LIMIT 200`,
-    )).map((r): MotCle => {
-      const k = (r.adGroupCriterion?.keyword ?? {}) as Record<string, unknown>;
-      const q = (r.adGroupCriterion?.qualityInfo ?? {}) as Record<string, unknown>;
-      return {
-        texte: s(k.text), correspondance: CORRESPONDANCE[s(k.matchType)] ?? s(k.matchType).toLowerCase(),
-        campagne: s(r.campaign?.name), groupe: s(r.adGroup?.name), qualite: q.qualityScore == null ? null : n(q.qualityScore),
-        clics: n(r.metrics?.clicks), cout: euros(r.metrics?.costMicros), conversions: n(r.metrics?.conversions),
-      };
-    }), [] as MotCle[]),
-    essai("zones", async () => gaql(
-      "SELECT campaign.name, campaign_criterion.type, campaign_criterion.location.geo_target_constant, campaign_criterion.proximity.radius, campaign_criterion.proximity.radius_units, campaign_criterion.proximity.address.city_name, campaign_criterion.negative, campaign_criterion.bid_modifier FROM campaign_criterion WHERE campaign_criterion.type IN ('LOCATION', 'PROXIMITY') AND campaign.status != 'REMOVED'",
+    essai("motsCles", () => gaql(
+      "SELECT ad_group_criterion.resource_name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status, ad_group_criterion.quality_info.quality_score, campaign.name, ad_group.name, ad_group.resource_name FROM ad_group_criterion WHERE ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.negative = FALSE AND ad_group_criterion.status != 'REMOVED' AND campaign.status != 'REMOVED' AND ad_group.status != 'REMOVED'",
     ), [] as Ligne[]),
-    essai("zonesPerf", async () => gaql(
+    essai("motsCles", () => gaql(
+      `SELECT ad_group_criterion.resource_name, metrics.clicks, metrics.cost_micros, metrics.conversions FROM keyword_view WHERE ${quand}`,
+    ), [] as Ligne[]),
+    essai("zones", () => gaql(
+      "SELECT campaign.name, campaign.resource_name, campaign_criterion.resource_name, campaign_criterion.type, campaign_criterion.location.geo_target_constant, campaign_criterion.proximity.radius, campaign_criterion.proximity.radius_units, campaign_criterion.proximity.address.city_name, campaign_criterion.negative, campaign_criterion.bid_modifier FROM campaign_criterion WHERE campaign_criterion.type IN ('LOCATION', 'PROXIMITY') AND campaign.status != 'REMOVED'",
+    ), [] as Ligne[]),
+    essai("zonesPerf", () => gaql(
       `SELECT segments.geo_target_department, metrics.clicks, metrics.cost_micros, metrics.conversions FROM geographic_view WHERE ${quand}`,
     ), [] as Ligne[]),
     essai("exclusions", async () => {
       const [camp, groupe, listes] = await Promise.all([
-        gaql("SELECT campaign.name, campaign_criterion.keyword.text, campaign_criterion.keyword.match_type FROM campaign_criterion WHERE campaign_criterion.type = 'KEYWORD' AND campaign_criterion.negative = TRUE AND campaign.status != 'REMOVED'"),
-        gaql("SELECT campaign.name, ad_group.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type FROM ad_group_criterion WHERE ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.negative = TRUE AND ad_group_criterion.status != 'REMOVED'"),
+        gaql("SELECT campaign.name, campaign_criterion.resource_name, campaign_criterion.keyword.text, campaign_criterion.keyword.match_type FROM campaign_criterion WHERE campaign_criterion.type = 'KEYWORD' AND campaign_criterion.negative = TRUE AND campaign.status != 'REMOVED'"),
+        gaql("SELECT campaign.name, ad_group.name, ad_group_criterion.resource_name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type FROM ad_group_criterion WHERE ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.negative = TRUE AND ad_group_criterion.status != 'REMOVED'"),
         gaql("SELECT shared_set.name, shared_criterion.keyword.text, shared_criterion.keyword.match_type FROM shared_criterion WHERE shared_set.type = 'NEGATIVE_KEYWORDS' AND shared_set.status = 'ENABLED'"),
       ]);
-      const kw = (k: unknown) => (k ?? {}) as Record<string, unknown>;
-      const m = (k: unknown) => CORRESPONDANCE[s(kw(k).matchType)] ?? "";
+      const m = (k: unknown) => CORRESPONDANCE[s(o(k).matchType)] ?? "";
       return [
-        ...listes.map((r): Exclusion => ({ texte: s(kw(r.sharedCriterion?.keyword).text), correspondance: m(r.sharedCriterion?.keyword), portee: `Liste « ${s(r.sharedSet?.name)} »` })),
-        ...camp.map((r): Exclusion => ({ texte: s(kw(r.campaignCriterion?.keyword).text), correspondance: m(r.campaignCriterion?.keyword), portee: s(r.campaign?.name) })),
-        ...groupe.map((r): Exclusion => ({ texte: s(kw(r.adGroupCriterion?.keyword).text), correspondance: m(r.adGroupCriterion?.keyword), portee: `${s(r.campaign?.name)} › ${s(r.adGroup?.name)}` })),
+        ...listes.map((r): Exclusion => ({ ressource: null, texte: s(o(r.sharedCriterion?.keyword).text), correspondance: m(r.sharedCriterion?.keyword), portee: `Liste « ${s(r.sharedSet?.name)} »` })),
+        ...camp.map((r): Exclusion => ({ ressource: s(r.campaignCriterion?.resourceName), texte: s(o(r.campaignCriterion?.keyword).text), correspondance: m(r.campaignCriterion?.keyword), portee: s(r.campaign?.name) })),
+        ...groupe.map((r): Exclusion => ({ ressource: s(r.adGroupCriterion?.resourceName), texte: s(o(r.adGroupCriterion?.keyword).text), correspondance: m(r.adGroupCriterion?.keyword), portee: `${s(r.campaign?.name)} › ${s(r.adGroup?.name)}` })),
       ].filter((x) => x.texte);
     }, [] as Exclusion[]),
     essai("pages", async () => (await gaql(
@@ -315,23 +382,53 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
     })), [] as PageArrivee[]),
   ]);
 
+  const chiffresC = new Map(chiffresCampagnes.map((r) => [s(r.campaign?.resourceName), o(r.metrics)]));
+  const campagnes = structCampagnes.map((r): Campagne => {
+    const c = o(r.campaign);
+    const b = o(r.campaignBudget);
+    const m = chiffresC.get(s(c.resourceName)) ?? {};
+    return {
+      id: s(c.id), ressource: s(c.resourceName), nom: s(c.name), statut: s(c.status), canal: s(c.advertisingChannelType),
+      budgetJour: euros(b.amountMicros), budgetRessource: s(b.resourceName), budgetPartage: b.explicitlyShared === true,
+      zoneMode: s(o(c.geoTargetTypeSetting).positiveGeoTargetType),
+      impressions: n(m.impressions), clics: n(m.clicks), cout: euros(m.costMicros), conversions: n(m.conversions),
+    };
+  }).sort((a, b) => b.cout - a.cout || a.nom.localeCompare(b.nom));
+
+  const chiffresK = new Map(chiffresMotsCles.map((r) => [s(r.adGroupCriterion?.resourceName), o(r.metrics)]));
+  const motsCles = structMotsCles.map((r): MotCle => {
+    const k = o(r.adGroupCriterion);
+    const kw = o(k.keyword);
+    const q = o(k.qualityInfo);
+    const m = chiffresK.get(s(k.resourceName)) ?? {};
+    return {
+      ressource: s(k.resourceName), texte: s(kw.text), correspondance: CORRESPONDANCE[s(kw.matchType)] ?? s(kw.matchType).toLowerCase(),
+      statut: s(k.status), campagne: s(r.campaign?.name), groupe: s(r.adGroup?.name), groupeRessource: s(r.adGroup?.resourceName),
+      qualite: q.qualityScore == null ? null : n(q.qualityScore),
+      clics: n(m.clicks), cout: euros(m.costMicros), conversions: n(m.conversions),
+    };
+  }).sort((a, b) => b.cout - a.cout || a.texte.localeCompare(b.texte));
+
   /* Les zones arrivent en identifiants Google (geoTargetConstants/1006094) :
      un seul aller-retour pour leur donner un nom. */
   const geo = await essai("zones", () => noms([
-    ...zonesBrutes.map((r) => s((r.campaignCriterion?.location as Record<string, unknown> | undefined)?.geoTargetConstant)),
+    ...zonesBrutes.map((r) => s(o(r.campaignCriterion?.location).geoTargetConstant)),
     ...zonesPerfBrutes.map((r) => s(r.segments?.geoTargetDepartment)),
   ]), new Map<string, { nom: string; type: string }>());
 
   const zones = zonesBrutes.map((r): Zone => {
-    const c = r.campaignCriterion ?? {};
-    const prox = c.proximity as Record<string, unknown> | undefined;
-    const ressource = s((c.location as Record<string, unknown> | undefined)?.geoTargetConstant);
+    const c = o(r.campaignCriterion);
+    const prox = c.proximity ? o(c.proximity) : undefined;
+    const ressource = s(o(c.location).geoTargetConstant);
     const g = geo.get(ressource);
     const nom = prox
-      ? `${s((prox.address as Record<string, unknown> | undefined)?.cityName) || "Point"} + ${n(prox.radius)} ${s(prox.radiusUnits) === "MILES" ? "mi" : "km"}`
+      ? `${s(o(prox.address).cityName) || "Point"} + ${n(prox.radius)} ${s(prox.radiusUnits) === "MILES" ? "mi" : "km"}`
       : g?.nom ?? ressource;
     const mod = c.bidModifier == null ? null : n(c.bidModifier);
-    return { campagne: s(r.campaign?.name), nom, type: prox ? "Rayon" : g?.type ?? "", exclue: c.negative === true, modulation: mod };
+    return {
+      ressource: s(c.resourceName), campagne: s(r.campaign?.name), campagneRessource: s(r.campaign?.resourceName),
+      nom, type: prox ? "Rayon" : g?.type ?? "", exclue: c.negative === true, modulation: mod,
+    };
   });
 
   const parDep = new Map<string, ZonePerf>();
@@ -344,7 +441,7 @@ export async function lireAds(p: Periode, frais = false): Promise<LectureAds> {
   }
 
   const valeur: LectureAds = {
-    compte, campagnes, jours, termes, motsCles, zones,
+    compte, campagnes, groupes, annonces, jours, termes, motsCles, zones,
     zonesPerf: [...parDep.values()].sort((a, b) => b.cout - a.cout),
     exclusions, pages, erreurs, lu: new Date().toISOString(),
   };
