@@ -231,7 +231,18 @@ export function CarteProposition({
           {p.stop && ouverte && <span className="cfc-num rouge">Relances coupées</span>}
           {/* La réponse SMS de la personne, remontée par MailingVox (MAV, 28/09) :
               « Oui » en vert, « Non » en rouge, le reste tel quel. */}
-          {p.retourSms && (
+          {/* MAV (10/11) : les boutons touchés sur la carte RCS, chacun le sien. */}
+          {p.rcsDossierLe && (
+            <span className="cfc-rcs dossier" title={`A touché « Télécharger le dossier » sur la carte RCS le ${jourHeure(p.rcsDossierLe)}`}>
+              Dossier téléchargé (RCS) · {jourHeure(p.rcsDossierLe)}
+            </span>
+          )}
+          {p.rcsInteresseLe && (
+            <span className="cfc-rcs interesse" title={`A touché « Intéressé » sur la carte RCS le ${jourHeure(p.rcsInteresseLe)}`}>
+              Intéressé (RCS) · {jourHeure(p.rcsInteresseLe)}
+            </span>
+          )}
+          {p.retourSms && !(/^(t[ée]l[ée]charger le dossier|int[ée]ress[ée])$/i.test(p.retourSms.texte.trim()) && (p.rcsDossierLe || p.rcsInteresseLe)) && (
             <span className={`cfc-sms${/^\s*oui\b/i.test(p.retourSms.texte) ? " oui" : /^\s*non\b/i.test(p.retourSms.texte) ? " non" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
               title={`Réponse SMS${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
               <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H8l-4 4V5z" /></svg>
@@ -610,6 +621,14 @@ export function categorieProposition(p: PropositionLigne): Exclude<VuePropositio
   return "en_cours";
 }
 
+/** « 10/11 à 09:32 » : le jour et l'heure d'un geste, heure de Paris. */
+const jourHeure = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).replace(" ", " à ")
+    : iso;
+};
+
 const VUES_PROP: [VuePropositions, string, string][] = [
   ["toutes", "Toutes", "gris"], ["en_cours", "En cours", "vert"], ["refusees", "Refusées", "rouge"],
   ["terminees", "Terminées", "gris"], ["archivees", "Archivées", "gris"],
@@ -667,6 +686,8 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   useMemoireUrl("props", vue, "en_cours", { empiler: true, valides: VUES_PROPOSITIONS, sur: setVue });
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<"date" | "classe">("date");
+  /* MAV (10/11) : n'afficher que ceux qui ont touché un bouton de la carte RCS. */
+  const [filtreRcs, setFiltreRcs] = useState<"" | "dossier" | "interesse">("");
   const [page, setPage] = useState(1);
   const [taille, setTaille] = useState(10);
   const [maintenant] = useState(() => Date.now());
@@ -699,6 +720,8 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
     const qq = q.trim().toLowerCase();
     const liste = (lignes ?? []).filter((p) => {
       if (vue !== "toutes" && categorieProposition(p) !== vue) return false;
+      if (filtreRcs === "dossier" && !p.rcsDossierLe) return false;
+      if (filtreRcs === "interesse" && !p.rcsInteresseLe) return false;
       if (!qq) return true;
       return [p.contact?.nom, p.contact?.email, p.contact?.tel, p.email, p.contact?.qualite, p.commentaire, p.motif]
         .filter(Boolean).join(" ").toLowerCase().includes(qq);
@@ -711,7 +734,9 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
        soit affichée en premier, et ainsi de suite à chaque retour écrit » :
        le dernier retour noté passe en tête, les autres gardent leur ordre. */
     return [...liste].sort((a, b) => (b.noteLe ?? "").localeCompare(a.noteLe ?? ""));
-  }, [lignes, vue, q, tri]);
+  }, [lignes, vue, q, tri, filtreRcs]);
+  const nbDossierRcs = (lignes ?? []).filter((p) => p.rcsDossierLe).length;
+  const nbInteresseRcs = (lignes ?? []).filter((p) => p.rcsInteresseLe).length;
   const tranche = filtrees.slice((page - 1) * taille, page * taille);
 
   /** La relance d'une personne, pour ce bien : un e-mail, et le SMS si demandé. */
@@ -786,6 +811,24 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
           )}
         </div>
         <VuesPropositions lignes={lignes ?? []} vue={vue} onVue={(v) => { setVue(v); setPage(1); }} />
+        {(nbDossierRcs > 0 || nbInteresseRcs > 0) && (
+          <div className="lstx-sw rcs-filtre" role="group" aria-label="Boutons RCS">
+            {nbDossierRcs > 0 && (
+              <button type="button" className={filtreRcs === "dossier" ? "on" : undefined}
+                onClick={() => { setFiltreRcs((f) => (f === "dossier" ? "" : "dossier")); setPage(1); }}
+                title="Ceux qui ont touché « Télécharger le dossier » sur la carte RCS">
+                Dossier téléchargé <span className="n">{nbDossierRcs}</span>
+              </button>
+            )}
+            {nbInteresseRcs > 0 && (
+              <button type="button" className={filtreRcs === "interesse" ? "on" : undefined}
+                onClick={() => { setFiltreRcs((f) => (f === "interesse" ? "" : "interesse")); setPage(1); }}
+                title="Ceux qui ont touché « Intéressé » sur la carte RCS">
+                Intéressé (RCS) <span className="n">{nbInteresseRcs}</span>
+              </button>
+            )}
+          </div>
+        )}
         <select className="pgs" value={tri} onChange={(e) => setTri(e.target.value as "date" | "classe")} title="Tri">
           <option value="date">Tri : date d&apos;envoi</option>
           <option value="classe">Tri : classe A → D</option>

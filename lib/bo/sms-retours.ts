@@ -154,7 +154,14 @@ export async function propositionDe(numero: string, campagne: string | null, sou
 
   if (propositionId) {
     const now = new Date().toISOString();
+    /* MAV (10/11) : « pour les RCS, on peut mettre les clients qui ont cliqué
+       sur Télécharger le dossier ? ». Chaque bouton laisse sa propre trace : la
+       dernière réponse ne s'écrase plus l'une l'autre (un « Intéressé » après
+       un téléchargement effaçait le téléchargement). */
+    const bouton = /t[ée]l[ée]charger le dossier/i.test(texte) ? { rcs_dossier_le: now }
+      : /^\s*int[ée]ress[ée]\s*$/i.test(texte) ? { rcs_interesse_le: now } : {};
     await patcher("bo_proposition", propositionId, {
+      ...bouton,
       retour_sms: texte.slice(0, 1000),
       retour_sms_le: now,
       retour_sms_lu: false,
