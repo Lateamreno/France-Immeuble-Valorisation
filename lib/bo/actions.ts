@@ -5938,7 +5938,7 @@ export async function setPropositionStatut(
         ? {
             Statut: "Refusée (sans offre)", motif_refus: motif ?? null, date_fin: now,
             stop_relances_yn: true,
-            ...(precisions?.trim() ? { commentaire: precisions.trim() } : {}),
+            ...(precisions?.trim() ? { commentaire: precisions.trim(), commentaire_le: now } : {}),
           }
         : { Statut: "Envoyée", motif_refus: null, date_fin: null, stop_relances_yn: false };
   await rpc("bo_patch_doc", {

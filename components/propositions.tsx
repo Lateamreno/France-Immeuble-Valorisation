@@ -731,9 +731,11 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       liste.sort((a, b) => rang(a.contact?.note) - rang(b.contact?.note));
     }
     /* Retour #437 — « si je mets un retour écrit, je veux que la proposition
-       soit affichée en premier, et ainsi de suite à chaque retour écrit » :
-       le dernier retour noté passe en tête, les autres gardent leur ordre. */
-    return [...liste].sort((a, b) => (b.noteLe ?? "").localeCompare(a.noteLe ?? ""));
+       soit affichée en premier, et ainsi de suite à chaque retour écrit ».
+       MAV (12/11) : pareil pour ceux qui répondent par SMS ou RCS — le dernier
+       retour, quel qu'en soit le canal, passe en tête ; les autres gardent
+       leur ordre. */
+    return [...liste].sort((a, b) => (b.retourLe ?? b.noteLe ?? "").localeCompare(a.retourLe ?? a.noteLe ?? ""));
   }, [lignes, vue, q, tri, filtreRcs]);
   const nbDossierRcs = (lignes ?? []).filter((p) => p.rcsDossierLe).length;
   const nbInteresseRcs = (lignes ?? []).filter((p) => p.rcsInteresseLe).length;
