@@ -29,7 +29,7 @@ import {
 } from "@/lib/bo/mail-commercialisation";
 import { controlerEnvoi, domaineSuspect, peserPiecesJointes } from "@/lib/bo/controle-envoi";
 import { horsCreneauLegal } from "@/lib/bo/creneau-legal";
-import { introVersCarte, longueurRepli, refusRepli } from "@/lib/bo/rcs-texte";
+import { introVersCarte, longueurRepli, refusRepli, titreVersCarte, TITRE_MAX } from "@/lib/bo/rcs-texte";
 import { oublier, useMemoire } from "@/lib/memoire";
 import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
@@ -71,7 +71,9 @@ export function AssistantCommercialisation({
      Vide = le texte fabriqué par le BO. */
   const [rcsIntro, setRcsIntro] = useMemoire(`${memo}:rcs-intro`, "");
   const [rcsRepli, setRcsRepli] = useMemoire(`${memo}:rcs-repli`, "");
-  const textesRcs = { intro: rcsIntro.trim() || undefined, repli: rcsRepli.trim() || undefined };
+  /* MAV (12/11) : « modifier les RCS dans la commercialisation, notamment le titre ». */
+  const [rcsTitre, setRcsTitre] = useMemoire(`${memo}:rcs-titre`, "");
+  const textesRcs = { titre: rcsTitre.trim() || undefined, intro: rcsIntro.trim() || undefined, repli: rcsRepli.trim() || undefined };
   /* MAV (09/11) : « je veux que les propositions se créent que quand l'e-mail
      au moins a été envoyé ». L'étape Acheteurs ne crée plus rien : elle
      valide la liste, et c'est l'envoi (ou la programmation) des e-mails qui
@@ -394,6 +396,7 @@ export function AssistantCommercialisation({
   const carteRcs: CarteRcsVue | null = carteBrute
     ? {
       ...carteBrute,
+      titre: (rcsTitre.trim() && titreVersCarte(rcsTitre)) || carteBrute.titreAuto || carteBrute.titre,
       texte: carteBrute.suite !== undefined && rcsIntro.trim()
         ? [introVersCarte(rcsIntro), carteBrute.suite].filter(Boolean).join("<br><br>")
         : carteBrute.texte,
@@ -462,6 +465,15 @@ export function AssistantCommercialisation({
     <div className="asst-rcs-ed">
       <TelephoneRcs carte={carteRcs} />
       <label className="asst-rcs-champ">
+        <span className="mlab">Titre de la carte</span>
+        <input className="min" value={rcsTitre || carteRcs.titreAuto || carteRcs.titre} maxLength={TITRE_MAX}
+          onChange={(e) => setRcsTitre(e.target.value)} />
+        <span className="asst-rcs-compte">{carteRcs.titre.length} / {TITRE_MAX} caractères</span>
+        {rcsTitre.trim() && (
+          <button type="button" className="fadd" onClick={() => setRcsTitre("")}>Revenir au titre d&apos;origine</button>
+        )}
+      </label>
+      <label className="asst-rcs-champ">
         <span className="mlab">Texte de la carte</span>
         <textarea className="min" rows={5} value={rcsIntro || carteRcs.intro || ""}
           onChange={(e) => setRcsIntro(e.target.value)} />
@@ -481,7 +493,7 @@ export function AssistantCommercialisation({
         )}
       </label>
       <div className="asst-note">
-        La photo, le titre, les chiffres, votre signature et les boutons suivent le dossier : ils ne se
+        La photo, les chiffres, votre signature et les boutons suivent le dossier : ils ne se
         modifient pas ici. Retouchez-les à la source (étape Dossier, photo principale).
       </div>
     </div>

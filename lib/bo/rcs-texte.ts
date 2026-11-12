@@ -1,10 +1,18 @@
 // Les textes retouchables de la carte RCS (MAV, 09/11) : l'accroche et le SMS
-// de repli. Module pur, partagé par le serveur et par l'écran (compteur,
-// contrôle avant envoi) — rcs.ts, lui, tire sharp et ne descend pas au
+// de repli, et le titre depuis le 12/11. Module pur, partagé par le serveur et
+// par l'écran (compteur, contrôle avant envoi) — rcs.ts, lui, tire sharp et ne descend pas au
 // navigateur.
 
 /** Le nombre de caractères facturés d'un SMS de repli (doc MailingVox : ces signes comptent double). */
 export const longueurRepli = (t: string) => [...t].reduce((s, c) => s + ("|^€{}[~]\\".includes(c) ? 2 : 1), 0);
+
+/** Le titre de la carte : 200 caractères au plus (limite RCS d'une carte riche). */
+export const TITRE_MAX = 200;
+
+/** Le titre saisi à l'écran : une seule ligne, sans balise. */
+export function titreVersCarte(t: string): string {
+  return t.replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, TITRE_MAX);
+}
 
 /** L'accroche saisie à l'écran, au format MailingVox : pas de balise, `<br>` aux retours à la ligne. */
 export function introVersCarte(t: string): string {
