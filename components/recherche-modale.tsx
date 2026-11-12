@@ -183,12 +183,22 @@ function ChoixMultiple({
     setSaisie("");
     setOuvert(false);
   };
-  /* Entrée valide la première proposition — c'est ce qu'on attend d'une
-     prédiction. En saisie libre, à défaut de proposition, on prend le texte. */
+  /* Retour #623 — « je peux pas ajouter des villes ici ». Une ville ne
+     s'ajoutait qu'avec Entrée, et seulement si rien du référentiel ne lui
+     ressemblait : « Saint-Denis » donnait le 93 (Seine-Saint-Denis), et rien à
+     l'écran ne disait qu'on pouvait ajouter une ville. En saisie libre, la
+     liste propose donc toujours « Ajouter la ville … », et Entrée ne prend une
+     proposition du référentiel que si elle COMMENCE par ce qu'on a tapé
+     (« seine-saint » → 93, « 93 » → 93) ; sinon, c'est la ville. */
+  const texte = saisie.trim();
+  const dejaLa = valeur.some((x) => clefTexte(x) === clefTexte(texte));
+  const exacte = options.some((o) => clefTexte(o.cle) === q || clefTexte(o.nom) === q);
+  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte ? texte : null;
+  const commencePar = propositions.find((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q));
   const valider = () => {
+    if (commencePar) return retenir(commencePar.cle);
+    if (ajoutLibre) return retenir(ajoutLibre);
     if (propositions[0]) return retenir(propositions[0].cle);
-    const v = saisie.trim();
-    if (libre && v && !valeur.some((x) => x.toLowerCase() === v.toLowerCase())) retenir(v);
   };
 
   return (
@@ -224,8 +234,15 @@ function ChoixMultiple({
         <button type="button" className={`rmx-chev${ouvert ? " on" : ""}`} tabIndex={-1}
           aria-label={ouvert ? "Fermer la liste" : "Ouvrir la liste"}
           onMouseDown={(e) => { e.preventDefault(); setOuvert((v) => !v); }}>▾</button>
-        {ouvert && propositions.length > 0 && (
+        {ouvert && (propositions.length > 0 || ajoutLibre) && (
           <div className="rmx-liste">
+            {ajoutLibre && !commencePar && (
+              <button type="button" className="rmx-o rmx-ajout"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(ajoutLibre)}>
+                + Ajouter la ville « {ajoutLibre} »
+              </button>
+            )}
             {propositions.map((o) => (
               <button key={o.cle} type="button" className="rmx-o"
                 onMouseDown={(e) => e.preventDefault()}
@@ -234,6 +251,13 @@ function ChoixMultiple({
                 {o.nom}
               </button>
             ))}
+            {ajoutLibre && commencePar && (
+              <button type="button" className="rmx-o rmx-ajout"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(ajoutLibre)}>
+                + Ajouter la ville « {ajoutLibre} »
+              </button>
+            )}
           </div>
         )}
       </div>
