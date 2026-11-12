@@ -21,7 +21,7 @@ import { departement } from "@/lib/diffusion";
 import { etatLien, lienDuDossier } from "./lien-dossier";
 import { chiffresDossier } from "./chiffres-dossier";
 import { NUMERO_STOP } from "./sms";
-import { introVersCarte, longueurRepli, refusRepli } from "./rcs-texte";
+import { introVersCarte, longueurRepli, refusRepli, titreVersCarte, TITRE_MAX } from "./rcs-texte";
 export { longueurRepli };
 
 const BASE = "https://v3.mailingvox.com/api";
@@ -104,6 +104,8 @@ export type CarteRcs = {
   suite: string;
   /** Le SMS de repli tel que le BO le fabrique, avant toute retouche. */
   repliAuto: string;
+  /** Le titre tel que le BO le fabrique (MAV, 12/11 : le titre se retouche aussi). */
+  titreAuto: string;
 };
 
 
@@ -118,7 +120,7 @@ export async function preparerCarte(
      lien transfer.it tel qu'il est saisi à l'écran. */
   /* MAV (09/11) : l'accroche et le SMS de repli se retouchent à l'écran. Les
      chiffres, la photo et les boutons restent fabriqués : ils suivent le dossier. */
-  envoi: { dossierId?: string; lien?: string; intro?: string; repli?: string } = {},
+  envoi: { dossierId?: string; lien?: string; titre?: string; intro?: string; repli?: string } = {},
 ): Promise<CarteRcs | null> {
   const enc = encodeURIComponent(immeubleId);
   const [im] = (await lire<{ data: Doc }>(`bo_immeuble?select=data&id=eq.${enc}&limit=1`)).map((r) => r.data);
@@ -157,8 +159,10 @@ export async function preparerCarte(
   const renta = c?.rentaPotentielle ?? N(im.fin_renta_bm);
   const prixHai = c?.prixHai ?? N(im.prix_hai);
 
-  const titre = `${natureCarte(type)} · ${ville}${dept ? ` (${dept})` : ""}`
-    + (prixHai ? ` - ${fr(Math.round(prixHai))} € HAI` : "");
+  const titreAuto = (`${natureCarte(type)} · ${ville}${dept ? ` (${dept})` : ""}`
+    + (prixHai ? ` - ${fr(Math.round(prixHai))} € HAI` : "")).slice(0, TITRE_MAX);
+  /* MAV (12/11) : « modifier les RCS dans la commercialisation, notamment le titre ». */
+  const titre = envoi.titre?.trim() ? titreVersCarte(envoi.titre) || titreAuto : titreAuto;
 
   const sig = signataire ?? { nom: "Marc-Antoine VOCI", tel: "0630768381" };
   const telAffiche = sig.tel ? sig.tel.replace(/^\+33/, "0").replace(/\D/g, "").replace(/(\d{2})(?=\d)/g, "$1 ") : undefined;
@@ -204,7 +208,7 @@ export async function preparerCarte(
   const photoBrute = S(photos[0]?.data.image) ?? S(photos[0]?.data.compressed) ?? S(im.photo_main_compressed);
   return {
     immeubleId,
-    titre: titre.slice(0, 200),
+    titre,
     texte: texte.slice(0, 2000),
     chiffres: { surface, renta, prixHai },
     photo: photoBrute,
@@ -215,6 +219,7 @@ export async function preparerCarte(
     intro: introCarte.replace(/<br>/g, "\n"),
     suite,
     repliAuto,
+    titreAuto,
   };
 }
 

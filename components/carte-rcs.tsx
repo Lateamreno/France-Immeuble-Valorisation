@@ -23,6 +23,8 @@ export type CarteRcsVue = {
   intro?: string;
   suite?: string;
   repliAuto?: string;
+  /** Le titre fabriqué par le BO, avant retouche (MAV, 12/11). */
+  titreAuto?: string;
 };
 
 /** Le texte de la carte : `<br>` devient un vrai retour à la ligne, rien d'autre n'est interprété. */
