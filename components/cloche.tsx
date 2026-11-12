@@ -140,6 +140,14 @@ export function Cloche() {
   const bouton = useRef<HTMLButtonElement>(null);
 
   const compter = useCallback(() => { compterMesReponses().then(setTotal).catch(() => undefined); }, []);
+  /* Retour #621 : le bloc du tableau de bord, calculé au chargement de la
+     page, restait sur l'ancien compte quand la cloche avait déjà vu passer une
+     réponse (2 à gauche, 1 à droite). Chaque changement du compte le prévient. */
+  const vu = useRef<number | null>(null);
+  useEffect(() => {
+    if (vu.current !== null && vu.current !== total) window.dispatchEvent(new Event("bo:reponses-compte"));
+    vu.current = total;
+  }, [total]);
   const charger = useCallback((q: "a_traiter" | "toutes") => {
     chargerMesReponses(q).then((r) => { setListe(r.reponses); setTotal(r.total); }).catch(() => setListe([]));
   }, []);
@@ -250,6 +258,20 @@ function poserBlocOuvert(v: boolean) {
 /** Le bloc « Réponses à traiter » du tableau de bord (MAV, 12/11). Replié par défaut. */
 export function BlocReponses({ reponses, total, qui }: { reponses: Reponse[]; total: number; qui?: string }) {
   const router = useRouter();
+  /* Retour #621 : le bloc suit la cloche — il se relit quand une réponse
+     arrive ou est traitée ailleurs. Pas à chaque retour sur l'onglet : la
+     cloche recompte alors, et ne prévient que si le compte a bougé. */
+  useEffect(() => {
+    let attente: ReturnType<typeof setTimeout> | undefined;
+    const relire = () => { clearTimeout(attente); attente = setTimeout(() => router.refresh(), 400); };
+    window.addEventListener("bo:reponses", relire);
+    window.addEventListener("bo:reponses-compte", relire);
+    return () => {
+      clearTimeout(attente);
+      window.removeEventListener("bo:reponses", relire);
+      window.removeEventListener("bo:reponses-compte", relire);
+    };
+  }, [router]);
   const ouvert = useSyncExternalStore((f) => { abonnesBloc.add(f); return () => { abonnesBloc.delete(f); }; }, lireBlocOuvert, () => false);
   if (total === 0) return null;
   const n = (f: (r: Reponse) => boolean) => reponses.filter(f).length;

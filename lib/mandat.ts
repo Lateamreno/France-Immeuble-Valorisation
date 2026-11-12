@@ -305,6 +305,30 @@ export function synthese(lots: Record<string, unknown>[]): SyntheseLocative {
 
 const pluriel = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
 
+/* Le nom courant de chaque destination, au singulier et au pluriel (#622). */
+const NOM_DESTINATION: Record<string, [string, string]> = {
+  Logement: ["logement", "logements"],
+  Commerce: ["local commercial", "locaux commerciaux"],
+  Bureau: ["bureau", "bureaux"],
+  Logistique: ["local d'activité", "locaux d'activité"],
+  Parking: ["parking", "parkings"],
+  Cave: ["cave", "caves"],
+  Annexe: ["annexe", "annexes"],
+};
+const HORS_TYPOLOGIE = new Set(["Parking", "Cave", "Annexe"]);
+const nommer = (destination: string, n: number) => {
+  const nom = NOM_DESTINATION[destination];
+  return nom ? pluriel(n, nom[0], nom[1]) : `${pluriel(n, "lot")} à destination ${destination.toLowerCase()}`;
+};
+/** « Bureaux » pour des lots « Bureau », « Commerce » pour « Commerce » : le type ne dit rien de plus. */
+const sansAccent = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const redit = (type: string, destination: string) => {
+  const t = sansAccent(type).replace(/[sx]$/, ""), d = sansAccent(destination).replace(/[sx]$/, "");
+  return t === d || (NOM_DESTINATION[destination] ?? []).some((n) => sansAccent(n).replace(/[sx]$/, "") === t);
+};
+/** « a, b et c ». */
+const enumerer = (xs: string[]) => xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`;
+
 /**
  * La nature de l'immeuble telle qu'on l'annonce : « mixte », « d'habitation »,
  * « commercial », « de bureaux »… (retour #323).
@@ -372,22 +396,24 @@ export function descriptifLegal(
   );
 
   if (s.lots > 0) {
-    /* Les typologies se nomment (#490) : « 4 lots à destination logement
-       (2 T2, 2 T3, environ 180 m²) ». Un type qui ne dit rien de plus que la
-       destination (« Logement », « Commerce ») n'est pas répété. */
-    const detail = s.parDestination
-      .map((d) => {
-        const types = d.types
-          .filter((t) => t.type.toLowerCase() !== d.destination.toLowerCase())
-          .map((t) => `${t.nb} ${t.type}`)
-          .join(", ");
-        const entre = [types, d.surface ? `environ ${group(d.surface)} m²` : ""].filter(Boolean).join(", ");
-        return `${pluriel(d.nb, "lot")} à destination ${d.destination.toLowerCase()}${entre ? ` (${entre})` : ""}`;
-      })
-      .join(", ");
-    phrases.push(
-      `L'immeuble comporte ${pluriel(s.lots, "lot")} pour une surface habitable et utile totale d'environ ${group(s.surface)} m² : ${detail}.`,
-    );
+    /* Les typologies se nomment (#490) : « 4 logements (2 T2, 2 T3, environ
+       180 m²) ». Retour #622 : un type qui redit la destination (« 36 lots à
+       destination bureau (36 Bureaux…) ») n'est plus répété, chaque
+       destination prend son nom courant (« 36 bureaux et 30 parkings »), et la
+       surface n'est « habitable » que s'il y a de l'habitation. */
+    const parts = s.parDestination.map((d) => {
+      const types = d.types
+        .filter((t) => !redit(t.type, d.destination))
+        .map((t) => `${t.nb} ${t.type}`)
+        .join(", ");
+      const entre = [types, d.surface ? `environ ${group(d.surface)} m²` : ""].filter(Boolean).join(", ");
+      return `${nommer(d.destination, d.nb)}${entre ? ` (${entre})` : ""}`;
+    });
+    const vraies = s.parDestination.map((d) => d.destination).filter((d) => !HORS_TYPOLOGIE.has(d));
+    const habitation = vraies.includes("Logement");
+    const qualite = !habitation ? "utile" : vraies.every((d) => d === "Logement") ? "habitable" : "habitable et utile";
+    const surface = s.surface ? ` pour une surface ${qualite} totale d'environ ${group(s.surface)} m²` : "";
+    phrases.push(`L'immeuble comporte ${pluriel(s.lots, "lot")}${surface} : ${enumerer(parts)}.`);
   }
 
   /* #171 — les lots loués avec un autre sous un loyer unique. Sans cette

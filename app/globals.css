@@ -2338,6 +2338,9 @@ a.rmod-cli-n:hover { color: var(--gold-bo); text-decoration: underline; }
   flex: none; min-width: 26px; font-family: var(--font-mono, monospace);
   font-size: 11.5px; color: var(--gold-bo);
 }
+/* Retour #623 : ajouter une ville hors référentiel, en toutes lettres. */
+.rmx-o.rmx-ajout { font-weight: 700; color: var(--gold-bo); }
+.rmx-o.rmx-ajout + .rmx-o, .rmx-o + .rmx-o.rmx-ajout { border-top: 1px solid var(--line); }
 
 .rmod-excl-b {
   display: flex; align-items: center; gap: 8px; width: 100%;

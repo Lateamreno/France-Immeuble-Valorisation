@@ -25,7 +25,7 @@
  * l'automatique.
  */
 
-import { descriptifLegal } from "@/lib/mandat";
+import { descriptifLegal } from "../mandat";
 
 const S = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 const N = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -37,26 +37,45 @@ export type SourceDescriptif = {
   parcelles: Record<string, unknown>[];
 };
 
-/** « à 8 min à pied de la gare Saint-Jean » — la phrase d'emplacement. */
+/**
+ * « L'immeuble est à 5 min à pied du métro et à 3 min à pied des commerces. »
+ * — la phrase d'emplacement.
+ *
+ * Retour #622 : « L'immeuble se trouve des transports Val d'Argenteuil à
+ * 25 min à pied et des commerces Centre Commercial … » ne se lisait pas. MAV :
+ * « pas obligé de dire le nom de la gare, juste il est à x min à pied de la
+ * gare et à x min à pied des commerces ». Les noms restent sur la fiche
+ * (Emplacement) ; le texte ne garde que les distances. Quand la gare est loin
+ * (un quart d'heure ou plus) ou absente, l'arrêt de bus le plus proche est
+ * cité d'abord : c'est lui qu'on prendra.
+ */
+function quelTransport(nom: string, departement: string): string {
+  if (/\btram/i.test(nom)) return "du tramway";
+  if (/\bRER\b/.test(nom)) return "du RER";
+  if (/m[ée]tro|^M\s?\d|station de m/i.test(nom)) return "du métro";
+  if (/\bgare\b|\bTER\b|\bSNCF\b/i.test(nom)) return "de la gare";
+  return departement === "75" ? "du métro" : "de la gare";
+}
+
 function phraseAcces(im: Record<string, unknown>): string | undefined {
-  const bouts: string[] = [];
-  const dire = (cle: string, quoi: string) => {
-    const nom = S(im[`emp_${cle}_name`]).trim();
-    const min = N(im[`emp_${cle}_time`]);
-    const moyen = S(im[`emp_${cle}_moyen`]).trim() || "à pied";
-    if (!nom && min === undefined) return;
-    /* Le nom seul ne dit pas la distance, la durée seule ne dit pas de quoi :
-       on écrit ce qu'on a, dans l'ordre qui se lit. */
-    if (nom && min !== undefined) bouts.push(`${quoi} ${nom} à ${min} min ${moyen}`);
-    else if (nom) bouts.push(`${quoi} ${nom}`);
-    else bouts.push(`${quoi} à ${min} min ${moyen}`);
-  };
-  dire("gare", "des transports");
-  dire("com", "des commerces");
+  const lire = (cle: string) => ({
+    nom: S(im[`emp_${cle}_name`]).trim(),
+    min: N(im[`emp_${cle}_time`]),
+    moyen: S(im[`emp_${cle}_moyen`]).trim() || "à pied",
+  });
+  const dire = (x: { nom: string; min?: number; moyen: string }, de: string) =>
+    x.min !== undefined ? `à ${x.min} min ${x.moyen} ${de}` : x.nom ? `proche ${de}` : undefined;
+  const dpt = S(im.adresse_dpt).trim() || S(im.adresse_zipcode).slice(0, 2);
+  const gare = lire("gare"), bus = lire("bus"), com = lire("com");
+  const garePresente = !!gare.nom || gare.min !== undefined;
+  const bouts = [
+    (!garePresente || (gare.min ?? 0) >= 15) ? dire(bus, "d'un arrêt de bus") : undefined,
+    garePresente ? dire(gare, quelTransport(gare.nom, dpt)) : undefined,
+    dire(com, "des commerces"),
+  ].filter((x): x is string => !!x);
   if (bouts.length === 0) return undefined;
-  /* La ville est déjà dans la première phrase de la désignation — la répéter
-     ici la faisait apparaître deux fois en trois lignes (retour #323). */
-  return `L'immeuble se trouve ${bouts.join(" et ")}.`;
+  /* « proche du » après « est » : « L'immeuble est proche du métro ». */
+  return `L'immeuble est ${bouts.length > 1 ? `${bouts.slice(0, -1).join(", ")} et ${bouts[bouts.length - 1]}` : bouts[0]}.`;
 }
 
 /**
