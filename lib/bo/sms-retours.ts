@@ -159,7 +159,9 @@ export async function propositionDe(numero: string, campagne: string | null, sou
        dernière réponse ne s'écrase plus l'une l'autre (un « Intéressé » après
        un téléchargement effaçait le téléchargement). */
     const bouton = /t[ée]l[ée]charger le dossier/i.test(texte) ? { rcs_dossier_le: now }
-      : /^\s*int[ée]ress[ée]\s*$/i.test(texte) ? { rcs_interesse_le: now } : {};
+      : /^\s*int[ée]ress[ée]\s*$/i.test(texte) ? { rcs_interesse_le: now }
+      /* MAV (12/11) : « Demander une visite », le 4e bouton de la carte. */
+      : /^\s*demander une visite\s*$/i.test(texte) ? { rcs_visite_le: now } : {};
     await patcher("bo_proposition", propositionId, {
       ...bouton,
       retour_sms: texte.slice(0, 1000),
@@ -253,6 +255,12 @@ export async function traiterAccuse(r: {
 
 const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** « Demander une visite » : le bouton de la carte, ou « 3 » au SMS de repli. */
+export function estDemandeVisite(texte: string, repli: boolean): boolean {
+  const t = sansAccents(texte);
+  return t === "demander une visite" || (repli && t === "3");
+}
+
 /** « Pas intéressé » : le bouton de la carte, ou « 2 » / « pas intéressé » au SMS de repli. */
 export function estPasInteresse(texte: string, repli: boolean): boolean {
   const t = sansAccents(texte);
@@ -341,6 +349,11 @@ export async function traiterEvenementsRcs(corps: unknown): Promise<number> {
              (« Répondez 1 si intéressé, 2 sinon »). « Intéressé » reste rangé. */
           if (estPasInteresse(texte, repli) && r.cible?.propositionId) {
             await refuserParRcs(r.cible.propositionId, canal);
+          }
+          /* « 3 » au SMS de repli vaut le bouton : la demande est notée sur la
+             proposition (le bouton, lui, l'est déjà par propositionDe). */
+          if (repli && estDemandeVisite(texte, repli) && r.cible?.propositionId) {
+            await patcher("bo_proposition", r.cible.propositionId, { rcs_visite_le: new Date().toISOString() });
           }
         }
       } else if (statut) {

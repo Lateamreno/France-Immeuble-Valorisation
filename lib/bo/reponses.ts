@@ -17,7 +17,7 @@ const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabas
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const H = () => ({ apikey: SB_KEY ?? "", Authorization: `Bearer ${SB_KEY ?? ""}`, "Content-Type": "application/json" });
 
-export type Canal = "email" | "sms" | "rcs_interesse" | "rcs_dossier" | "rcs_non" | "site";
+export type Canal = "email" | "sms" | "rcs_interesse" | "rcs_dossier" | "rcs_non" | "rcs_visite" | "site";
 
 export type Reponse = {
   id: string;
@@ -179,6 +179,7 @@ export const LIBELLE_CANAL: Record<Canal, string> = {
   rcs_interesse: "est intéressé (carte RCS)",
   rcs_dossier: "a téléchargé le dossier (carte RCS)",
   rcs_non: "n'est pas intéressé (carte RCS)",
+  rcs_visite: "demande une visite (carte RCS)",
   site: "a répondu depuis son compte du site",
 };
 

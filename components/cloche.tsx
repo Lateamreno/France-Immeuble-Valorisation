@@ -24,6 +24,7 @@ export const CANAUX: Record<Canal, { court: string; ton: string }> = {
   rcs_interesse: { court: "Intéressé · RCS", ton: "oui" },
   rcs_dossier: { court: "Dossier téléchargé · RCS", ton: "rcs" },
   rcs_non: { court: "Pas intéressé · RCS", ton: "non" },
+  rcs_visite: { court: "Demande de visite · RCS", ton: "visite" },
   site: { court: "Compte du site", ton: "site" },
 };
 
@@ -253,6 +254,7 @@ export function BlocReponses({ reponses, total, qui }: { reponses: Reponse[]; to
   if (total === 0) return null;
   const n = (f: (r: Reponse) => boolean) => reponses.filter(f).length;
   const compteurs = ([
+    ["Demandes de visite", n((r) => r.canal === "rcs_visite")],
     ["Intéressés", n((r) => r.canal === "rcs_interesse")],
     ["E-mails", n((r) => r.canal === "email")],
     ["SMS", n((r) => r.canal === "sms")],

@@ -150,13 +150,51 @@ export function recherchesSupabase(): Recherches {
       return { id: String(c._id), nom: nom || undefined };
     },
 
+    indicesDe: async (refs) => {
+      const props = refs.map((r) => r.propositionId).filter((x): x is string => !!x);
+      const ims = [...new Set(refs.map((r) => r.immeubleId).filter((x): x is string => !!x))];
+      const liste = (l: string[]) => l.map((x) => `"${x}"`).join(",");
+      const [ps, is] = await Promise.all([
+        props.length ? sb<{ id: string; data: Record<string, unknown> }>(`bo_proposition?select=id,data&id=in.(${liste(props)})`) : [],
+        ims.length ? sb<{ id: string; data: Record<string, unknown> }>(`bo_immeuble?select=id,data&id=in.(${liste(ims)})`) : [],
+      ]);
+      const comms = [...new Set(ps.map((p) => p.data.COMMERCIALISATION).filter((x): x is string => typeof x === "string" && !!x))];
+      const cs = comms.length ? await sb<{ id: string; data: Record<string, unknown> }>(`bo_commercialisation?select=id,data&id=in.(${liste(comms)})`) : [];
+      const pMap = new Map(ps.map((p) => [p.id, p.data]));
+      const iMap = new Map(is.map((i) => [i.id, i.data]));
+      const cMap = new Map(cs.map((c) => [c.id, c.data]));
+      const { villeArrondissement } = await import("@/lib/ville");
+      const txt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      return refs.map((ref) => {
+        const p = ref.propositionId ? pMap.get(ref.propositionId) : undefined;
+        const im = ref.immeubleId ? iMap.get(ref.immeubleId) : undefined;
+        const c = p && typeof p.COMMERCIALISATION === "string" ? cMap.get(p.COMMERCIALISATION) : undefined;
+        const ville = txt(im?.adresse_ville);
+        const arr = villeArrondissement(im?.adresse_ville, im?.adresse_zipcode);
+        return {
+          ref,
+          objets: [txt(p?.mail_subject), txt(c?.prop_mail_objet)].filter((x): x is string => !!x),
+          /* Paris : l'arrondissement seul départage (« Paris 1er » contre
+             « Paris 18e ») ; ailleurs, la ville. */
+          villes: [arr ?? (ville && !/^paris$/i.test(ville) ? ville : null)].filter((x): x is string => !!x),
+          le: txt(p?.date_envoi) ?? txt(p?.["Created Date"]) ?? undefined,
+        };
+      });
+    },
+
     affairesDe: async (contactId) => {
       const [ims, props] = await Promise.all([
         sb<{ data: Record<string, unknown> }>(
           `bo_immeuble?select=data&data->>PROPRIETAIRE=eq.${encodeURIComponent(contactId)}&data->>archived=eq.false&limit=20`,
         ),
         sb<{ data: Record<string, unknown> }>(
-          `bo_proposition?select=data&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&data->>Statut=eq.${encodeURIComponent("Envoyée")}&limit=20`,
+          /* Jusqu'à deux cents : un acquéreur ancien garde des propositions
+             « Envoyée » depuis 2021 ; avec vingt, celle de la semaine (à
+             laquelle il répond) manquait (12/11). */
+          /* Et les propositions des soixante derniers jours, quel que soit
+             leur statut : un acquéreur répond aussi à une proposition déjà
+             refusée (« pas intéressé », 12/11). */
+          `bo_proposition?select=data&data->>ACHETEUR=eq.${encodeURIComponent(contactId)}&or=(${encodeURIComponent(`data->>Statut.eq.Envoyée,bubble_created.gt.${new Date(Date.now() - 60 * 86_400_000).toISOString()}`)})&order=bubble_created.desc.nullslast&limit=200`,
         ),
       ]);
       const refs: Reference[] = [];
