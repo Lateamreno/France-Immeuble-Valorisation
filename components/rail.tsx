@@ -7,7 +7,8 @@ import { NAV, NAV_DECOUPE } from "@/lib/nav";
 import { changerMode } from "@/lib/bo/mode";
 import { deconnecter } from "@/lib/auth/actions";
 import type { Mode } from "@/lib/decoupe";
-import { useTransition } from "react";
+import { Suspense, useTransition } from "react";
+import { Cloche } from "@/components/cloche";
 
 // Icônes PLEINES (style FontAwesome solid) relevées sur les captures du BO :
 // tachymètre, calculatrice, immeuble, mallette, JUMELLES (recherches),
@@ -89,6 +90,9 @@ export function Rail({ mode = "bloc", direction = true, mav = false, nom, connec
           onClick={() => basculer("decoupe")}>Découpe</button>
       </div>
       <div className="modelab">{decoupe ? "Opérations de découpe" : "Vente en bloc"}</div>
+
+      {/* Les réponses des acquéreurs (MAV, 12/11) : en tête du menu, toujours visibles. */}
+      <Suspense fallback={null}><Cloche /></Suspense>
 
       {(decoupe ? NAV_DECOUPE : NAV).filter((it) => (direction || !DIRECTION_SEULE.has(it.href)) && (mav || !MAV_SEUL.has(it.href))).map((it) => {
         if (it.tool === "switch-onoff") {

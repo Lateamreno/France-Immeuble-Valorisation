@@ -36,6 +36,9 @@ import { joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRel
 import { dateLien, etatLien } from "@/lib/bo/lien-dossier";
 import { segments } from "@/lib/bo/sms-compte";
 import { LienDossier } from "@/components/lien-dossier";
+import { CANAUX, ilYa } from "@/components/cloche";
+import { chargerReponsesDuBien, traiterReponses } from "@/lib/bo/reponses-actions";
+import type { Reponse } from "@/lib/bo/reponses";
 
 export const STATUTS_CLOS_PROP = new Set(["Refusée (sans offre)", "Offre refusée", "Offre obtenue", "Offre acceptée", "Vendu"]);
 
@@ -693,6 +696,10 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   const [maintenant] = useState(() => Date.now());
   const [relance, setRelance] = useState<{ ids: string[]; p: PropositionLigne } | null>(null);
   const [rapport, setRapport] = useState<string | null>(null);
+  /* MAV (12/11) : les réponses des acquéreurs encore à traiter sur ce bien —
+     bandeau, étiquette « Nouveau » sur la carte, et « Ne voir qu'elles ». */
+  const [reps, setReps] = useState<Reponse[]>([]);
+  const [seulementNouveaux, setSeulementNouveaux] = useState(false);
   const [pending, start] = useTransition();
   const rafraichir = () => setVersion((v) => v + 1);
 
@@ -704,6 +711,19 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
     window.addEventListener("bo:propositions", relire);
     return () => window.removeEventListener("bo:propositions", relire);
   }, []);
+
+  useEffect(() => {
+    let vivant = true;
+    const relire = () => { chargerReponsesDuBien(immeubleId).then((r) => { if (vivant) setReps(r); }).catch(() => undefined); };
+    relire();
+    window.addEventListener("bo:reponses", relire);
+    return () => { vivant = false; window.removeEventListener("bo:reponses", relire); };
+  }, [immeubleId, version]);
+  const nouveaux = useMemo(() => {
+    const m = new Map<string, Reponse[]>();
+    for (const r of reps) m.set(r.propositionId, [...(m.get(r.propositionId) ?? []), r]);
+    return m;
+  }, [reps]);
 
   useEffect(() => {
     let vivant = true;
@@ -722,6 +742,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       if (vue !== "toutes" && categorieProposition(p) !== vue) return false;
       if (filtreRcs === "dossier" && !p.rcsDossierLe) return false;
       if (filtreRcs === "interesse" && !p.rcsInteresseLe) return false;
+      if (seulementNouveaux && !nouveaux.has(p.id)) return false;
       if (!qq) return true;
       return [p.contact?.nom, p.contact?.email, p.contact?.tel, p.email, p.contact?.qualite, p.commentaire, p.motif]
         .filter(Boolean).join(" ").toLowerCase().includes(qq);
@@ -735,8 +756,14 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
        MAV (12/11) : pareil pour ceux qui répondent par SMS ou RCS — le dernier
        retour, quel qu'en soit le canal, passe en tête ; les autres gardent
        leur ordre. */
-    return [...liste].sort((a, b) => (b.retourLe ?? b.noteLe ?? "").localeCompare(a.retourLe ?? a.noteLe ?? ""));
-  }, [lignes, vue, q, tri, filtreRcs]);
+    /* Une réponse par e-mail encore à traiter compte aussi (12/11). */
+    const cle = (p: PropositionLigne) => {
+      const r = nouveaux.get(p.id)?.[0]?.recuLe;
+      const x = p.retourLe ?? p.noteLe ?? "";
+      return r && r > x ? r : x;
+    };
+    return [...liste].sort((a, b) => cle(b).localeCompare(cle(a)));
+  }, [lignes, vue, q, tri, filtreRcs, seulementNouveaux, nouveaux]);
   const nbDossierRcs = (lignes ?? []).filter((p) => p.rcsDossierLe).length;
   const nbInteresseRcs = (lignes ?? []).filter((p) => p.rcsInteresseLe).length;
   const tranche = filtrees.slice((page - 1) * taille, page * taille);
@@ -838,19 +865,60 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       </div>
 
       {rapport && <div className={`cfx-rapport${/Échec|non envoyé|Pas d'/.test(rapport) ? " ko" : ""}`}>{rapport}</div>}
+      {reps.length > 0 && (
+        <div className="rep-bandeau">
+          <b>{reps.length} réponse{reps.length > 1 ? "s" : ""} d&apos;acquéreur{reps.length > 1 ? "s" : ""} à traiter</b>
+          <span>{Object.entries(reps.reduce<Record<string, number>>((a, r) => { const k = r.canal === "email" ? "e-mail" : r.canal === "sms" ? "SMS" : r.canal === "site" ? "site" : "RCS"; a[k] = (a[k] ?? 0) + 1; return a; }, {}))
+            .map(([k, n]) => `${n} ${k}`).join(" · ")}</span>
+          <span className="esp" />
+          <button type="button" className={`rep-b${seulementNouveaux ? "" : " or"}`} onClick={() => { setSeulementNouveaux((v) => !v); setPage(1); }}>
+            {seulementNouveaux ? "Tout voir" : "Ne voir qu'elles"}
+          </button>
+          <button type="button" className="rep-b" disabled={pending}
+            onClick={() => start(async () => { await traiterReponses(reps.map((r) => r.id), immeubleId); setSeulementNouveaux(false); window.dispatchEvent(new Event("bo:reponses")); })}>
+            Tout marquer traité
+          </button>
+        </div>
+      )}
       {lignes === null && <div className="fempty">Lecture des propositions…</div>}
       {lignes !== null && tranche.length === 0 && (
         <div className="fempty">{messageVidePropositions(vue)}</div>
       )}
-      {tranche.map((p) => (
-        <CarteProposition
-          key={p.id} p={p} contexte={{ immeubleId }}
-          jours={joursDepuis(p.depuis, maintenant)}
-          onRelancer={(mode) => relancer(p, mode)}
-          onRelancerModale={() => setRelance({ ids: [p.id], p })}
-          onRafraichir={rafraichir}
-        />
-      ))}
+      {tranche.map((p) => {
+        const carte = (
+          <CarteProposition
+            key={p.id} p={p} contexte={{ immeubleId }}
+            jours={joursDepuis(p.depuis, maintenant)}
+            onRelancer={(mode) => relancer(p, mode)}
+            onRelancerModale={() => setRelance({ ids: [p.id], p })}
+            onRafraichir={rafraichir}
+          />
+        );
+        const rs = nouveaux.get(p.id);
+        if (!rs) return carte;
+        return (
+          <div key={p.id} className="cfc-nv">
+            <div className="cfc-nv-h">
+              <span className="cfc-nv-t">Nouveau</span>
+              {rs.map((r) => (
+                <span key={r.id} className="cfc-nv-r">
+                  <span className={`rep-canal ${CANAUX[r.canal].ton}`}>{CANAUX[r.canal].court}</span>
+                  <span className="rep-quand">{ilYa(r.recuLe, maintenant)}</span>
+                  {r.texte && (r.canal === "email" || r.canal === "sms" || r.canal === "site") && (
+                    <span className="cfc-nv-x" title={r.texte}>« {r.texte.replace(/\s+/g, " ").slice(0, 160)}{r.texte.length > 160 ? "…" : ""} »</span>
+                  )}
+                </span>
+              ))}
+              <span className="esp" />
+              <button type="button" className="rep-b ok" disabled={pending}
+                onClick={() => start(async () => { await traiterReponses(rs.map((r) => r.id), immeubleId); window.dispatchEvent(new Event("bo:reponses")); })}>
+                Traité
+              </button>
+            </div>
+            {carte}
+          </div>
+        );
+      })}
       {lignes !== null && filtrees.length > 0 && (
         <Pagination total={filtrees.length} page={page} taille={taille} collee quoi="proposition"
           onPage={setPage} onTaille={(t) => { setTaille(t); setPage(1); }} />

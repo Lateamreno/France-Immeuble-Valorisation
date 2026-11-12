@@ -499,6 +499,29 @@ du site et réseaux sociaux.
   annonce n'envoie que vers france-immeuble.fr ; les listes d'exclusions
   partagées et les budgets partagés se modifient dans Google Ads.
 
+### 7.6 bis Réponses des acquéreurs — la cloche (12/11/26)
+
+Décidé avec MAV le 12/11 (maquettes A, B, C et D, toutes retenues). Une
+réponse d'acquéreur à un envoi de dossier — e-mail relevé et rattaché à la
+proposition, SMS, bouton de la carte RCS (Intéressé, Télécharger le dossier,
+Pas intéressé), réponse depuis le compte du site — devient une ligne de
+`fi_reponse`, créée par des **déclencheurs de la base** (migration
+`reponses_acquereurs`) : aucun chemin d'entrée n'a à y penser.
+- **Qui est prévenu : l'agent qui a envoyé le dossier** (AGENTs de la
+  proposition, sinon son créateur).
+- Une réponse reste **à traiter jusqu'au clic « Traité »** ; l'ouvrir ne
+  suffit pas. « Noter un retour » et « Refuser » depuis la notification la
+  traitent aussi.
+- A : la cloche « Réponses » **en tête du menu de gauche** (toujours visible),
+  panneau avec les gestes ; le nom ouvre la fiche contact habituelle.
+  B : pastille sur « Propositions » de la fiche du bien, bandeau, étiquette
+  « Nouveau » sur la carte. C : bloc du tableau de bord. D : **e-mail
+  récapitulatif à l'agent seulement**, à 8 h et 14 h (cron de chaque minute),
+  pas de notification sur le téléphone.
+- Toutes sonnent (son « réponse », dans components/sons.tsx).
+- Le tri des propositions du bien suit le dernier retour, tous canaux
+  (retour #437 étendu le 12/11).
+
 ### 7.7 Relances clients — position de MAV (10/11), à cadrer avant de coder
 
 « Certaines catégories mériteraient qu'on fasse en automatique […] peut-être
