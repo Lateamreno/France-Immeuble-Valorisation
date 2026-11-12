@@ -2340,6 +2340,8 @@ a.rmod-cli-n:hover { color: var(--gold-bo); text-decoration: underline; }
 }
 /* Retour #623 : ajouter une ville hors référentiel, en toutes lettres. */
 .rmx-o.rmx-ajout { font-weight: 700; color: var(--gold-bo); }
+/* Les communes prédites : le département devant, la population au bout. */
+.rmx-o .rmx-hab { margin-left: auto; font-size: 11.5px; color: var(--muted, #8a929a); font-variant-numeric: tabular-nums; }
 .rmx-o.rmx-ajout + .rmx-o, .rmx-o + .rmx-o.rmx-ajout { border-top: 1px solid var(--line); }
 
 .rmod-excl-b {
