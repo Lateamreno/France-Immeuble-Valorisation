@@ -30,7 +30,11 @@ export type Reponse = {
   recuLe: string;
   traiteLe?: string;
   /** Ce que l'écran montre : la personne, son téléphone, le bien. */
-  contact?: { nom: string; tel?: string; email?: string };
+  contact?: {
+    nom: string; prenom?: string; nomFamille?: string; tel?: string; email?: string;
+    /** Pour la vignette contact habituelle (#620). */
+    immeubles: number; recherches: number; note?: string;
+  };
   bien?: { libelle: string; prix?: string };
   /** Le statut de la proposition (« Envoyée », « Refusée (sans offre) »…). */
   statut?: string;
@@ -81,7 +85,13 @@ async function habiller(lignes: Ligne[]): Promise<Reponse[]> {
       texte: l.texte ?? undefined,
       recuLe: l.recu_le,
       traiteLe: l.traite_le ?? undefined,
-      contact: c ? { nom, tel: S(c.portable_formatted) ?? S(c.portable) ?? S(c.fixe_formatted) ?? S(c.fixe), email: S(c.email) } : undefined,
+      contact: c ? {
+        nom, prenom: S(c["prénom"]), nomFamille: S(c.nom)?.toUpperCase(),
+        tel: S(c.portable_formatted) ?? S(c.portable) ?? S(c.fixe_formatted) ?? S(c.fixe), email: S(c.email),
+        immeubles: Array.isArray(c.IMMEUBLES) ? (c.IMMEUBLES as unknown[]).length : 0,
+        recherches: Array.isArray(c.RECHERCHEs) ? (c.RECHERCHEs as unknown[]).length : 0,
+        note: S(c.Note),
+      } : undefined,
       bien: b ? { libelle: [lieu(ville, cp), S(b.adresse_rue)].filter(Boolean).join(" · ") || "Bien", prix: euros(b.prix_hai) } : undefined,
       statut: pMap.get(l.proposition_id),
     };
@@ -98,6 +108,10 @@ function lieu(ville?: string, cp?: string): string | undefined {
   return ville && c ? `${ville} (${c.slice(0, 2)})` : ville;
 }
 
+/** #619 (MAV, 12/11) : « Me mets pas les notifs de téléchargement de dossier ».
+ *  Le téléchargement reste noté sur la proposition, il ne notifie plus. */
+const SANS = "&canal=neq.rcs_dossier";
+
 const CHAMPS = "id,proposition_id,immeuble_id,contact_id,agent_id,canal,texte,recu_le,traite_le";
 
 /**
@@ -108,14 +122,14 @@ const CHAMPS = "id,proposition_id,immeuble_id,contact_id,agent_id,canal,texte,re
 export async function reponsesDe(agentId: string | null, quoi: "a_traiter" | "toutes" = "a_traiter", limite = 60): Promise<Reponse[]> {
   const filtreAgent = agentId ? `&agent_id=eq.${encodeURIComponent(agentId)}` : "";
   const filtre = quoi === "a_traiter" ? "&traite_le=is.null" : `&recu_le=gt.${encodeURIComponent(new Date(Date.now() - 30 * 86_400_000).toISOString())}`;
-  return habiller(await sb<Ligne>(`fi_reponse?select=${CHAMPS}${filtreAgent}${filtre}&order=recu_le.desc&limit=${limite}`));
+  return habiller(await sb<Ligne>(`fi_reponse?select=${CHAMPS}${SANS}${filtreAgent}${filtre}&order=recu_le.desc&limit=${limite}`));
 }
 
 /** Combien de réponses attendent l'agent. */
 export async function compterReponses(agentId: string | null): Promise<number> {
   if (!SB_KEY) return 0;
   const filtreAgent = agentId ? `&agent_id=eq.${encodeURIComponent(agentId)}` : "";
-  const r = await fetch(`${SB_URL}/rest/v1/fi_reponse?select=id&traite_le=is.null${filtreAgent}`, {
+  const r = await fetch(`${SB_URL}/rest/v1/fi_reponse?select=id&traite_le=is.null${SANS}${filtreAgent}`, {
     method: "HEAD", headers: { ...H(), Prefer: "count=exact", Range: "0-0" }, cache: "no-store",
   }).catch(() => null);
   const total = r?.headers.get("content-range")?.split("/")[1];
@@ -126,7 +140,7 @@ export async function compterReponses(agentId: string | null): Promise<number> {
 export async function compterNouvelles(agentId: string | null, depuis: string): Promise<number> {
   if (!SB_KEY) return 0;
   const filtreAgent = agentId ? `&agent_id=eq.${encodeURIComponent(agentId)}` : "";
-  const r = await fetch(`${SB_URL}/rest/v1/fi_reponse?select=id&cree_le=gt.${encodeURIComponent(depuis)}${filtreAgent}`, {
+  const r = await fetch(`${SB_URL}/rest/v1/fi_reponse?select=id${SANS}&cree_le=gt.${encodeURIComponent(depuis)}${filtreAgent}`, {
     method: "HEAD", headers: { ...H(), Prefer: "count=exact", Range: "0-0" }, cache: "no-store",
   }).catch(() => null);
   const total = r?.headers.get("content-range")?.split("/")[1];
@@ -135,7 +149,7 @@ export async function compterNouvelles(agentId: string | null, depuis: string): 
 
 /** Les réponses d'un bien encore à traiter, quel que soit l'agent : ce que la fiche montre. */
 export async function reponsesDuBien(immeubleId: string): Promise<Reponse[]> {
-  return habiller(await sb<Ligne>(`fi_reponse?select=${CHAMPS}&immeuble_id=eq.${encodeURIComponent(immeubleId)}&traite_le=is.null&order=recu_le.desc&limit=200`));
+  return habiller(await sb<Ligne>(`fi_reponse?select=${CHAMPS}${SANS}&immeuble_id=eq.${encodeURIComponent(immeubleId)}&traite_le=is.null&order=recu_le.desc&limit=200`));
 }
 
 /** « Traité » : la réponse quitte la cloche, la fiche et le tableau de bord. */
@@ -190,7 +204,7 @@ export async function envoyerRecapitulatifs(force = false): Promise<{ agents: nu
   const pile = new Date(Date.now() - m * 60_000);
   pile.setSeconds(0, 0);
   const avant = force ? "" : `&cree_le=lt.${encodeURIComponent(pile.toISOString())}`;
-  const lignes = await sb<Ligne>(`fi_reponse?select=${CHAMPS}&traite_le=is.null&mail_envoye_le=is.null&agent_id=not.is.null${avant}&order=recu_le.asc&limit=500`);
+  const lignes = await sb<Ligne>(`fi_reponse?select=${CHAMPS}${SANS}&traite_le=is.null&mail_envoye_le=is.null&agent_id=not.is.null${avant}&order=recu_le.asc&limit=500`);
   if (lignes.length === 0) return { agents: 0, reponses: 0 };
   const { tousLesComptes } = await import("@/lib/auth/comptes");
   const comptes = (await tousLesComptes()).filter((c) => c.actif);

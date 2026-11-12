@@ -61,6 +61,10 @@ export function AssistantCommercialisation({
   const [creees, setCreees] = useMemoire(`${memo}:creees`, 0);
   const [mailsEnvoyes, setMailsEnvoyes] = useMemoire(`${memo}:mails`, false);
   const [smsEnvoyes, setSmsEnvoyes] = useMemoire(`${memo}:sms-envoyes`, false);
+  /* #617 : combien de RCS sont partis, pour le compteur du haut. */
+  const [rcsNombre, setRcsNombre] = useMemoire<number | null>(`${memo}:rcs-nombre`, null);
+  /* #618 : dès le clic confirmé, le bouton d'envoi disparaît (il revient si l'envoi échoue). */
+  const [rcsLance, setRcsLance] = useState(false);
   /* MAV (09/11) : les RCS se programment comme les e-mails. Vide = tout de
      suite. `rcsProg` : la programmation enregistrée, relue sur le serveur. */
   const [quandRcs, setQuandRcs] = useMemoire(`${memo}:quand-rcs`, "");
@@ -194,6 +198,7 @@ export function AssistantCommercialisation({
         setFaits(e.faits);
         if (e.termine) setMailsEnvoyes(true);
         if (e.smsEnvoyes) setSmsEnvoyes(true);
+        if (e.smsNombre !== undefined) setRcsNombre(e.smsNombre);
         setRcsProg(e.rcsProgramme);
         if (e.faits.length > 0 && !e.termine) {
           setProgres((p) => p?.enCours ? p : { fait: e.faits.length, total: e.total ?? e.faits.length, echecs: e.echecs.length, enCours: false });
@@ -277,6 +282,8 @@ export function AssistantCommercialisation({
         setFaits(e.faits);
         setProgres({ fait: e.faits.length, total: e.total ?? total, echecs: e.echecs.length, enCours: false });
         if (e.termine) setMailsEnvoyes(true);
+        /* #616 : tous les e-mails partis (pas programmés), on passe aux RCS. */
+        if (e.termine && !quand) setEtape("SMS");
         setEnvoiMail(
           (quand ? `${e.faits.length} e-mails programmés pour le ${new Date(quand).toLocaleString("fr-FR")}` : `${e.faits.length} e-mails envoyés`)
           + (piecesJointes.length ? ` avec ${piecesJointes.length} pièce${piecesJointes.length > 1 ? "s" : ""} jointe${piecesJointes.length > 1 ? "s" : ""}` : " sans pièce jointe")
@@ -423,6 +430,7 @@ export function AssistantCommercialisation({
         </>,
         { oui: "Programmer" },
       ))) return;
+      setRcsLance(true);
       start(async () => {
         const commId = await assurerCommercialisation();
         const r = await programmerRcsCommercialisation({
@@ -433,6 +441,7 @@ export function AssistantCommercialisation({
           setRcsProg({ etat: "attente", quand: r.quand, numeros: r.numeros });
           setEnvoi(null);
         } else {
+          setRcsLance(false);
           setEnvoi(r.message);
         }
       });
@@ -446,6 +455,7 @@ export function AssistantCommercialisation({
       </>,
       { oui: "Envoyer" },
     ))) return;
+    setRcsLance(true);
     start(async () => {
       const commId = await assurerCommercialisation();
       const r = await envoyerRcsCommercialisation({
@@ -453,10 +463,12 @@ export function AssistantCommercialisation({
       });
       if (r.ok) {
         setSmsEnvoyes(true);
+        setRcsNombre(r.envoyes);
         setEnvoi(`${r.envoyes} RCS envoyés`
           + (r.ecartesStop ? `, ${r.ecartesStop} numéro${r.ecartesStop > 1 ? "s" : ""} écarté${r.ecartesStop > 1 ? "s" : ""} (STOP)` : "")
           + (r.campagne ? `. Campagne MailingVox n°${r.campagne}.` : "."));
       } else {
+        setRcsLance(false);
         setEnvoi(r.message ?? "L'envoi n'a pas abouti.");
       }
     });
@@ -516,6 +528,9 @@ export function AssistantCommercialisation({
           <b>{progresAffiche.fait} / {progresAffiche.total}</b> e-mails envoyés
           {progresAffiche.enCours && <i className="asst-spin" aria-hidden />}
           {progresAffiche.echecs > 0 && <span className="rouge">· {progresAffiche.echecs} en échec</span>}
+          {/* #617 : les RCS à côté des e-mails. */}
+          {smsEnvoyes && <span className="asst-prog-rcs">· <b>{rcsNombre ?? dest.telephones.length}</b> RCS envoyés</span>}
+          {!smsEnvoyes && rcsProg?.etat === "attente" && <span className="asst-prog-rcs">· RCS programmés le {new Date(rcsProg.quand).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</span>}
           {progresAffiche.message && <span className="rouge">· {progresAffiche.message}</span>}
           {progresAffiche.enCours && (
             <span className="salve-attente">L&apos;envoi tourne sur le serveur : vous pouvez fermer l&apos;assistant, la pastille en bas de l&apos;écran le suit.</span>
@@ -1168,8 +1183,11 @@ export function AssistantCommercialisation({
             <div className="asst-ok">{`${rcsProg.numeros} RCS partis comme programmé, le ${new Date(rcsProg.quand).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}.`}</div>
           )}
           {envoi && <div className={/^\d+ RCS/.test(envoi) ? "asst-ok" : "dif-simu"}>{envoi}</div>}
+          {/* #616 : l'envoi est le bouton de droite ; « Terminer » n'arrive
+              qu'une fois les RCS partis ou programmés (sinon on terminait
+              sans les avoir envoyés). #618 : le bouton d'envoi disparaît
+              dès le clic. */}
           <div className="wnav">
-            <span className="sp" style={{ flex: 1 }} />
             <button
               className="fadd" type="button"
               disabled={pending || smsEnvoyes || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi"}
@@ -1178,10 +1196,12 @@ export function AssistantCommercialisation({
                 setSmsEnvoyes(true);
               })}
             >{smsEnvoyes ? "Marqués envoyés ✓" : "Marquer comme envoyés"}</button>
-            {pont?.configure && (
+            <span className="sp" style={{ flex: 1 }} />
+            {(smsEnvoyes || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi" || rcsProg?.etat === "parti" || !pont?.configure)
+              ? <button className="kgo" type="button" onClick={fermer}><span className="ch">›</span> Terminer</button>
+              : !rcsLance && (
               <button className="kgo" type="button"
-                disabled={pending || smsEnvoyes || dest.telephones.length === 0 || lienManque || !carteRcs?.photo
-                  || rcsProg?.etat === "attente" || rcsProg?.etat === "envoi"}
+                disabled={pending || dest.telephones.length === 0 || lienManque || !carteRcs?.photo}
                 title={lienManque ? "Indiquez d'abord le lien transfer.it du dossier (étape Dossier)"
                   : !carteRcs?.photo ? "Le bien n'a pas de photo principale" : undefined}
                 onClick={envoyerLesRcs}>
@@ -1189,7 +1209,7 @@ export function AssistantCommercialisation({
                 {quandRcs ? "Programmer" : "Envoyer"} {dest.telephones.length > 1 ? `les ${dest.telephones.length} RCS` : "le RCS"}
               </button>
             )}
-            <button className="fadd" type="button" onClick={fermer}>Terminer</button>
+            {rcsLance && !smsEnvoyes && !(rcsProg?.etat === "attente") && <span className="asst-envoi-cours"><i className="asst-spin" aria-hidden /> Envoi des RCS…</span>}
           </div>
         </div>
       )}

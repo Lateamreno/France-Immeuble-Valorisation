@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTran
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuestion } from "@/components/modale";
+import { VignetteContact } from "@/components/vignette-contact";
 import { chargerMesReponses, compterMesReponses, noterEtTraiter, refuserEtTraiter, traiterReponses } from "@/lib/bo/reponses-actions";
 import type { Canal, Reponse } from "@/lib/bo/reponses";
 
@@ -71,8 +72,9 @@ export function LigneReponse({ r, onFait, compacte, sansBien }: {
       <span className="rep-av" aria-hidden>{initiales(r.contact?.nom)}</span>
       <div className="rep-c">
         <div className="rep-1">
-          {r.contactId
-            ? <Link href={`/contact/${r.contactId}`} className="rep-nom" title="Ouvrir la fiche contact">{r.contact?.nom ?? "Contact"}</Link>
+          {/* #620 : le nom ouvre la vignette contact habituelle du BO, sur place. */}
+          {r.contactId && r.contact
+            ? <span className="rep-nom"><VignetteContact v={{ id: r.contactId, ...r.contact }} immeuble={r.bien?.libelle} /></span>
             : <b className="rep-nom">{r.contact?.nom ?? "Contact"}</b>}
           <span className={`rep-canal ${c.ton}`}>{c.court}</span>
           <span className="rep-quand" title={new Date(r.recuLe).toLocaleString("fr-FR")}>{ilYa(r.recuLe)}</span>
@@ -235,30 +237,45 @@ export function PastilleReponsesBien({ immeubleId }: { immeubleId: string }) {
   return <span className="rep-pastille" title={`${n} réponse${n > 1 ? "s" : ""} d'acquéreur à traiter`}>{n}</span>;
 }
 
-/** Le bloc « Réponses à traiter » du tableau de bord (MAV, 12/11). */
+/** Le bloc replié ou ouvert, mémorisé sur le poste (#619 : « repliable pour pas qu'il prenne toute la place »). */
+const CLE_BLOC = "fi_reponses_bloc";
+const abonnesBloc = new Set<() => void>();
+const lireBlocOuvert = () => { try { return localStorage.getItem(CLE_BLOC) === "ouvert"; } catch { return false; } };
+function poserBlocOuvert(v: boolean) {
+  try { localStorage.setItem(CLE_BLOC, v ? "ouvert" : "replie"); } catch { /* navigation privée */ }
+  abonnesBloc.forEach((f) => f());
+}
+
+/** Le bloc « Réponses à traiter » du tableau de bord (MAV, 12/11). Replié par défaut. */
 export function BlocReponses({ reponses, total, qui }: { reponses: Reponse[]; total: number; qui?: string }) {
   const router = useRouter();
+  const ouvert = useSyncExternalStore((f) => { abonnesBloc.add(f); return () => { abonnesBloc.delete(f); }; }, lireBlocOuvert, () => false);
   if (total === 0) return null;
   const n = (f: (r: Reponse) => boolean) => reponses.filter(f).length;
-  const compteurs: [string, number][] = [
+  const compteurs = ([
     ["Intéressés", n((r) => r.canal === "rcs_interesse")],
     ["E-mails", n((r) => r.canal === "email")],
     ["SMS", n((r) => r.canal === "sms")],
-    ["Dossiers téléchargés", n((r) => r.canal === "rcs_dossier")],
     ["Compte du site", n((r) => r.canal === "site")],
     ["Pas intéressés", n((r) => r.canal === "rcs_non")],
-  ].filter(([, v]) => (v as number) > 0) as [string, number][];
+  ] as [string, number][]).filter(([, v]) => v > 0);
   return (
-    <section className="rep-bloc" aria-label="Réponses à traiter">
-      <div className="rep-bloc-h">
+    <section className={`rep-bloc${ouvert ? "" : " replie"}`} aria-label="Réponses à traiter">
+      <button type="button" className="rep-bloc-h" aria-expanded={ouvert} onClick={() => poserBlocOuvert(!ouvert)}
+        title={ouvert ? "Replier" : "Déplier"}>
+        <svg className="rep-chev" viewBox="0 0 24 24" aria-hidden><path d="m9 6 6 6-6 6" /></svg>
         <b>Réponses à traiter{qui ? ` · ${qui}` : ""}</b>
         <span className="rail-badge">{total}</span>
         <span className="rep-bloc-c">{compteurs.map(([l, v]) => <span key={l}><b>{v}</b> {l}</span>)}</span>
-      </div>
-      <div className="rep-bloc-l">
-        {reponses.slice(0, 6).map((r) => <LigneReponse key={r.id} r={r} compacte onFait={() => router.refresh()} />)}
-      </div>
-      {total > 6 && <p className="rep-pied">Et {total - 6} autre{total - 6 > 1 ? "s" : ""} : la cloche « Réponses » du menu les montre toutes.</p>}
+      </button>
+      {ouvert && (
+        <>
+          <div className="rep-bloc-l">
+            {reponses.slice(0, 6).map((r) => <LigneReponse key={r.id} r={r} compacte onFait={() => router.refresh()} />)}
+          </div>
+          {total > 6 && <p className="rep-pied">Et {total - 6} autre{total - 6 > 1 ? "s" : ""} : la cloche « Réponses » du menu les montre toutes.</p>}
+        </>
+      )}
     </section>
   );
 }

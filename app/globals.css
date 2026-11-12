@@ -9751,3 +9751,10 @@ a.rep-nom:hover { text-decoration-color: currentColor; }
 .rep-bloc-c b { color: var(--slate); }
 .rep-bloc-l { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
 .rep-bloc-l .rep-l { border-right: 1px solid var(--line-lt); }
+.asst-prog-rcs { color: var(--slate); }
+.asst-envoi-cours { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gray-txt); }
+button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; }
+.rep-bloc.replie button.rep-bloc-h { border-bottom: 0; }
+.rep-chev { width: 16px; height: 16px; fill: none; stroke: var(--slate); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.rep-bloc:not(.replie) .rep-chev { transform: rotate(90deg); }
+.rep-nom .vgn-chip { font-weight: 700; }
