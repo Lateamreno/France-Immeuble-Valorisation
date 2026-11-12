@@ -678,6 +678,10 @@ export async function noterRetour(propositionId: string, texte: string, immeuble
     p_id: propositionId,
     p_patch: {
       commentaire: texte.trim() || null,
+      /* La date du retour écrit : elle fait passer la proposition en tête de
+         la liste du bien (#437). Elle manquait ici, sur la fiche du bien —
+         seule la fiche contact la posait (12/11). */
+      commentaire_le: texte.trim() ? now : null,
       date_last_relance: now,
       date_modif: now,
       "Modified Date": now,

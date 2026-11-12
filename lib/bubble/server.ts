@@ -1132,6 +1132,16 @@ export async function getDashboardLive(
 /** Une chaîne non vide, ou rien. Utilitaire des facettes de liste. */
 const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 /** « 28/09/26 » depuis une date ISO, ou rien. */
+/** La date du dernier retour du client sur une proposition, tous canaux confondus (ISO). */
+function dernierRetour(p: Record<string, unknown>): string | undefined {
+  let max = 0;
+  for (const k of ["commentaire_le", "retour_sms_le", "rcs_dossier_le", "rcs_interesse_le", "site_repondu_le"]) {
+    const t = typeof p[k] === "string" ? Date.parse(p[k] as string) : NaN;
+    if (Number.isFinite(t) && t > max) max = t;
+  }
+  return max ? new Date(max).toISOString() : undefined;
+}
+
 const jjmmaaOuDmy = (v: unknown) => {
   const d = typeof v === "string" ? new Date(v) : null;
   return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : undefined;
@@ -2184,6 +2194,11 @@ export type PropositionLigne = {
   /** La date du dernier retour écrit (note de suivi), ISO : il fait
    *  remonter la proposition en tête (retour #437). */
   noteLe?: string;
+  /** Le dernier retour du client, ISO, quel qu'en soit le canal : note écrite
+   *  dans le BO, réponse SMS, bouton de la carte RCS, réponse depuis son compte
+   *  du site. La proposition la plus récemment « répondue » passe en tête
+   *  (MAV, 12/11, prolonge le retour #437). */
+  retourLe?: string;
   /** La dernière réponse SMS de la personne, remontée par MailingVox et
    *  inscrite sur la proposition (MAV, 28/09). */
   retourSms?: { texte: string; le?: string; lu: boolean };
@@ -2280,6 +2295,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
+        retourLe: dernierRetour(p),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
         email: S2(p.mail_adresse),
@@ -2539,6 +2555,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
         noteLe: S2(p.commentaire_le),
+        retourLe: dernierRetour(p),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
         rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
         email: S2(p.mail_adresse),
