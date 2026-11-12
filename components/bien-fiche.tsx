@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import { Modale } from "@/components/modale";
 import { Pastille, PastilleStatut } from "@/components/pastille";
 import { EcranPropositionsBien, JOURS_ENTRE_RELANCES, RedactionRelance } from "@/components/propositions";
+import { PastilleReponsesBien } from "@/components/cloche";
 import { ProgresSalveRelances, useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 import Image from "next/image";
 import Link from "next/link";
@@ -2449,7 +2450,7 @@ function SousMenuAcheteurs({
          acquéreurs, chargé à la demande : pas de compteur plutôt qu'un zéro
          qui mentirait. */}
       {ligne("commercialisations", "Commercialisations", I.megaphone, null, undefined, null)}
-      {ligne("propositions", "Propositions", I.avion, null,
+      {ligne("propositions", "Propositions", I.avion, <PastilleReponsesBien immeubleId={String(b.im._id)} />,
         () => setAjout("proposition"), b.propositions.total)}
       {ligne("visites", "Visites", I.voiture,
         confirmees > 0 ? <span className="acx-mention">{confirmees} confirmée{confirmees > 1 ? "s" : ""}</span> : null,

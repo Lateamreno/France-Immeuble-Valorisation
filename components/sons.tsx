@@ -118,6 +118,17 @@ export function sonEmail() {
   note(a, t + 0.12, 1318.5, 0.45, 0.06);
 }
 
+/** Une réponse d'acquéreur (MAV, 12/11) : trois notes claires qui montent,
+ *  plus franches que l'e-mail, plus courtes que la caisse. */
+export function sonReponse() {
+  const a = audio();
+  if (!a) return;
+  const t = a.currentTime + 0.02;
+  note(a, t, 783.99, 0.18, 0.09, "triangle");
+  note(a, t + 0.1, 987.77, 0.18, 0.09, "triangle");
+  note(a, t + 0.2, 1567.98, 0.5, 0.1, "triangle");
+}
+
 /** Le guetteur, monté une fois dans le gabarit des pages. */
 export function Sons() {
   const depuis = useRef(new Date().toISOString());
@@ -132,7 +143,10 @@ export function Sons() {
       if (!vivant || !r) return;
       depuis.current = r.maintenant;
       if (!lireActif()) return;
+      /* La cloche du menu se relit aussitôt (components/cloche.tsx). */
+      if (r.reponses > 0) window.dispatchEvent(new Event("bo:reponses"));
       if (r.formulaires > 0) sonCaisse();
+      else if (r.reponses > 0) sonReponse();
       else if (r.emails > 0) sonEmail();
     };
     const t = setInterval(() => { void regarder(); }, PERIODE);
@@ -151,7 +165,7 @@ export function BoutonSons() {
   const actif = useSyncExternalStore(abonner, lireActif, () => true);
   return (
     <button type="button" className="rail-son" aria-pressed={actif}
-      title={actif ? "Couper les sons des formulaires et des e-mails" : "Rétablir les sons"}
+      title={actif ? "Couper les sons des formulaires, des e-mails et des réponses" : "Rétablir les sons"}
       onClick={() => { const v = !actif; poserActif(v); if (v) sonEmail(); }}>
       {actif ? "Sons activés" : "Sons coupés"}
     </button>

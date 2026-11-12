@@ -6,6 +6,8 @@ import { getDashboardLive, getAgents, TOUS_AGENTS } from "@/lib/bubble/server";
 import { ventesAPublier } from "@/lib/bo/ventes-site";
 import { demandesDossierOuvertes } from "@/lib/bo/leads-site";
 import { compteCourant } from "@/lib/auth/comptes";
+import { compterReponses, reponsesDe } from "@/lib/bo/reponses";
+import { BlocReponses } from "@/components/cloche";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +52,16 @@ export default async function DashboardPage({
   /* Les ventes neuves qui attendent d'être publiées sur le site (contrat
      §4) : un rappel ici, en rouge au-delà de sept jours, jamais un e-mail. */
   const agentId = actifs.find((a) => a.slug === slug)?.id;
-  const [vap, demandes] = await Promise.all([
+  /* MAV (12/11) : les réponses des acquéreurs aux dossiers envoyés par
+     l'agent du tableau de bord (tous, sur la vue « tous les agents »). */
+  const agentReponses = slug === TOUS_AGENTS ? null : agentId ?? null;
+  const [vap, demandes, reponses, totalReponses] = await Promise.all([
     ventesAPublier().catch(() => null),
     /* Les demandes de dossier venues des fiches à vendre du site (lot 3) :
        à l'agent du bien, qui appelle avant d'envoyer. */
     agentId ? demandesDossierOuvertes(agentId).catch(() => 0) : Promise.resolve(0),
+    reponsesDe(agentReponses, "a_traiter", 60).catch(() => []),
+    compterReponses(agentReponses).catch(() => 0),
   ]);
 
   return (
@@ -81,6 +88,7 @@ export default async function DashboardPage({
           {vap.enRetard > 0 && `, dont ${vap.enRetard} depuis plus de sept jours`}
         </Link>
       )}
+      <BlocReponses reponses={reponses} total={totalReponses} qui={slug === TOUS_AGENTS ? "tous les agents" : agentName.split(" ")[0]} />
       <DashboardBlocs blocs={blocs} mock={!!liveError} recherche={q}
         agents={agentList.filter((a) => a.actif).map((a) => ({ id: a.id, name: a.name }))} />
     </>

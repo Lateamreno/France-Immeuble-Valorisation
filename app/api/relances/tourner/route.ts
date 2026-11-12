@@ -4,7 +4,8 @@
 //
 // Il vide aussi la file des campagnes du module Mailing (lib/bo/campagnes.ts),
 // sur le temps que les relances lui laissent, et envoie les RCS programmés
-// des commercialisations arrivés à leur heure (lib/bo/rcs-programmes.ts).
+// des commercialisations arrivés à leur heure (lib/bo/rcs-programmes.ts), et
+// le récapitulatif des réponses d'acquéreurs à 8 h et 14 h (lib/bo/reponses.ts).
 //
 // Protégé par le secret du cron : sans lui, n'importe qui pourrait faire
 // tourner l'automate en boucle. Même règle que la relève des mails.
@@ -13,6 +14,7 @@ import { tournerLaFile } from "@/lib/bo/relances-file";
 import { tournerCampagnes } from "@/lib/bo/campagnes";
 import { tournerOrdreRecits } from "@/lib/bo/ordre-recits";
 import { tournerRcsProgrammes } from "@/lib/bo/rcs-programmes";
+import { envoyerRecapitulatifs } from "@/lib/bo/reponses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,11 +38,14 @@ export async function GET(req: NextRequest) {
     const campagne = await tournerCampagnes(50_000 - (Date.now() - debut)).catch((e) => ({ erreur: String(e) }));
     // Un ordre de publication des récits relus donné par MAV (lib/bo/ordre-recits.ts) : sinon rien.
     const recits = await tournerOrdreRecits().catch((e) => ({ erreur: String(e) }));
+    // Le récapitulatif des réponses d'acquéreurs, à 8 h et 14 h (MAV, 12/11) : sinon rien.
+    const reponses = await envoyerRecapitulatifs().catch((e) => ({ erreur: String(e) }));
     return Response.json({
       relances: etat ? { salve: etat.id, statut: etat.statut, mails: etat.mails, sms: etat.sms } : null,
       campagne,
       recits,
       rcs,
+      reponses,
     });
   } catch (e) {
     return Response.json({ erreur: e instanceof Error ? e.message : String(e) }, { status: 500 });

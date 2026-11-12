@@ -6,7 +6,9 @@
  *   · les formulaires reçus (immeubles à l'étape « 1 - FORMULAIRE » créés
  *     depuis), pour tout le monde : depuis #513, un formulaire n'est attribué
  *     à personne d'office ;
- *   · les e-mails rangés par la relève dans la boîte de la personne connectée.
+ *   · les e-mails rangés par la relève dans la boîte de la personne connectée ;
+ *   · les réponses des acquéreurs aux dossiers qu'elle a envoyés (MAV, 12/11 :
+ *     e-mail, SMS, carte RCS, compte du site — lib/bo/reponses.ts).
  */
 
 import { compteCourant } from "@/lib/auth/comptes";
@@ -35,19 +37,21 @@ async function adresseDe(agentId: string): Promise<string | undefined> {
   return l?.adresse?.toLowerCase();
 }
 
-export async function nouveautes(depuis: string): Promise<{ formulaires: number; emails: number; maintenant: string }> {
+export async function nouveautes(depuis: string): Promise<{ formulaires: number; emails: number; reponses: number; maintenant: string }> {
   const maintenant = new Date().toISOString();
   const t = Date.parse(depuis);
   /* Une date absente ou trop ancienne ne rejoue pas toute l'histoire : on ne
      sonne que pour l'heure écoulée, au plus. */
-  if (!Number.isFinite(t) || Date.now() - t > 3_600_000) return { formulaires: 0, emails: 0, maintenant };
+  if (!Number.isFinite(t) || Date.now() - t > 3_600_000) return { formulaires: 0, emails: 0, reponses: 0, maintenant };
   const iso = encodeURIComponent(new Date(t).toISOString());
   const moi = await compteCourant();
   const adresse = moi ? await adresseDe(moi.agent_id) : undefined;
-  const [formulaires, emails] = await Promise.all([
+  const { compterNouvelles } = await import("@/lib/bo/reponses");
+  const [formulaires, emails, reponses] = await Promise.all([
     compter("bo_immeuble", `data->>Statut=like.${encodeURIComponent("1 *")}&data->>${encodeURIComponent("Created Date")}=gt.${iso}`),
     /* `boite` vaut « adresse/dossier » (une boîte peut avoir plusieurs dossiers relevés). */
     adresse ? compter("fi_mail_entrant", `boite=ilike.${encodeURIComponent(`${adresse}/*`)}&cree_le=gt.${iso}`) : Promise.resolve(0),
+    compterNouvelles(moi?.agent_id ?? null, new Date(t).toISOString()),
   ]);
-  return { formulaires, emails, maintenant };
+  return { formulaires, emails, reponses, maintenant };
 }
