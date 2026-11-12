@@ -38,6 +38,22 @@ const HABITATION = "logement";
 const HORS_CALCUL = ["cave", "parking", "annexe"];
 
 /**
+ * Les destinations du bien : celles de la fiche, sinon celles de ses lots.
+ * MAV (12/11) : « plusieurs clients qui n'avaient pas de commerce dans leurs
+ * critères ont reçu le dossier Paris 1 ». La fiche du 43 bd de Sébastopol
+ * n'avait aucune destination ; le matching n'avait donc aucune contrainte et
+ * retenait les chercheurs de logements et de bureaux. Les lots, eux, disaient
+ * « Commerce ». Caves, parkings et annexes ne font pas une destination.
+ */
+export function destinationsDu(bien: CriteresBien): string[] {
+  if (bien.destinations && bien.destinations.length > 0) return bien.destinations;
+  const rep = bien.repartition;
+  if (!rep) return [];
+  return [...new Set([...Object.keys(rep.surfaces), ...Object.keys(rep.revenus)])]
+    .filter((d) => d && !HORS_CALCUL.includes(d.toLowerCase()));
+}
+
+/**
  * La part des types cochés dans l'immeuble : loyers potentiels d'abord, à
  * défaut la surface ; `undefined` quand on ne sait pas (rien de saisi) — et
  * on n'écarte pas un bien faute de données.
@@ -68,7 +84,7 @@ function partDes(types: string[], rep: CriteresBien["repartition"]): number | un
  */
 function typesOk(r: Record<string, unknown>, bien: CriteresBien): boolean {
   const voulues = arr(r.Destinations).map((d) => d.toLowerCase());
-  const dests = (bien.destinations ?? []).map((d) => d.toLowerCase());
+  const dests = destinationsDu(bien).map((d) => d.toLowerCase());
   const pro = voulues.filter((d) => PRO.includes(d));
   if (pro.length > 0 && !voulues.includes(HABITATION) && dests.length > 0) {
     if (dests.includes(HABITATION)) return false;
@@ -76,7 +92,7 @@ function typesOk(r: Record<string, unknown>, bien: CriteresBien): boolean {
     const part = partDes(pro, bien.repartition);
     return part === undefined || part >= 0.5;
   }
-  return listeOk(bien.destinations ?? [], arr(r.Destinations));
+  return listeOk(destinationsDu(bien), arr(r.Destinations));
 }
 
 /**
@@ -232,7 +248,7 @@ function exclu(bien: CriteresBien, e: ExclusionsRecherche | undefined): boolean 
   if (!e) return false;
   const bas = (v: string) => v.trim().toLowerCase();
   if (e.destinations.length > 0) {
-    const dests = (bien.destinations ?? []).map(bas);
+    const dests = destinationsDu(bien).map(bas);
     if (e.destinations.map(bas).some((x) => dests.includes(x))) return true;
   }
   if (e.villes.length > 0 && bien.ville) {
