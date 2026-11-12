@@ -69,11 +69,14 @@ export function AssistantCommercialisation({
   const [rcsAvecMails, setRcsAvecMails] = useMemoire(`${memo}:rcs-avec-mails`, false);
   /* MAV (09/11) : l'accroche de la carte et le SMS de repli se retouchent ici.
      Vide = le texte fabriqué par le BO. */
-  const [rcsIntro, setRcsIntro] = useMemoire(`${memo}:rcs-intro`, "");
-  const [rcsRepli, setRcsRepli] = useMemoire(`${memo}:rcs-repli`, "");
+  /* null = le texte du BO ; une chaîne, même vide, = la retouche en cours. Un
+     champ vidé reste vide (avant le 12/11, il se remplissait aussitôt du texte
+     d'origine et la frappe s'ajoutait derrière). Vide à l'envoi = texte du BO. */
+  const [rcsIntro, setRcsIntro] = useMemoire<string | null>(`${memo}:rcs-intro`, null);
+  const [rcsRepli, setRcsRepli] = useMemoire<string | null>(`${memo}:rcs-repli`, null);
   /* MAV (12/11) : « modifier les RCS dans la commercialisation, notamment le titre ». */
-  const [rcsTitre, setRcsTitre] = useMemoire(`${memo}:rcs-titre`, "");
-  const textesRcs = { titre: rcsTitre.trim() || undefined, intro: rcsIntro.trim() || undefined, repli: rcsRepli.trim() || undefined };
+  const [rcsTitre, setRcsTitre] = useMemoire<string | null>(`${memo}:rcs-titre`, null);
+  const textesRcs = { titre: rcsTitre?.trim() || undefined, intro: rcsIntro?.trim() || undefined, repli: rcsRepli?.trim() || undefined };
   /* MAV (09/11) : « je veux que les propositions se créent que quand l'e-mail
      au moins a été envoyé ». L'étape Acheteurs ne crée plus rien : elle
      valide la liste, et c'est l'envoi (ou la programmation) des e-mails qui
@@ -396,11 +399,11 @@ export function AssistantCommercialisation({
   const carteRcs: CarteRcsVue | null = carteBrute
     ? {
       ...carteBrute,
-      titre: (rcsTitre.trim() && titreVersCarte(rcsTitre)) || carteBrute.titreAuto || carteBrute.titre,
-      texte: carteBrute.suite !== undefined && rcsIntro.trim()
-        ? [introVersCarte(rcsIntro), carteBrute.suite].filter(Boolean).join("<br><br>")
+      titre: (rcsTitre?.trim() && titreVersCarte(rcsTitre)) || carteBrute.titreAuto || carteBrute.titre,
+      texte: carteBrute.suite !== undefined && rcsIntro?.trim()
+        ? [introVersCarte(rcsIntro ?? ""), carteBrute.suite].filter(Boolean).join("<br><br>")
         : carteBrute.texte,
-      repli: rcsRepli.trim() || carteBrute.repliAuto || carteBrute.repli,
+      repli: rcsRepli?.trim() || carteBrute.repliAuto || carteBrute.repli,
     }
     : null;
   const refusRepliRcs = carteRcs ? refusRepli(carteRcs.repli) : null;
@@ -466,30 +469,30 @@ export function AssistantCommercialisation({
       <TelephoneRcs carte={carteRcs} />
       <label className="asst-rcs-champ">
         <span className="mlab">Titre de la carte</span>
-        <input className="min" value={rcsTitre || carteRcs.titreAuto || carteRcs.titre} maxLength={TITRE_MAX}
-          onChange={(e) => setRcsTitre(e.target.value)} />
+        <input className="min" value={rcsTitre ?? carteRcs.titreAuto ?? carteRcs.titre} maxLength={TITRE_MAX}
+          placeholder={carteRcs.titreAuto} onChange={(e) => setRcsTitre(e.target.value)} />
         <span className="asst-rcs-compte">{carteRcs.titre.length} / {TITRE_MAX} caractères</span>
-        {rcsTitre.trim() && (
-          <button type="button" className="fadd" onClick={() => setRcsTitre("")}>Revenir au titre d&apos;origine</button>
+        {rcsTitre !== null && (
+          <button type="button" className="fadd" onClick={() => setRcsTitre(null)}>Revenir au titre d&apos;origine</button>
         )}
       </label>
       <label className="asst-rcs-champ">
         <span className="mlab">Texte de la carte</span>
-        <textarea className="min" rows={5} value={rcsIntro || carteRcs.intro || ""}
-          onChange={(e) => setRcsIntro(e.target.value)} />
-        {rcsIntro.trim() && (
-          <button type="button" className="fadd" onClick={() => setRcsIntro("")}>Revenir au texte d&apos;origine</button>
+        <textarea className="min" rows={5} value={rcsIntro ?? carteRcs.intro ?? ""}
+          placeholder={carteRcs.intro} onChange={(e) => setRcsIntro(e.target.value)} />
+        {rcsIntro !== null && (
+          <button type="button" className="fadd" onClick={() => setRcsIntro(null)}>Revenir au texte d&apos;origine</button>
         )}
       </label>
       <label className="asst-rcs-champ">
         <span className="mlab">SMS de repli (téléphones sans RCS)</span>
-        <textarea className="min" rows={3} value={rcsRepli || carteRcs.repliAuto || carteRcs.repli}
-          onChange={(e) => setRcsRepli(e.target.value)} />
+        <textarea className="min" rows={3} value={rcsRepli ?? carteRcs.repliAuto ?? carteRcs.repli}
+          placeholder={carteRcs.repliAuto} onChange={(e) => setRcsRepli(e.target.value)} />
         <span className={refusRepliRcs ? "asst-rcs-compte ko" : "asst-rcs-compte"}>
           {longueurRepli(carteRcs.repli)} / 145 caractères{refusRepliRcs ? ` — ${refusRepliRcs}` : ""}
         </span>
-        {rcsRepli.trim() && (
-          <button type="button" className="fadd" onClick={() => setRcsRepli("")}>Revenir au SMS fabriqué</button>
+        {rcsRepli !== null && (
+          <button type="button" className="fadd" onClick={() => setRcsRepli(null)}>Revenir au SMS fabriqué</button>
         )}
       </label>
       <div className="asst-note">
