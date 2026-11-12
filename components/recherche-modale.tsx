@@ -31,6 +31,7 @@ import { Champ } from "@/components/champ";
 import { Copier } from "@/components/copier";
 import { CIBLES } from "@/lib/referentiels";
 import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
+import { predireVilles, type VillePredite } from "@/lib/bo/villes-actions";
 import {
   chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
 } from "@/lib/bo/actions";
@@ -157,7 +158,7 @@ function ChampChiffre({
  * sélection qu'il faut rouvrir un menu pour relire n'existe pas.
  */
 function ChoixMultiple({
-  options, valeur, onChange, placeholder, libre,
+  options, valeur, onChange, placeholder, libre, villes: avecVilles,
 }: {
   /** Le référentiel : `cle` est ce qu'on enregistre, `nom` ce qu'on lit. */
   options: { cle: string; nom: string }[];
@@ -166,9 +167,23 @@ function ChoixMultiple({
   placeholder: string;
   /** Autorise une valeur hors référentiel (les villes, qui n'ont pas de liste). */
   libre?: boolean;
+  /** Prédit les communes de France à mesure qu'on tape (MAV, 12/11). */
+  villes?: boolean;
 }) {
   const [saisie, setSaisie] = useState("");
   const [ouvert, setOuvert] = useState(false);
+  /* Les communes prédites pour la saisie en cours, demandées après un court
+     temps d'arrêt de la frappe. Celles déjà retenues sont écartées. */
+  const [predites, setPredites] = useState<{ pour: string; liste: VillePredite[] }>({ pour: "", liste: [] });
+  useEffect(() => {
+    const t = saisie.trim();
+    if (!avecVilles || t.length < 2) return;
+    let vivant = true;
+    const minuterie = setTimeout(() => {
+      predireVilles(t).then((liste) => { if (vivant) setPredites({ pour: t, liste }); }).catch(() => undefined);
+    }, 180);
+    return () => { vivant = false; clearTimeout(minuterie); };
+  }, [saisie, avecVilles]);
   /* Comparaison à plat (#352) : « bureaux » trouve « Bureau », « ile de
      france » trouve « Île-de-France », « seine saint » trouve le 93. */
   const q = clefTexte(saisie);
@@ -193,13 +208,25 @@ function ChoixMultiple({
   const texte = saisie.trim();
   const dejaLa = valeur.some((x) => clefTexte(x) === clefTexte(texte));
   const exacte = options.some((o) => clefTexte(o.cle) === q || clefTexte(o.nom) === q);
-  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte ? texte : null;
+  const villesPredites = avecVilles && texte.length >= 2 && clefTexte(predites.pour) === q
+    ? predites.liste.filter((v, i, t) => !valeur.some((x) => clefTexte(x) === clefTexte(v.nom))
+      && t.findIndex((w) => w.nom === v.nom && w.departement === v.departement) === i)
+    : [];
+  const villeExacte = villesPredites.some((v) => clefTexte(v.nom) === q);
+  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte && !villeExacte ? texte : null;
   const commencePar = propositions.find((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q));
+  /* Entrée : d'abord un département ou une région qui commence par la saisie
+     (« 93 », « seine-saint »), puis la commune la plus peuplée qui porte ce
+     nom, puis le texte tel quel. */
   const valider = () => {
     if (commencePar) return retenir(commencePar.cle);
+    if (villesPredites[0]) return retenir(villesPredites[0].nom);
     if (ajoutLibre) return retenir(ajoutLibre);
     if (propositions[0]) return retenir(propositions[0].cle);
   };
+  const debut = commencePar ? propositions.filter((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q)) : [];
+  const reste = propositions.filter((o) => !debut.includes(o));
+  const hab = (n?: number) => n ? `${n >= 10000 ? Math.round(n / 1000).toLocaleString("fr-FR") + " 000" : n.toLocaleString("fr-FR")} hab.` : "";
 
   return (
     <div className="rmx">
@@ -234,16 +261,9 @@ function ChoixMultiple({
         <button type="button" className={`rmx-chev${ouvert ? " on" : ""}`} tabIndex={-1}
           aria-label={ouvert ? "Fermer la liste" : "Ouvrir la liste"}
           onMouseDown={(e) => { e.preventDefault(); setOuvert((v) => !v); }}>▾</button>
-        {ouvert && (propositions.length > 0 || ajoutLibre) && (
+        {ouvert && (propositions.length > 0 || villesPredites.length > 0 || ajoutLibre) && (
           <div className="rmx-liste">
-            {ajoutLibre && !commencePar && (
-              <button type="button" className="rmx-o rmx-ajout"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => retenir(ajoutLibre)}>
-                + Ajouter la ville « {ajoutLibre} »
-              </button>
-            )}
-            {propositions.map((o) => (
+            {debut.map((o) => (
               <button key={o.cle} type="button" className="rmx-o"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => retenir(o.cle)}>
@@ -251,11 +271,28 @@ function ChoixMultiple({
                 {o.nom}
               </button>
             ))}
-            {ajoutLibre && commencePar && (
+            {villesPredites.map((v) => (
+              <button key={`${v.nom}-${v.departement}`} type="button" className="rmx-o rmx-ville"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(v.nom)}>
+                <b>{v.departement}</b>
+                {v.nom}
+                {v.population ? <span className="rmx-hab">{hab(v.population)}</span> : null}
+              </button>
+            ))}
+            {reste.map((o) => (
+              <button key={o.cle} type="button" className="rmx-o"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(o.cle)}>
+                {o.cle !== o.nom && <b>{o.cle}</b>}
+                {o.nom}
+              </button>
+            ))}
+            {ajoutLibre && (
               <button type="button" className="rmx-o rmx-ajout"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => retenir(ajoutLibre)}>
-                + Ajouter la ville « {ajoutLibre} »
+                + Ajouter « {ajoutLibre} » tel quel
               </button>
             )}
           </div>
@@ -564,7 +601,7 @@ export function ModaleRechercheEdition({
 
             <div className="rl-k">Où</div>
             <div className="rl-v rl-large">
-              <ChoixMultiple options={LIEU_OPT} valeur={[...regions, ...dpts, ...villes]} libre
+              <ChoixMultiple options={LIEU_OPT} valeur={[...regions, ...dpts, ...villes]} libre villes
                 onChange={(v) => {
                   setRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
                   setDpts(v.filter((x) => /^\d{2,3}[AB]?$/.test(x)));
@@ -645,7 +682,7 @@ export function ModaleRechercheEdition({
                       placeholder="62, pas-de-calais…" />
                   </Champ>
                   <Champ libelle="Villes exclues">
-                    <ChoixMultiple options={[]} valeur={exVilles} onChange={setExVilles} libre
+                    <ChoixMultiple options={[]} valeur={exVilles} onChange={setExVilles} libre villes
                       placeholder="Taper une ville puis Entrée…" />
                   </Champ>
                 </div>
