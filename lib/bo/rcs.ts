@@ -40,6 +40,8 @@ const INTRO =
 /** Les libellés des deux boutons de réponse : le webhook les reconnaît. */
 export const BOUTON_OUI = "Intéressé";
 export const BOUTON_NON = "Pas intéressé";
+/** MAV (12/11) : « un bouton demander une visite ». La demande arrive dans la cloche du BO. */
+export const BOUTON_VISITE = "Demander une visite";
 
 type Doc = Record<string, unknown>;
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -194,12 +196,14 @@ export async function preparerCarte(
   const stop = `STOP ${NUMERO_STOP}`;
   const candidats = [
     ...(urlDossier ? [
-      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} Repondez 1 si interesse, 2 sinon. ${stop}`,
-      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
-      `France Immeuble: ${lieu}, ${chiffresCourts(false)}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
+      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} Repondez 1 si interesse, 2 sinon, 3 pour visiter. ${stop}`,
+      `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Dossier ${urlDossier} 1=interesse 2=non 3=visite. ${stop}`,
+      `France Immeuble: ${lieu}, ${chiffresCourts(false)}. Dossier ${urlDossier} 1=interesse 2=non 3=visite. ${stop}`,
+      `France Immeuble: ${lieu}. Dossier ${urlDossier} 1=interesse 2=non 3=visite. ${stop}`,
       `France Immeuble: ${lieu}. Dossier ${urlDossier} 1=interesse 2=non. ${stop}`,
     ] : []),
-    `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Repondez 1 si interesse, 2 sinon. ${stop}`,
+    `France Immeuble: ${lieu}, ${chiffresCourts(true)}. Repondez 1 si interesse, 2 sinon, 3 pour visiter. ${stop}`,
+    `France Immeuble: ${lieu}, ${chiffresCourts(true)}. 1=interesse 2=non 3=visite. ${stop}`,
     `France Immeuble: ${lieu}, ${chiffresCourts(true)}. 1=interesse 2=non. ${stop}`,
   ];
   const repliAuto = candidats.find((t) => longueurRepli(t) <= 145) ?? candidats.at(-1)!;
@@ -291,6 +295,7 @@ async function creerModele(c: CarteRcs, image: Buffer): Promise<string> {
   const boutons: Record<string, unknown>[] = [
     { type: "reply", caption: BOUTON_OUI },
     { type: "reply", caption: BOUTON_NON },
+    { type: "reply", caption: BOUTON_VISITE },
   ];
   if (c.lienDossier) {
     boutons.push({ type: "url", caption: "Télécharger le dossier", url: c.lienDossier });

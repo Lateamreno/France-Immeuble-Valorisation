@@ -1135,7 +1135,7 @@ const S2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undef
 /** La date du dernier retour du client sur une proposition, tous canaux confondus (ISO). */
 function dernierRetour(p: Record<string, unknown>): string | undefined {
   let max = 0;
-  for (const k of ["commentaire_le", "retour_sms_le", "rcs_dossier_le", "rcs_interesse_le", "site_repondu_le"]) {
+  for (const k of ["commentaire_le", "retour_sms_le", "rcs_dossier_le", "rcs_interesse_le", "rcs_visite_le", "site_repondu_le"]) {
     const t = typeof p[k] === "string" ? Date.parse(p[k] as string) : NaN;
     if (Number.isFinite(t) && t > max) max = t;
   }
@@ -2205,6 +2205,8 @@ export type PropositionLigne = {
   /** Les boutons de la carte RCS touchés (MAV, 10/11), ISO. */
   rcsDossierLe?: string;
   rcsInteresseLe?: string;
+  /** « Demander une visite » touché sur la carte RCS (MAV, 12/11), ISO. */
+  rcsVisiteLe?: string;
   /** L'adresse à laquelle le dossier est parti. */
   email?: string;
   /** Dernier geste connu (relance, envoi), ISO : la carte en tire les jours. */
@@ -2297,7 +2299,7 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         noteLe: S2(p.commentaire_le),
         retourLe: dernierRetour(p),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
-        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
+        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le), rcsVisiteLe: S2(p.rcs_visite_le),
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: dmy(p.date_last_relance),
@@ -2557,7 +2559,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
         noteLe: S2(p.commentaire_le),
         retourLe: dernierRetour(p),
         retourSms: S2(p.retour_sms) ? { texte: S2(p.retour_sms)!, le: jjmmaaOuDmy(p.retour_sms_le), lu: p.retour_sms_lu === true } : undefined,
-        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le),
+        rcsDossierLe: S2(p.rcs_dossier_le), rcsInteresseLe: S2(p.rcs_interesse_le), rcsVisiteLe: S2(p.rcs_visite_le),
         email: S2(p.mail_adresse),
         depuis: S2(p.date_last_relance) ?? S2(p.date_envoi) ?? S2(p["Created Date"]),
         relanceLe: jjmmaa(p.date_last_relance),

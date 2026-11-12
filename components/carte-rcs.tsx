@@ -50,6 +50,7 @@ export function TelephoneRcs({ carte }: { carte: CarteRcsVue }) {
             <div className="rcs-boutons">
               <span>Intéressé</span>
               <span>Pas intéressé</span>
+              <span>Demander une visite</span>
               {carte.lienDossier && <span>Télécharger le dossier</span>}
             </div>
           </div>

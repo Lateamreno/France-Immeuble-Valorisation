@@ -142,7 +142,64 @@ export type Recherches = {
   parAdresse: (adresse: string) => Promise<{ id: string; nom?: string } | null>;
   /** Les affaires en cours d'un contact. */
   affairesDe: (contactId: string) => Promise<Reference[]>;
+  /** Pour départager plusieurs affaires : l'objet des e-mails envoyés pour
+   *  chacune (dossier, relance) et la ville du bien (12/11). */
+  indicesDe?: (refs: Reference[]) => Promise<Indice[]>;
 };
+
+export type Indice = { ref: Reference; objets: string[]; villes: string[]; /** Date d'envoi, ISO. */ le?: string };
+
+/** Un objet ou une ville réduits pour la comparaison : sans « Re : » ni
+ *  « TR: », sans accents, sans ponctuation, en minuscules. */
+export function reduire(t?: string | null): string {
+  let o = (t ?? "").trim();
+  for (let i = 0; i < 5; i++) {
+    const n = o.replace(/^\s*(re|r[ée]f|tr|fw|fwd|aw|wg|sv|rv)\s*(\[\d+\])?\s*:\s*/i, "");
+    if (n === o) break;
+    o = n;
+  }
+  return o.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/**
+ * Retours du 12/11 — « j'ai reçu des e-mails de réponses mais je les vois pas
+ * dans les réponses » : l'acquéreur avait plusieurs propositions en cours, la
+ * réponse restait « à choisir ». L'objet départage : une réponse reprend
+ * l'objet de l'e-mail du dossier (« Re: Immeuble à vendre à Corbeil… »).
+ * D'abord l'objet entier, puis la ville du bien, et seulement si un seul
+ * candidat répond.
+ */
+export function choisirParObjet(objet: string | undefined, indices: Indice[]): { ref: Reference; par: "objet" | "ville" } | null {
+  const o = reduire(objet);
+  if (o.length < 8) return null;
+  /* Un seul candidat, ou plusieurs propositions sur le MÊME immeuble (une
+     commercialisation et sa relance, deux commercialisations) : la plus
+     récente. */
+  const unique = (l: Indice[]) => {
+    if (l.length === 0) return null;
+    const ims = [...new Set(l.map((x) => x.ref.immeubleId ?? x.ref.propositionId ?? ""))];
+    if (ims.length !== 1) return null;
+    return [...l].sort((a, b) => (b.le ?? "").localeCompare(a.le ?? ""))[0];
+  };
+  /* La correspondance la plus longue l'emporte : « Immeuble à vendre à
+     Corbeil-Essonnes (91) », envoyé pour un autre bien de la ville, est un
+     début de « … (91) - 1,1 M€ - 9 % - 3 107 €/m² » et ne doit pas le valoir. */
+  const score = (x: Indice) => Math.max(0, ...x.objets.map((e) => {
+    const r = reduire(e);
+    if (r.length < 8) return 0;
+    if (r === o) return 10_000 + r.length;
+    return r.length >= 20 && (o.startsWith(r) || r.startsWith(o)) ? Math.min(r.length, o.length) : 0;
+  }));
+  const meilleur = Math.max(0, ...indices.map(score));
+  const parObjet = meilleur > 0 ? indices.filter((x) => score(x) === meilleur) : [];
+  const u1 = unique(parObjet);
+  if (u1) return { ref: u1.ref, par: "objet" };
+  if (parObjet.length > 0) return null;
+  const mot = (v: string) => new RegExp(`(^| )${reduire(v).replace(/ /g, " ")}( |$)`);
+  const parVille = indices.filter((x) => x.villes.some((v) => reduire(v).length >= 3 && mot(v).test(o)));
+  const u2 = unique(parVille);
+  return u2 ? { ref: u2.ref, par: "ville" } : null;
+}
 
 /**
  * Décide de ce qu'on fait d'un message entrant.
@@ -193,6 +250,16 @@ export async function reconnaitre(env: Enveloppe, r: Recherches): Promise<Reconn
     };
   }
   if (affaires.length > 1) {
+    const choix = r.indicesDe && env.objet ? choisirParObjet(env.objet, await r.indicesDe(affaires).catch(() => [])) : null;
+    if (choix) {
+      return {
+        niveau: "contact",
+        raison: `${contact.nom ?? "Contact connu"} — ${affaires.length} affaires, reconnue par ${choix.par === "objet" ? "l'objet de l'e-mail" : "la ville citée dans l'objet"}`,
+        contactId: contact.id,
+        ref: choix.ref,
+        certain: true,
+      };
+    }
     return {
       niveau: "a_choisir",
       raison: `${contact.nom ?? "Contact connu"} — ${affaires.length} affaires en cours`,

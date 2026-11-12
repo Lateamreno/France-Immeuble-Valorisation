@@ -245,7 +245,12 @@ export function CarteProposition({
               Intéressé (RCS) · {jourHeure(p.rcsInteresseLe)}
             </span>
           )}
-          {p.retourSms && !(/^(t[ée]l[ée]charger le dossier|int[ée]ress[ée])$/i.test(p.retourSms.texte.trim()) && (p.rcsDossierLe || p.rcsInteresseLe)) && (
+          {p.rcsVisiteLe && (
+            <span className="cfc-rcs visite" title={`A demandé une visite (carte RCS) le ${jourHeure(p.rcsVisiteLe)}`}>
+              Visite demandée (RCS) · {jourHeure(p.rcsVisiteLe)}
+            </span>
+          )}
+          {p.retourSms && !(/^(t[ée]l[ée]charger le dossier|int[ée]ress[ée]|demander une visite)$/i.test(p.retourSms.texte.trim()) && (p.rcsDossierLe || p.rcsInteresseLe || p.rcsVisiteLe)) && (
             <span className={`cfc-sms${/^\s*oui\b/i.test(p.retourSms.texte) ? " oui" : /^\s*non\b/i.test(p.retourSms.texte) ? " non" : ""}${p.retourSms.lu ? "" : " nouveau"}`}
               title={`Réponse SMS${p.retourSms.le ? ` du ${p.retourSms.le}` : ""}`}>
               <svg viewBox="0 0 24 24" aria-hidden><path d="M4 5h16v11H8l-4 4V5z" /></svg>
@@ -690,7 +695,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   const [q, setQ] = useState("");
   const [tri, setTri] = useState<"date" | "classe">("date");
   /* MAV (10/11) : n'afficher que ceux qui ont touché un bouton de la carte RCS. */
-  const [filtreRcs, setFiltreRcs] = useState<"" | "dossier" | "interesse">("");
+  const [filtreRcs, setFiltreRcs] = useState<"" | "dossier" | "interesse" | "visite">("");
   const [page, setPage] = useState(1);
   const [taille, setTaille] = useState(10);
   const [maintenant] = useState(() => Date.now());
@@ -742,6 +747,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
       if (vue !== "toutes" && categorieProposition(p) !== vue) return false;
       if (filtreRcs === "dossier" && !p.rcsDossierLe) return false;
       if (filtreRcs === "interesse" && !p.rcsInteresseLe) return false;
+      if (filtreRcs === "visite" && !p.rcsVisiteLe) return false;
       if (seulementNouveaux && !nouveaux.has(p.id)) return false;
       if (!qq) return true;
       return [p.contact?.nom, p.contact?.email, p.contact?.tel, p.email, p.contact?.qualite, p.commentaire, p.motif]
@@ -766,6 +772,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
   }, [lignes, vue, q, tri, filtreRcs, seulementNouveaux, nouveaux]);
   const nbDossierRcs = (lignes ?? []).filter((p) => p.rcsDossierLe).length;
   const nbInteresseRcs = (lignes ?? []).filter((p) => p.rcsInteresseLe).length;
+  const nbVisiteRcs = (lignes ?? []).filter((p) => p.rcsVisiteLe).length;
   const tranche = filtrees.slice((page - 1) * taille, page * taille);
 
   /** La relance d'une personne, pour ce bien : un e-mail, et le SMS si demandé. */
@@ -840,7 +847,7 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
           )}
         </div>
         <VuesPropositions lignes={lignes ?? []} vue={vue} onVue={(v) => { setVue(v); setPage(1); }} />
-        {(nbDossierRcs > 0 || nbInteresseRcs > 0) && (
+        {(nbDossierRcs > 0 || nbInteresseRcs > 0 || nbVisiteRcs > 0) && (
           <div className="lstx-sw rcs-filtre" role="group" aria-label="Boutons RCS">
             {nbDossierRcs > 0 && (
               <button type="button" className={filtreRcs === "dossier" ? "on" : undefined}
@@ -854,6 +861,13 @@ export function EcranPropositionsBien({ immeubleId, libelle, prix, resume, court
                 onClick={() => { setFiltreRcs((f) => (f === "interesse" ? "" : "interesse")); setPage(1); }}
                 title="Ceux qui ont touché « Intéressé » sur la carte RCS">
                 Intéressé (RCS) <span className="n">{nbInteresseRcs}</span>
+              </button>
+            )}
+            {nbVisiteRcs > 0 && (
+              <button type="button" className={filtreRcs === "visite" ? "on" : undefined}
+                onClick={() => { setFiltreRcs((f) => (f === "visite" ? "" : "visite")); setPage(1); }}
+                title="Ceux qui ont touché « Demander une visite » sur la carte RCS">
+                Visite demandée <span className="n">{nbVisiteRcs}</span>
               </button>
             )}
           </div>
