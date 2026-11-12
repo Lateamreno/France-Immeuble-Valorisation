@@ -251,6 +251,37 @@ export async function archiverImmeuble(
 }
 
 /**
+ * Désarchiver un immeuble (MAV, 12/11 : « un bouton en bas de la sidebar de
+ * droite pour désarchiver un immeuble quand il est archivé »). Il retrouve sa
+ * place dans les listes et le tableau de bord, à son statut d'avant. Le motif
+ * d'archivage n'est pas perdu : il passe dans `archivage_precedent`.
+ */
+export async function desarchiverImmeuble(immeubleId: string) {
+  const im = await bqOne("bo_immeuble", immeubleId).catch(() => null);
+  if (!im) throw new Error("Immeuble introuvable.");
+  if (im.archived !== true) return;
+  const { compteCourant } = await import("@/lib/auth/comptes");
+  const moi = await compteCourant();
+  const now = new Date().toISOString();
+  await rpc("bo_patch_doc", {
+    p_table: "bo_immeuble",
+    p_id: immeubleId,
+    p_patch: {
+      archived: false,
+      Motif_archivage: null,
+      motif_archivage_txt: null,
+      date_archivage: null,
+      archivage_precedent: {
+        motif: im.Motif_archivage ?? null, precision: im.motif_archivage_txt ?? null,
+        archive_le: im.date_archivage ?? null, desarchive_le: now, par: moi?.email ?? null,
+      },
+      "Modified Date": now,
+    },
+  });
+  refresh(immeubleId);
+}
+
+/**
  * Retour #599 : un bien de test ne reste pas dans la base, il part à la
  * corbeille (`bo_trash`, récupérable). Partent avec lui ce qui n'existe que
  * pour lui : ses lots, ses suivis « Formulaire », et le contact que le
