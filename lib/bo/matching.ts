@@ -37,20 +37,28 @@ const HABITATION = "logement";
    comme en bas de la fraction. L'annexe suit le même sort. */
 const HORS_CALCUL = ["cave", "parking", "annexe"];
 
-/**
- * Les destinations du bien : celles de la fiche, sinon celles de ses lots.
- * MAV (12/11) : « plusieurs clients qui n'avaient pas de commerce dans leurs
- * critères ont reçu le dossier Paris 1 ». La fiche du 43 bd de Sébastopol
- * n'avait aucune destination ; le matching n'avait donc aucune contrainte et
- * retenait les chercheurs de logements et de bureaux. Les lots, eux, disaient
- * « Commerce ». Caves, parkings et annexes ne font pas une destination.
- */
-export function destinationsDu(bien: CriteresBien): string[] {
-  if (bien.destinations && bien.destinations.length > 0) return bien.destinations;
-  const rep = bien.repartition;
+/** Les destinations présentes dans les lots (caves, parkings et annexes à part). */
+export function destinationsDesLots(rep: CriteresBien["repartition"]): string[] {
   if (!rep) return [];
   return [...new Set([...Object.keys(rep.surfaces), ...Object.keys(rep.revenus)])]
     .filter((d) => d && !HORS_CALCUL.includes(d.toLowerCase()));
+}
+
+/**
+ * Le type du bien, c'est son état locatif (MAV, 12/11 : « il n'y a pas de
+ * case pour dire quel type d'immeuble c'est, donc c'est toujours déduit de
+ * l'état locatif »). Un seul lot de commerce : immeuble commercial ; un lot
+ * de bureau : bureaux. La liste `Destinations` de la fiche — un reste de
+ * Bubble, figé à la création et différent des lots sur 23 biens actifs — ne
+ * sert plus que pour un bien sans lot saisi.
+ *
+ * Origine : des acquéreurs sans commerce dans leurs critères ont reçu le
+ * dossier du 43 bd de Sébastopol (un lot, du commerce), dont la fiche était
+ * vide — le matching n'avait aucune contrainte de type.
+ */
+export function destinationsDu(bien: CriteresBien): string[] {
+  const lots = destinationsDesLots(bien.repartition);
+  return lots.length > 0 ? lots : (bien.destinations ?? []);
 }
 
 /**

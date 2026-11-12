@@ -19,7 +19,7 @@ import { motifHorsVente } from "@/lib/bo/relances";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { derniersDossiers } from "@/lib/bo/piece-dossier";
-import { correspond, type CriteresBien } from "@/lib/bo/matching";
+import { correspond, destinationsDesLots, type CriteresBien } from "@/lib/bo/matching";
 import { lireExclusionsDe } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
 import { adresseComplete, villeArrondissement } from "@/lib/ville";
@@ -3045,9 +3045,14 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
      ne servant qu'à défaut. */
   const repartition = (await repartitionDes([immeubleId])).get(immeubleId);
   const dest = String(im.Destination_principale ?? "");
-  const destinations = Array.isArray(im.Destinations) && (im.Destinations as unknown[]).length > 0
-    ? (im.Destinations as unknown[]).map(String).filter(Boolean)
-    : dest && dest !== "Mixte" ? [dest] : [];
+  /* MAV (12/11) : le type de l'immeuble se déduit TOUJOURS de son état
+     locatif ; la liste de la fiche ne sert que sans lot saisi. Ce sont ces
+     destinations que l'écran montre et que le matching enregistre. */
+  const desLots = destinationsDesLots(repartition);
+  const destinations = desLots.length > 0 ? desLots
+    : Array.isArray(im.Destinations) && (im.Destinations as unknown[]).length > 0
+      ? (im.Destinations as unknown[]).map(String).filter(Boolean)
+      : dest && dest !== "Mixte" ? [dest] : [];
 
   return {
     recherches,
