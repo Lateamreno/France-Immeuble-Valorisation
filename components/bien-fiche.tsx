@@ -15,7 +15,7 @@ import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import type { HistoriqueAcheteurs } from "@/components/acheteurs";
 import { dmy, euros, keur } from "@/lib/format";
 import {
-  addSuivi, changerProprietaire, chargerAcheteurs, chargerHistoriqueAcheteurs, ouvrirEstimation, reactiver,
+  addSuivi, changerProprietaire, chargerAcheteurs, desarchiverImmeuble, chargerHistoriqueAcheteurs, ouvrirEstimation, reactiver,
   setApporteur, setPropositionStatut, setStatut, supprimerCommercialisation, supprimerEstimation, updateBien,
   updateContact,
 } from "@/lib/bo/actions";
@@ -879,6 +879,9 @@ export function BienFiche({
             </div>
           )}
         </nav>
+        {/* MAV (12/11) : « un bouton en bas de la sidebar de droite pour
+            désarchiver un immeuble quand il est archivé ». */}
+        {im.archived === true && <Desarchiver im={im} />}
         <div className="brail-foot">
           <button className="kbtn" type="button" aria-label="Autres actions">
             <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="18" cy="12" r="1.3" /></svg>
@@ -887,6 +890,33 @@ export function BienFiche({
           <ActionRail b={b} />
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** Le bas du rail d'un immeuble archivé : pourquoi, depuis quand, et le bouton pour le rendre actif. */
+function Desarchiver({ im }: { im: Record<string, unknown> }) {
+  const { confirmer, question } = useQuestion();
+  const [pending, start] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
+  const motif = typeof im.Motif_archivage === "string" ? im.Motif_archivage : undefined;
+  const precision = typeof im.motif_archivage_txt === "string" ? im.motif_archivage_txt : undefined;
+  const le = typeof im.date_archivage === "string" ? dmy(im.date_archivage) : undefined;
+  return (
+    <div className="brail-act brail-archive">
+      <div className="brail-archive-t">
+        <b>Immeuble archivé</b>
+        {(le || motif) && <span>{[le && `le ${le}`, motif && `car ${motif}`].filter(Boolean).join(" ")}{precision ? ` (${precision})` : ""}</span>}
+      </div>
+      <button type="button" className="fadd" disabled={pending} onClick={async () => {
+        if (!(await confirmer("Désarchiver cet immeuble ? Il revient dans les listes et le tableau de bord, à son statut actuel.", { titre: "Désarchiver", oui: "Désarchiver" }))) return;
+        start(async () => {
+          setErreur(null);
+          await desarchiverImmeuble(String(im._id)).catch((e) => setErreur(e instanceof Error ? e.message : "Échec."));
+        });
+      }}>{pending ? "…" : "Désarchiver l'immeuble"}</button>
+      {erreur && <span className="rouge">{erreur}</span>}
+      {question}
     </div>
   );
 }
