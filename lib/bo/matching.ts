@@ -45,10 +45,13 @@ const HABITATION = "logement";
 const HORS_CALCUL = ["cave", "parking", "annexe"];
 /* Les seuils de MAV (12/11), en part des loyers potentiels :
    - une recherche qui coche le logement le reçoit par lui s'il fait au moins
-     40 % de l'immeuble ;
+     20 % de l'immeuble (40 % d'abord, ramené à 20 % le jour même) ;
    - une recherche « pro » seulement accepte au plus 20 % de logement (« à 21
-     déjà c'est trop »), et ses types doivent faire au moins la moitié. */
-const SEUIL_LOGEMENT = 0.4;
+     déjà c'est trop »), et ses types doivent faire ENSEMBLE au moins la
+     moitié : « commerce + entrepôt » face à 40 % de commerce et 10 %
+     d'entrepôt, c'est 50 %, ça passe.
+   À 20 % pile, les deux publics le reçoivent. */
+const SEUIL_LOGEMENT = 0.2;
 const PLAFOND_LOGEMENT_PRO = 0.2;
 const SEUIL_PRO = 0.5;
 /* Un pourcentage affiché « 20 % » doit passer : on tolère l'arrondi. */
@@ -102,13 +105,13 @@ function partDes(types: string[], rep: CriteresBien["repartition"]): number | un
  * La règle des types (MAV, 02/11, seuils du 12/11), en part des loyers
  * potentiels, caves, parkings et annexes mis à part :
  * - une recherche qui coche le logement reçoit l'immeuble si le logement en
- *   fait au moins 40 % ;
+ *   fait au moins 20 % ;
  * - une recherche « pro » seulement (commerce, bureaux, logistique, sans
  *   logement) le reçoit si le logement fait au plus 20 % et si ses types
  *   font ensemble au moins la moitié ;
  * - une recherche qui coche le logement ET un type pro le reçoit par l'une
- *   des deux voies ; côté pro, un type en commun suffit (Q3, en attente de
- *   MAV — le comportement d'origine est gardé).
+ *   des deux voies ; côté pro, un type en commun suffit (MAV, 12/11 : « sinon
+ *   personne ne le reçoit »).
  * Une recherche sans type, ou un bien dont on ne connaît aucun type, ne
  * s'opposent pas.
  */
