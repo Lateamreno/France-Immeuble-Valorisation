@@ -26,7 +26,14 @@ export type CriteresBien = {
   /** Les loyers annuels POTENTIELS (un lot vide compte pour son loyer HC max)
    *  et les surfaces, destination par destination — la règle « pro » du
    *  02/11 en a besoin. Absents, la règle ne tranche que sur les logements. */
-  repartition?: { revenus: Record<string, number>; surfaces: Record<string, number> };
+  repartition?: {
+    revenus: Record<string, number>;
+    surfaces: Record<string, number>;
+    /** Un lot typé (hors caves, parkings, annexes) n'a ni loyer ni loyer
+     *  max : les loyers ne disent pas la vraie répartition, on passe à la
+     *  surface (MAV, 12/11). */
+    loyersIncomplets?: boolean;
+  };
 };
 
 /* Les destinations « pro » d'une recherche (MAV, 02/11). */
@@ -36,6 +43,16 @@ const HABITATION = "logement";
    caves ne comptent pas pour le calcul ») : ils sortent des 50 %, en haut
    comme en bas de la fraction. L'annexe suit le même sort. */
 const HORS_CALCUL = ["cave", "parking", "annexe"];
+/* Les seuils de MAV (12/11), en part des loyers potentiels :
+   - une recherche qui coche le logement le reçoit par lui s'il fait au moins
+     40 % de l'immeuble ;
+   - une recherche « pro » seulement accepte au plus 20 % de logement (« à 21
+     déjà c'est trop »), et ses types doivent faire au moins la moitié. */
+const SEUIL_LOGEMENT = 0.4;
+const PLAFOND_LOGEMENT_PRO = 0.2;
+const SEUIL_PRO = 0.5;
+/* Un pourcentage affiché « 20 % » doit passer : on tolère l'arrondi. */
+const EPS = 1e-9;
 
 /** Les destinations présentes dans les lots (caves, parkings et annexes à part). */
 export function destinationsDesLots(rep: CriteresBien["repartition"]): string[] {
@@ -63,12 +80,14 @@ export function destinationsDu(bien: CriteresBien): string[] {
 
 /**
  * La part des types cochés dans l'immeuble : loyers potentiels d'abord, à
- * défaut la surface ; `undefined` quand on ne sait pas (rien de saisi) — et
- * on n'écarte pas un bien faute de données.
+ * défaut la surface — et la surface d'abord quand un lot n'a pas de loyer
+ * (MAV, 12/11). `undefined` quand on ne sait pas (rien de saisi) : on
+ * n'écarte pas un bien faute de données.
  */
 function partDes(types: string[], rep: CriteresBien["repartition"]): number | undefined {
   if (!rep) return undefined;
-  for (const m of [rep.revenus, rep.surfaces]) {
+  const ordre = rep.loyersIncomplets ? [rep.surfaces, rep.revenus] : [rep.revenus, rep.surfaces];
+  for (const m of ordre) {
     const lignes = Object.entries(m).filter(([d]) => !HORS_CALCUL.includes(d.toLowerCase()));
     const total = lignes.reduce((t, [, v]) => t + v, 0);
     if (total > 0) {
@@ -80,27 +99,35 @@ function partDes(types: string[], rep: CriteresBien["repartition"]): number | un
 }
 
 /**
- * La règle des types (MAV, 02/11) :
- * - une recherche « pro » seulement (commerce, bureaux, entrepôt, sans
- *   habitation) ne reçoit jamais un immeuble qui a un logement, et les types
- *   cochés doivent faire ENSEMBLE au moins 50 % des loyers potentiels de
- *   l'immeuble (à défaut de loyers, de sa surface), caves, parkings et
- *   annexes mis à part ;
- * - une recherche « habitation » seulement reçoit tout immeuble qui a au
- *   moins un logement, quoi qu'il contienne d'autre ;
- * - une recherche mixte : au moins un des types cochés, comme avant.
+ * La règle des types (MAV, 02/11, seuils du 12/11), en part des loyers
+ * potentiels, caves, parkings et annexes mis à part :
+ * - une recherche qui coche le logement reçoit l'immeuble si le logement en
+ *   fait au moins 40 % ;
+ * - une recherche « pro » seulement (commerce, bureaux, logistique, sans
+ *   logement) le reçoit si le logement fait au plus 20 % et si ses types
+ *   font ensemble au moins la moitié ;
+ * - une recherche qui coche le logement ET un type pro le reçoit par l'une
+ *   des deux voies ; côté pro, un type en commun suffit (Q3, en attente de
+ *   MAV — le comportement d'origine est gardé).
+ * Une recherche sans type, ou un bien dont on ne connaît aucun type, ne
+ * s'opposent pas.
  */
 function typesOk(r: Record<string, unknown>, bien: CriteresBien): boolean {
   const voulues = arr(r.Destinations).map((d) => d.toLowerCase());
   const dests = destinationsDu(bien).map((d) => d.toLowerCase());
-  const pro = voulues.filter((d) => PRO.includes(d));
-  if (pro.length > 0 && !voulues.includes(HABITATION) && dests.length > 0) {
-    if (dests.includes(HABITATION)) return false;
-    if (!pro.some((d) => dests.includes(d))) return false;
-    const part = partDes(pro, bien.repartition);
-    return part === undefined || part >= 0.5;
-  }
-  return listeOk(destinationsDu(bien), arr(r.Destinations));
+  if (voulues.length === 0 || dests.length === 0) return true;
+  const communs = voulues.filter((d) => dests.includes(d));
+  if (communs.length === 0) return false;
+  const partLogement = dests.includes(HABITATION) ? partDes([HABITATION], bien.repartition) : 0;
+  if (communs.includes(HABITATION) && (partLogement === undefined || partLogement >= SEUIL_LOGEMENT - EPS)) return true;
+  const pro = communs.filter((d) => PRO.includes(d));
+  if (pro.length === 0) return false;
+  if (voulues.includes(HABITATION)) return true;
+  /* Recherche pro seulement. Des logements dont on ne connaît pas la part
+     (bien sans lot, fiche « Logement ») : on ne l'envoie pas. */
+  if (partLogement === undefined || partLogement > PLAFOND_LOGEMENT_PRO + EPS) return false;
+  const part = partDes(pro, bien.repartition);
+  return part === undefined || part >= SEUIL_PRO - EPS;
 }
 
 /**
@@ -212,11 +239,6 @@ function geoOk(r: Record<string, unknown>, c: CriteresBien) {
   if (dpt && dpts.includes(dpt)) return true;
   return false;
 }
-
-/** Une liste vide côté acquéreur vaut « tout accepté ». */
-const listeOk = (attendues: string[], proposees: string[] | undefined) =>
-  attendues.length === 0 || !proposees || proposees.length === 0 ||
-  attendues.some((a) => proposees.some((p) => p.toLowerCase() === a.toLowerCase()));
 
 /** Décrit une recherche en une ligne, comme les cartes du BO. */
 function libelleCriteres(r: Record<string, unknown>) {

@@ -3537,6 +3537,8 @@ export async function repartitionDes(ids: string[]): Promise<Map<string, NonNull
       const surface = nb(l.surface_carrez) || nb(l.surface_sol) || 0;
       if (loyer > 0) r.revenus[d] = (r.revenus[d] ?? 0) + loyer;
       if (surface > 0) r.surfaces[d] = (r.surfaces[d] ?? 0) + surface;
+      /* Un lot de vrai type sans loyer : la part se lira en surface (MAV, 12/11). */
+      if (loyer <= 0 && !["cave", "parking", "annexe"].includes(d.toLowerCase())) r.loyersIncomplets = true;
       out.set(im, r);
     }
   }
