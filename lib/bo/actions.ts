@@ -5237,6 +5237,8 @@ export async function etatMailsCommercialisation(commId: string) {
     echecs: Array.isArray(doc?.mails_echecs) ? (doc!.mails_echecs as { email: string; raison: string }[]) : [],
     termine: doc?.prop_sent === true,
     smsEnvoyes: doc?.prop_sms_sent === true,
+    /* Combien de RCS sont partis (#617). */
+    smsNombre: typeof doc?.sms_envoyes === "number" ? (doc!.sms_envoyes as number) : undefined,
     /* L'envoi RCS programmé, s'il y en a un : l'écran le montre (et
        l'annule) au lieu de proposer un second envoi. */
     rcsProgramme: (() => {
