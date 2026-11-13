@@ -768,7 +768,7 @@ function versDepart(
        resépare sur la forme du code, comme l'écran Recherches. */
     lieux: [
       ...liste("villes").filter((v) => !/^\d{13}x\d+$/.test(v)),
-      ...liste("dpts").filter((v) => /^\d{2,3}[AB]?$/.test(v)),
+      ...liste("dpts").filter((v) => /^(?:\d{2,3}|2[AB])$/.test(v)),
     ],
     commentaire: S(r.commentaire),
     contact,

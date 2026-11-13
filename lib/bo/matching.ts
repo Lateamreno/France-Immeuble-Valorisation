@@ -1,3 +1,5 @@
+import { memeVille } from "./villes";
+
 // Moteur de matching acquéreurs — croise les caractéristiques d'un immeuble
 // avec les recherches enregistrées par les acquéreurs, comme le fait le BO :
 // critères bornés (prix, surface, occupation, rentabilité), géographie,
@@ -233,12 +235,12 @@ const dansFourchette = (valeur: number | undefined, min: unknown, max: unknown) 
 /** La géographie matche si la recherche ne cible rien, ou si la ville ou le
  *  département du bien figure dans ses listes. */
 function geoOk(r: Record<string, unknown>, c: CriteresBien) {
-  const villes = arr(r.villes).filter(estLisible).map((v) => v.toLowerCase());
-  const dpts = arr(r.dpts).filter((d) => /^\d{2,3}[AB]?$/.test(d)).map((v) => v.replace(/^0/, ""));
+  const villes = arr(r.villes).filter(estLisible);
+  const dpts = arr(r.dpts).filter((d) => /^(?:\d{2,3}|2[AB])$/.test(d)).map((v) => v.replace(/^0/, ""));
   if (villes.length === 0 && dpts.length === 0) return true;
-  const ville = (c.ville ?? "").toLowerCase();
   const dpt = (c.departement ?? "").replace(/^0/, "");
-  if (ville && villes.some((v) => v === ville || v.includes(ville) || ville.includes(v))) return true;
+  /* « Saint-Denis (93) » ne vaut que pour Saint-Denis du 93 (MAV, 13/11). */
+  if (villes.some((v) => memeVille(v, c.ville, c.departement))) return true;
   if (dpt && dpts.includes(dpt)) return true;
   return false;
 }
@@ -285,8 +287,7 @@ function exclu(bien: CriteresBien, e: ExclusionsRecherche | undefined): boolean 
     if (e.destinations.map(bas).some((x) => dests.includes(x))) return true;
   }
   if (e.villes.length > 0 && bien.ville) {
-    const v = bas(bien.ville);
-    if (e.villes.map(bas).some((x) => x === v || x.includes(v) || v.includes(x))) return true;
+    if (e.villes.some((x) => memeVille(x, bien.ville, bien.departement))) return true;
   }
   if (e.departements.length > 0 && bien.departement) {
     const d = bien.departement.replace(/^0/, "");
@@ -369,7 +370,7 @@ export function carte(
     (/^inconnu/i.test(nomFiche) ? "" : nomFiche) ||
     S(c?.entreprise_nom) || mail || S(r.email) || "Acquéreur sans contact";
   const villes = arr(r.villes).filter(estLisible);
-  const dpts = arr(r.dpts).filter((d) => /^\d{2,3}[AB]?$/.test(d));
+  const dpts = arr(r.dpts).filter((d) => /^(?:\d{2,3}|2[AB])$/.test(d));
   return {
     rechercheId: S(r._id),
     contactId: S(r.ACHETEUR) || undefined,

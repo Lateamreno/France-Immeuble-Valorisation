@@ -253,7 +253,7 @@ export function assemblerVivier(
     }
     for (const r of mesRech) {
       for (const v of liste(r.villes).filter((x) => !/^\d{13}x\d+$/.test(x))) { villes.push(v); lieux.add(v); }
-      for (const d of liste(r.dpts).filter((x) => /^\d{2,3}[AB]?$/.test(x))) { departements.push(d); lieux.add(d); }
+      for (const d of liste(r.dpts).filter((x) => /^(?:\d{2,3}|2[AB])$/.test(x))) { departements.push(d); lieux.add(d); }
       for (const d of liste(r.Destinations)) { dest.push(d); destinations.add(d); }
       const pmin = nombre(r.prix_min); const pmax = nombre(r.prix_max);
       if (pmax) prix.push(pmax); else if (pmin) prix.push(pmin);
