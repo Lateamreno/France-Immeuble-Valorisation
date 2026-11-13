@@ -1,0 +1,160 @@
+/* Le mandat imprimé.
+   À la différence du dossier d'estimation, qui fait toujours six pages, le
+   mandat est un document au fil de l'eau : il fait le nombre de pages que sa
+   rédaction demande. On règle donc une largeur A4 et des césures propres,
+   pas des pages à hauteur fixe. */
+
+:root {
+  --md-noir: #2c2c30;
+  --md-or: #b8a35e;
+  --md-gris: #6f6f77;
+  --md-trait: #d8d8dd;
+}
+
+/* Le mandat est un acte, pas un écran : la coquille de l'app s'efface. */
+body:has(.mdp) .main { margin: 0; padding: 0; }
+body:has(.mdp) .side,
+body:has(.mdp) .bottbar { display: none; }
+body:has(.mdp.nu) .rv-fab, body:has(.mdp.nu) .rv-chip, body:has(.mdp.nu) .rv-pin,
+body:has(.mdp.nu) .rv-zone, body:has(.mdp.nu) .brg-bar { display: none; }
+body:has(.mdp.nu) .mdp { background: #fff; padding: 0; }
+body:has(.mdp.nu) .mdp-feuille { margin: 0; box-shadow: none; }
+
+.mdp {
+  background: #8c8c8c;
+  padding: 14px 0;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--md-noir);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.mdp-feuille {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto 14px;
+  padding: 18mm 20mm 22mm;
+  background: #fff;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
+  font-size: 10.2pt;
+  line-height: 1.55;
+}
+
+/* En-tête */
+.mdp-h { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2px solid var(--md-or); padding-bottom: 10px; }
+.mdp-h .mdp-mq { font-family: var(--font-title), "Poppins", sans-serif; font-weight: 700; letter-spacing: .12em; font-size: 13pt; }
+.mdp-h .mdp-mq i { display: block; font-style: normal; font-weight: 400; font-size: 7.4pt; letter-spacing: .18em; color: var(--md-gris); }
+.mdp-h .num { margin-left: auto; text-align: right; font-size: 8.6pt; color: var(--md-gris); }
+.mdp-h .num b { display: block; font-size: 12pt; color: var(--md-noir); font-family: var(--font-title), "Poppins", sans-serif; }
+
+.mdp-titre {
+  margin: 16px 0 4px;
+  text-align: center;
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 15pt;
+  letter-spacing: .06em;
+}
+.mdp-stitre { text-align: center; font-size: 8.6pt; color: var(--md-gris); margin-bottom: 14px; }
+
+/* L'encadré de tête : ce que le vendeur veut savoir avant de lire. */
+.mdp-gar {
+  border: 1px solid var(--md-or);
+  border-left: 4px solid var(--md-or);
+  background: #fbf8f0;
+  padding: 10px 14px;
+  margin: 0 0 16px;
+  page-break-inside: avoid;
+}
+.mdp-gar b {
+  display: block;
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 9.6pt;
+  letter-spacing: .04em;
+  margin-bottom: 5px;
+}
+.mdp-gar ul { margin: 0; padding-left: 16px; }
+.mdp-gar li { margin: 2px 0; font-size: 9.4pt; }
+
+/* Articles */
+.mdp-art { margin: 14px 0 0; page-break-inside: auto; }
+.mdp-art > h3 {
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 10.4pt;
+  margin: 0 0 5px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--md-trait);
+  page-break-after: avoid;
+}
+.mdp-art > h3 i { font-style: normal; color: var(--md-or); margin-right: 7px; }
+.mdp-art p { margin: 0 0 7px; text-align: justify; }
+.mdp-art ul { margin: 0 0 8px; padding-left: 18px; }
+.mdp-art li { margin: 2px 0; text-align: justify; }
+.mdp-sous { margin: 8px 0; }
+.mdp-sous > h4 {
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 9.4pt;
+  margin: 0 0 3px;
+  color: #4a4a52;
+  page-break-after: avoid;
+}
+
+/* Signatures */
+.mdp-sig { margin-top: 20px; page-break-inside: avoid; }
+.mdp-sig .lieu { margin-bottom: 12px; font-size: 9.4pt; }
+.mdp-sig-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.mdp-sig-c {
+  flex: 1 1 220px;
+  border: 1px solid var(--md-trait);
+  padding: 8px 10px 46px;
+}
+.mdp-sig-c b { display: block; font-size: 9pt; font-family: var(--font-title), "Poppins", sans-serif; }
+.mdp-sig-c span { display: block; font-size: 8.4pt; color: var(--md-gris); }
+.mdp-sig-c i { display: block; font-size: 8pt; color: var(--md-gris); font-style: italic; margin-top: 3px; }
+
+/* Bordereau de rétractation : une page à part, détachable. */
+.mdp-bord {
+  page-break-before: always;
+  border: 1.5px dashed var(--md-noir);
+  padding: 16px 18px;
+  margin-top: 16px;
+}
+.mdp-bord h3 {
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 11pt;
+  margin: 0 0 8px;
+  text-align: center;
+  letter-spacing: .05em;
+}
+.mdp-bord p { margin: 0 0 9px; font-size: 9.6pt; }
+
+/* Pied */
+.mdp-pied {
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 1px solid var(--md-trait);
+  font-size: 6.9pt;
+  color: var(--md-gris);
+  text-align: center;
+  line-height: 1.45;
+}
+
+/* Ce qui manque encore, signalé à l'écran seulement — jamais dans le PDF. */
+.mdp-trous {
+  width: 210mm;
+  margin: 0 auto 10px;
+  background: #fff4f4;
+  border: 1px solid #e5b4b4;
+  color: #a02020;
+  padding: 10px 14px;
+  font-family: var(--font-title), "Poppins", sans-serif;
+  font-size: 12px;
+}
+.mdp.nu .mdp-trous { display: none; }
+.mdp-trous b { display: block; margin-bottom: 4px; }
+
+@media print {
+  .mdp { background: none; padding: 0; }
+  .mdp-feuille { margin: 0; box-shadow: none; width: auto; min-height: 0; padding: 14mm 16mm; }
+  .mdp-trous { display: none; }
+  @page { size: A4; margin: 0; }
+}
