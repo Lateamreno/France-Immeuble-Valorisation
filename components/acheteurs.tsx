@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useDepartUrl, useMemoireUrl } from "@/lib/etat-url";
 import type { AcheteursData, BienData } from "@/lib/bubble/server";
 import {
-  carte, comptesParGrade, destinataires, FILTRES_MATCH_DEFAUT, matcher,
+  carte, comptesParGrade, correspond, destinataires, FILTRES_MATCH_DEFAUT, matcher,
   type Acquereur, type CriteresBien, type FiltresMatch,
 } from "@/lib/bo/matching";
 import { CarteMatching, ComptesGrades, CriteresMatching, type ResumeMatching } from "@/components/carte-matching";
@@ -76,42 +76,53 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
      Tout ce qu'il faut est déjà chargé côté écran — les recherches et les
      contacts du vivier — donc on reconstitue les acquéreurs À PARTIR DES
      IDENTIFIANTS RETENUS (`RECHERCHEs_FINAL`) sans repasser par le réseau.
-     C'est la sélection telle qu'elle a été arrêtée ce jour-là, pas un nouveau
-     matching : rejouer les critères donnerait un autre résultat dès qu'une
-     recherche a bougé depuis, et ferait disparaître les ajouts manuels. */
+     C'est la sélection arrêtée ce jour-là, filtrée par les règles
+     d'aujourd'hui (MAV, 13/11, ci-dessous) ; les ajouts manuels sont gardés. */
   const rouvrir = (m: Record<string, unknown>) => {
     if (!d) return;
     const ids = new Set(
       (Array.isArray(m.RECHERCHEs_FINAL) ? (m.RECHERCHEs_FINAL as unknown[]) : []).map(String),
     );
+    const criteres: CriteresBien = {
+      immeubleId: String(b.im._id),
+      prix: typeof m.in_prix === "number" ? (m.in_prix as number) : undefined,
+      surface: typeof m.in_surface === "number" ? (m.in_surface as number) : undefined,
+      occupation: typeof m.in_occup === "number" ? (m.in_occup as number) : undefined,
+      renta: typeof m.in_renta === "number" ? (m.in_renta as number) : undefined,
+      travaux: typeof m.in_travaux === "number" ? (m.in_travaux as number) : undefined,
+      /* Le lieu et le type viennent du bien tel qu'il est : un immeuble ne
+         déménage pas, et son état locatif dit son type (MAV, 12/11). La
+         région, introduite après (#332), n'est pas figée dans le matching. */
+      ville: d.criteres.ville || S(m.in_ville) || undefined,
+      departement: d.criteres.departement || S(m.in_dpt) || undefined,
+      region: d.criteres.region,
+      cibles: Array.isArray(m.in_Cibles) ? (m.in_Cibles as string[]) : [],
+      destinations: Array.isArray(m.in_Destinations) ? (m.in_Destinations as string[]) : [],
+      repartition: d.criteres.repartition,
+    };
     /* MAV, 13/11 — Sin-le-Noble : le matching de mars, rouvert tel quel, a
-       renvoyé le bien aux 170 acquéreurs de mars. Une sélection rouverte sert
-       à lancer une NOUVELLE commercialisation : ceux qui ont déjà une
-       proposition pour ce bien en sortent, comme dans un matching neuf. */
+       renvoyé le bien aux 170 acquéreurs de mars, dont des recherches qui ne
+       voulaient que du commerce. Une sélection rouverte sert à lancer une
+       NOUVELLE commercialisation :
+       - ceux qui ont déjà une proposition pour ce bien en sortent ;
+       - les recherches retenues par le matching d'alors repassent les règles
+         d'aujourd'hui (types, exclusions…) : « seulement des gens qui ont une
+         recherche qui correspond actuellement ». Les ajouts faits à la main ce
+         jour-là restent : c'était un choix de l'agent, pas du matching. */
     const dejaRecus = new Set(d.dejaRecus);
+    const auto = new Set(
+      (Array.isArray(m.RECHs_matched) && (m.RECHs_matched as unknown[]).length > 0
+        ? (m.RECHs_matched as unknown[]) : [...ids]).map(String),
+    );
     const acquereurs = d.recherches
       .filter((x) => ids.has(String(x._id)))
       .filter((x) => !dejaRecus.has(String(x.ACHETEUR ?? "")))
+      .filter((x) => !auto.has(String(x._id)) || correspond(x, criteres, d.exclusions.get(String(x._id))))
       .map((x) => carte(x, d.contacts, true));
     oublier(`${memo}:`);
     setResultat({
       matchId: S(m._id),
-      criteres: {
-        immeubleId: String(b.im._id),
-        prix: typeof m.in_prix === "number" ? (m.in_prix as number) : undefined,
-        surface: typeof m.in_surface === "number" ? (m.in_surface as number) : undefined,
-        occupation: typeof m.in_occup === "number" ? (m.in_occup as number) : undefined,
-        renta: typeof m.in_renta === "number" ? (m.in_renta as number) : undefined,
-        travaux: typeof m.in_travaux === "number" ? (m.in_travaux as number) : undefined,
-        ville: S(m.in_ville) || undefined,
-        departement: S(m.in_dpt) || undefined,
-        cibles: Array.isArray(m.in_Cibles) ? (m.in_Cibles as string[]) : [],
-        destinations: Array.isArray(m.in_Destinations) ? (m.in_Destinations as string[]) : [],
-        /* La région n'est pas figée dans la ligne du matching — elle a été
-           introduite après (#332). On la reprend des critères courants du
-           bien : c'est la même, un immeuble ne déménage pas. */
-        region: d.criteres.region,
-      },
+      criteres,
       filtres: {
         notes: Array.isArray(m.in_Notes) ? (m.in_Notes as string[]) : [],
         exclureDejaVus: true,
