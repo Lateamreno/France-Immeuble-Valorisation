@@ -31,7 +31,7 @@ import { Champ } from "@/components/champ";
 import { Copier } from "@/components/copier";
 import { CIBLES } from "@/lib/referentiels";
 import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
-import { etiquetteVille } from "@/lib/bo/villes";
+import { aPlatVille, etiquetteVille } from "@/lib/bo/villes";
 
 /** Une commune proposée à la frappe. */
 type VillePredite = { nom: string; departement: string; population?: number };
@@ -51,11 +51,15 @@ async function predireVilles(saisie: string): Promise<VillePredite[]> {
   ).catch(() => null);
   if (!r?.ok) return [];
   const j = (await r.json().catch(() => [])) as { nom?: string; codeDepartement?: string; population?: number }[];
+  /* Le nom exact d'abord (« Saint-Denis » avant « L'Île-Saint-Denis »),
+     la métropole avant l'outre-mer, puis les plus peuplées. */
+  const exact = (n: string) => aPlatVille(n) === aPlatVille(q) ? 0 : 1;
   const outreMer = (d: string) => d.startsWith("97") ? 1 : 0;
   return j
     .filter((c) => c.nom && c.codeDepartement)
     .map((c) => ({ nom: String(c.nom), departement: String(c.codeDepartement), population: c.population }))
-    .sort((a, b) => outreMer(a.departement) - outreMer(b.departement) || (b.population ?? 0) - (a.population ?? 0));
+    .sort((a, b) => exact(a.nom) - exact(b.nom) || outreMer(a.departement) - outreMer(b.departement)
+      || (b.population ?? 0) - (a.population ?? 0));
 }
 import {
   chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
@@ -246,6 +250,10 @@ function ChoixMultiple({
      nom, puis le texte tel quel. */
   const valider = () => {
     if (commencePar) return retenir(commencePar.cle);
+    /* Plusieurs communes portent exactement ce nom (Saint-Denis du 93, de
+       La Réunion…) : Entrée ne choisit pas à la place de l'agent, il clique. */
+    const homonymes = villesPredites.filter((v) => aPlatVille(v.nom) === aPlatVille(texte));
+    if (homonymes.length > 1) { setOuvert(true); return; }
     if (villesPredites[0]) return retenir(etiquetteVille(villesPredites[0].nom, villesPredites[0].departement));
     if (ajoutLibre) return retenir(ajoutLibre);
     if (propositions[0]) return retenir(propositions[0].cle);
