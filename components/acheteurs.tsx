@@ -424,7 +424,7 @@ function ModaleMatching({
   };
 
   // Aperçu recalculé à chaque changement : MAV voit le volume avant de lancer.
-  const apercu = useMemo(() => matcher(d.recherches, d.contacts, criteres, f), [d, criteres, f]);
+  const apercu = useMemo(() => matcher(d.recherches, d.contacts, criteres, { ...f, dejaRecus: d.dejaRecus }), [d, criteres, f]);
   const dest = destinataires(apercu);
 
   const toggleNote = (n: string) =>
@@ -617,9 +617,18 @@ function ModaleMatching({
       </div>
 
       <div className="mrow" style={{ marginTop: 10, flexWrap: "wrap" }}>
-        <button type="button" className={`mopt${f.exclureDejaVus ? " on" : ""}`} onClick={() => setF({ ...f, exclureDejaVus: !f.exclureDejaVus })}>
-          Déjà vus exclus
-        </button>
+        {/* MAV, 13/11 : « que la case déjà vu soit de base décochée, de telle
+            sorte que pour une nouvelle commercialisation les gens ayant déjà
+            reçu ne le reçoivent pas à nouveau ». Le bouton « Déjà vus exclus »
+            se lisait à l'envers : désactivé sans le vouloir, il a renvoyé
+            Sin-le-Noble à 162 acquéreurs. C'est maintenant une case, décochée
+            par défaut, qui dit ce qu'elle fait et à combien de personnes. */}
+        <label className={`mt-deja${f.exclureDejaVus ? "" : " on"}`}>
+          <input type="checkbox" checked={!f.exclureDejaVus}
+            onChange={(e) => setF({ ...f, exclureDejaVus: !e.target.checked })} />
+          Renvoyer aussi à ceux qui l&apos;ont déjà reçu
+          {d.dejaRecus.length > 0 && <b>{d.dejaRecus.length}</b>}
+        </label>
         <button type="button" className={`mopt${f.exclureAgents ? " on" : ""}`} onClick={() => setF({ ...f, exclureAgents: !f.exclureAgents })}>
           Agents exclus
         </button>

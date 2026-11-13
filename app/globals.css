@@ -9769,3 +9769,18 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .brail-archive .rouge { color: var(--red); font-size: 12px; }
 .rep-canal.visite { background: #f5f0de; color: #6b5a14; border: 1px solid var(--gold-bo); }
 .cfc-rcs.visite { background: #f5f0de; color: #6b5a14; }
+
+/* MAV, 13/11 : la case « Renvoyer aussi à ceux qui l'ont déjà reçu »,
+   décochée par défaut ; cochée, elle se voit. */
+.mt-deja {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px;
+  border: 1px solid var(--line); border-radius: 5px; background: #fff;
+  font-size: 12.5px; color: var(--slate); cursor: pointer;
+}
+.mt-deja input { margin: 0; accent-color: #c0392b; }
+.mt-deja b {
+  font-size: 11px; padding: 1px 6px; border-radius: 9px;
+  background: #eef0f2; color: var(--slate);
+}
+.mt-deja.on { border-color: #c0392b; color: #c0392b; background: #fdf1ef; font-weight: 700; }
+.mt-deja.on b { background: #c0392b; color: #fff; }
