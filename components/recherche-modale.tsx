@@ -51,15 +51,13 @@ async function predireVilles(saisie: string): Promise<VillePredite[]> {
   ).catch(() => null);
   if (!r?.ok) return [];
   const j = (await r.json().catch(() => [])) as { nom?: string; codeDepartement?: string; population?: number }[];
-  /* Le nom exact d'abord (« Saint-Denis » avant « L'Île-Saint-Denis »),
-     la métropole avant l'outre-mer, puis les plus peuplées. */
-  const exact = (n: string) => aPlatVille(n) === aPlatVille(q) ? 0 : 1;
+  /* La métropole avant l'outre-mer, puis les plus peuplées : « Saint-Ouen »
+     donne Saint-Ouen-sur-Seine (93) avant le village du Loir-et-Cher. */
   const outreMer = (d: string) => d.startsWith("97") ? 1 : 0;
   return j
     .filter((c) => c.nom && c.codeDepartement)
     .map((c) => ({ nom: String(c.nom), departement: String(c.codeDepartement), population: c.population }))
-    .sort((a, b) => exact(a.nom) - exact(b.nom) || outreMer(a.departement) - outreMer(b.departement)
-      || (b.population ?? 0) - (a.population ?? 0));
+    .sort((a, b) => outreMer(a.departement) - outreMer(b.departement) || (b.population ?? 0) - (a.population ?? 0));
 }
 import {
   chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
