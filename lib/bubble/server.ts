@@ -2992,6 +2992,10 @@ export type AcheteursData = {
   matchs: Record<string, unknown>[];
   commercialisations: Record<string, unknown>[];
   criteres: import("@/lib/bo/matching").CriteresBien;
+  /** Les contacts qui ont déjà une proposition pour cet immeuble, quelle que
+   *  soit la commercialisation (MAV, 13/11 : Sin-le-Noble renvoyé à 162
+   *  acquéreurs qui l'avaient déjà reçu). */
+  dejaRecus: string[];
 };
 
 /**
@@ -3016,7 +3020,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
   const im = one.results[0];
   if (!im) return null;
 
-  const [recherches, matchs, commercialisations, adresses] = await Promise.all([
+  const [recherches, matchs, commercialisations, adresses, propositions] = await Promise.all([
     /* « non archivée » et non « archivée = non » (22/09) : 983 recherches
        sur 1 951 n'ont jamais eu la case touchée, Bubble les compte comme
        actives, et le matching de Livry-Gargan en rendait 165 au lieu de 309. */
@@ -3024,7 +3028,9 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
     fetchAll("match", [{ key: "in_IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
     fetchAll("commercialisation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
     fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 2).catch(() => []),
+    fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 5000, undefined, ["ACHETEUR"]).catch(() => []),
   ]);
+  const dejaRecus = [...new Set(propositions.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
 
   // Les recherches pointent 1 900 contacts : les charger d'un bloc coûte
   // moins qu'une vingtaine de requêtes « id in (…) » à la chaîne.
@@ -3057,6 +3063,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
   return {
     recherches,
     contacts,
+    dejaRecus,
     matchs: [...matchs].sort((a, b) => String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? ""))),
     commercialisations: [...commercialisations].sort((a, b) =>
       String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),

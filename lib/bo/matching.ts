@@ -153,6 +153,10 @@ export type FiltresMatch = {
   notes: string[];
   /** Exclure les recherches à qui l'immeuble a déjà été proposé. */
   exclureDejaVus: boolean;
+  /** Les contacts qui ont déjà une proposition pour l'immeuble, d'où qu'elle
+   *  vienne : la marque `IMMEUBLEs_proposed` de la recherche ne suffit pas (une
+   *  autre recherche du même acquéreur, une proposition faite à la main). */
+  dejaRecus?: string[];
   /** Exclure les recherches créées par des agents (confrères). */
   exclureAgents: boolean;
   /** Ne garder que les acquéreurs ayant signé un mandat de recherche. */
@@ -325,6 +329,7 @@ export function matcher(
   /** Les exclusions par recherche (retour #332), quand l'appelant les a chargées. */
   exclusions?: Map<string, ExclusionsRecherche>,
 ): Acquereur[] {
+  const dejaRecus = new Set(filtres.dejaRecus ?? []);
   const retenues = recherches.filter((r) => {
     if (r.archived === true || r.standby === true) return false;
 
@@ -336,6 +341,7 @@ export function matcher(
       if (!filtres.notes.includes(S(r.Note))) return false;
     }
     if (filtres.exclureDejaVus && arr(r.IMMEUBLEs_proposed).includes(bien.immeubleId)) return false;
+    if (filtres.exclureDejaVus && dejaRecus.has(S(r.ACHETEUR))) return false;
     if (arr(r.IMMEUBLES_hidden).includes(bien.immeubleId)) return false;
     /* Un confrère est reconnu par le drapeau de sa recherche OU par sa fiche
        (booléen `agent`, profil « Agent immobilier ») : il ne reçoit les

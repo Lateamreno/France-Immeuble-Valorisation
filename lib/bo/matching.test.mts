@@ -1,4 +1,4 @@
-import { correspond, type CriteresBien } from "./matching.ts";
+import { correspond, matcher, FILTRES_MATCH_DEFAUT, type CriteresBien } from "./matching.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };
@@ -82,5 +82,15 @@ ok(geo(["Saint-Denis"], a("Saint-Denis", "974")), "ancienne saisie sans départe
 ok(!geo([], a("Saint-Denis", "93"), ["Saint-Denis (93)"]), "exclure Saint-Denis (93) écarte celui du 93");
 ok(geo([], a("Saint-Denis", "974"), ["Saint-Denis (93)"]), "… et pas celui de La Réunion");
 ok(correspond({ dpts: ["2A"] }, a("Ajaccio", "2A")), "la Corse-du-Sud (2A) se reconnaît");
+
+console.log("— Déjà reçu : jamais deux fois (MAV, 13/11, Sin-le-Noble) —");
+const rech = (id: string, contact: string) => ({ _id: id, ACHETEUR: contact, Note: "A", Destinations: [], IMMEUBLEs_proposed: [] });
+const vivier = [rech("r1", "c1"), rech("r2", "c2")];
+const bienX = im({ Logement: 100 }, { immeubleId: "imX" });
+const sortis = (f: Partial<typeof FILTRES_MATCH_DEFAUT> & { dejaRecus?: string[] }) =>
+  matcher(vivier, new Map(), bienX, { ...FILTRES_MATCH_DEFAUT, ...f }).map((a) => a.rechercheId).join(",");
+ok(sortis({ dejaRecus: ["c1"] }) === "r2", "c1 a déjà une proposition pour l'immeuble → il ne la reçoit pas de nouveau");
+ok(sortis({ dejaRecus: ["c1"], exclureDejaVus: false }) === "r1,r2", "case « renvoyer aussi » cochée → il la reçoit");
+ok(FILTRES_MATCH_DEFAUT.exclureDejaVus === true, "par défaut, les déjà vus sont exclus");
 
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }
