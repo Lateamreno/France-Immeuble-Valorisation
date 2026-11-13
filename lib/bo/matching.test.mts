@@ -92,5 +92,13 @@ const sortis = (f: Partial<typeof FILTRES_MATCH_DEFAUT> & { dejaRecus?: string[]
 ok(sortis({ dejaRecus: ["c1"] }) === "r2", "c1 a déjà une proposition pour l'immeuble → il ne la reçoit pas de nouveau");
 ok(sortis({ dejaRecus: ["c1"], exclureDejaVus: false }) === "r1,r2", "case « renvoyer aussi » cochée → il la reçoit");
 ok(FILTRES_MATCH_DEFAUT.exclureDejaVus === true, "par défaut, les déjà vus sont exclus");
+/* MAV, 13/11 : cocher « renvoyer aussi » ne lève QUE le filtre du déjà-reçu ;
+   la recherche doit toujours correspondre. Cas réel : une recherche « commerce
+   seul » qui exclut le logement, face à Sin-le-Noble (50 % d'habitation). */
+const sinLeNoble = im({ Commerce: 30024, Logement: 30348 }, { immeubleId: "imSLN", prix: 586000, renta: 10.3, departement: "59" });
+const commerceSeul = { _id: "rF", ACHETEUR: "cF", Note: "C", Destinations: ["Commerce"], prix_min: 500000, prix_max: 30000000, renta: 6 };
+const exclLogement = new Map([["rF", { destinations: ["Logement"], villes: [], departements: [], regions: [] }]]);
+ok(matcher([commerceSeul], new Map(), sinLeNoble, { ...FILTRES_MATCH_DEFAUT, exclureDejaVus: false, dejaRecus: ["cF"] }, exclLogement).length === 0,
+  "déjà reçu ET case cochée : une recherche « commerce seul » ne reçoit toujours pas un immeuble à 50 % d'habitation");
 
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }
