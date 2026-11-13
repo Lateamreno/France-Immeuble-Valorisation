@@ -69,4 +69,18 @@ console.log("— Sans type ni lot —");
 ok(recoit([], courbevoie), "recherche sans type → reçoit tout");
 ok(recoit(["Commerce"], im({}, { repartition: undefined })), "bien sans lot ni fiche → pas d'opposition");
 
+console.log("— Villes : la ville choisie, et pas une autre (MAV, 13/11) —");
+const a = (ville: string, departement: string) => im({ Logement: 100 }, { ville, departement });
+const geo = (villes: string[], bien: CriteresBien, exclues: string[] = []) =>
+  correspond({ villes }, bien, { destinations: [], villes: exclues, departements: [], regions: [] });
+ok(geo(["Saint-Denis (93)"], a("Saint-Denis", "93")), "Saint-Denis (93) → l'immeuble de Saint-Denis du 93");
+ok(!geo(["Saint-Denis (93)"], a("Saint-Denis", "974")), "Saint-Denis (93) → pas celui de La Réunion");
+ok(!geo(["Saint-Denis (93)"], a("Saint-Denis-en-Val", "45")), "Saint-Denis (93) → pas Saint-Denis-en-Val");
+ok(geo(["Saint-Denis (974)"], a("Saint-Denis", "974")), "Saint-Denis (974) → celui de La Réunion");
+ok(geo(["L'Haÿ-les-Roses (94)"], a("L'Hay-les-Roses", "94")), "accents et apostrophes ne comptent pas");
+ok(geo(["Saint-Denis"], a("Saint-Denis", "974")), "ancienne saisie sans département : toutes les Saint-Denis, comme avant");
+ok(!geo([], a("Saint-Denis", "93"), ["Saint-Denis (93)"]), "exclure Saint-Denis (93) écarte celui du 93");
+ok(geo([], a("Saint-Denis", "974"), ["Saint-Denis (93)"]), "… et pas celui de La Réunion");
+ok(correspond({ dpts: ["2A"] }, a("Ajaccio", "2A")), "la Corse-du-Sud (2A) se reconnaît");
+
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }

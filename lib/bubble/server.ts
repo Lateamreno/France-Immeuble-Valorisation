@@ -3069,7 +3069,11 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       renta: rentaPotentielle(im),
       travaux: num(im.travaux_total),
       ville: String(adr?.ville_name ?? ""),
-      departement: cp.slice(0, 2),
+      /* 974 et non 97, 2A et non 20 : les villes se comparent désormais avec
+         leur département (« Saint-Denis (974) », MAV 13/11). La région sert
+         aux exclusions par région, absentes jusqu'ici de ce matching. */
+      departement: codeDepartement(String(im.adresse_dpt ?? ""), cp) ?? cp.slice(0, 2),
+      region: regionDe(String(im.adresse_dpt ?? ""), cp),
       destinations,
       cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
       repartition,
@@ -3618,7 +3622,7 @@ export async function listRecherchesBO(
 
     const lieux = [
       ...(Array.isArray(r.villes) ? (r.villes as string[]) : []).filter((v) => !/^\d{13}x\d+$/.test(v)),
-      ...(Array.isArray(r.dpts) ? (r.dpts as string[]) : []).filter((d) => /^\d{2,3}[AB]?$/.test(d)),
+      ...(Array.isArray(r.dpts) ? (r.dpts as string[]) : []).filter((d) => /^(?:\d{2,3}|2[AB])$/.test(d)),
     ];
 
     return {

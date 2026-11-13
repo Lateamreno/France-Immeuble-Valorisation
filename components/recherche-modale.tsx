@@ -31,7 +31,32 @@ import { Champ } from "@/components/champ";
 import { Copier } from "@/components/copier";
 import { CIBLES } from "@/lib/referentiels";
 import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
-import { predireVilles, type VillePredite } from "@/lib/bo/villes-actions";
+import { etiquetteVille } from "@/lib/bo/villes";
+
+/** Une commune proposée à la frappe. */
+type VillePredite = { nom: string; departement: string; population?: number };
+
+/**
+ * Les communes qui commencent comme la saisie, depuis le référentiel officiel
+ * (geo.api.gouv.fr, sans clé, ouvert aux navigateurs). Appelé directement
+ * depuis la page : plus rapide qu'un détour par le serveur, et seule la
+ * saisie part (MAV, 12-13/11). La métropole d'abord, puis les plus peuplées :
+ * « Saint-Denis » donne celle du 93 avant celle de La Réunion.
+ */
+async function predireVilles(saisie: string): Promise<VillePredite[]> {
+  const q = saisie.trim();
+  if (q.length < 2 || q.length > 60) return [];
+  const r = await fetch(
+    `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,codeDepartement,population&boost=population&limit=10`,
+  ).catch(() => null);
+  if (!r?.ok) return [];
+  const j = (await r.json().catch(() => [])) as { nom?: string; codeDepartement?: string; population?: number }[];
+  const outreMer = (d: string) => d.startsWith("97") ? 1 : 0;
+  return j
+    .filter((c) => c.nom && c.codeDepartement)
+    .map((c) => ({ nom: String(c.nom), departement: String(c.codeDepartement), population: c.population }))
+    .sort((a, b) => outreMer(a.departement) - outreMer(b.departement) || (b.population ?? 0) - (a.population ?? 0));
+}
 import {
   chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
 } from "@/lib/bo/actions";
@@ -209,18 +234,19 @@ function ChoixMultiple({
   const dejaLa = valeur.some((x) => clefTexte(x) === clefTexte(texte));
   const exacte = options.some((o) => clefTexte(o.cle) === q || clefTexte(o.nom) === q);
   const villesPredites = avecVilles && texte.length >= 2 && clefTexte(predites.pour) === q
-    ? predites.liste.filter((v, i, t) => !valeur.some((x) => clefTexte(x) === clefTexte(v.nom))
+    ? predites.liste.filter((v, i, t) => !valeur.includes(etiquetteVille(v.nom, v.departement))
       && t.findIndex((w) => w.nom === v.nom && w.departement === v.departement) === i)
     : [];
-  const villeExacte = villesPredites.some((v) => clefTexte(v.nom) === q);
-  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte && !villeExacte ? texte : null;
+  /* Le texte tel quel (une ville sans département, qui vaut pour toutes ses
+     homonymes) ne s'offre plus qu'à défaut de commune trouvée. */
+  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte && villesPredites.length === 0 ? texte : null;
   const commencePar = propositions.find((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q));
   /* Entrée : d'abord un département ou une région qui commence par la saisie
      (« 93 », « seine-saint »), puis la commune la plus peuplée qui porte ce
      nom, puis le texte tel quel. */
   const valider = () => {
     if (commencePar) return retenir(commencePar.cle);
-    if (villesPredites[0]) return retenir(villesPredites[0].nom);
+    if (villesPredites[0]) return retenir(etiquetteVille(villesPredites[0].nom, villesPredites[0].departement));
     if (ajoutLibre) return retenir(ajoutLibre);
     if (propositions[0]) return retenir(propositions[0].cle);
   };
@@ -274,7 +300,7 @@ function ChoixMultiple({
             {villesPredites.map((v) => (
               <button key={`${v.nom}-${v.departement}`} type="button" className="rmx-o rmx-ville"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => retenir(v.nom)}>
+                onClick={() => retenir(etiquetteVille(v.nom, v.departement))}>
                 <b>{v.departement}</b>
                 {v.nom}
                 {v.population ? <span className="rmx-hab">{hab(v.population)}</span> : null}
@@ -292,7 +318,7 @@ function ChoixMultiple({
               <button type="button" className="rmx-o rmx-ajout"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => retenir(ajoutLibre)}>
-                + Ajouter « {ajoutLibre} » tel quel
+                + Ajouter « {ajoutLibre} » (sans département)
               </button>
             )}
           </div>
@@ -401,7 +427,7 @@ export function ModaleRechercheEdition({
   /* La carte mélange villes et départements dans `lieux` ; on les resépare sur
      la forme du code — c'est ce que fait déjà le serveur pour les afficher. */
   const lieux = depart?.lieux.filter((l) => l !== "France entière") ?? [];
-  const [dpts, setDpts] = useState<string[]>(lieux.filter((l) => /^\d{2,3}[AB]?$/.test(l)));
+  const [dpts, setDpts] = useState<string[]>(lieux.filter((l) => /^(?:\d{2,3}|2[AB])$/.test(l)));
   /* Les régions étaient absentes des critères positifs : seules les
      exclusions en avaient. Le secteur se saisit maintenant aux trois échelles
      (#341). Une entrée qui porte un nom de région est reconnue comme telle. */
@@ -409,7 +435,7 @@ export function ModaleRechercheEdition({
     lieux.filter((l) => (REGIONS as readonly string[]).includes(l)),
   );
   const [villes, setVilles] = useState<string[]>(
-    lieux.filter((l) => !/^\d{2,3}[AB]?$/.test(l) && !(REGIONS as readonly string[]).includes(l)),
+    lieux.filter((l) => !/^(?:\d{2,3}|2[AB])$/.test(l) && !(REGIONS as readonly string[]).includes(l)),
   );
 
   /* Les fourchettes se remplissent avec les valeurs en base : une modale de
@@ -604,8 +630,8 @@ export function ModaleRechercheEdition({
               <ChoixMultiple options={LIEU_OPT} valeur={[...regions, ...dpts, ...villes]} libre villes
                 onChange={(v) => {
                   setRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
-                  setDpts(v.filter((x) => /^\d{2,3}[AB]?$/.test(x)));
-                  setVilles(v.filter((x) => !/^\d{2,3}[AB]?$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
+                  setDpts(v.filter((x) => /^(?:\d{2,3}|2[AB])$/.test(x)));
+                  setVilles(v.filter((x) => !/^(?:\d{2,3}|2[AB])$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
                 }}
                 placeholder="Une région, un département (93, seine-saint…) ou une ville" />
               {regions.length > 0 && (
@@ -673,17 +699,17 @@ export function ModaleRechercheEdition({
                     <ChoixMultiple options={DEST_OPT} valeur={exDest} onChange={setExDest}
                       placeholder="Commerce, Bureau…" />
                   </Champ>
-                  <Champ libelle="Régions exclues">
-                    <ChoixMultiple options={REG_OPT} valeur={exRegions} onChange={setExRegions}
-                      placeholder="Une région à écarter…" />
-                  </Champ>
-                  <Champ libelle="Départements exclus">
-                    <ChoixMultiple options={DPT_OPT} valeur={exDpts} onChange={setExDpts}
-                      placeholder="62, pas-de-calais…" />
-                  </Champ>
-                  <Champ libelle="Villes exclues">
-                    <ChoixMultiple options={[]} valeur={exVilles} onChange={setExVilles} libre villes
-                      placeholder="Taper une ville puis Entrée…" />
+                  {/* MAV, 13/11 : « je veux pouvoir choisir région, ville et
+                      départements et les ajouter ou exclure ». Un seul champ,
+                      comme « Où » : la prédiction trouve les trois. */}
+                  <Champ libelle="Lieux exclus">
+                    <ChoixMultiple options={LIEU_OPT} valeur={[...exRegions, ...exDpts, ...exVilles]} libre villes
+                      onChange={(v) => {
+                        setExRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
+                        setExDpts(v.filter((x) => /^(?:\d{2,3}|2[AB])$/.test(x)));
+                        setExVilles(v.filter((x) => !/^(?:\d{2,3}|2[AB])$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
+                      }}
+                      placeholder="Une région, un département ou une ville à écarter" />
                   </Champ>
                 </div>
               )}
