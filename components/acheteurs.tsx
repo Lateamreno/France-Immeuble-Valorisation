@@ -84,8 +84,14 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
     const ids = new Set(
       (Array.isArray(m.RECHERCHEs_FINAL) ? (m.RECHERCHEs_FINAL as unknown[]) : []).map(String),
     );
+    /* MAV, 13/11 — Sin-le-Noble : le matching de mars, rouvert tel quel, a
+       renvoyé le bien aux 170 acquéreurs de mars. Une sélection rouverte sert
+       à lancer une NOUVELLE commercialisation : ceux qui ont déjà une
+       proposition pour ce bien en sortent, comme dans un matching neuf. */
+    const dejaRecus = new Set(d.dejaRecus);
     const acquereurs = d.recherches
       .filter((x) => ids.has(String(x._id)))
+      .filter((x) => !dejaRecus.has(String(x.ACHETEUR ?? "")))
       .map((x) => carte(x, d.contacts, true));
     oublier(`${memo}:`);
     setResultat({
@@ -108,7 +114,7 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
       },
       filtres: {
         notes: Array.isArray(m.in_Notes) ? (m.in_Notes as string[]) : [],
-        exclureDejaVus: m.in_proposed === true,
+        exclureDejaVus: true,
         exclureAgents: m.in_agents === true,
         mandatObligatoire: m.in_man_only === true,
       },
@@ -424,7 +430,7 @@ function ModaleMatching({
   };
 
   // Aperçu recalculé à chaque changement : MAV voit le volume avant de lancer.
-  const apercu = useMemo(() => matcher(d.recherches, d.contacts, criteres, { ...f, dejaRecus: d.dejaRecus }), [d, criteres, f]);
+  const apercu = useMemo(() => matcher(d.recherches, d.contacts, criteres, { ...f, dejaRecus: d.dejaRecus }, d.exclusions), [d, criteres, f]);
   const dest = destinataires(apercu);
 
   const toggleNote = (n: string) =>

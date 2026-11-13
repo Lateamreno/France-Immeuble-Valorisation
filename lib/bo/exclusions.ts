@@ -81,6 +81,23 @@ export async function lireExclusionsDe(ids: string[]): Promise<Map<string, Exclu
   return out;
 }
 
+/**
+ * Toutes les exclusions d'un coup : la table ne porte que les recherches qui
+ * en ont (quelques dizaines), une seule requête vaut mieux que sept paquets
+ * d'identifiants pour le vivier entier du matching.
+ */
+export async function toutesLesExclusions(): Promise<Map<string, Exclusions>> {
+  const out = new Map<string, Exclusions>();
+  if (!SB_KEY) return out;
+  const res = await fetch(
+    `${SB_URL}/rest/v1/fi_recherche_exclusion?select=recherche_id,destinations,villes,departements,regions&limit=10000`,
+    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store" },
+  ).catch(() => null);
+  if (!res?.ok) return out;
+  for (const r of (await res.json()) as Record<string, unknown>[]) out.set(String(r.recherche_id), normaliser(r));
+  return out;
+}
+
 /** Enregistre les exclusions d'une recherche ; une ligne toute vide est effacée. */
 export async function ecrireExclusions(rechercheId: string, e: Exclusions) {
   if (!SB_KEY) return;
