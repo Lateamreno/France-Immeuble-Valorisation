@@ -20,7 +20,7 @@ import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { derniersDossiers } from "@/lib/bo/piece-dossier";
 import { correspond, destinationsDesLots, type CriteresBien } from "@/lib/bo/matching";
-import { lireExclusionsDe } from "@/lib/bo/exclusions";
+import { lireExclusionsDe, toutesLesExclusions } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
 import { adresseComplete, villeArrondissement } from "@/lib/ville";
 import { lireSociete, nommerSocietes, societesDeContact, societesDeContacts } from "@/lib/bo/societes-lecture";
@@ -2996,6 +2996,10 @@ export type AcheteursData = {
    *  soit la commercialisation (MAV, 13/11 : Sin-le-Noble renvoyé à 162
    *  acquéreurs qui l'avaient déjà reçu). */
   dejaRecus: string[];
+  /** Ce que chaque recherche refuse (#332). Le matching de la commercialisation
+   *  ne les appliquait pas : seul l'écran Recherches les lisait (MAV, 13/11,
+   *  Sin-le-Noble envoyé à une recherche qui excluait le logement). */
+  exclusions: Map<string, import("@/lib/bo/matching").ExclusionsRecherche>;
 };
 
 /**
@@ -3020,7 +3024,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
   const im = one.results[0];
   if (!im) return null;
 
-  const [recherches, matchs, commercialisations, adresses, propositions] = await Promise.all([
+  const [recherches, matchs, commercialisations, adresses, propositions, exclusions] = await Promise.all([
     /* « non archivée » et non « archivée = non » (22/09) : 983 recherches
        sur 1 951 n'ont jamais eu la case touchée, Bubble les compte comme
        actives, et le matching de Livry-Gargan en rendait 165 au lieu de 309. */
@@ -3029,6 +3033,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
     fetchAll("commercialisation", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 100).catch(() => []),
     fetchAll("adresse", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 2).catch(() => []),
     fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 5000, undefined, ["ACHETEUR"]).catch(() => []),
+    toutesLesExclusions().catch(() => new Map()),
   ]);
   const dejaRecus = [...new Set(propositions.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
 
@@ -3064,6 +3069,7 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
     recherches,
     contacts,
     dejaRecus,
+    exclusions,
     matchs: [...matchs].sort((a, b) => String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? ""))),
     commercialisations: [...commercialisations].sort((a, b) =>
       String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
