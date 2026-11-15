@@ -127,6 +127,12 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
     return { ...r, lots };
   });
 
+  /* Le prix que l'agent retient se saisit dans l'état locatif, vue Valeurs. */
+  const prixRetenus = b.lots.reduce<{ n: number; total: number }>((t, l) => {
+    const v = typeof l.prix_retenu === "number" ? l.prix_retenu : 0;
+    return v > 0 ? { n: t.n + 1, total: t.total + v } : t;
+  }, { n: 0, total: 0 });
+
   const ecart = prixBloc && etude.totalLibre ? Math.round(((etude.totalLibre - prixBloc) / prixBloc) * 100) : undefined;
 
   return (
@@ -211,6 +217,8 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
       <div className="etd-resume">
         <div className="or"><span>Valeur découpe, libre</span><b>{eur(etude.totalLibre)}</b></div>
         <div><span>Valeur découpe, occupée</span><b>{eur(etude.totalOccupe)}</b></div>
+        <div><span>Prix retenus (état locatif, vue Valeurs)</span><b>{prixRetenus.n ? eur(prixRetenus.total) : "—"}</b>
+          {prixRetenus.n ? <span>{prixRetenus.n} lot{prixRetenus.n > 1 ? "s" : ""} sur {b.lots.length}</span> : null}</div>
         <div><span>Prix du bloc (fiche, HAI)</span><b>{eur(prixBloc)}</b></div>
         <div><span>Écart découpe libre / bloc</span><b>{ecart === undefined ? "—" : `${ecart > 0 ? "+" : ""}${ecart} %`}</b></div>
         <div><span>Références écartées</span><b>{etude.refsEcartees} sur {etude.refsRetenues + etude.refsEcartees}</b></div>
@@ -424,6 +432,7 @@ function EvaluationLots({ lots, onAjuster }: {
         <span className="etd-aide">
           Prédiction = surface × prix au m² du secteur (médiane de sa typologie). Ajustez chaque lot en % ;
           un local commercial loué s&apos;évalue au rendement saisi sur la ligne Locaux.
+          Le prix que vous retenez se saisit dans l&apos;état locatif, vue « Valeurs ».
         </span>
         {ajuste !== prediction && (
           <span className="etd-chip">Ajustements : <b>{ajuste > prediction ? "+" : "−"}{eur(Math.abs(ajuste - prediction))}</b></span>

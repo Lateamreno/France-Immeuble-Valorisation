@@ -404,6 +404,7 @@ export const ONGLETS_LOCATIF = [
   { key: "lots", label: "Lots" },
   { key: "baux", label: "Baux" },
   { key: "locataires", label: "Locataires" },
+  { key: "valeurs", label: "Valeurs" },
   { key: "charges", label: "Charges" },
   { key: "etude", label: "Étude découpe" },
 ] as const;
@@ -440,12 +441,13 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
   useEffect(() => {
     const ouverture = premier.current;
     premier.current = false;
-    if (tab === "baux" || tab === "locataires") { if (vue !== tab) setVue(tab); }
-    else if (!ouverture && tab === "lots" && (vue === "baux" || vue === "locataires")) setVue("base");
+    if (tab === "baux" || tab === "locataires" || tab === "valeurs") { if (vue !== tab) setVue(tab); }
+    else if (!ouverture && tab === "lots" && (vue === "baux" || vue === "locataires" || vue === "valeurs")) setVue("base");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const compte: Record<(typeof VUES_LISTE)[number]["key"], number> = {
     base: b.lots.length, baux: b.baux.length, locataires: b.locataires.length,
+    valeurs: b.lots.filter((l) => typeof l.prix_retenu === "number" && l.prix_retenu > 0).length,
   };
   return (
     <>
@@ -453,7 +455,9 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
         {VUES_LISTE.map((v) => (
           <button key={v.key} type="button"
             className={`ftab${onglet === "lots" && vue === v.key ? " on" : ""}`}
-            title={v.key === "base" ? "L'état locatif de base : toutes les informations habituelles" : `Les colonnes du ${v.label.toLowerCase()}`}
+            title={v.key === "base" ? "L'état locatif de base : toutes les informations habituelles"
+              : v.key === "valeurs" ? "La valeur de chaque lot : la prédiction de l'étude de découpe et le prix que vous retenez"
+                : `Les colonnes du ${v.label.toLowerCase()}`}
             onClick={() => { setTab(v.key === "base" ? "lots" : v.key); setVue(v.key); }}>
             <Picto nom={v.picto} className="ftab-ic" />{v.label}
             {compte[v.key] > 0 ? <span className="n">{compte[v.key]}</span> : null}

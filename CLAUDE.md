@@ -560,6 +560,13 @@ va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
   (`etude_decoupe.lots`). Les totaux suivent les lots ajustés. Un **local
   commercial loué s'évalue au rendement** (loyer / rendement de la ligne
   Locaux), comparé au prix au m² du secteur ; libre, au prix du secteur.
+- **Vue « Valeurs » de l'état locatif (MAV, 15/11)** : « un état locatif dans
+  lequel j'ai une prédiction du prix que tu me proposes, et moi je mets à la
+  main le prix qui me plaît, lot par lot ». Colonnes Prédiction (celle de
+  l'étude, `components/predictions-lots.ts`), **Prix retenu** (champ
+  `prix_retenu` du lot, `bo_lot`, enregistré avec le bouton Enregistrer) et
+  €/m² avec l'écart à la prédiction. La flèche ↓ reprend la prédiction arrondie
+  au millier.
 
 ---
 

@@ -9815,6 +9815,13 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .etd-saisie input { width: 92px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; color: var(--slate); text-align: right; }
 .etd-saisie.petit input { width: 52px; }
 .etd-forfait td { background: #fcfcfc; }
+/* Vue Valeurs de l'état locatif (MAV, 15/11) : prédiction et prix retenu */
+.ltable td.lval-pred { white-space: nowrap; color: var(--slate-2); padding-left: 8px; }
+.lval-rep { margin-left: 4px; border: 1px solid var(--line); background: #fff; border-radius: 3px; font-size: 11px; line-height: 1; padding: 2px 4px; color: var(--gold-bo, #8a7a35); cursor: pointer; }
+.lval-rep:hover { background: #f6f2e3; }
+.lval-ec { margin-left: 5px; font-size: 10.5px; }
+.lval-ec.plus { color: #2f7a45; }
+.lval-ec.moins { color: #b0472c; }
 /* Évaluation lot par lot (MAV, 15/11) */
 .etd-lots { display: flex; flex-direction: column; gap: 8px; }
 .etd-lots > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }

@@ -573,6 +573,8 @@ export type LotPatch = Partial<{
   Type_dpe: string | null;
   renov_year: number | null;
   commentaire: string | null;
+  /** Le prix de vente retenu pour le lot, saisi à la main (vue Valeurs, 15/11/26). */
+  prix_retenu: number | null;
   /** Rang d'affichage du tableau des lots (#82). */
   ordre: number;
 }>;
