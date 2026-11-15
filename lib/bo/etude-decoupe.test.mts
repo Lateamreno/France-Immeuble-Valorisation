@@ -51,4 +51,30 @@ ok(e5.groupes[0].valeurOccupee === Math.round(10800 / 0.05) + Math.round(40 * 53
 ok(e5.forfaits[0].valeur === 15000, "parking au forfait saisi");
 ok(e5.totalLibre === e5.groupes[0].valeurLibre + 15000, "total libre = typologies + forfaits");
 
+console.log("— Lot par lot —");
+const lots2 = [
+  { _id: "a", Destination: "Logement", Type_lot: "T2", surface_carrez: 45, etage: "5" },
+  { _id: "b", Destination: "Logement", Type_lot: "T2", surface_carrez: 40, etage: "RDC" },
+  { _id: "c", Destination: "Commerce", Type_lot: "Boutique", surface_carrez: 60, loyer: 1500 },
+  { _id: "d", Destination: "Parking" },
+  { _id: "e", Destination: "Annexe" },
+];
+const locaux = Array.from({ length: 8 }, (_, i) => vente({ type: "L", pieces: 0, surface: 60, prixM2: 3000 + i * 100 }));
+const e6 = calculerEtude(lots2, [...proches, ...locaux], "2025-12-31", {
+  ...REGLAGES_VIDES, rendements: { L: 6 }, forfaits: { Parking: 15000 },
+  lots: { a: { etage: 5, exterieur: 3 }, b: { etage: -10, note: "sur rue" } },
+});
+ok(e6.lots.map((l) => l.id).join() === "a,b,c,d,e", "chaque lot de l'état locatif, dans son ordre");
+const la = e6.lots[0], lb = e6.lots[1], lc = e6.lots[2];
+ok(la.prediction === Math.round(45 * 5350) && la.ajustementPct === 8, "prédiction = surface × prix secteur ; ajustements additionnés");
+ok(la.valeurLibre === Math.round(la.prediction * 1.08), "valeur libre = prédiction × (1 + ajustements)");
+ok(lb.valeurLibre === Math.round(lb.prediction * 0.9) && lb.prixM2Retenu === Math.round(lb.valeurLibre / 40), "un rez-de-chaussée à −10 %, et son prix au m² retenu");
+ok(lc.methode === "rendement" && lc.valeurLibre === Math.round(18000 / 0.06), "local loué : loyer annuel / rendement, libre comme occupé");
+ok(lc.ecartSecteur === Math.round(((300000 / 60 - lc.prixM2Secteur!) / lc.prixM2Secteur!) * 100), "local au rendement : écart avec le prix au m² du secteur");
+ok(e6.lots[3].methode === "forfait" && e6.lots[3].valeurLibre === 15000, "parking : au forfait");
+ok(e6.lots[4].methode === "aucune" && e6.lots[4].valeurLibre === 0, "annexe : non chiffrée");
+ok(e6.totalLibre === la.valeurLibre + lb.valeurLibre + lc.valeurLibre + 15000, "le total libre suit les lots ajustés");
+const sansRdt = calculerEtude(lots2, [...proches, ...locaux], "2025-12-31", REGLAGES_VIDES).lots[2];
+ok(sansRdt.methode === "m2" && sansRdt.valeurLibre === sansRdt.prediction, "local loué sans rendement saisi : au prix du secteur");
+
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }

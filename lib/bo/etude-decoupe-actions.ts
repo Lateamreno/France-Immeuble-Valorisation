@@ -5,7 +5,7 @@
  * dans `etude_decoupe`. Le calcul, lui, se refait à chaque ouverture. */
 
 import { compteCourant } from "@/lib/auth/comptes";
-import type { ReglagesEtude } from "@/lib/bo/etude-decoupe";
+import { AJUSTEMENT_MAX, AJUSTEMENTS, type AjustementsLot, type ReglagesEtude } from "@/lib/bo/etude-decoupe";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -24,6 +24,15 @@ const nettoyer = (r: ReglagesEtude): ReglagesEtude => {
     reprises: (r.reprises ?? []).filter((x) => typeof x === "string").slice(0, 2000),
     rendements: nombres(r.rendements),
     forfaits: nombres(r.forfaits as Record<string, number>),
+    lots: Object.fromEntries(Object.entries(r.lots ?? {}).filter(([k]) => k.length < 80).slice(0, 500).map(([k, a]) => {
+      const propre: AjustementsLot = {};
+      for (const { cle } of AJUSTEMENTS) {
+        const v = a?.[cle];
+        if (typeof v === "number" && Number.isFinite(v) && v !== 0) propre[cle] = Math.max(-AJUSTEMENT_MAX, Math.min(AJUSTEMENT_MAX, v));
+      }
+      if (typeof a?.note === "string" && a.note.trim()) propre.note = a.note.trim().slice(0, 120);
+      return [k, propre];
+    }).filter(([, a]) => Object.keys(a as object).length > 0)),
   };
 };
 

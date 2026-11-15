@@ -13,7 +13,11 @@
  * - on écarte une vente, ou tout un immeuble (standing) ;
  * - libre ET occupé : l'occupé passe par un rendement type par typologie ;
  * - les ventes à la même adresse restent dans le calcul ;
- * - caves et parkings : DVF ne les distingue pas, ils se chiffrent au forfait.
+ * - caves et parkings : DVF ne les distingue pas, ils se chiffrent au forfait ;
+ * - chaque lot s'évalue ensuite (15/11) : la prédiction (surface × prix au m²
+ *   du secteur) s'ajuste selon l'étage, l'état, l'extérieur… ;
+ * - un local commercial loué s'évalue au rendement (loyer / rendement type),
+ *   comparé au prix au m² du secteur.
  *
  * Ce module ne fait que calculer : il sert au serveur (premier calcul) et à
  * l'écran (recalcul immédiat quand on écarte une référence).
@@ -56,6 +60,19 @@ export type CleTypo = string; // « A2 » : appartement 2 pièces ; « L » : lo
 export const FORFAITS = ["Parking", "Cave"] as const;
 export type Forfait = (typeof FORFAITS)[number];
 
+/** Les ajustements d'un lot, en % de la prédiction (MAV : « on ajuste selon
+ *  l'étage, l'état, la présence de balcon etc. »). */
+export const AJUSTEMENTS = [
+  { cle: "etage", libelle: "Étage", aide: "Étage, ascenseur, rez-de-chaussée sur rue…" },
+  { cle: "etat", libelle: "État", aide: "Rénové, à rafraîchir, gros travaux…" },
+  { cle: "exterieur", libelle: "Extérieur", aide: "Balcon, terrasse, jardin…" },
+  { cle: "autre", libelle: "Autre", aide: "Vue, exposition, plan, nuisances… (dites-le dans la note)" },
+] as const;
+export type CleAjustement = (typeof AJUSTEMENTS)[number]["cle"];
+export type AjustementsLot = Partial<Record<CleAjustement, number>> & { note?: string };
+/** Un ajustement va de −50 % à +50 % : au-delà, c'est un autre bien. */
+export const AJUSTEMENT_MAX = 50;
+
 /** Ce que l'agent a réglé ; gardé sur la fiche (`etude_decoupe`). */
 export type ReglagesEtude = {
   /** Ventes écartées (identifiant de mutation) → motif. */
@@ -68,10 +85,13 @@ export type ReglagesEtude = {
   rendements: Record<CleTypo, number>;
   /** Prix à l'unité des annexes vendues séparément. */
   forfaits: Partial<Record<Forfait, number>>;
+  /** Ajustements lot par lot (identifiant du lot → %). Absent des réglages
+   *  enregistrés avant le 15/11 : se lit comme vide. */
+  lots?: Record<string, AjustementsLot>;
 };
 
 export const REGLAGES_VIDES: ReglagesEtude = {
-  ventesExclues: {}, immeublesExclus: {}, reprises: [], rendements: {}, forfaits: {},
+  ventesExclues: {}, immeublesExclus: {}, reprises: [], rendements: {}, forfaits: {}, lots: {},
 };
 
 /* Les paliers de recherche : d'abord le plus proche et le plus récent, puis on
@@ -141,6 +161,13 @@ export const surfaceLot = (l: Record<string, unknown>) => N(l.surface_carrez) ||
 /** Le loyer annuel en cours d'un lot (0 s'il est libre). */
 export const loyerAnnuel = (l: Record<string, unknown>) => (N(l.loyer) ?? 0) * 12;
 
+/** L'identifiant d'un lot de l'état locatif (celui des ajustements). */
+export const idLot = (l: Record<string, unknown>, i: number) => (l._id ? String(l._id) : `#${i}`);
+
+/** La somme des ajustements d'un lot, en %. */
+export const sommeAjustements = (a?: AjustementsLot) =>
+  AJUSTEMENTS.reduce((t, { cle }) => t + (Number.isFinite(a?.[cle]) ? Number(a?.[cle]) : 0), 0);
+
 /** Une vente correspond-elle à la typologie ? */
 function memeTypo(r: VenteDvf, cle: CleTypo): boolean {
   if (cle === "L") return r.type === "L";
@@ -190,8 +217,41 @@ export type GroupeTypo = {
 
 export type LigneForfait = { forfait: Forfait; lots: number; prixUnite?: number; valeur: number };
 
+/** Un lot évalué : la prédiction, les ajustements, la valeur retenue. */
+export type LotEvalue = {
+  id: string;
+  lot: Record<string, unknown>;
+  /** Typologie (« A2 », « L »), forfait (« Parking »), ou rien si non chiffrable. */
+  cle?: CleTypo;
+  forfait?: Forfait;
+  libelle: string;
+  surface: number;
+  loyerAnnuel: number;
+  /** Prix au m² du secteur : la médiane des ventes retenues de sa typologie. */
+  prixM2Secteur?: number;
+  /** Surface × prix au m² du secteur. */
+  prediction: number;
+  ajustements: AjustementsLot;
+  /** Somme des ajustements, % (0 pour un lot au rendement ou au forfait). */
+  ajustementPct: number;
+  /** « m2 » : prédiction ajustée ; « rendement » : local loué, loyer / rendement ;
+   *  « forfait » : cave, parking ; « aucune » : rien pour le chiffrer. */
+  methode: "m2" | "rendement" | "forfait" | "aucune";
+  rendement?: number;
+  /** Valeur du lot vendu libre (au rendement pour un local loué : il se vend loué). */
+  valeurLibre: number;
+  /** Valeur du lot vendu dans son état d'occupation. */
+  valeurOccupee: number;
+  /** Prix au m² auquel revient la valeur libre. */
+  prixM2Retenu?: number;
+  /** Écart de ce prix au m² avec celui du secteur, % (locaux au rendement). */
+  ecartSecteur?: number;
+};
+
 export type Etude = {
   groupes: GroupeTypo[];
+  /** Chaque lot de l'état locatif, dans son ordre. */
+  lots: LotEvalue[];
   forfaits: LigneForfait[];
   /** Les lots qu'on ne sait pas chiffrer (annexes, destination vide…). */
   nonChiffres: Record<string, unknown>[];
@@ -226,6 +286,42 @@ export function calculerEtude(
 
   const reprises = new Set(reglages.reprises);
   const groupes: GroupeTypo[] = [];
+  const parLot = new Map<Record<string, unknown>, LotEvalue>();
+  const ajustes = reglages.lots ?? {};
+  const idx = new Map(lots.map((l, i) => [l, i]));
+  /* Un lot : sa prédiction au prix du secteur, puis les ajustements de l'agent.
+     Un local loué se vend loué : il s'évalue au rendement (MAV, 15/11), et son
+     prix au m² se compare à celui du secteur. */
+  const evaluerLot = (l: Record<string, unknown>, cle: CleTypo, libelle: string, prixM2?: number, rendementType?: number): LotEvalue => {
+    const id = idLot(l, idx.get(l) ?? 0);
+    const surface = surfaceLot(l);
+    const loyer = loyerAnnuel(l);
+    const prediction = prixM2 ? Math.round(surface * prixM2) : 0;
+    const ajustements = ajustes[id] ?? {};
+    const capitalise = loyer > 0 && rendementType ? Math.round(loyer / (rendementType / 100)) : undefined;
+    if (cle === "L" && capitalise) {
+      const m2 = surface > 0 ? capitalise / surface : undefined;
+      return {
+        id, lot: l, cle, libelle, surface, loyerAnnuel: loyer, prixM2Secteur: prixM2, prediction,
+        ajustements, ajustementPct: 0, methode: "rendement", rendement: rendementType,
+        valeurLibre: capitalise, valeurOccupee: capitalise,
+        prixM2Retenu: m2 ? Math.round(m2) : undefined,
+        ecartSecteur: m2 && prixM2 ? Math.round(((m2 - prixM2) / prixM2) * 100) : undefined,
+      };
+    }
+    const pct = sommeAjustements(ajustements);
+    const valeurLibre = Math.round(prediction * (1 + pct / 100));
+    return {
+      id, lot: l, cle, libelle, surface, loyerAnnuel: loyer, prixM2Secteur: prixM2, prediction,
+      ajustements, ajustementPct: pct, methode: prediction ? "m2" : "aucune",
+      rendement: loyer > 0 ? rendementType : undefined,
+      valeurLibre,
+      /* Occupé : un logement loué vaut son loyer capitalisé au rendement type ;
+         sans rendement saisi, ou libre, sa valeur libre. */
+      valeurOccupee: capitalise ?? valeurLibre,
+      prixM2Retenu: surface > 0 && valeurLibre ? Math.round(valeurLibre / surface) : undefined,
+    };
+  };
   for (const [cle, g] of parTypo) {
     const surfaces = g.lots.map(surfaceLot).filter((s) => s > 0);
     const surfaceMin = surfaces.length ? Math.floor(Math.min(...surfaces) * (1 - TOLERANCE_SURFACE)) : 0;
@@ -255,28 +351,25 @@ export function calculerEtude(
     }).sort((a, b) => a.distance - b.distance);
     const prix = etats.filter((r) => r.etat === "retenue").map((r) => r.prixM2);
     const medianeM2 = mediane(prix);
-    const surfaceLots = g.lots.reduce((t, l) => t + surfaceLot(l), 0);
-    const valeurLibreLot = (l: Record<string, unknown>) => (medianeM2 ? Math.round(surfaceLot(l) * medianeM2) : 0);
-    const valeurLibre = g.lots.reduce((t, l) => t + valeurLibreLot(l), 0);
-    const loues = g.lots.filter((l) => loyerAnnuel(l) > 0);
-    const loyersAnnuels = loues.reduce((t, l) => t + loyerAnnuel(l), 0);
-    const valeurLoues = loues.reduce((t, l) => t + valeurLibreLot(l), 0);
     const rendementType = reglages.rendements[cle];
-    /* Occupé : un lot loué vaut son loyer annuel capitalisé au rendement type ;
-       sans rendement saisi, ou pour un lot libre, sa valeur libre. */
-    const valeurOccupee = g.lots.reduce((t, l) => {
-      const loyer = loyerAnnuel(l);
-      return t + (loyer > 0 && rendementType ? Math.round(loyer / (rendementType / 100)) : valeurLibreLot(l));
-    }, 0);
+    const evalues = g.lots.map((l) => evaluerLot(l, cle, g.libelle, medianeM2, rendementType));
+    const surfaceLots = g.lots.reduce((t, l) => t + surfaceLot(l), 0);
+    const loues = evalues.filter((e) => e.loyerAnnuel > 0);
+    const loyersAnnuels = loues.reduce((t, e) => t + e.loyerAnnuel, 0);
+    /* Le rendement constaté se lit sur la prédiction, avant ajustements : c'est
+       le rendement des loyers en cours au prix du secteur. */
+    const predictionLoues = loues.reduce((t, e) => t + e.prediction, 0);
     groupes.push({
       cle, libelle: g.libelle, lots: g.lots, surfaceLots, loyersAnnuels, palier,
       surfaceMin, surfaceMax: Number.isFinite(surfaceMax) ? surfaceMax : 0,
       refs: etats, retenues: prix.length, medianeM2,
       q1: quartile(prix, 0.25), q3: quartile(prix, 0.75),
-      valeurLibre,
-      rendementConstate: valeurLoues > 0 ? Math.round((loyersAnnuels / valeurLoues) * 1000) / 10 : undefined,
-      rendementType, valeurOccupee,
+      valeurLibre: evalues.reduce((t, e) => t + e.valeurLibre, 0),
+      rendementConstate: predictionLoues > 0 ? Math.round((loyersAnnuels / predictionLoues) * 1000) / 10 : undefined,
+      rendementType,
+      valeurOccupee: evalues.reduce((t, e) => t + e.valeurOccupee, 0),
     });
+    for (const e of evalues) parLot.set(e.lot, e);
   }
   const ordre = (c: CleTypo) => (c.startsWith("A") ? 0 : c.startsWith("M") ? 1 : 2) * 10 + (Number(c.slice(1)) || 9);
   groupes.sort((a, b) => ordre(a.cle) - ordre(b.cle));
@@ -288,8 +381,22 @@ export function calculerEtude(
   });
   const totalForfaits = forfaits.reduce((t, f) => t + f.valeur, 0);
   const toutes = groupes.flatMap((g) => g.refs);
+  const lotsEvalues: LotEvalue[] = lots.map((l, i) => {
+    const e = parLot.get(l);
+    if (e) return e;
+    const t = typologieDuLot(l);
+    const base = {
+      id: idLot(l, i), lot: l, surface: surfaceLot(l), loyerAnnuel: loyerAnnuel(l),
+      prediction: 0, ajustements: {}, ajustementPct: 0,
+    };
+    if (t && "forfait" in t) {
+      const v = reglages.forfaits[t.forfait] ?? 0;
+      return { ...base, forfait: t.forfait, libelle: t.forfait, methode: "forfait" as const, valeurLibre: v, valeurOccupee: v };
+    }
+    return { ...base, libelle: S(l.Destination) || "Non renseigné", methode: "aucune" as const, valeurLibre: 0, valeurOccupee: 0 };
+  });
   return {
-    groupes, forfaits, nonChiffres,
+    groupes, lots: lotsEvalues, forfaits, nonChiffres,
     totalLibre: groupes.reduce((t, g) => t + g.valeurLibre, 0) + totalForfaits,
     totalOccupe: groupes.reduce((t, g) => t + g.valeurOccupee, 0) + totalForfaits,
     refsRetenues: toutes.filter((r) => r.etat === "retenue").length,
