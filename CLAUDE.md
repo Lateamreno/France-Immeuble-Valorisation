@@ -554,6 +554,12 @@ va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
   dans le seau (`dvf-facades/`).
 - Les réglages (exclusions, rendements, forfaits) vivent sur la fiche,
   `etude_decoupe`.
+- **Évaluation lot par lot (MAV, 15/11)** : chaque lot reçoit une prédiction
+  (surface × prix au m² du secteur, médiane de sa typologie) que l'agent ajuste
+  en % — étage, état, extérieur (balcon, terrasse), autre, avec une note
+  (`etude_decoupe.lots`). Les totaux suivent les lots ajustés. Un **local
+  commercial loué s'évalue au rendement** (loyer / rendement de la ligne
+  Locaux), comparé au prix au m² du secteur ; libre, au prix du secteur.
 
 ---
 
