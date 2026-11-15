@@ -38,6 +38,7 @@ import { ClaudeDrive } from "@/components/claude-drive";
 import { loyerSecteurDuLot } from "@/lib/bo/loyer-secteur-actions";
 import type { LoyerSecteur } from "@/lib/bo/loyer-secteur";
 import { usePredictionsLots } from "@/components/predictions-lots";
+import { mandatEnVigueur } from "@/lib/diffusion";
 import type { LotEvalue } from "@/lib/bo/etude-decoupe";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
@@ -344,8 +345,14 @@ type Row = {
   lot_rattache: string;
   Etat: string; Type_dpe: string; renov_year: string;
   commentaire: string;
-  /** Le prix de vente retenu pour le lot, saisi à la main (vue Valeurs, MAV 15/11). */
+  /** Le prix de vente retenu pour le lot, honoraires inclus, saisi à la main
+   *  (vues Valeurs et Copropriété, MAV 15/11). */
   prix_retenu: string;
+  /** Les tantièmes de copropriété du lot (vue Copropriété, MAV 15/11). */
+  tantiemes: string;
+  /** Le lot avec lequel celui-ci se vend (une cave ou un parking rattaché à un
+   *  appartement pour la vente) — au cas par cas, vide s'il se vend seul. */
+  vente_avec: string;
   /* Le bail du lot (ex-onglet Baux, #379). Une case vide reste vide : le bail
      n'est créé en base que si l'agent écrit quelque chose. */
   b_loyer: string; b_dg: string; b_entree: string;
@@ -479,7 +486,7 @@ function toRow(
     lot_rattache: S(l.lot_rattache),
     Etat: S(l.Etat), Type_dpe: S(l.Type_dpe), renov_year: S(l.renov_year),
     commentaire: S(l.commentaire),
-    prix_retenu: S(l.prix_retenu),
+    prix_retenu: S(l.prix_retenu), tantiemes: S(l.tantiemes), vente_avec: S(l.vente_avec),
     b_loyer: S(num(bail?.loyer_init)),
     b_dg: S(num(bail?.depot_garantie)),
     b_entree: typeof bail?.date_start === "string" ? (bail.date_start as string).slice(0, 10) : "",
@@ -545,6 +552,8 @@ function toPatch(r: Row, avecOrdre = false): LotPatch {
     renov_year: nb(r.renov_year),
     commentaire: txt(r.commentaire),
     prix_retenu: nb(r.prix_retenu),
+    tantiemes: nb(r.tantiemes),
+    vente_avec: txt(r.vente_avec),
   };
 }
 
@@ -568,7 +577,8 @@ export type ColKey =
   | "etat" | "travaux" | "dpe" | "renov"
   | "b_loyer" | "b_dg" | "b_entree" | "b_indice" | "b_i0" | "b_i1" | "b_revise" | "b_statut" | "b_com"
   | "l_pm" | "l_civ" | "l_prenom" | "l_nom" | "l_phone" | "l_email" | "l_com"
-  | "pred" | "prix" | "prixm2"
+  | "tant" | "venteavec"
+  | "pred" | "prix" | "honos" | "nv" | "prixm2"
   | "commentaire" | "photos";
 
 type Colonne = {
@@ -599,7 +609,7 @@ const CHAMP_DE: Partial<Record<ColKey, keyof Row>> = {
   carrez: "surface_carrez", sol: "surface_sol", bail: "Type_bail", hc: "loyer", hcmax: "loyer_max",
   etat: "Etat", dpe: "Type_dpe", renov: "renov_year", commentaire: "commentaire",
   b_loyer: "b_loyer", b_dg: "b_dg", b_entree: "b_entree", b_indice: "b_indice", b_i0: "b_i0", b_i1: "b_i1",
-  prix: "prix_retenu",
+  prix: "prix_retenu", tant: "tantiemes", venteavec: "vente_avec",
   b_statut: "b_statut", b_com: "b_com", l_pm: "l_pm", l_civ: "l_civ", l_prenom: "l_prenom", l_nom: "l_nom",
   l_phone: "l_phone", l_email: "l_email", l_com: "l_com",
 };
@@ -646,8 +656,14 @@ export const COLONNES: Record<ColKey, Colonne> = {
   /* La valeur des lots (MAV, 15/11) : la prédiction de l'étude de découpe,
      le prix retenu à la main, et ce qu'il fait au m². */
   pred: { label: "Prédiction", menu: "Prédiction (étude découpe)", poids: 7.6, px: 134 },
-  prix: { label: "Prix retenu", poids: 7.0, px: 108 },
-  prixm2: { label: "€/m²", menu: "€/m² retenu", poids: 6.0, px: 96 },
+  /* MAV, 15/11 : le prix retenu est honoraires inclus. */
+  prix: { label: "Prix HAI", menu: "Prix retenu HAI", poids: 7.0, px: 108 },
+  honos: { label: "Honoraires", menu: "Honoraires (mandat de l'immeuble)", poids: 6.0, px: 92 },
+  nv: { label: "Net vendeur", poids: 6.6, px: 100 },
+  prixm2: { label: "€/m²", menu: "€/m² HAI", poids: 6.0, px: 96 },
+  /* La copropriété (MAV, 15/11) : tantièmes, et le rattachement de vente au cas par cas. */
+  tant: { label: "Tantièmes", poids: 5.6, px: 86 },
+  venteavec: { label: "Vendu avec", menu: "Vendu avec (rattachement de vente)", poids: 7.0, px: 120 },
   commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 9.0 },
   photos: { label: "Photos", poids: 2.9, px: 30, large: true },
 };
@@ -660,14 +676,15 @@ export const GROUPES: { label: string; cols: ColKey[] }[] = [
   { label: "Etat", cols: ["etat", "travaux", "dpe", "renov"] },
   { label: "Bail", cols: ["b_loyer", "b_dg", "b_entree", "b_indice", "b_i0", "b_i1", "b_revise", "b_statut", "b_com"] },
   { label: "Locataire", cols: ["l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"] },
-  { label: "Valeur", cols: ["pred", "prix", "prixm2"] },
+  { label: "Copropriété", cols: ["tant", "venteavec"] },
+  { label: "Valeur", cols: ["pred", "prix", "honos", "nv", "prixm2"] },
   { label: "Autres", cols: ["commentaire", "photos"] },
 ];
 const ORDRE: ColKey[] = GROUPES.flatMap((g) => g.cols);
 /** Sans numéro, destination et type, une ligne ne dit plus de quel lot elle parle. */
 export const FIXES = new Set<ColKey>(["num", "dest", "type"]);
 
-export type Vue = "base" | "baux" | "locataires" | "valeurs" | "perso";
+export type Vue = "base" | "baux" | "locataires" | "valeurs" | "copro" | "perso";
 export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
   /* L'état locatif « de base » : ce que l'écran montrait jusqu'ici. */
   base: ["bat", "etg", "num", "dest", "type", "carrez", "sol", "bail", "hc", "hcm2", "hcmax", "hcmaxm2",
@@ -683,12 +700,16 @@ export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
   /* La valeur (MAV, 15/11) : de quoi reconnaître le lot et le juger — étage,
      surface, occupation, état, DPE — puis la prédiction et le prix retenu. */
   valeurs: ["etg", "num", "dest", "type", "carrez", "bail", "hc", "etat", "dpe", "pred", "prix", "prixm2", "commentaire"],
+  /* La copropriété (MAV, 15/11) : « les tantièmes, le prix estimé, puis à
+     terme le prix HAI du mandat de vente », lot par lot, pour vendre les lots. */
+  copro: ["etg", "num", "dest", "type", "carrez", "bail", "tant", "venteavec", "pred", "prix", "honos", "nv", "prixm2"],
 };
 export const VUES_LISTE = [
   { key: "base", label: "État locatif", picto: "lots" },
   { key: "baux", label: "Baux", picto: "baux" },
   { key: "locataires", label: "Locataires", picto: "locataires" },
   { key: "valeurs", label: "Valeurs", picto: "valeurs" },
+  { key: "copro", label: "Copropriété", picto: "copro" },
 ] as const;
 
 const CLE_VUE = "bo.locatif.vue";
@@ -948,6 +969,16 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
      chargée seulement quand une colonne la montre. */
   const predictions = usePredictionsLots(b, colonnes.includes("pred") || colonnes.includes("prixm2"));
   const predDe = (id: string) => (predictions.etat === "ok" ? predictions.parLot.get(id) : undefined);
+  /* La copropriété (MAV, 15/11) : un seul mandat pour l'immeuble ; son taux
+     d'honoraires sépare le prix HAI de chaque lot en net vendeur + honoraires.
+     Sans mandat (ou sans taux), le taux du barème, 5 %. */
+  const mandatImmeuble = mandatEnVigueur(b.mandats);
+  const tauxHonos = N(S(mandatImmeuble?.honos_taux)) ?? 5;
+  const ventiler = (hai?: number) => {
+    if (!hai || hai <= 0) return undefined;
+    const nv = Math.round(hai / (1 + tauxHonos / 100));
+    return { nv, honos: hai - nv };
+  };
   /* Les groupes de l'en-tête qui ont encore au moins une colonne, et la
      première colonne de chacun, qui porte le séparateur gras. */
   const groupes = GROUPES
@@ -1067,7 +1098,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
        a un loyer. */
     Destination: dest, Type_lot: type, surface_carrez: surface, surface_sol: surface,
     Type_bail: (N(loyer) ?? 0) > 0 ? "n.c." : "Vide", loyer, loyer_max: loyer, lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
-    renov_year: "", commentaire: "", prix_retenu: "",
+    renov_year: "", commentaire: "", prix_retenu: "", tantiemes: "", vente_avec: "",
     ...VIDE_BAIL_LOC,
   });
 
@@ -1111,6 +1142,8 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
           neuves.push({
             ...src, id, isNew: true, ordre: rs.length + neuves.length, numero: String(numero++),
             travaux: "", travaux_objet: "", travaux_urgence: "", lot_rattache: "",
+            /* Une copie n'hérite ni du prix, ni des tantièmes, ni du rattachement de vente. */
+            prix_retenu: "", tantiemes: "", vente_avec: "",
             ...VIDE_BAIL_LOC,
           });
         }
@@ -1372,7 +1405,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const nouvelleLigne = (id: string, m: Partial<Row>): Row => ({
     id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
     batiment: "", etage: "", numero: "", Type_lot: "", surface_carrez: "", surface_sol: "",
-    loyer: "", loyer_max: "", lot_rattache: "", renov_year: "", commentaire: "", prix_retenu: "",
+    loyer: "", loyer_max: "", lot_rattache: "", renov_year: "", commentaire: "", prix_retenu: "", tantiemes: "", vente_avec: "",
     ...VIDE_BAIL_LOC,
     ...m,
     Destination: m.Destination || "Logement", Type_bail: m.Type_bail || "Vide",
@@ -1532,6 +1565,11 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const n = c === "dpe" ? avec("renov") : 1;
         cases.push(<td key={c} className={cls(c, "ltot-dpe")} colSpan={n}>{fourchette}</td>);
         i += n - 1;
+      } else if (c === "honos" || c === "nv" || c === "tant") {
+        const v = c === "tant"
+          ? visibles.reduce((t, r) => t + (N(r.tantiemes) ?? 0), 0)
+          : visibles.reduce((t, r) => { const x = ventiler(N(r.prix_retenu)); return t + (x ? (c === "nv" ? x.nv : x.honos) : 0); }, 0);
+        cases.push(<td key={c} className={cls(c, "na")}>{v ? (c === "tant" ? v.toLocaleString("fr-FR") : montant(v)) : ""}</td>);
       } else if (c === "pred" || c === "prix" || c === "prixm2") {
         /* La valeur : la somme des prédictions, celle des prix retenus, et
            combien de lots ont déjà le leur. */
@@ -1795,6 +1833,47 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         );
       }
       case "prix": return nombre(c, r, "prix_retenu", "€");
+      case "honos":
+      case "nv": {
+        const v = ventiler(N(r.prix_retenu));
+        return (
+          <td key={c} className={cls(c, "na")}
+            title={v ? `Prix HAI ÷ (1 + ${String(tauxHonos).replace(".", ",")} %), taux ${mandatImmeuble ? "du mandat de l'immeuble" : "du barème (pas de mandat)"}` : undefined}>
+            {v ? montant(c === "nv" ? v.nv : v.honos) : <span className="nc">—</span>}
+          </td>
+        );
+      }
+      case "tant": return nombre(c, r, "tantiemes");
+      case "venteavec": {
+        /* Au cas par cas (MAV, 15/11) : une cave ou un parking se rattache à
+           un appartement pour la vente ; un appartement montre ce qui part avec lui. */
+        if (compteAuLot(r.Destination)) {
+          const principaux = rows.filter((x) => x.id !== r.id && !compteAuLot(x.Destination) && !x.isNew);
+          const loue = principaux.find((x) => x.id === r.lot_rattache);
+          return (
+            <td key={c} className={cls(c)}>
+              <select className="lcell" value={r.vente_avec}
+                onChange={(e) => edit(r.id, "vente_avec", e.target.value)}
+                title={loue && !r.vente_avec ? `Loué avec ${libelleLot(loue)}` : undefined}>
+                <option value="">Seul</option>
+                {principaux.map((x) => (
+                  <option key={x.id} value={x.id}>{libelleLot(x)}{x.id === r.lot_rattache ? " (loué avec)" : ""}</option>
+                ))}
+              </select>
+            </td>
+          );
+        }
+        const annexes = rows.filter((x) => x.vente_avec === r.id);
+        const total = [r, ...annexes].reduce((t, x) => t + (N(x.prix_retenu) ?? 0), 0);
+        return (
+          <td key={c} className={cls(c, "lcop-avec")}
+            title={annexes.length ? `Vendu ensemble : ${montant(total)} HAI` : undefined}>
+            {annexes.length
+              ? annexes.map((x) => `${x.Destination === "Parking" ? "park." : "cave"} ${x.numero}`).join(", ")
+              : <span className="nc">—</span>}
+          </td>
+        );
+      }
       case "prixm2": {
         const prix = N(r.prix_retenu);
         const surface = N(r.surface_carrez) || N(r.surface_sol);

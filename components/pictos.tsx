@@ -11,6 +11,8 @@ export const PICTOS: Record<string, ReactNode> = {
   charges: <><rect x="2.5" y="5.5" width="19" height="13" rx="2" /><path d="M2.5 10h19" /><path d="M6 14.5h4" /></>,
   /* L'étude de découpe : un immeuble partagé en lots. */
   etude: <><path d="M4 21V4h16v17" /><path d="M4 9.5h16M4 15h16M12 4v17" /></>,
+  /* La copropriété : un immeuble et ses quotes-parts. */
+  copro: <><path d="M4 21V8l8-5 8 5v13" /><path d="M4 21h16" /><path d="M12 11a3 3 0 1 0 3 3h-3z" /></>,
   /* La valeur des lots : une étiquette de prix. */
   valeurs: <><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0z" /><circle cx="8" cy="8" r="1.6" /></>,
   // Emplacement
