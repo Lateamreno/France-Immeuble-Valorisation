@@ -37,6 +37,8 @@ import { useSaisieOuverte } from "@/components/barre-enregistrer";
 import { ClaudeDrive } from "@/components/claude-drive";
 import { loyerSecteurDuLot } from "@/lib/bo/loyer-secteur-actions";
 import type { LoyerSecteur } from "@/lib/bo/loyer-secteur";
+import { usePredictionsLots } from "@/components/predictions-lots";
+import type { LotEvalue } from "@/lib/bo/etude-decoupe";
 
 /* Pictogrammes des pastilles de synthèse, comme dans le BO (retour #42). */
 const IC = {
@@ -342,6 +344,8 @@ type Row = {
   lot_rattache: string;
   Etat: string; Type_dpe: string; renov_year: string;
   commentaire: string;
+  /** Le prix de vente retenu pour le lot, saisi à la main (vue Valeurs, MAV 15/11). */
+  prix_retenu: string;
   /* Le bail du lot (ex-onglet Baux, #379). Une case vide reste vide : le bail
      n'est créé en base que si l'agent écrit quelque chose. */
   b_loyer: string; b_dg: string; b_entree: string;
@@ -399,6 +403,16 @@ const enFrancais = (s: string) => {
 };
 /** « 15 000 € », toujours en entier (MAV, 27/10 : « oublie les k€ »). */
 const montant = (v: number) => `${Math.round(v).toLocaleString("fr-FR")} €`;
+
+/** D'où vient la prédiction d'un lot, dite au survol (vue Valeurs). */
+function originePrediction(p: LotEvalue): string {
+  const m2 = (n?: number) => (n ? `${Math.round(n).toLocaleString("fr-FR")} €/m²` : "");
+  if (p.methode === "rendement") return `Au rendement : ${montant(p.loyerAnnuel)} de loyer par an à ${p.rendement} % (étude découpe)`;
+  if (p.methode === "forfait") return `Au forfait ${p.forfait === "Parking" ? "parking" : "cave"} saisi dans l'étude découpe`;
+  if (p.methode === "aucune") return "Pas de prédiction : typologie sans vente DVF, ou lot non chiffrable";
+  const aj = p.ajustementPct ? `, ajustée de ${p.ajustementPct > 0 ? "+" : ""}${p.ajustementPct} %` : "";
+  return `${Math.round(p.surface)} m² × ${m2(p.prixM2Secteur)} (médiane du secteur, ${p.libelle})${aj}`;
+}
 
 /**
  * Une case de nombre (retour MAV du 27/10 : « passe au format français »).
@@ -465,6 +479,7 @@ function toRow(
     lot_rattache: S(l.lot_rattache),
     Etat: S(l.Etat), Type_dpe: S(l.Type_dpe), renov_year: S(l.renov_year),
     commentaire: S(l.commentaire),
+    prix_retenu: S(l.prix_retenu),
     b_loyer: S(num(bail?.loyer_init)),
     b_dg: S(num(bail?.depot_garantie)),
     b_entree: typeof bail?.date_start === "string" ? (bail.date_start as string).slice(0, 10) : "",
@@ -529,6 +544,7 @@ function toPatch(r: Row, avecOrdre = false): LotPatch {
     Type_dpe: txt(r.Type_dpe),
     renov_year: nb(r.renov_year),
     commentaire: txt(r.commentaire),
+    prix_retenu: nb(r.prix_retenu),
   };
 }
 
@@ -552,6 +568,7 @@ export type ColKey =
   | "etat" | "travaux" | "dpe" | "renov"
   | "b_loyer" | "b_dg" | "b_entree" | "b_indice" | "b_i0" | "b_i1" | "b_revise" | "b_statut" | "b_com"
   | "l_pm" | "l_civ" | "l_prenom" | "l_nom" | "l_phone" | "l_email" | "l_com"
+  | "pred" | "prix" | "prixm2"
   | "commentaire" | "photos";
 
 type Colonne = {
@@ -582,6 +599,7 @@ const CHAMP_DE: Partial<Record<ColKey, keyof Row>> = {
   carrez: "surface_carrez", sol: "surface_sol", bail: "Type_bail", hc: "loyer", hcmax: "loyer_max",
   etat: "Etat", dpe: "Type_dpe", renov: "renov_year", commentaire: "commentaire",
   b_loyer: "b_loyer", b_dg: "b_dg", b_entree: "b_entree", b_indice: "b_indice", b_i0: "b_i0", b_i1: "b_i1",
+  prix: "prix_retenu",
   b_statut: "b_statut", b_com: "b_com", l_pm: "l_pm", l_civ: "l_civ", l_prenom: "l_prenom", l_nom: "l_nom",
   l_phone: "l_phone", l_email: "l_email", l_com: "l_com",
 };
@@ -625,6 +643,11 @@ export const COLONNES: Record<ColKey, Colonne> = {
   l_phone: { label: "Téléphone", poids: 6.5 },
   l_email: { label: "E-mail", poids: 9.0 },
   l_com: { label: "Comm. locataire", menu: "Commentaire du locataire", poids: 10, large: true },
+  /* La valeur des lots (MAV, 15/11) : la prédiction de l'étude de découpe,
+     le prix retenu à la main, et ce qu'il fait au m². */
+  pred: { label: "Prédiction", menu: "Prédiction (étude découpe)", poids: 7.6, px: 134 },
+  prix: { label: "Prix retenu", poids: 7.0, px: 108 },
+  prixm2: { label: "€/m²", menu: "€/m² retenu", poids: 6.0, px: 96 },
   commentaire: { label: "Commentaire", menu: "Commentaire du lot", poids: 9.0 },
   photos: { label: "Photos", poids: 2.9, px: 30, large: true },
 };
@@ -637,13 +660,14 @@ export const GROUPES: { label: string; cols: ColKey[] }[] = [
   { label: "Etat", cols: ["etat", "travaux", "dpe", "renov"] },
   { label: "Bail", cols: ["b_loyer", "b_dg", "b_entree", "b_indice", "b_i0", "b_i1", "b_revise", "b_statut", "b_com"] },
   { label: "Locataire", cols: ["l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"] },
+  { label: "Valeur", cols: ["pred", "prix", "prixm2"] },
   { label: "Autres", cols: ["commentaire", "photos"] },
 ];
 const ORDRE: ColKey[] = GROUPES.flatMap((g) => g.cols);
 /** Sans numéro, destination et type, une ligne ne dit plus de quel lot elle parle. */
 export const FIXES = new Set<ColKey>(["num", "dest", "type"]);
 
-export type Vue = "base" | "baux" | "locataires" | "perso";
+export type Vue = "base" | "baux" | "locataires" | "valeurs" | "perso";
 export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
   /* L'état locatif « de base » : ce que l'écran montrait jusqu'ici. */
   base: ["bat", "etg", "num", "dest", "type", "carrez", "sol", "bail", "hc", "hcm2", "hcmax", "hcmaxm2",
@@ -656,11 +680,15 @@ export const VUES: Record<Exclude<Vue, "perso">, ColKey[]> = {
      son bail (préavis, impayés). */
   locataires: ["etg", "num", "dest", "type", "carrez", "bail", "hc", "b_entree", "b_statut",
     "l_pm", "l_civ", "l_prenom", "l_nom", "l_phone", "l_email", "l_com"],
+  /* La valeur (MAV, 15/11) : de quoi reconnaître le lot et le juger — étage,
+     surface, occupation, état, DPE — puis la prédiction et le prix retenu. */
+  valeurs: ["etg", "num", "dest", "type", "carrez", "bail", "hc", "etat", "dpe", "pred", "prix", "prixm2", "commentaire"],
 };
 export const VUES_LISTE = [
   { key: "base", label: "État locatif", picto: "lots" },
   { key: "baux", label: "Baux", picto: "baux" },
   { key: "locataires", label: "Locataires", picto: "locataires" },
+  { key: "valeurs", label: "Valeurs", picto: "valeurs" },
 ] as const;
 
 const CLE_VUE = "bo.locatif.vue";
@@ -916,6 +944,10 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   /* Colonnes réellement affichées, dans l'ordre du tableau : la vue choisie,
      moins ce que la fenêtre étroite ne peut pas montrer (#54). */
   const colonnes = ORDRE.filter((c) => choisies.includes(c) && !(compacte && COLONNES[c].large));
+  /* La vue Valeurs (MAV, 15/11) : la prédiction vient de l'étude de découpe,
+     chargée seulement quand une colonne la montre. */
+  const predictions = usePredictionsLots(b, colonnes.includes("pred") || colonnes.includes("prixm2"));
+  const predDe = (id: string) => (predictions.etat === "ok" ? predictions.parLot.get(id) : undefined);
   /* Les groupes de l'en-tête qui ont encore au moins une colonne, et la
      première colonne de chacun, qui porte le séparateur gras. */
   const groupes = GROUPES
@@ -1035,7 +1067,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
        a un loyer. */
     Destination: dest, Type_lot: type, surface_carrez: surface, surface_sol: surface,
     Type_bail: (N(loyer) ?? 0) > 0 ? "n.c." : "Vide", loyer, loyer_max: loyer, lot_rattache: "", Etat: "n.c.", Type_dpe: "n.c.",
-    renov_year: "", commentaire: "",
+    renov_year: "", commentaire: "", prix_retenu: "",
     ...VIDE_BAIL_LOC,
   });
 
@@ -1340,7 +1372,7 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
   const nouvelleLigne = (id: string, m: Partial<Row>): Row => ({
     id, isNew: true, ordre: 0, travaux: "", travaux_objet: "", travaux_urgence: "",
     batiment: "", etage: "", numero: "", Type_lot: "", surface_carrez: "", surface_sol: "",
-    loyer: "", loyer_max: "", lot_rattache: "", renov_year: "", commentaire: "",
+    loyer: "", loyer_max: "", lot_rattache: "", renov_year: "", commentaire: "", prix_retenu: "",
     ...VIDE_BAIL_LOC,
     ...m,
     Destination: m.Destination || "Logement", Type_bail: m.Type_bail || "Vide",
@@ -1500,6 +1532,16 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
         const n = c === "dpe" ? avec("renov") : 1;
         cases.push(<td key={c} className={cls(c, "ltot-dpe")} colSpan={n}>{fourchette}</td>);
         i += n - 1;
+      } else if (c === "pred" || c === "prix" || c === "prixm2") {
+        /* La valeur : la somme des prédictions, celle des prix retenus, et
+           combien de lots ont déjà le leur. */
+        const prix = visibles.map((r) => N(r.prix_retenu) ?? 0);
+        const nPrix = prix.filter((v) => v > 0).length;
+        const v = c === "pred"
+          ? (predictions.etat === "ok" ? montant(visibles.reduce((t, r) => t + (predDe(r.id)?.valeurLibre ?? 0), 0)) : "")
+          : c === "prix" ? (nPrix ? montant(prix.reduce((t, x) => t + x, 0)) : "")
+            : `${nPrix} / ${visibles.length} lots`;
+        cases.push(<td key={c} className={cls(c, "na", c === "prixm2" ? "ltot-u" : undefined)}>{v}</td>);
       } else {
         const v = c === "carrez" ? `${Math.round(totaux.carrez).toLocaleString("fr-FR")} m²`
           : c === "sol" ? `${Math.round(totaux.sol).toLocaleString("fr-FR")} m²` : "";
@@ -1731,6 +1773,41 @@ export function LotsEditor({ b, colonnes: choisies = VUES.base }: {
       case "l_phone": return texte(c, r, "l_phone");
       case "l_email": return texte(c, r, "l_email");
       case "l_com": return texte(c, r, "l_com");
+      case "pred": {
+        const p = predDe(r.id);
+        if (predictions.etat !== "ok" || !p || !p.valeurLibre) {
+          return (
+            <td key={c} className={cls(c, "na", "lval-pred")}
+              title={predictions.etat === "erreur" ? predictions.message : p ? originePrediction(p) : r.isNew ? "Enregistrez le lot pour avoir sa prédiction" : undefined}>
+              <span className="nc">{predictions.etat === "attente" ? "…" : "—"}</span>
+            </td>
+          );
+        }
+        const arrondi = Math.round(p.valeurLibre / 1000) * 1000;
+        return (
+          <td key={c} className={cls(c, "na", "lval-pred")} title={originePrediction(p)}>
+            {montant(p.valeurLibre)}
+            {N(r.prix_retenu) === undefined && (
+              <button type="button" className="lval-rep" onClick={() => edit(r.id, "prix_retenu", String(arrondi))}
+                title={`Retenir ${montant(arrondi)} (la prédiction, arrondie au millier)`} aria-label="Retenir la prédiction">↓</button>
+            )}
+          </td>
+        );
+      }
+      case "prix": return nombre(c, r, "prix_retenu", "€");
+      case "prixm2": {
+        const prix = N(r.prix_retenu);
+        const surface = N(r.surface_carrez) || N(r.surface_sol);
+        const p = predDe(r.id);
+        const ecartPred = prix && p?.valeurLibre ? Math.round(((prix - p.valeurLibre) / p.valeurLibre) * 100) : undefined;
+        return (
+          <td key={c} className={cls(c, "na", "pc")}
+            title={ecartPred !== undefined ? `${ecartPred > 0 ? "+" : ""}${ecartPred} % sur la prédiction` : undefined}>
+            {prix && surface ? montant(prix / surface) : <span className="nc">—</span>}
+            {ecartPred ? <span className={`lval-ec ${ecartPred > 0 ? "plus" : "moins"}`}>{ecartPred > 0 ? "+" : "−"}{Math.abs(ecartPred)} %</span> : null}
+          </td>
+        );
+      }
       case "commentaire": return texte(c, r, "commentaire");
       case "photos":
         /* Les photos associées au lot dans l'écran Photos (#95). */
