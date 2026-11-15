@@ -13,9 +13,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import {
-  calculerEtude, MINIMUM_REFS, REGLAGES_VIDES, TOLERANCE_SURFACE,
-  type CleTypo, type EtatRef, type Forfait, type GroupeTypo, type ReglagesEtude,
+  AJUSTEMENT_MAX, AJUSTEMENTS, calculerEtude, MINIMUM_REFS, REGLAGES_VIDES, TOLERANCE_SURFACE,
+  type CleAjustement, type CleTypo, type EtatRef, type Forfait, type GroupeTypo, type LotEvalue, type ReglagesEtude,
 } from "@/lib/bo/etude-decoupe";
+import { etageDeLot } from "@/lib/bo/etages";
 import type { DonneesEtude } from "@/lib/bo/etude-decoupe-serveur";
 import { enregistrerReglagesEtude } from "@/lib/bo/etude-decoupe-actions";
 import { updateBien } from "@/lib/bo/actions";
@@ -113,6 +114,19 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
     return { ...r, forfaits };
   });
 
+  const setAjustement = (id: string, cle: CleAjustement | "note", v: string) => maj((r) => {
+    const lots = { ...(r.lots ?? {}) };
+    const a = { ...(lots[id] ?? {}) };
+    if (cle === "note") {
+      if (v.trim()) a.note = v.trim().slice(0, 120); else delete a.note;
+    } else {
+      const n = Number(v.replace(/[−–]/g, "-").replace(/[\s%+]/g, "").replace(",", "."));
+      if (Number.isFinite(n) && n !== 0) a[cle] = Math.max(-AJUSTEMENT_MAX, Math.min(AJUSTEMENT_MAX, n)); else delete a[cle];
+    }
+    if (Object.keys(a).length) lots[id] = a; else delete lots[id];
+    return { ...r, lots };
+  });
+
   const ecart = prixBloc && etude.totalLibre ? Math.round(((etude.totalLibre - prixBloc) / prixBloc) * 100) : undefined;
 
   return (
@@ -191,6 +205,8 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
       {etude.nonChiffres.length > 0 && (
         <p className="etd-aide">{etude.nonChiffres.length} lot{etude.nonChiffres.length > 1 ? "s" : ""} sans destination chiffrable (annexes, destination vide) : hors du calcul.</p>
       )}
+
+      <EvaluationLots lots={etude.lots} onAjuster={setAjustement} />
 
       <div className="etd-resume">
         <div className="or"><span>Valeur découpe, libre</span><b>{eur(etude.totalLibre)}</b></div>
@@ -357,6 +373,150 @@ function DetailTypo({ g, vue, setVue, donnees, anneeRef, onEcarterVente, onEcart
           })}
         </div>
       )}
+    </section>
+  );
+}
+
+const ETAT_LOT: Record<string, string> = {
+  Neuf: "Neuf", Renove: "Rénové", "Bon etat": "Bon état", "Etat d'usage": "État d'usage", Travaux: "À rénover",
+};
+const etageTxt = (v: unknown) => {
+  const n = etageDeLot(v);
+  if (n === undefined) return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  return n === 0 ? "RDC" : n === 1 ? "1er" : `${n}e`;
+};
+/** « 12 à 20, 31 » : des numéros de lots en plages. */
+const plages = (nums: number[]) => {
+  const s = [...new Set(nums)].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < s.length; i++) {
+    let j = i;
+    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
+    out.push(j > i + 1 ? `${s[i]} à ${s[j]}` : j === i + 1 ? `${s[i]}, ${s[j]}` : `${s[i]}`);
+    i = j;
+  }
+  return out.join(", ");
+};
+const pctTxt = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${String(Math.abs(n)).replace(".", ",")} %`;
+
+/**
+ * Chaque lot évalué (MAV, 15/11) : la prédiction tirée de l'état locatif
+ * (surface × prix au m² du secteur), que l'agent ajuste selon l'étage, l'état,
+ * l'extérieur… Un local commercial loué s'évalue au rendement, comparé au prix
+ * au m² du secteur.
+ */
+function EvaluationLots({ lots, onAjuster }: {
+  lots: LotEvalue[];
+  onAjuster: (id: string, cle: CleAjustement | "note", v: string) => void;
+}) {
+  const total = (f: (l: LotEvalue) => number) => lots.reduce((t, l) => t + f(l), 0);
+  const prediction = total((l) => (l.methode === "m2" ? l.prediction : 0));
+  const ajuste = total((l) => (l.methode === "m2" ? l.valeurLibre : 0));
+  /* Les caves et les parkings tiennent sur une ligne chacun : un par lot noyait le tableau. */
+  const forfaits = (["Parking", "Cave"] as const).map((forfait) => {
+    const ls = lots.filter((l) => l.forfait === forfait);
+    return { forfait, nums: ls.map((l) => Number(l.lot.numero)).filter(Number.isFinite), valeur: ls.reduce((t, l) => t + l.valeurLibre, 0), n: ls.length };
+  }).filter((f) => f.n > 0);
+  return (
+    <section className="etd-lots" aria-label="Évaluation lot par lot">
+      <header>
+        <h4>Évaluation lot par lot</h4>
+        <span className="etd-aide">
+          Prédiction = surface × prix au m² du secteur (médiane de sa typologie). Ajustez chaque lot en % ;
+          un local commercial loué s&apos;évalue au rendement saisi sur la ligne Locaux.
+        </span>
+        {ajuste !== prediction && (
+          <span className="etd-chip">Ajustements : <b>{ajuste > prediction ? "+" : "−"}{eur(Math.abs(ajuste - prediction))}</b></span>
+        )}
+      </header>
+      <div className="etd-tz">
+        <table className="etd-t etd-lots-t">
+          <thead>
+            <tr>
+              <th>Lot</th><th className="r">Surface</th><th className="r">€/m² secteur</th><th className="r">Prédiction</th>
+              {AJUSTEMENTS.map((a) => <th key={a.cle} className="r" title={a.aide}>{a.libelle} %</th>)}
+              <th>Note</th><th className="r">€/m² retenu</th><th className="r">Valeur libre</th><th className="r">Valeur occupée</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lots.map((l, i) => {
+              if (l.methode === "forfait") return null;
+              const num = l.lot.numero ?? i + 1;
+              const etage = etageTxt(l.lot.etage);
+              const etat = ETAT_LOT[String(l.lot.Etat ?? "")];
+              const type = String(l.lot.Type_lot ?? "") || l.libelle;
+              return (
+                <tr key={l.id} className={l.methode === "aucune" ? "etd-exclue" : undefined}>
+                  <td className="etd-lot">
+                    <b>Lot {String(num)}</b> <span>{type}</span>
+                    <span className="etd-aide">{[etage, etat, l.loyerAnnuel > 0 ? "loué" : l.methode === "m2" || l.methode === "rendement" ? "libre" : null].filter(Boolean).join(" · ")}</span>
+                  </td>
+                  <td className="r">{l.surface ? `${fmt(l.surface)} m²` : "—"}</td>
+                  <td className="r">{l.prixM2Secteur ? `${fmt(l.prixM2Secteur)} €` : "—"}</td>
+                  <td className="r">{eur(l.prediction)}</td>
+                  {l.methode === "m2" ? (
+                    <>
+                      {AJUSTEMENTS.map((a) => {
+                        const v = l.ajustements[a.cle];
+                        return (
+                          <td key={a.cle} className="r">
+                            <label className={`etd-saisie pct${v ? (v > 0 ? " plus" : " moins") : ""}`} title={a.aide}>
+                              <input key={String(v ?? "")} inputMode="decimal" defaultValue={v ? String(v).replace(".", ",") : ""} placeholder="0"
+                                aria-label={`${a.libelle}, lot ${String(num)}, en %`}
+                                onBlur={(e) => onAjuster(l.id, a.cle, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+                            </label>
+                          </td>
+                        );
+                      })}
+                      <td>
+                        <input className="etd-note" key={l.ajustements.note ?? ""} defaultValue={l.ajustements.note ?? ""} placeholder="balcon, vue…"
+                          aria-label={`Note, lot ${String(num)}`} onBlur={(e) => onAjuster(l.id, "note", e.target.value)} />
+                      </td>
+                    </>
+                  ) : (
+                    <td colSpan={AJUSTEMENTS.length + 1} className="etd-methode">
+                      {l.methode === "rendement" ? (
+                        <>Au rendement : {eur(l.loyerAnnuel)} de loyer par an à {String(l.rendement).replace(".", ",")} %
+                          {l.ecartSecteur !== undefined ? <> · <b className={l.ecartSecteur < 0 ? "moins" : "plus"}>{pctTxt(l.ecartSecteur)}</b> sur le prix du secteur</> : null}</>
+                      ) : l.cle ? "Pas de prix au m² pour cette typologie" : "Non chiffré (annexe, destination vide)"}
+                    </td>
+                  )}
+                  <td className="r">
+                    {l.prixM2Retenu ? `${fmt(l.prixM2Retenu)} €` : "—"}
+                    {l.methode === "m2" && l.ajustementPct ? <span className={`etd-aide ${l.ajustementPct > 0 ? "plus" : "moins"}`}> {pctTxt(l.ajustementPct)}</span> : null}
+                  </td>
+                  <td className="r"><b>{eur(l.valeurLibre)}</b></td>
+                  <td className="r" title={l.loyerAnnuel > 0 && l.methode === "m2" ? (l.rendement ? `Loyer ${fmt(l.loyerAnnuel)} €/an à ${l.rendement} %` : "Rendement type à saisir sur la ligne de la typologie") : undefined}>
+                    {eur(l.valeurOccupee)}
+                  </td>
+                </tr>
+              );
+            })}
+            {forfaits.map(({ forfait, nums, valeur }) => (
+              <tr key={forfait}>
+                <td className="etd-lot"><b>{nums.length} {forfait === "Parking" ? "parking" : "cave"}{nums.length > 1 ? "s" : ""}</b>
+                  <span className="etd-aide">lot{nums.length > 1 ? "s" : ""} {plages(nums)}</span></td>
+                <td className="r">—</td><td className="r">—</td><td className="r">—</td>
+                <td colSpan={AJUSTEMENTS.length + 1} className="etd-methode">
+                  Au forfait, à l&apos;unité{valeur ? "" : " (prix à saisir sur la ligne " + (forfait === "Parking" ? "Parkings" : "Caves") + " plus haut)"}
+                </td>
+                <td className="r">—</td><td className="r"><b>{eur(valeur)}</b></td><td className="r">{eur(valeur)}</td>
+              </tr>
+            ))}
+            <tr className="etd-tot">
+              <td>Total</td>
+              <td className="r">{fmt(total((l) => (l.methode === "forfait" ? 0 : l.surface)))} m²</td>
+              <td />
+              <td className="r">{eur(total((l) => l.prediction))}</td>
+              <td colSpan={AJUSTEMENTS.length + 1} />
+              <td />
+              <td className="r">{eur(total((l) => l.valeurLibre))}</td>
+              <td className="r">{eur(total((l) => l.valeurOccupee))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
