@@ -217,7 +217,7 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
       <div className="etd-resume">
         <div className="or"><span>Valeur découpe, libre</span><b>{eur(etude.totalLibre)}</b></div>
         <div><span>Valeur découpe, occupée</span><b>{eur(etude.totalOccupe)}</b></div>
-        <div><span>Prix retenus (état locatif, vue Valeurs)</span><b>{prixRetenus.n ? eur(prixRetenus.total) : "—"}</b>
+        <div><span>Prix HAI retenus (état locatif, vue Valeurs)</span><b>{prixRetenus.n ? eur(prixRetenus.total) : "—"}</b>
           {prixRetenus.n ? <span>{prixRetenus.n} lot{prixRetenus.n > 1 ? "s" : ""} sur {b.lots.length}</span> : null}</div>
         <div><span>Prix du bloc (fiche, HAI)</span><b>{eur(prixBloc)}</b></div>
         <div><span>Écart découpe libre / bloc</span><b>{ecart === undefined ? "—" : `${ecart > 0 ? "+" : ""}${ecart} %`}</b></div>

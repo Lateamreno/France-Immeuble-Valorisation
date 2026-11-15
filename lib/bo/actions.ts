@@ -575,6 +575,10 @@ export type LotPatch = Partial<{
   commentaire: string | null;
   /** Le prix de vente retenu pour le lot, saisi à la main (vue Valeurs, 15/11/26). */
   prix_retenu: number | null;
+  /** Tantièmes de copropriété du lot (vue Copropriété, 15/11/26). */
+  tantiemes: number | null;
+  /** Le lot avec lequel celui-ci se vend (cave ou parking rattaché pour la vente). */
+  vente_avec: string | null;
   /** Rang d'affichage du tableau des lots (#82). */
   ordre: number;
 }>;

@@ -567,6 +567,15 @@ va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
   `prix_retenu` du lot, `bo_lot`, enregistré avec le bouton Enregistrer) et
   €/m² avec l'écart à la prédiction. La flèche ↓ reprend la prédiction arrondie
   au millier.
+- **Vue « Copropriété » (MAV, 15/11)** : tantièmes (`tantiemes`), « Vendu
+  avec » (`vente_avec` : une cave ou un parking rattaché à un appartement pour
+  la vente, **au cas par cas**, seul par défaut), prédiction, **prix HAI** (le
+  prix retenu est **honoraires inclus**, tranché par MAV), honoraires et net
+  vendeur. **Un seul mandat pour l'immeuble** : son `honos_taux` ventile chaque
+  prix HAI (HAI ÷ (1 + taux)), 5 % sans mandat ; le minimum du barème n'est pas
+  appliqué lot par lot. Prochain lot : publier chaque lot sur les portails
+  (SeLoger, Leboncoin…) — « publipostage » au sens de MAV — par un
+  multidiffuseur, compte de FI à fournir.
 
 ---
 
