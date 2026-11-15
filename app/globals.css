@@ -9801,6 +9801,7 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .etd-t td { padding: 7px 8px; border-bottom: 1px solid var(--line-lt); vertical-align: middle; color: var(--slate); }
 .etd-t .r { text-align: right; }
 .etd-ligne { cursor: pointer; }
+.etd-ligne td:first-child, .etd-ligne td:nth-child(4), .etd-forfait td:first-child { white-space: nowrap; }
 .etd-ligne:hover td { background: #fbfaf5; }
 .etd-ligne.on td { background: #f6f2e3; }
 .etd-chev { color: var(--gold-bo); font-weight: 700; margin-right: 6px; }

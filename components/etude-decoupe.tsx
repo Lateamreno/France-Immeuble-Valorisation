@@ -172,7 +172,7 @@ export function EtudeDecoupe({ b }: { b: BienData }) {
                     <input inputMode="numeric" defaultValue={f.prixUnite ? String(f.prixUnite) : ""} placeholder="prix à l'unité"
                       onBlur={(e) => setForfait(f.forfait, e.target.value)} /> € l&apos;unité
                   </label>
-                  <span className="etd-aide"> DVF ne distingue pas caves et parkings : prix saisi</span>
+                  <span className="etd-aide" title="DVF ne distingue pas les caves des parkings : le prix se saisit"> saisi</span>
                 </td>
                 <td className="r">{eur(f.valeur)}</td><td /><td /><td className="r">{eur(f.valeur)}</td>
               </tr>
@@ -220,7 +220,7 @@ function LigneTypo({ g, ouvert, onOuvrir, onRendement }: {
       <td className="r">{fmt(g.surfaceLots)} m²</td>
       <td className="r">
         <b className={g.retenues < 3 ? "etd-peu" : undefined}>{g.retenues}</b>
-        <span className="etd-aide"> · {g.palier.rayon} m, {g.palier.mois} mois{elargi ? " ↗" : ""}</span>
+        <span className="etd-aide" title={elargi ? "Élargi : pas assez de ventes plus près ou plus récentes" : undefined}> · {g.palier.rayon} m, {g.palier.mois} mois{elargi ? " ↗" : ""}</span>
       </td>
       <td className="r"><b>{eur(g.medianeM2)}</b></td>
       <td>{g.q1 ? <>{fmt(g.q1)} – {fmt(g.q3)} €<span className="etd-fourch"><i style={{ left: `${pos(g.q1)}%`, width: `${Math.max(2, pos(g.q3) - pos(g.q1))}%` }} /><b style={{ left: `${pos(g.medianeM2)}%` }} /></span></> : "—"}</td>
