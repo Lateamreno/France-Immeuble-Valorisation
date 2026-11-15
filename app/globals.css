@@ -9784,3 +9784,75 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 }
 .mt-deja.on { border-color: #c0392b; color: #c0392b; background: #fdf1ef; font-weight: 700; }
 .mt-deja.on b { background: #c0392b; color: #fff; }
+
+/* ---------- Étude de découpe (onglet de l'état locatif, MAV 14-15/11) ---------- */
+.etd { display: grid; gap: 12px; padding: 4px 0 20px; }
+.etd-vide { padding: 22px 4px; color: var(--gray-txt); font-size: 13px; }
+.etd-params { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.etd-chip { border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; font-size: 12px; background: #fff; color: var(--gray-txt); }
+.etd-chip b { color: var(--slate); }
+.etd-aide { font-size: 11.5px; color: var(--gray-txt); font-weight: 400; }
+.etd-sauve { margin-left: auto; font-size: 11.5px; color: var(--gray-lt); }
+.etd-sauve.erreur { color: var(--red); font-weight: 700; }
+.etd-immeuble { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--slate); background: #faf8f0; border: 1px solid #ece4c7; border-radius: 5px; padding: 7px 11px; }
+.etd-tz { overflow-x: auto; }
+.etd-t { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.etd-t th { font: 600 10.5px var(--font-title); letter-spacing: .04em; text-transform: uppercase; color: var(--slate-2); text-align: left; padding: 7px 8px; background: var(--cols); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.etd-t td { padding: 7px 8px; border-bottom: 1px solid var(--line-lt); vertical-align: middle; color: var(--slate); }
+.etd-t .r { text-align: right; }
+.etd-ligne { cursor: pointer; }
+.etd-ligne:hover td { background: #fbfaf5; }
+.etd-ligne.on td { background: #f6f2e3; }
+.etd-chev { color: var(--gold-bo); font-weight: 700; margin-right: 6px; }
+.etd-typo { display: inline-block; font: 600 11px var(--font-title); background: var(--puce-fond); border-radius: 3px; padding: 2px 7px; }
+.etd-peu { color: var(--orange); }
+.etd-fourch { display: inline-block; position: relative; width: 84px; height: 7px; background: var(--line-lt); border-radius: 4px; margin-left: 7px; vertical-align: middle; }
+.etd-fourch i { position: absolute; top: 0; bottom: 0; background: #d9cfa4; border-radius: 4px; }
+.etd-fourch b { position: absolute; top: -3px; width: 3px; height: 13px; margin-left: -1px; background: var(--slate); border-radius: 1px; }
+.etd-saisie { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gray-txt); }
+.etd-saisie input { width: 92px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; color: var(--slate); text-align: right; }
+.etd-saisie.petit input { width: 52px; }
+.etd-forfait td { background: #fcfcfc; }
+.etd-tot td { font-weight: 700; border-top: 2px solid var(--line); background: #fcfbf6; }
+.etd-sous > td { padding: 0 0 8px 18px !important; background: #fff !important; }
+.etd-resume { display: flex; flex-wrap: wrap; gap: 8px; }
+.etd-resume div { flex: 1 1 160px; border: 1px solid var(--line); border-radius: 5px; padding: 8px 11px; background: #fff; }
+.etd-resume span { display: block; font-size: 11px; color: var(--gray-txt); }
+.etd-resume b { font: 600 16px var(--font-title); color: var(--slate); }
+.etd-resume div.or { border-color: var(--gold-bo); background: #f6f2e3; }
+.etd-detail { border: 1px solid var(--line-lt); border-radius: 6px; background: #fcfcfa; padding: 10px 12px; margin-top: 2px; display: grid; gap: 8px; }
+.etd-detail header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.etd-detail h4 { margin: 0; font: 600 13px var(--font-title); color: var(--slate); }
+.etd-vues { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.etd-vues button { border: 0; background: #fff; padding: 4px 11px; font: 500 12px var(--font-title); color: var(--gray-txt); cursor: pointer; }
+.etd-vues button.on { background: var(--slate); color: #fff; }
+.etd-x { margin-left: auto; border: 0; background: none; color: var(--gray-txt); cursor: pointer; font-size: 14px; }
+.etd-alerte { margin: 0; font-size: 12px; color: var(--orange); font-weight: 700; }
+.etd-refs td { padding: 5px 8px; }
+.etd-ph { display: block; width: 76px; height: 50px; border-radius: 4px; overflow: hidden; background: #e9ecef; }
+.etd-ph.grand { width: 100%; height: 130px; border-radius: 0; }
+.etd-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.etd-ph-vide { display: grid; place-items: center; height: 100%; font-size: 10px; color: var(--gray-lt); text-align: center; padding: 2px; }
+.etd-badge { display: inline-block; margin-left: 6px; font: 700 9.5px var(--font-title); letter-spacing: .03em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; vertical-align: 1px; }
+.etd-badge.or { color: #8a7a35; background: #f6f2e3; }
+.etd-badge.orange { color: var(--orange); background: #fdf1e4; }
+.etd-annee { font-weight: 700; color: var(--green); }
+.etd-annee.autre { color: var(--orange); }
+.etd-etat { font: 700 9.5px var(--font-title); letter-spacing: .03em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+.etd-etat.retenue { color: var(--green); background: #e9f6e6; }
+.etd-etat.exclue, .etd-etat.immeuble_exclu { color: var(--red); background: #fbeaea; }
+.etd-etat.hors_marche { color: var(--orange); background: #fdf1e4; }
+.etd-exclue td { color: var(--gray-lt); }
+.etd-exclue td b { color: var(--gray-lt); }
+.etd-exclue .etd-ph { opacity: .45; }
+.etd-gestes { white-space: nowrap; }
+.etd-bt { font: 600 10.5px var(--font-title); border: 1px solid var(--line); border-radius: 3px; padding: 3px 7px; background: #fff; color: var(--slate); cursor: pointer; margin-left: 4px; }
+.etd-bt.rouge { color: var(--red); border-color: #f0c4c4; }
+.etd-bt.vert { color: var(--green); border-color: #bfe5b6; }
+.etd-galerie { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.etd-carte { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; display: grid; }
+.etd-carte .c { padding: 8px 9px; display: grid; gap: 4px; font-size: 12px; }
+.etd-carte .c .etd-bt { justify-self: start; margin-left: 0; }
+.etd-carte.exclue { opacity: .55; }
+.etd-carte.exclue img { filter: grayscale(1); }
+.etd-source { margin: 0; font-size: 11px; color: var(--gray-lt); }

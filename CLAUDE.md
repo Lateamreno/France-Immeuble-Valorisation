@@ -534,6 +534,27 @@ validés une fois par catégorie, cadence plafonnée, chaque envoi et chaque
 réponse visibles dans le suivi du contact. Rien n'est codé tant que MAV n'a
 pas validé le cadrage.
 
+### 7.8 Étude de découpe — DVF autour de l'immeuble (15/11/26)
+
+Onglet « Étude découpe » de l'état locatif (option A « par typologie », choisie
+par MAV). `lib/bo/etude-decoupe.ts` calcule (pur, testé), `etude-decoupe-serveur.ts`
+va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
+- Ventes DVF géolocalisées (data.gouv.fr) d'un seul local, gardées par commune
+  et par année dans `fi_dvf_cache` ; années de construction BDNB (API ouverte,
+  10 lignes par appel : paginer) par clé d'adresse BAN.
+- **Décisions de MAV** : historique **6 mois, 12 au plus** (comptés depuis la
+  dernière vente publiée par DVF, qui a plusieurs mois de retard) ; rayon
+  **300 m** au départ (450, puis 600 m si moins de 8 ventes) ; surface ±20 % ;
+  ventes **avec annexes gardées mais signalées** ; on écarte une vente **ou tout
+  un immeuble** ; valeur **libre et occupée** (rendement type par typologie) ;
+  ventes à la même adresse gardées ; caves et parkings **au forfait saisi**
+  (DVF ne les distingue pas).
+- Façades Street View : **à l'écran seulement**, jamais dans un dossier ni une
+  annonce (conditions Google). Chaque façade est facturée une fois puis gardée
+  dans le seau (`dvf-facades/`).
+- Les réglages (exclusions, rendements, forfaits) vivent sur la fiche,
+  `etude_decoupe`.
+
 ---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)

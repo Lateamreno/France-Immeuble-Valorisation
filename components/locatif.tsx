@@ -8,6 +8,7 @@
 // tableau des lots (components/lots-editor.tsx) : mêmes colonnes, même
 // enregistrement, une seule barre. MAV : « de cette façon j'ai accès aux infos
 // totales du bien en cliquant sur ce dont j'ai besoin ».
+import { EtudeDecoupe } from "@/components/etude-decoupe";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
@@ -404,6 +405,7 @@ export const ONGLETS_LOCATIF = [
   { key: "baux", label: "Baux" },
   { key: "locataires", label: "Locataires" },
   { key: "charges", label: "Charges" },
+  { key: "etude", label: "Étude découpe" },
 ] as const;
 
 /**
@@ -428,7 +430,7 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
   const setTab = (t: string) => { setInterne(t); onTab?.(t); };
   /* Tout ce qui n'est pas Charges est le tableau : une ancienne adresse qui
      demande encore « baux » ou « locataires » y tombe sans casser. */
-  const onglet = tab === "charges" ? "charges" : "lots";
+  const onglet = tab === "charges" ? "charges" : tab === "etude" ? "etude" : "lots";
   const { vue, colonnes, setVue, basculer } = useVueLocatif();
   /* Le rail choisit la vue : « Baux » et « Locataires » ouvrent le tableau
      sur la leur, « Lots » le ramène à l'état locatif s'il montrait l'une
@@ -464,11 +466,17 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
           <Picto nom="charges" className="ftab-ic" />Charges
           {b.charges.length > 0 ? <span className="n">{b.charges.length}</span> : null}
         </button>
+        {/* MAV, 14/11 : « un nouvel onglet (pareil que pour l'onglet Baux) où
+            on ferait l'étude de vente à la découpe ». */}
+        <button type="button" className={`ftab${onglet === "etude" ? " on" : ""}`} onClick={() => setTab("etude")}>
+          <Picto nom="etude" className="ftab-ic" />Étude découpe
+        </button>
       </div>
       {onglet === "lots" && (
         <LotsEditor key={cleLots} b={b} colonnes={colonnes} />
       )}
       {onglet === "charges" && <ChargesTab b={b} />}
+      {onglet === "etude" && <EtudeDecoupe b={b} />}
     </>
   );
 }
