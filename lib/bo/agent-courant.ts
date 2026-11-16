@@ -40,6 +40,11 @@ export function enregistrerAgents(agents: Agent[]) {
   CONNUS = agents;
 }
 
+/** Les agents connus du poste (pour une fenêtre ouverte hors de la barre). */
+export function agentsConnus(): Agent[] {
+  return CONNUS;
+}
+
 /** Les initiales de l'agent aux commandes — celles qui signent une note. */
 export function initialesAgentCourant(): string {
   const slug = agentCourantSlug();

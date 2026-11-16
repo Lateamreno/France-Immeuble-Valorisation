@@ -12,6 +12,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Copier } from "@/components/copier";
+import { useSession } from "@/components/session";
 import { Modale, useQuestion } from "@/components/modale";
 import { SocietePicker } from "@/components/societe-picker";
 import { creerOuCompleterSociete, detacherAssocie, rattacherAssocie } from "@/lib/bo/societes-actions";
@@ -379,7 +380,7 @@ export function ContactFiche({ d, echanges = [] }: {
             <div className="cfx-form">
               <Bloc titre="Agent France Immeuble" picto="drapeau">
                 <Ligne label="Suivi par">
-                  <span className="cfx-agent">{d.agent?.nom ?? "Non attribué"}</span>
+                  <SuiviPar contactId={id} agent={d.agent} agents={d.agents} />
                 </Ligne>
               </Bloc>
 
@@ -1161,6 +1162,43 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
 }
 
 /** Une mesure de la carte immeuble : picto + valeur, grisée si absente. */
+/**
+ * Le commercial qui suit le contact. MAV, 16/11 : « le suivi par, j'aimerais
+ * qu'il soit modifiable par moi directement en tant qu'administrateur ». La
+ * direction le change d'un menu ; un agent le lit (il ne transfère que SES
+ * dossiers, et le serveur le vérifie au point de passage des écritures).
+ */
+function SuiviPar({ contactId, agent, agents }: {
+  contactId: string;
+  agent?: ContactData["agent"];
+  agents: ContactData["agents"];
+}) {
+  const { direction } = useSession();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
+  if (!direction || agents.length === 0) return <span className="cfx-agent">{agent?.nom ?? "Non attribué"}</span>;
+  return (
+    <>
+      <select className="cfx-agent-sel" value={agent?.id ?? ""} disabled={pending} aria-label="Suivi par"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) return;
+          setErreur(null);
+          start(async () => {
+            try { await updateContact(contactId, { SUIVI: v }); router.refresh(); }
+            catch (err) { setErreur(err instanceof Error ? err.message : "Le changement a échoué."); }
+          });
+        }}>
+        {!agent?.id && <option value="">Non attribué</option>}
+        {agent?.id && !agents.some((a) => a.id === agent.id) && <option value={agent.id}>{agent.nom}</option>}
+        {agents.map((a) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+      </select>
+      {erreur && <span className="cfx-agent-err">{erreur}</span>}
+    </>
+  );
+}
+
 function Mesure({ titre, valeur, d }: { titre: string; valeur?: string; d: string }) {
   return (
     <span className={`cfc-m${valeur ? " on" : ""}`} title={titre}>

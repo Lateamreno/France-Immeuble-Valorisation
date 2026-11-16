@@ -37,6 +37,7 @@ import { FenetreAjout, ICA, Ligne, OuiNon, Resume } from "@/components/ajout-rap
 import { PastilleStatut } from "@/components/pastille";
 import { FenetreRedaction } from "@/components/mails/redaction";
 import { contexteRedaction } from "@/lib/bo/mails-actions";
+import { useSession } from "@/components/session";
 import { ancrePrix, resoudrePrix, type ChampPrix, type Prix } from "@/lib/mandat";
 import { group } from "@/lib/format";
 import { SOURCES_VISITE_BASE, memeSource } from "@/lib/bo/sources";
@@ -258,10 +259,18 @@ export function ModaleProposition({
     return () => { vivant = false; };
   }, [bienInitial]);
 
+  /* Qui signe : la personne connectée, qui est aussi celle qui envoie — pas
+     l'agent du premier bien de la liste (MAV, 16/11 : une proposition partie
+     de sa boîte était signée Romain). */
+  const session = useSession();
+  const signataire = useMemo(
+    () => (session.nom ? { nom: session.nom, tel: session.tel } : undefined),
+    [session.nom, session.tel],
+  );
   const servi = useMemo(() => ({
     objet: biens.length ? objetCommercialisationPlusieurs(biens.map((b) => b.mail)) : "",
-    message: biens.length ? messageCommercialisationPlusieurs(biens.map((b) => ({ mail: b.mail, lien: b.lien }))) : "",
-  }), [biens]);
+    message: biens.length ? messageCommercialisationPlusieurs(biens.map((b) => ({ mail: b.mail, lien: b.lien })), signataire) : "",
+  }), [biens, signataire]);
   const objet = objetSaisi ?? servi.objet;
   const message = messageSaisi ?? servi.message;
 

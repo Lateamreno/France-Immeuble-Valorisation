@@ -2352,6 +2352,8 @@ export type ContactData = {
   c: Record<string, unknown>;
   /** Commercial qui suit le contact (champ `SUIVI`, pas `agent`). */
   agent?: { id?: string; nom: string; initiales: string; couleur?: string; tel?: string };
+  /** Les agents en activité, pour changer le « suivi par » (direction, 16/11). */
+  agents: { id: string; nom: string }[];
   /** Qui a créé la fiche, en clair, pour la ligne « Création … par … ». */
   createur?: string;
   /** « (il y a 2 276 jours) » — calculé au rendu serveur : appeler l'horloge
@@ -2465,11 +2467,13 @@ export async function getContact(id: string): Promise<ContactData | null> {
 
   const tous = await agents();
   const suivi = tous.find((a) => a.id === String(c.SUIVI ?? ""));
-  const createur = tous.find((a) => a.id === String(c["AGENT - Créateur"] ?? ""));
+  const createur = tous.find((a) => a.id === String(c["AGENT - Créateur"] ?? ""))
+    ?? tous.find((a) => a.id === String(c["Created By"] ?? ""));
 
   return {
     c,
     agent: suivi ? { id: suivi.id, nom: suivi.name, initiales: suivi.initials, couleur: suivi.color, tel: suivi.tel } : undefined,
+    agents: tous.filter((a) => a.actif).map((a) => ({ id: a.id, nom: a.name })),
     createur: createur?.name ?? "France Immeuble",
     anciennete: (() => {
       const iso = S2(c["Created Date"]);

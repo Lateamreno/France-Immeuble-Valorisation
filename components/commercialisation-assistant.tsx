@@ -33,6 +33,7 @@ import { introVersCarte, longueurRepli, refusRepli, titreVersCarte, TITRE_MAX } 
 import { oublier, useMemoire } from "@/lib/memoire";
 import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
+import { useSession } from "@/components/session";
 import { useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -54,6 +55,14 @@ export function AssistantCommercialisation({
      de l'assistant passe donc par la mémoire d'écran, rangée sous le matching
      auquel elle appartient — deux commercialisations ne se mélangent pas. */
   const memo = `com:${matchId}`;
+  /* Qui envoie : la personne connectée — sa boîte, sa signature, son portable
+     (MAV, 16/11 : « lorsque quelqu'un fait une proposition depuis son BO, ce
+     soit toujours sa signature et son e-mail »). L'agent du bien ne sert que
+     sur un poste non connecté. */
+  const session = useSession();
+  const expediteur = session.agentId
+    ? { id: session.agentId, nom: session.nom, tel: session.tel }
+    : { id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel };
   const [etape, setEtape] = useMemoire<Etape>(`${memo}:etape`, "Dossier");
   const [pending, start] = useTransition();
   const { confirmer, question } = useQuestion();
@@ -138,8 +147,8 @@ export function AssistantCommercialisation({
       /* Retour #594 : loyers potentiels annuels ÷ (prix HAI + travaux). */
       rentaPotentielle: c?.rentaPotentielle ?? rendementPotentiel(loyersMax * 12, prixHai, travaux),
       destinations: b.lots.map((l) => String(l.Destination ?? "")).filter(Boolean),
-      agentNom: b.agentNom,
-      agentTel: b.agentTel,
+      agentNom: expediteur.nom,
+      agentTel: expediteur.tel,
     };
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,11 +277,11 @@ export function AssistantCommercialisation({
     setProgres({ fait: avant, total, echecs: 0, enCours: true });
     const r = await lancerCommercialisation({
       titre: `Commercialisation ${b.ville || "immeuble"}`,
-      agentNom: b.agentNom,
+      agentNom: expediteur.nom,
       charge: {
         immeubleId: String(b.im._id), commId, objet, message,
         destinataires: adresses, pieces: piecesJointes,
-        quand, agentId: String(b.im.AGENT ?? "") || undefined, total,
+        quand, agentId: expediteur.id, total,
       },
       /* À la fin — même si cette page a été fermée entre-temps et rouverte,
          l'état se relit sur la commercialisation. */
@@ -333,7 +342,7 @@ export function AssistantCommercialisation({
     if (commId) return commId;
     const res = await createCommercialisation({
       immeubleId: String(b.im._id),
-      agentId: String(b.im.AGENT ?? "") || undefined,
+      agentId: expediteur.id,
       matchId,
       dossierId: dossier || undefined,
       mandatId: mandat || undefined,
@@ -372,7 +381,7 @@ export function AssistantCommercialisation({
   /* Le numéro d'essai : celui de l'agent de la fiche, modifiable (demande
      MAV, 25/09). Un essai n'est pas un envoi : rien n'est marqué. */
   const [numEssai, setNumEssai] = useState(() => {
-    const n = telE164(b.agentTel);
+    const n = telE164(expediteur.tel);
     return n ? telAffiche(n) : "";
   });
   const [essai, setEssai] = useState<string | null>(null);

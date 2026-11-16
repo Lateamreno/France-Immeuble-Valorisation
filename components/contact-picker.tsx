@@ -5,10 +5,10 @@
 // courante, recherche en base, et création à la volée si le contact n'existe
 // pas encore. Le même composant sert pour l'apporteur d'affaire et pour la
 // personne contactée de la modale Suivi.
-import { useEffect, useState, useTransition } from "react";
-import { chercherContacts, contactParEmail, createContact, type ContactTrouve } from "@/lib/bo/actions";
-import { DoublonContact } from "@/components/doublon-contact";
+import { useEffect, useState } from "react";
+import { chercherContacts, type ContactTrouve } from "@/lib/bo/actions";
 import { Modale } from "@/components/modale";
+import { FenetreNouveauContact } from "@/components/nouveau-contact";
 
 export function ContactPicker({
   titre, libelleValider, valeurActuelle, onAnnuler, onValider,
@@ -24,12 +24,10 @@ export function ContactPicker({
   const [q, setQ] = useState("");
   const [resultats, setResultats] = useState<ContactTrouve[]>([]);
   const [choisi, setChoisi] = useState<ContactTrouve | null>(null);
-  const [creation, setCreation] = useState(false);
-  const [nouveau, setNouveau] = useState({ civilite: "", prenom: "", nom: "", email: "", tel: "", fixe: "" });
-  const [err, setErr] = useState<string | null>(null);
-  /** Le contact déjà en base qui porte l'adresse saisie (retour #248). */
-  const [doublon, setDoublon] = useState<ContactTrouve | null>(null);
-  const [pending, start] = useTransition();
+  /* La création ouvre LA fenêtre « Nouveau contact », la même que la barre du
+     bas (MAV, 16/11) : un contact créé d'ici a les mêmes champs, le même
+     « suivi par » et le même contrôle de doublon. */
+  const [creation, setCreation] = useState<{ prenom: string; nom: string } | null>(null);
 
   // Recherche différée : on ne part pas en base à chaque frappe.
   useEffect(() => {
@@ -41,37 +39,14 @@ export function ContactPicker({
     return () => clearTimeout(t);
   }, [q, creation]);
 
-  const creer = () =>
-    start(async () => {
-      setErr(null);
-      try {
-        /* Retour #248 : on regarde d'abord si l'adresse est déjà connue. La
-           question se pose AVANT l'écriture — un doublon créé se rattrape mal,
-           les mails s'y sont déjà accrochés. */
-        const dejaLa = await contactParEmail(nouveau.email).catch(() => null);
-        if (dejaLa) { setDoublon(dejaLa); return; }
-        const id = await createContact({
-          "Civilité": nouveau.civilite || undefined,
-          "prénom": nouveau.prenom.trim() || undefined,
-          nom: nouveau.nom.trim() || undefined,
-          email: nouveau.email.trim() || undefined,
-          portable: nouveau.tel.trim() || undefined,
-          fixe: nouveau.fixe.trim() || undefined,
-        });
-        onValider({
-          id,
-          nom: `${nouveau.prenom} ${nouveau.nom}`.trim(),
-          email: nouveau.email.trim() || undefined,
-          tel: nouveau.tel.trim() || nouveau.fixe.trim() || undefined,
-          civilite: nouveau.civilite || undefined,
-        });
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : String(e));
-      }
-    });
-
   /* L'en-tête sombre et le pied sont ceux du BO : la fenêtre partagée ne
      fournit ici que le fond, Échap et le portail. */
+  if (creation) {
+    return (
+      <FenetreNouveauContact initial={creation} onFermer={() => setCreation(null)} onCree={(c) => onValider(c)} />
+    );
+  }
+
   return (
     <Modale onFermer={onAnnuler} className="cp" fermeDehors={false} entete={false} brut>
       <button type="button" className="mod-x" title="Fermer" aria-label="Fermer" onClick={onAnnuler}>✕</button>
@@ -94,40 +69,12 @@ export function ContactPicker({
         </span>
       </div>
 
-      {creation && doublon ? (
-        <DoublonContact
-          existant={doublon}
-          onReprendre={() => onValider(doublon)}
-          onChanger={() => setDoublon(null)}
-        />
-      ) : creation ? (
-        <div className="cp-form">
-          {/* Retours #568 et #569 : la civilité (« Bonjour Madame… ») et un
-              fixe à côté du portable — une étude de notaire se joint au fixe. */}
-          <select className="min" value={nouveau.civilite} aria-label="Civilité"
-            onChange={(e) => setNouveau({ ...nouveau, civilite: e.target.value })}>
-            <option value="">Civilité</option>
-            <option value="Madame">Madame</option>
-            <option value="Monsieur">Monsieur</option>
-          </select>
-          <input className="min" autoFocus placeholder="Prénom" value={nouveau.prenom}
-            onChange={(e) => setNouveau({ ...nouveau, prenom: e.target.value })} />
-          <input className="min" placeholder="Nom" value={nouveau.nom}
-            onChange={(e) => setNouveau({ ...nouveau, nom: e.target.value })} />
-          <input className="min" placeholder="E-mail" value={nouveau.email}
-            onChange={(e) => { setDoublon(null); setNouveau({ ...nouveau, email: e.target.value }); }} />
-          <input className="min" placeholder="Portable" value={nouveau.tel} inputMode="tel"
-            onChange={(e) => setNouveau({ ...nouveau, tel: e.target.value })} />
-          <input className="min" placeholder="Fixe" value={nouveau.fixe} inputMode="tel"
-            onChange={(e) => setNouveau({ ...nouveau, fixe: e.target.value })} />
-        </div>
-      ) : (
-        <>
+      <>
           <div className="cp-search">
             <input autoFocus placeholder="Recherchez un contact..." value={q}
               onChange={(e) => { setQ(e.target.value); setChoisi(null); }} />
             <button type="button" className="cp-plus" title="Créer un contact"
-              onClick={() => { setCreation(true); const [p, ...r] = q.trim().split(" "); setNouveau({ civilite: "", prenom: p ?? "", nom: r.join(" "), email: "", tel: "", fixe: "" }); }}>
+              onClick={() => { const [p, ...r] = q.trim().split(" "); setCreation({ prenom: p ?? "", nom: r.join(" ") }); }}>
               <svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.4" /><path d="M3.5 20c.7-4 3.2-5.6 6.5-5.6M17 12v6M14 15h6" /></svg>
             </button>
             <span className="cp-loupe">
@@ -148,21 +95,14 @@ export function ContactPicker({
           {q.trim().length >= 2 && resultats.length === 0 && (
             <div className="cp-vide">Aucun contact trouvé — utilisez le bouton pour le créer.</div>
           )}
-        </>
-      )}
-
-      {err && <div className="warnbox" style={{ margin: "0 16px", color: "var(--red)", borderColor: "var(--red)" }}>{err}</div>}
+      </>
 
       <div className="cp-foot">
-        <button type="button" className="vf-annuler"
-          onClick={() => (creation ? setCreation(false) : onAnnuler())}>
-          {creation ? "Retour" : "Annuler"}
-        </button>
+        <button type="button" className="vf-annuler" onClick={onAnnuler}>Annuler</button>
         <span style={{ flex: 1 }} />
-        <button type="button" className="vf-go"
-          disabled={pending || (creation ? !nouveau.nom.trim() : !choisi)}
-          onClick={() => (creation ? creer() : choisi && onValider(choisi))}>
-          <span className="ch">›</span> {creation ? "Créer le contact" : libelleValider}
+        <button type="button" className="vf-go" disabled={!choisi}
+          onClick={() => choisi && onValider(choisi)}>
+          <span className="ch">›</span> {libelleValider}
         </button>
       </div>
     </Modale>

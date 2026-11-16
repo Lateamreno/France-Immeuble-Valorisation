@@ -177,9 +177,14 @@ export function objetCommercialisationPlusieurs(biens: BienMail[]): string {
   return `${biens.length} immeubles à vendre${lieux.length ? ` - ${lieux.join(", ")}` : ""}`;
 }
 
-export function messageCommercialisationPlusieurs(biens: { mail: BienMail; lien?: string }[]): string {
-  if (biens.length === 1) return messageCommercialisation(biens[0].mail, biens[0].lien ?? "");
-  const premier = biens[0]?.mail ?? {};
+export function messageCommercialisationPlusieurs(
+  biens: { mail: BienMail; lien?: string }[],
+  /** Qui signe : la personne qui envoie (16/11). À défaut, l'agent du premier bien. */
+  signataire?: { nom?: string; tel?: string },
+): string {
+  const signe = (m: BienMail): BienMail => (signataire?.nom ? { ...m, agentNom: signataire.nom, agentTel: signataire.tel } : m);
+  if (biens.length === 1) return messageCommercialisation(signe(biens[0].mail), biens[0].lien ?? "");
+  const premier = signe(biens[0]?.mail ?? {});
   const lignes = biens.flatMap(({ mail: b, lien }) => {
     const surface = nb(b.surfaceCarrez);
     const prix = nb(b.prixHai);

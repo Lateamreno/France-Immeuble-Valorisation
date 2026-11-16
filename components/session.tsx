@@ -12,6 +12,9 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 
 export type SessionEcran = {
   direction: boolean; agentSlug?: string; nom?: string; email?: string;
+  /** L'agent connecté et son portable : c'est lui qui signe et qui envoie
+   *  les propositions faites depuis son BO (MAV, 16/11). */
+  agentId?: string; tel?: string;
   /** MAV seul : l'outil de correction et le droit de passer outre (#558). */
   outrepasser?: boolean;
 };
