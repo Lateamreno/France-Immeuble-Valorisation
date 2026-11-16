@@ -122,7 +122,21 @@ export function recherchesSupabase(): Recherches {
         `bo_estimation?select=data&data->>sent_jeton=eq.${encodeURIComponent(jeton)}&limit=1`,
       );
       const e = rows[0]?.data;
-      if (!e) return null;
+      if (!e) {
+        /* Les relances portent leur jeton depuis le 16/11 (relance_jeton sur
+           chaque proposition relancée). Une relance groupée couvre plusieurs
+           propositions : on ne tranche que si elles parlent du même bien. */
+        const ps = await sb<{ data: Record<string, unknown> }>(
+          `bo_proposition?select=data&data->>relance_jeton=eq.${encodeURIComponent(jeton)}&limit=20`,
+        );
+        const ims = [...new Set(ps.map((x) => String(x.data.IMMEUBLE ?? "")))];
+        if (ps.length === 0 || ims.length !== 1) return null;
+        const p = [...ps].sort((a, b) => String(b.data.date_envoi ?? "").localeCompare(String(a.data.date_envoi ?? "")))[0].data;
+        return {
+          ref: { propositionId: String(p._id), immeubleId: ims[0] || undefined },
+          contactId: typeof p.ACHETEUR === "string" ? p.ACHETEUR : undefined,
+        };
+      }
       const immeubleId = typeof e.IMMEUBLE === "string" ? e.IMMEUBLE : undefined;
       let contactId: string | undefined;
       if (immeubleId) {
@@ -173,11 +187,14 @@ export function recherchesSupabase(): Recherches {
         const arr = villeArrondissement(im?.adresse_ville, im?.adresse_zipcode);
         return {
           ref,
-          objets: [txt(p?.mail_subject), txt(c?.prop_mail_objet)].filter((x): x is string => !!x),
+          objets: [txt(p?.mail_subject), txt(c?.prop_mail_objet), txt(p?.relance_objet)].filter((x): x is string => !!x),
           /* Paris : l'arrondissement seul départage (« Paris 1er » contre
-             « Paris 18e ») ; ailleurs, la ville. */
-          villes: [arr ?? (ville && !/^paris$/i.test(ville) ? ville : null)].filter((x): x is string => !!x),
+             « Paris 18e ») ; ailleurs, la ville. Les objets de relance disent
+             « Paris 18 », sans le « e » (16/11) : les deux formes comptent. */
+          villes: [arr, arr?.replace(/(\d+)\s*(er|e|ème|eme)$/i, "$1"), arr ? null : (ville && !/^paris$/i.test(ville) ? ville : null)]
+            .filter((x, i, l): x is string => !!x && l.indexOf(x) === i),
           le: txt(p?.date_envoi) ?? txt(p?.["Created Date"]) ?? undefined,
+          relanceLe: txt(p?.mail_relance_le) ?? txt(p?.date_last_relance) ?? undefined,
         };
       });
     },
@@ -364,6 +381,7 @@ async function releverUne(c: ARelever, r: Recherches, max: number, finAvant: num
           entetes: Object.fromEntries(
             [...parse.headers.entries()].map(([k, v]) => [k.toLowerCase(), String(v)]),
           ),
+          date: (parse.date ?? new Date()).toISOString(),
         };
 
         const rec = await reconnaitre(env, r);

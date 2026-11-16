@@ -333,6 +333,13 @@ export async function envoyerEnMasse(m: {
   }
 }
 
+/** Domaine de l'expéditeur d'une salve (sous-domaine d'envoi), pour poser
+ *  l'identifiant de message qui porte le jeton de rattachement. */
+export function domaineMasse(agent?: { nom?: string; email?: string }) {
+  const m = expediteurDe(agent).match(/@([^>\s]+)/);
+  return m?.[1] ?? domaineEnvoi();
+}
+
 /** Domaine d'envoi, pour fabriquer les identifiants de message. */
 export function domaineEnvoi() {
   const from = CONF().from ?? "";

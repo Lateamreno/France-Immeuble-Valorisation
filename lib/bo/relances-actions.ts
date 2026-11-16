@@ -378,6 +378,12 @@ export async function envoyerRelances(
       return `${e.email} : pas de lien transfer.it valable sur ${bloques.length > 1 ? "des dossiers" : "le dossier"} — à poser sur la fiche (Dossiers).`;
     }
     try {
+      /* MAV, 16/11 : « j'ai reçu un retour à l'une de mes relances et je le
+         vois pas dans mes notifs ». La relance partait sans jeton : sa
+         réponse ne citait rien que la relève reconnaisse, et restait « à
+         choisir ». Elle porte désormais le sien, comme une estimation. */
+      const { nouveauJeton, messageIdDuJeton } = await import("./rattachement");
+      const jeton = nouveauJeton();
       const attachments = (e.immeubleIds ?? [])
         .map((id) => pieces.get(id))
         .filter((p): p is { nom: string; contenu: Buffer; type: string } => !!p)
@@ -386,11 +392,13 @@ export async function envoyerRelances(
         await mail.envoyerEnMasse({
           to: e.email, subject: e.objet, text: e.corps,
           replyTo: repondreA ?? agentMasse.email, agent: agentMasse,
+          messageId: messageIdDuJeton(jeton, mail.domaineMasse(agentMasse)),
           pieces: attachments.length ? attachments.map((a) => ({ nom: a.filename, contenu: a.content, type: a.contentType })) : undefined,
         });
       } else {
         await envoyerPourAgent(agentId, {
           to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
+          messageIdPour: (domaine) => messageIdDuJeton(jeton, domaine),
           attachments: attachments.length ? attachments : undefined,
           /* Retour #479 : une relance n'est pas de la correspondance. */
           copieEnvoyes: false,
@@ -399,7 +407,12 @@ export async function envoyerRelances(
       await Promise.all(e.propositionIds.map((id) => rpc("bo_patch_doc", {
         p_table: "bo_proposition",
         p_id: id,
-        p_patch: { date_last_relance: now, mail_relance_le: now, date_modif: now, "Modified Date": now },
+        p_patch: {
+          date_last_relance: now, mail_relance_le: now, date_modif: now, "Modified Date": now,
+          /* Ce que la relève cherchera dans la réponse : le jeton, et l'objet
+             à défaut (une messagerie qui perd l'In-Reply-To). */
+          relance_jeton: jeton, relance_objet: e.objet,
+        },
       }).catch(() => {})));
       return null;
     } catch (err) {
