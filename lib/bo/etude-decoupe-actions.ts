@@ -6,6 +6,7 @@
 
 import { compteCourant } from "@/lib/auth/comptes";
 import { AJUSTEMENT_MAX, AJUSTEMENTS, type AjustementsLot, type ReglagesEtude } from "@/lib/bo/etude-decoupe";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -46,5 +47,6 @@ export async function enregistrerReglagesEtude(immeubleId: string, reglages: Reg
     body: JSON.stringify({ p_table: "bo_immeuble", p_id: immeubleId, p_patch: { etude_decoupe: nettoyer(reglages) } }),
     cache: "no-store",
   }).catch(() => null);
+  if (r?.ok) invaliderTable("bo_immeuble");
   return { ok: !!r?.ok };
 }

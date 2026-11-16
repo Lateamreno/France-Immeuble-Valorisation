@@ -18,6 +18,7 @@
 
 import { randomUUID } from "node:crypto";
 import { departement, typeImmeuble } from "@/lib/diffusion";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -59,6 +60,7 @@ async function patchBo(table: string, id: string, patch: Record<string, unknown>
     body: JSON.stringify({ p_table: table, p_id: id, p_patch: patch }),
     cache: "no-store",
   });
+  invaliderTable(table);
 }
 
 async function versSite(s: Site, chemin: string, init: RequestInit = {}) {

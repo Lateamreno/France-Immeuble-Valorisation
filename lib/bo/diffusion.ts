@@ -17,6 +17,7 @@ import {
   type Alerte, type ChargeUtile, type StatutAnnonce,
 } from "@/lib/diffusion";
 import { BAREME_HONORAIRES, LIMITES, type VitrineSaisie } from "@/lib/vitrine";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -153,6 +154,7 @@ async function rpc(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  invaliderTable(args.p_table);
 }
 
 /** Une URL signée sur notre bucket, valable une heure. */

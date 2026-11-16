@@ -15,6 +15,7 @@ import {
   FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis, motifHorsVente,
   type BilanRelances, type PropositionRelance,
 } from "./relances";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -82,6 +83,9 @@ async function rpc(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status} : ${(await res.text()).slice(0, 200)}`);
+  /* Sans cela, la cloche écrivait bien la coupure mais l'écran restait sur
+     l'ancienne version cinq minutes (MAV, 16/11). */
+  invaliderTable(args.p_table);
 }
 
 /** La date de référence d'une proposition : le dernier geste connu. */

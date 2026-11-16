@@ -24,6 +24,7 @@ import { getAgents } from "@/lib/bubble/server";
 import { AGENT_DEFAUT_INITIALES } from "@/lib/bo/agent-defaut";
 import { CIBLES } from "@/lib/referentiels";
 import { noterOrigine } from "@/lib/bo/lead-origine";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -49,6 +50,7 @@ async function rpc(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture ${fn} ${res.status} : ${(await res.text()).slice(0, 200)}`);
+  invaliderTable(args.p_table);
 }
 
 const present = async (table: string, id: string) =>

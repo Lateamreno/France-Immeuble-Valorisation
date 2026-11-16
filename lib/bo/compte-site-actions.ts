@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { deposerCompte, lireCompteSurLeSite, type LignesCompte } from "@/lib/bo/compte-site";
 import { compteCourant } from "@/lib/auth/comptes";
 import { getAgents } from "@/lib/bubble/server";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -67,6 +68,7 @@ async function rpcBo(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`${fn} ${res.status} : ${(await res.text()).slice(0, 200)}`);
+  invaliderTable(args.p_table);
 }
 
 async function lire(chemin: string): Promise<{ id: string; data: Record<string, unknown> }[]> {

@@ -12,6 +12,7 @@ import { propositionsDuBien } from "@/lib/bubble/server";
 import { telE164 } from "@/lib/bo/matching";
 import { NUMERO_STOP, envoyerSms, etatSms } from "@/lib/bo/sms";
 import { texteRelanceSms } from "@/lib/bo/relances";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const SB_URL_RPC = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 async function rpc(fn: string, args: Record<string, unknown>) {
@@ -24,6 +25,7 @@ async function rpc(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`${fn} : ${res.status}`);
+  invaliderTable(args.p_table);
 }
 
 export async function chargerPropositionsDuBien(immeubleId: string) {

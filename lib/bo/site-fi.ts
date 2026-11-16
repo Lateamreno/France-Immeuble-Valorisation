@@ -17,6 +17,7 @@ import {
   mandatEnVigueur, mandatPermetLigne, statutSite,
   type Blocage, type EtatSite, type LigneSite, type LotSite, type StatutSite,
 } from "@/lib/diffusion";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -64,6 +65,7 @@ async function rpcBo(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  invaliderTable(args.p_table);
 }
 
 async function memoriser(immeubleId: string, patch: Record<string, unknown>) {

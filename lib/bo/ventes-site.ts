@@ -15,6 +15,7 @@ import {
   CONSIGNES_REDACTION, controleAnonymat, compterMots, dateParis, faitsDe, faitsEnTexte, lireReponse, nombreDeFaits, recitGabarit, seoDe,
   type FaitsVente, type Recit,
 } from "@/lib/ventes";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const BO_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const BO_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -57,6 +58,7 @@ async function rpcBo(fn: string, args: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  invaliderTable(args.p_table);
 }
 
 const S = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);

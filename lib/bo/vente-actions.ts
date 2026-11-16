@@ -13,6 +13,7 @@ import { destinataireInterdit, type ModeleVente } from "@/lib/vente-mail";
 import { lireMessage, messageClair, type MessageComplet } from "@/lib/mails/client";
 import { boiteDe } from "@/lib/mails/boites";
 import { getAgents } from "@/lib/bubble/server";
+import { invaliderTable } from "@/lib/bo/cache-tables";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,6 +28,7 @@ async function patch(table: string, id: string, p: Record<string, unknown>) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Écriture ${table} ${res.status}`);
+  invaliderTable(table);
 }
 
 export async function chargerVente(immeubleId: string): Promise<DonneesVente | null> {
