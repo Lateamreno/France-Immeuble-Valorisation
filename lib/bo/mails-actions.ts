@@ -449,7 +449,7 @@ export async function abandonnerSalve(id: string) {
  * messages types. Depuis une vignette de contact, n'importe où, il faut les
  * lui redonner : c'est ce que rend cette action.
  */
-export async function contexteRedaction(agentSlug = "marc-antoine") {
+export async function contexteRedaction(agentSlug?: string) {
   const [{ getAgentFiche, getAgents }, { messagesTypes }] = await Promise.all([
     import("@/lib/bubble/server"),
     import("@/lib/mails/serveur"),
@@ -459,7 +459,15 @@ export async function contexteRedaction(agentSlug = "marc-antoine") {
     messagesTypes().catch(() => []),
   ]);
   const actifs = agents.filter((a) => a.actif);
-  const courant = actifs.find((a) => a.slug === agentSlug) ?? actifs[0];
+  /* MAV, 16/11 : « j'ai créé une proposition depuis mon BO et ça a signé
+     Romain VOCI ». Sans agent désigné, c'est la personne CONNECTÉE qui écrit
+     (§10 ter) — l'expéditeur comme la signature —, plus Marc-Antoine par
+     défaut : Romain aurait envoyé depuis la boîte de Marc-Antoine. */
+  const moi = agentSlug ? null : await (await import("@/lib/auth/comptes")).compteCourant().catch(() => null);
+  const courant = (agentSlug ? actifs.find((a) => a.slug === agentSlug) : undefined)
+    ?? (moi ? actifs.find((a) => a.id === moi.agent_id) : undefined)
+    ?? actifs.find((a) => a.slug === "marc-antoine")
+    ?? actifs[0];
   const fiche = courant ? await getAgentFiche(courant.id).catch(() => null) : null;
   const s2 = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
   return {

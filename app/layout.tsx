@@ -71,6 +71,8 @@ export default async function RootLayout({
   const session = {
     direction: compte ? compte.role === "direction" : !authActive(),
     agentSlug: moi?.slug,
+    agentId: moi?.id,
+    tel: moi?.tel,
     nom: moi?.name,
     email: compte?.email,
     outrepasser: await peutReviser(),

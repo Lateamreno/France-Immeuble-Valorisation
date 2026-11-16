@@ -5955,6 +5955,13 @@ button.cfx-add {
   padding: 6px 10px; font-family: var(--font-title); font-size: 12.5px; font-weight: 700;
 }
 
+/* Le « suivi par » que la direction change d'un menu (MAV, 16/11). */
+.cfx-agent-sel {
+  width: 100%; border: 1px solid var(--line); border-radius: 3px; padding: 6px 8px;
+  font-family: var(--font-title); font-size: 12.5px; font-weight: 700; color: var(--slate); background: #fff; cursor: pointer;
+}
+.cfx-agent-err { display: block; margin-top: 4px; font-size: 11.5px; color: var(--red); }
+
 /* La note occupe toute la largeur et se lit à la couleur, comme dans le BO. */
 .cfx-note {
   width: 100%; border: 1px solid var(--line); border-radius: 3px; padding: 6px 8px;

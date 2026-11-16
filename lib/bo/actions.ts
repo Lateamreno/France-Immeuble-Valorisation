@@ -63,6 +63,17 @@ async function gardeTransfert(fn: string, args: Record<string, unknown>) {
 async function rpc(fn: string, args: Record<string, unknown>) {
   if (!SB_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY absente : écriture impossible");
   await gardeTransfert(fn, args);
+  /* MAV, 16/11 : « c'est indiqué créé par FI mais ça a été créé par moi ».
+     Une fiche créée dans le BO sans créateur déclaré prend la personne
+     connectée — au point de passage unique, pour que toutes les créations
+     le fassent, pas seulement celles qui y pensent. */
+  if (fn === "bo_insert_doc" && args.p_doc && typeof args.p_doc === "object") {
+    const doc = args.p_doc as Record<string, unknown>;
+    if (!doc["Created By"]) {
+      const moi = await agentConnecte();
+      if (moi) args = { ...args, p_doc: { ...doc, "Created By": moi } };
+    }
+  }
   const res = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: {
@@ -2077,11 +2088,23 @@ export async function updateContact(contactId: string, patch: ContactPatch) {
   revalidatePath("/contacts");
 }
 
+/** L'agent de la personne connectée, ou rien (poste non connecté, tâche planifiée). */
+async function agentConnecte(): Promise<string | undefined> {
+  try {
+    const { compteCourant } = await import("@/lib/auth/comptes");
+    return (await compteCourant())?.agent_id || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Crée un contact (barre de création rapide / modale). */
 export async function createContact(input: ContactPatch & { agentId?: string }) {
   const id = newId();
   const now = new Date().toISOString();
-  const { agentId, ...rest } = input;
+  const { agentId: choisi, ...rest } = input;
+  /* Sans commercial désigné, le contact est suivi par qui le crée (16/11). */
+  const agentId = choisi || (await agentConnecte());
   await rpc("bo_insert_doc", {
     p_table: "bo_contact",
     p_id: id,
@@ -2091,6 +2114,9 @@ export async function createContact(input: ContactPatch & { agentId?: string }) 
          « est-ce un agent immobilier » : y écrire un identifiant faisait
          passer chaque nouveau contact pour un confrère. */
       SUIVI: agentId,
+      /* C'est ce champ que la fiche affiche (« Création … par ») : sans lui,
+         elle disait « France Immeuble » (MAV, 16/11). */
+      "AGENT - Créateur": await agentConnecte(),
       "Created Date": now,
       "Modified Date": now,
     } as Record<string, unknown>)),

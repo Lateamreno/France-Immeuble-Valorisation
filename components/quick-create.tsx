@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { enregistrerAgents, useAgentCourant } from "@/lib/bo/agent-courant";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
-import { contactParEmail, createContact, createImmeuble, type ContactTrouve } from "@/lib/bo/actions";
-import { DoublonContact } from "@/components/doublon-contact";
+import { createImmeuble } from "@/lib/bo/actions";
+import { FenetreNouveauContact } from "@/components/nouveau-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
 import { FenetreAjout, ICA, Ligne, Resume } from "@/components/ajout-rapide";
@@ -81,102 +81,9 @@ export function QuickCreate({ agents = [] }: { agents?: Agent[] }) {
 
 function NewContactModal({ agents, onClose }: { agents: Agent[]; onClose: () => void }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
-  const [civ, setCiv] = useState("Monsieur");
-  const [prenom, setPrenom] = useState("");
-  const [nom, setNom] = useState("");
-  const [email, setEmail] = useState("");
-  const [portable, setPortable] = useState("");
-  const [acheteur, setAcheteur] = useState(false);
-  const [vendeur, setVendeur] = useState(false);
-  /* Par défaut l'agent aux commandes, pas le premier de la liste (#67). */
-  const { slug: agent, choisir: setAgent } = useAgentCourant(agents);
-  /** Le contact déjà en base qui porte l'adresse saisie (retour #248). */
-  const [doublon, setDoublon] = useState<ContactTrouve | null>(null);
-
-  /* Un contact sans adresse e-mail ne sert à rien : ni estimation, ni
-     proposition, ni relance. Elle est donc exigée dès la création (#69). */
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
-  const completContact = !!nom.trim() && emailOk;
-
-  const nomAgent = agents.find((a) => a.slug === agent)?.name;
   return (
-    <FenetreAjout
-      icone={ICA.personne} titre="Nouveau contact" onFermer={onClose}
-      pied={
-        <>
-          <span style={{ flex: 1 }} />
-          <button className="fadd" type="button" onClick={onClose}>Annuler</button>
-          <button
-            className={`kgo${completContact ? " btn-pret" : ""}`} type="button"
-            disabled={pending || !completContact}
-            style={pending || !completContact ? { opacity: 0.5 } : undefined}
-            title={completContact ? undefined : "Le nom et une adresse e-mail valide sont nécessaires"}
-            onClick={() =>
-              start(async () => {
-                /* Retour #248 : l'adresse est-elle déjà connue ? On demande
-                   avant d'écrire — un doublon créé se rattrape mal, les mails
-                   entrants s'y accrochent aussitôt. */
-                const dejaLa = await contactParEmail(email).catch(() => null);
-                if (dejaLa) { setDoublon(dejaLa); return; }
-                const id = await createContact({
-                  "Civilité": civ, "prénom": prenom || undefined, nom,
-                  email: email || undefined, portable: portable || undefined,
-                  acheteur, vendeur,
-                  agentId: agents.find((a) => a.slug === agent)?.id,
-                });
-                onClose();
-                router.push(`/contact/${id}`);
-              })
-            }
-          ><span className="ch">›</span> Créer le contact</button>
-        </>
-      }
-    >
-      {doublon && (
-        <div className="aj-lc" style={{ paddingTop: 12, paddingLeft: 18 }}>
-          <DoublonContact
-            existant={doublon}
-            onReprendre={() => { onClose(); router.push(`/contact/${doublon.id}`); }}
-            onChanger={() => setDoublon(null)}
-          />
-        </div>
-      )}
-      <Ligne icone={ICA.personne} titre="Identité" manque={!nom.trim() && "Indiquez le nom du contact"}>
-        <div className="mrow" style={{ alignItems: "center", flexWrap: "nowrap" }}>
-          <select className="min" style={{ width: 120, flex: "none" }} value={civ} onChange={(e) => setCiv(e.target.value)}>
-            <option>Monsieur</option><option>Madame</option>
-          </select>
-          <input className="min" placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
-          <input className={`min${!nom.trim() ? " requis" : ""}`}
-            placeholder="NOM" value={nom} onChange={(e) => setNom(e.target.value)} />
-        </div>
-      </Ligne>
-      <Ligne icone={ICA.enveloppe} titre="Coordonnées"
-        manque={!emailOk && (email.trim() ? "Cette adresse e-mail n'est pas valide" : "Indiquez une adresse e-mail")}>
-        <div className="aj-deux">
-          <input className={`min${email.trim() && !emailOk ? " ko" : ""}${!email.trim() ? " requis" : ""}`}
-            placeholder="E-mail (obligatoire)" value={email}
-            onChange={(e) => { setDoublon(null); setEmail(e.target.value); }} />
-          <input className="min" placeholder="Portable" value={portable} onChange={(e) => setPortable(e.target.value)} />
-        </div>
-      </Ligne>
-      <Ligne icone={ICA.cible} titre="Projet"
-        resume={!acheteur && !vendeur ? <Resume vide>Non précisé</Resume> : undefined}>
-        <div className="mrow">
-          <button type="button" className={`mopt${acheteur ? " on" : ""}`} onClick={() => setAcheteur(!acheteur)}>Acheter</button>
-          <button type="button" className={`mopt${vendeur ? " on" : ""}`} onClick={() => setVendeur(!vendeur)}>Vendre</button>
-        </div>
-      </Ligne>
-      <Ligne icone={ICA.agent} titre="Suivi par" repliable ouverte={false}
-        resume={nomAgent ? <Resume>{nomAgent}</Resume> : undefined}>
-        <div className="mrow">
-          {agents.map((a) => (
-            <button key={a.slug} type="button" className={`mopt${agent === a.slug ? " on" : ""}`} onClick={() => setAgent(a.slug)}>{a.name}</button>
-          ))}
-        </div>
-      </Ligne>
-    </FenetreAjout>
+    <FenetreNouveauContact agents={agents} onFermer={onClose}
+      onCree={(c) => { onClose(); router.push(`/contact/${c.id}`); }} />
   );
 }
 
