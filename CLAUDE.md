@@ -692,6 +692,19 @@ complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
   pas écrire `AGENT` ou `SUIVI` par un autre chemin.
 - L'« agent aux commandes » d'un poste, c'est la personne connectée
   (`components/session.tsx`), plus un choix.
+- **Qui signe et qui envoie (MAV, 16/11, revirement compris)** : une
+  **commercialisation** part toujours de l'agent qui suit le **mandat**
+  (`AGENT` du mandat choisi, sinon de la fiche) — sa boîte, sa signature, son
+  portable —, quel que soit celui qui la lance. Seule la **proposition faite à
+  la main** (proposition rapide) part de la personne connectée. Sans agent
+  désigné, `contexteRedaction` prend la personne connectée, jamais
+  Marc-Antoine par défaut.
+- **Créateur** : toute fiche créée dans le BO note la personne connectée
+  (`Created By`, au point de passage `rpc`) ; un contact note aussi
+  `AGENT - Créateur` (ce que sa fiche affiche) et, sans commercial choisi, est
+  suivi par qui le crée. Une seule fenêtre « Nouveau contact »
+  (`components/nouveau-contact.tsx`), quel que soit le bouton. La direction
+  change le « suivi par » d'un contact depuis sa fiche.
 - Les comptes se gèrent dans Réglages › Équipe (direction). Revirement de MAV
   le 27/10 : la direction peut **définir** le premier mot de passe d'un agent
   (ou copier un lien, ou l'envoyer par e-mail) ; chacun le change ensuite dans
