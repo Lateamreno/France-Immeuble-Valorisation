@@ -33,7 +33,6 @@ import { introVersCarte, longueurRepli, refusRepli, titreVersCarte, TITRE_MAX } 
 import { oublier, useMemoire } from "@/lib/memoire";
 import { annulerRcsProgrammeCommercialisation, apercuRcsCommercialisation, createCommercialisation, programmerRcsCommercialisation, envoyerRcsCommercialisation, envoyerRcsEssaiCommercialisation, etatEnvoiSms, majLienDossier, etatMailsCommercialisation, genererEtatLocatifCsv, markCommercialisationSent } from "@/lib/bo/actions";
 import { useQuestion } from "@/components/modale";
-import { useSession } from "@/components/session";
 import { useBudgetSalveLong, useSalveRelances } from "@/components/salve-relances";
 
 const ETAPES = ["Dossier", "Mandat", "Acheteurs", "E-mails", "SMS"] as const;
@@ -55,14 +54,6 @@ export function AssistantCommercialisation({
      de l'assistant passe donc par la mémoire d'écran, rangée sous le matching
      auquel elle appartient — deux commercialisations ne se mélangent pas. */
   const memo = `com:${matchId}`;
-  /* Qui envoie : la personne connectée — sa boîte, sa signature, son portable
-     (MAV, 16/11 : « lorsque quelqu'un fait une proposition depuis son BO, ce
-     soit toujours sa signature et son e-mail »). L'agent du bien ne sert que
-     sur un poste non connecté. */
-  const session = useSession();
-  const expediteur = session.agentId
-    ? { id: session.agentId, nom: session.nom, tel: session.tel }
-    : { id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel };
   const [etape, setEtape] = useMemoire<Etape>(`${memo}:etape`, "Dossier");
   const [pending, start] = useTransition();
   const { confirmer, question } = useQuestion();
@@ -101,6 +92,16 @@ export function AssistantCommercialisation({
   const [dossier, setDossier] = useMemoire(`${memo}:dossier`, dossierId ?? S(dossiers[0]?._id));
   const mandats = b.mandats;
   const [mandat, setMandat] = useMemoire(`${memo}:mandat`, S(mandats[0]?._id));
+  /* Qui envoie : l'agent qui suit le MANDAT — sa boîte, sa signature, son
+     portable —, que la commercialisation soit lancée par lui ou par un autre
+     (MAV, 16/11 : « une commercialisation part toujours de la personne qui
+     suit le mandat »). À défaut de mandat, l'agent de la fiche. Seule la
+     proposition faite à la main part de la personne connectée. */
+  const agentMandat = S(mandats.find((m) => S(m._id) === mandat)?.AGENT) || S(mandats[0]?.AGENT);
+  const membre = agentMandat ? b.equipe.find((a) => a.id === agentMandat) : undefined;
+  const expediteur = membre
+    ? { id: membre.id, nom: membre.nom, tel: membre.tel }
+    : { id: String(b.im.AGENT ?? "") || undefined, nom: b.agentNom, tel: b.agentTel };
   /* Le lien part du DOSSIER choisi (MAV, 28/09) : celui qu'on y a posé, s'il
      est encore valable. La mémoire de session prime si l'agent l'a retouché. */
   const lienDossierChoisi = lienDuDossier(dossiers.find((d) => S(d._id) === dossier) ?? dossiers[0]);

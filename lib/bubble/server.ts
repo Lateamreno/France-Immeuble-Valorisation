@@ -1174,6 +1174,9 @@ export type BienData = {
    *  mail d'estimation les porte plutôt que des initiales (retour #280). */
   agentNom?: string;
   agentTel?: string;
+  /** Les agents (nom, portable), pour signer au nom de l'agent du MANDAT
+   *  quand ce n'est pas celui de la fiche (MAV, 16/11). */
+  equipe: { id: string; nom: string; tel?: string }[];
   proprietaire?: Record<string, unknown>;
   /** Tous les propriétaires (#489) : le principal en tête, puis les indivisaires. */
   proprietaires: Record<string, unknown>[];
@@ -1333,6 +1336,7 @@ export async function getBien(id: string): Promise<BienData | null> {
     agentInitials: agentEntry?.initials ?? "FI",
     agentNom: agentEntry?.name || undefined,
     agentTel: agentEntry?.tel || undefined,
+    equipe: tousAgents.map((a) => ({ id: a.id, nom: a.name, tel: a.tel || undefined })),
     proprietaire,
     proprietaires,
     societesProprietaires,
