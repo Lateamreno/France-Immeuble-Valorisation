@@ -521,6 +521,14 @@ Pas intéressé), réponse depuis le compte du site — devient une ligne de
 - Toutes sonnent (son « réponse », dans components/sons.tsx).
 - Le tri des propositions du bien suit le dernier retour, tous canaux
   (retour #437 étendu le 12/11).
+- **Réponses aux relances (16/11)** : la relance partait sans jeton, sa
+  réponse restait « à choisir » et ne sonnait pas (32 réponses en souffrance
+  depuis le 25/09). Chaque relance porte désormais un jeton dans son
+  Message-ID (`relance_jeton` + `relance_objet` sur la proposition), que la
+  relève reconnaît ; à défaut, l'objet de la relance, puis la ville **et** la
+  relance des 21 jours qui précèdent la réponse départagent (`choisirParObjet`).
+  « Paris 18 » vaut « Paris 18e ». Reprise faite le 16/11 : 30 rattachées,
+  remises à traiter seulement si la proposition était encore « Envoyée ».
 
 ### 7.7 Relances clients — position de MAV (10/11), à cadrer avant de coder
 

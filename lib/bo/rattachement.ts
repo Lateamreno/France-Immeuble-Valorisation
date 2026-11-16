@@ -19,6 +19,8 @@ export type Enveloppe = {
   references?: string[];
   /** En-têtes bruts, en minuscules, pour la détection d'envoi de masse. */
   entetes?: Record<string, string>;
+  /** Date du message, ISO. */
+  date?: string;
 };
 
 /** Ce à quoi un e-mail peut être rattaché. */
@@ -147,7 +149,16 @@ export type Recherches = {
   indicesDe?: (refs: Reference[]) => Promise<Indice[]>;
 };
 
-export type Indice = { ref: Reference; objets: string[]; villes: string[]; /** Date d'envoi, ISO. */ le?: string };
+export type Indice = {
+  ref: Reference; objets: string[]; villes: string[];
+  /** Date d'envoi, ISO. */
+  le?: string;
+  /** Date de la dernière relance de la proposition, ISO (16/11). */
+  relanceLe?: string;
+};
+
+/** Combien de jours une réponse peut suivre la relance à laquelle elle répond. */
+export const JOURS_REPONSE_RELANCE = 21;
 
 /** Un objet ou une ville réduits pour la comparaison : sans « Re : » ni
  *  « TR: », sans accents, sans ponctuation, en minuscules. */
@@ -169,7 +180,12 @@ export function reduire(t?: string | null): string {
  * D'abord l'objet entier, puis la ville du bien, et seulement si un seul
  * candidat répond.
  */
-export function choisirParObjet(objet: string | undefined, indices: Indice[]): { ref: Reference; par: "objet" | "ville" } | null {
+export function choisirParObjet(
+  objet: string | undefined,
+  indices: Indice[],
+  /** Date de la réponse, ISO : sert à reconnaître la relance à laquelle elle répond. */
+  recuLe?: string,
+): { ref: Reference; par: "objet" | "ville" | "relance" } | null {
   const o = reduire(objet);
   if (o.length < 8) return null;
   /* Un seul candidat, ou plusieurs propositions sur le MÊME immeuble (une
@@ -192,13 +208,32 @@ export function choisirParObjet(objet: string | undefined, indices: Indice[]): {
   }));
   const meilleur = Math.max(0, ...indices.map(score));
   const parObjet = meilleur > 0 ? indices.filter((x) => score(x) === meilleur) : [];
+  /* Retour du 16/11 : un acquéreur ancien a plusieurs biens dans la même
+     ville (Argenteuil, Livry-Gargan) ; la réponse à une RELANCE concerne
+     ceux qu'on vient de relancer, dans les trois semaines qui précèdent. */
+  const relances = (l: Indice[]) => {
+    /* Le récapitulatif d'une salve (« Récapitulatif — Relance … ») est
+       l'agent qui s'écrit à lui-même : ce n'est pas une réponse. */
+    if (!recuLe || !/relance/.test(o) || /^recapitulatif/.test(o)) return null;
+    const fin = Date.parse(recuLe);
+    const debut = fin - JOURS_REPONSE_RELANCE * 86_400_000;
+    return unique(l.filter((x) => {
+      const t = x.relanceLe ? Date.parse(x.relanceLe) : NaN;
+      return Number.isFinite(t) && t >= debut && t <= fin + 3_600_000;
+    }));
+  };
   const u1 = unique(parObjet);
   if (u1) return { ref: u1.ref, par: "objet" };
-  if (parObjet.length > 0) return null;
+  if (parObjet.length > 0) {
+    const r1 = relances(parObjet);
+    return r1 ? { ref: r1.ref, par: "relance" } : null;
+  }
   const mot = (v: string) => new RegExp(`(^| )${reduire(v).replace(/ /g, " ")}( |$)`);
   const parVille = indices.filter((x) => x.villes.some((v) => reduire(v).length >= 3 && mot(v).test(o)));
   const u2 = unique(parVille);
-  return u2 ? { ref: u2.ref, par: "ville" } : null;
+  if (u2) return { ref: u2.ref, par: "ville" };
+  const r2 = relances(parVille.length ? parVille : indices);
+  return r2 ? { ref: r2.ref, par: "relance" } : null;
 }
 
 /**
@@ -250,11 +285,13 @@ export async function reconnaitre(env: Enveloppe, r: Recherches): Promise<Reconn
     };
   }
   if (affaires.length > 1) {
-    const choix = r.indicesDe && env.objet ? choisirParObjet(env.objet, await r.indicesDe(affaires).catch(() => [])) : null;
+    const choix = r.indicesDe && env.objet
+      ? choisirParObjet(env.objet, await r.indicesDe(affaires).catch(() => []), env.date)
+      : null;
     if (choix) {
       return {
         niveau: "contact",
-        raison: `${contact.nom ?? "Contact connu"} — ${affaires.length} affaires, reconnue par ${choix.par === "objet" ? "l'objet de l'e-mail" : "la ville citée dans l'objet"}`,
+        raison: `${contact.nom ?? "Contact connu"} — ${affaires.length} affaires, reconnue par ${choix.par === "objet" ? "l'objet de l'e-mail" : choix.par === "ville" ? "la ville citée dans l'objet" : "la relance à laquelle elle répond"}`,
         contactId: contact.id,
         ref: choix.ref,
         certain: true,
