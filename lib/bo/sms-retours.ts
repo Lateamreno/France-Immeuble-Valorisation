@@ -8,6 +8,8 @@
 // Code serveur (clé de service, clé MailingVox) : jamais importé par un
 // composant client.
 
+import { invaliderTable } from "@/lib/bo/cache-tables";
+
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const H = () => ({ apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` });
@@ -39,6 +41,7 @@ async function patcher(table: string, id: string, patch: Record<string, unknown>
     body: JSON.stringify({ p_table: table, p_id: id, p_patch: patch }),
     cache: "no-store",
   }).catch(() => undefined);
+  invaliderTable(table);
 }
 
 /**
