@@ -360,6 +360,26 @@ porte un lien de désinscription (obligation de la prospection commerciale) ;
 les refus vont dans `fi_desabonnement` et sortent de **toutes** les salves.
 Lancer une campagne est réservé à la direction.
 
+**Le dossier « Envoyés » d'une boîte (19/11/26).** MAV ne voyait pas les envois
+du BO dans son webmail ni sur son téléphone : sa boîte Exchange porte deux
+dossiers d'envoi, « Sent Items » (le vrai) et un « Éléments envoyés » laissé
+par un ancien logiciel — de même pour les brouillons et la corbeille. Exchange
+ne désigne aucun dossier en IMAP ; la bibliothèque devine d'après les noms et
+marque les deux (`specialUseSource: "name"` veut dire « deviné », pas
+« désigné »). Règle (`lib/mails/dossiers.ts`) : le dossier désigné par le
+serveur, sinon celui qui parle la langue des dossiers sans doublon (« Junk
+Email » : anglais), le nombre de messages en dernier — le doublon de MAV en
+contient plus que le vrai. Les boîtes réapprennent leurs dossiers quand
+`VERSION_DOSSIERS` change, et ce qu'elles montrent est journalisé
+(« [mails] dossiers vus »).
+
+**Envois individuels (MAV, 19/11/26).** Une proposition faite à la main
+(jusqu'à cinq personnes) et la relance d'une seule personne sont de la
+correspondance : copiées dans « Envoyés » (revirement partiel du retour #479,
+qui reste vrai pour les salves et les relances groupées). Un message individuel
+part de la boîte de l'agent **ou ne part pas** (`boiteObligatoire`) : plus de
+repli sur une adresse de service.
+
 **Commun aux deux routes :** doctrine héritée du netlinking — **validation
 humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
 automatique, jamais.
@@ -586,6 +606,43 @@ va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
   multidiffuseur, compte de FI à fournir.
 
 ---
+
+### 7.9 Rapport de commercialisation — le point envoyé au propriétaire (19/11/26)
+
+Décidé avec MAV le 19/11 (maquettes : artifact « Rapport de commercialisation »).
+Un bouton en tête du **Suivi de la vente** (`components/rapport-commercialisation.tsx`),
+en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
+**aperçu et envoi**. Rien ne part sans le clic de l'agent.
+- `lib/bo/rapport-commercialisation.ts` calcule (pur, testé) : actions, chiffres,
+  retours, visites, offres, baromètre et **contrôles** — une offre écrite dans
+  un retour de visite et jamais saisie, des réponses non traitées, un
+  « Intéressé » sans suite, une visite passée ni faite ni annulée.
+  `rapport-serveur.ts` lit, `rapport-contenu.ts` fait le premier jet,
+  `rapport-html.ts` met en forme, `rapport-actions.ts` porte les gestes.
+- **Format** : un e-mail mis en forme (« l'essentiel » : quatre chiffres, trois
+  paragraphes) **sans aucune image** — tableaux et styles sur chaque balise,
+  600 px au plus, lisible sur mobile — et un **PDF joint** (compte rendu
+  complet, puis diagnostic). L'aperçu appelle les mêmes fonctions que l'envoi.
+- **Aucun nom d'acquéreur** dans le rapport : initiale et profil (« B. —
+  marchand de biens »). Les noms n'apparaissent que dans le contrôle, que seul
+  l'agent lit. La **note A à D** est affichée, avec la légende de MAV : A a
+  déjà acheté ; B a déjà visité ou fait une offre, ou acteur reconnu ; C nous
+  avons déjà échangé, sans visite ni offre ; D inscrit de lui-même sur le site,
+  sans échange.
+- **« Ce qui plaît / ce qui bloque », les pistes, les prix cités** : l'IA
+  propose (elle ne reçoit que des retours sans nom et des chiffres), l'agent
+  corrige. Chaque retour et chaque visite se décoche : une note interne n'est
+  pas pour le propriétaire (la visite a `commentaire_externe`, pris en
+  priorité ; à défaut `rex_fi`, signalé « à relire »).
+- Destinataires : **les vendeurs du bien seulement** (vérifié côté serveur). Le
+  rapport part de la boîte de celui qui l'écrit, et reste rangé dans
+  `fi_rapport_commercialisation` (le PDF se refait à la demande).
+- **Reste à faire** : le rappel hebdomadaire au commercial (« il faut envoyer
+  un rapport », avec ce qui est nouveau depuis le dernier) ; les vues et
+  impressions du site France Immeuble (le site ne les transmet pas) ; SeLoger
+  et Leboncoin quand le multidiffuseur existera ; le passage automatique
+  d'une note à l'autre selon les actions (demandé par MAV le 19/11, à cadrer :
+  il change qui reçoit les salves).
 
 ## 8. Garde-fous (invariants — ne jamais contourner)
 

@@ -456,6 +456,10 @@ export async function envoyerPourAgent(
     to: string;
     subject: string;
     text: string;
+    /** La version mise en forme, quand le message en a une (le rapport de
+     *  commercialisation). `text` reste le repli des messageries sans mise en
+     *  forme. Portée par la boîte de l'agent seulement. */
+    html?: string;
     cc?: string;
     bcc?: string;
     replyTo?: string;
@@ -500,6 +504,7 @@ export async function envoyerPourAgent(
         cci: m.bcc,
         objet: m.subject,
         texte: m.text,
+        html: m.html,
         messageId: m.messageIdPour?.(domaine),
         pieces: m.attachments,
         sansCopie: m.copieEnvoyes === false,
