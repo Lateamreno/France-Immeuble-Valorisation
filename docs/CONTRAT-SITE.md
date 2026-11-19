@@ -1033,3 +1033,48 @@ rangé dans une table interne (`fi_lead_origine`), le premier envoi d'une `ref`
 faisant foi. Rien ne change dans les réponses de `/api/site/lead`. Le BO en
 tire le canal (Google Ads, recherche naturelle, réseaux, e-mail, autre site,
 direct), et, pour une estimation devenue mandat signé, le coût par mandat.
+
+## 19. Les statistiques d'une annonce, pour le rapport au propriétaire (demande du BO, 19/11)
+
+Le BO envoie désormais au propriétaire un **rapport de commercialisation**
+(CLAUDE.md §7.9). MAV veut y lire, canal par canal, ce que l'annonce a
+produit : « nombre de vues, nombre d'impressions, nombre de messages et
+d'appels, nombre de visites découlant de cette source ». Le BO connaît déjà
+les messages (ils arrivent par `/api/site/lead`) et les visites ; il lui
+manque ce que seul le site voit. Demande à la session du site :
+
+1. **Compter, par annonce et par jour**, dans une table du site
+   `annonce_stats_jour` — clé (`bien_id`, `jour`), `bien_id` étant
+   `biens_a_vendre.id` :
+
+   | Colonne | Ce qu'elle compte |
+   |---|---|
+   | `impressions` | l'annonce est apparue dans une liste de résultats ou sur la page d'accueil (une fois par chargement de liste) |
+   | `vues` | la fiche a été ouverte — **dédoublonnée par visiteur et par heure**, comme chez Plein Bail, pour qu'un visiteur qui recharge ne compte pas dix fois |
+   | `visiteurs` | visiteurs distincts de la fiche dans la journée |
+   | `clics_telephone` | clic sur le numéro ou sur « Afficher le téléphone » (c'est notre seule mesure des appels) |
+   | `clics_dossier` | clic sur « Demander le dossier » ou téléchargement d'une pièce |
+   | `partages` | clic sur un bouton de partage |
+
+2. **Écarter ce qui n'est pas un visiteur** : robots (agent utilisateur,
+   absence d'exécution de script), aperçus de liens des messageries, et les
+   visites de l'équipe (un cookie posé depuis une page réservée suffit).
+3. **Sans donnée personnelle** : la table ne garde que des compteurs. Le
+   dédoublonnage se fait sur un identifiant de visite éphémère (haché, changé
+   chaque jour), jamais sur l'adresse IP en clair ; rien n'est gardé au-delà
+   du compteur. La mesure d'audience sans cookie tiers reste dans l'exemption
+   de consentement tant qu'elle ne sert qu'à compter.
+4. **Le BO lit, il n'écrit pas** : il interroge `annonce_stats_jour` avec la
+   clé de service qu'il a déjà, pour la période du rapport. Rien ne change
+   dans `/api/site/lead`. Tant que la table n'existe pas, le rapport n'affiche
+   pour le site que les messages et les visites.
+5. **Rattacher une visite à sa source** : sur les formulaires `rendez_vous` et
+   `contact` posés depuis une fiche, joindre comme aujourd'hui l'identifiant du
+   bien — c'est lui qui permet au BO de compter « les visites venues du site ».
+
+**Conseils de mesure** (à prendre ou à laisser) : compter les impressions côté
+serveur, au rendu de la liste, plutôt qu'en script — c'est plus fiable et ça
+ne dépend d'aucun bloqueur ; garder un compteur de **recherches sans
+résultat** par critères (ville, budget), c'est ce qui dit quels biens il nous
+manque ; noter la **position** moyenne de l'annonce dans les listes, pour
+distinguer une annonce peu vue d'une annonce vue et pas ouverte.
