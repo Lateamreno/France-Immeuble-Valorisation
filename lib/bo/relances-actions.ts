@@ -400,8 +400,12 @@ export async function envoyerRelances(
           to: e.email, subject: e.objet, text: e.corps, replyTo: repondreA,
           messageIdPour: (domaine) => messageIdDuJeton(jeton, domaine),
           attachments: attachments.length ? attachments : undefined,
-          /* Retour #479 : une relance n'est pas de la correspondance. */
-          copieEnvoyes: false,
+          /* Retour #479 : une relance n'est pas de la correspondance.
+             Revirement de MAV le 19/11 : la relance d'UNE personne en est —
+             il la retrouve dans ses envoyés, et elle part de sa boîte ou pas
+             du tout. La relance groupée reste sans copie. */
+          copieEnvoyes: envois.length === 1,
+          boiteObligatoire: envois.length === 1,
         });
       }
       await Promise.all(e.propositionIds.map((id) => rpc("bo_patch_doc", {

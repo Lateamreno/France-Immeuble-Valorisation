@@ -199,6 +199,7 @@ export async function envoyerMailVente(immeubleId: string, m: {
     const r = await envoyerPourAgent(moi?.agent_id ?? d.agentId, {
       to: a.join(", "), cc: cc.length ? cc.join(", ") : undefined,
       subject: m.objet.trim(), text: m.corps, replyTo: moi?.email,
+      boiteObligatoire: true,
     });
     revalidatePath(`/bien/${immeubleId}`);
     return {

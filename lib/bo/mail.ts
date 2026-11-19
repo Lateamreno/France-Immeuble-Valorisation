@@ -470,6 +470,10 @@ export async function envoyerPourAgent(
      *  commercialisation, relances, salves — qui ne doit pas encombrer les
      *  « Envoyés » de l'agent. Par défaut, un message part avec sa copie. */
     copieEnvoyes?: boolean;
+    /** MAV, 19/11/26 : un message INDIVIDUEL part de la boîte de l'agent, ou ne
+     *  part pas. Sans boîte branchée, on refuse au lieu de passer par une
+     *  adresse de service que le destinataire ne connaît pas. */
+    boiteObligatoire?: boolean;
   },
 ): Promise<{
   messageId: string;
@@ -510,6 +514,12 @@ export async function envoyerPourAgent(
     };
   }
 
+  if (m.boiteObligatoire) {
+    throw new Error(
+      "Message non envoyé : la boîte e-mail de l'agent n'est pas branchée. Un message individuel part de sa propre "
+      + "adresse, pas d'une adresse de service. Branchez-la dans Mails › Ma boîte e-mail.",
+    );
+  }
   if (!mailConfigure()) {
     throw new Error(
       "Aucune boîte e-mail branchée pour cet agent, et pas de route d'envoi commune. "

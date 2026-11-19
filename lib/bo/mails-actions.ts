@@ -284,6 +284,7 @@ export async function envoyerUnMessage(m: {
   const r = await envoyerPourAgent(m.agentId, {
     to: m.to.trim(), subject: m.objet, text: m.corps, replyTo: m.repondreA,
     attachments: attachments.length ? attachments : undefined,
+    boiteObligatoire: true,
   });
   if (m.brouillonId) {
     await ecrire("fi_brouillon", "PATCH",

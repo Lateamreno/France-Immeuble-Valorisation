@@ -52,14 +52,25 @@ const PAR_NOM: [RegExp, RoleDossier][] = [
   [/(trash|deleted|corbeille|supprim)/i, "corbeille"],
 ];
 
-/** Le rôle d'un dossier, et si c'est le serveur lui-même qui le désigne. */
+/**
+ * Le rôle d'un dossier, et si c'est le SERVEUR qui le désigne.
+ *
+ * Piège trouvé le 19/11 dans la boîte de MAV : quand le serveur ne désigne
+ * rien (Exchange), la bibliothèque devine le rôle d'après le nom et pose
+ * elle-même l'attribut (\Sent) sur TOUS les dossiers au nom évocateur —
+ * « Éléments envoyés » comme « Sent Items ». Un attribut deviné n'est pas une
+ * désignation : seul `specialUseSource` dit d'où il vient, et « name » veut
+ * dire « deviné ».
+ */
 function roleEtOrigine(d: ListResponse): { role: RoleDossier; special: boolean } | null {
   if (d.path.toUpperCase() === "INBOX") return { role: "reception", special: true };
+  if (d.specialUse && PAR_ATTRIBUT[d.specialUse]) {
+    return { role: PAR_ATTRIBUT[d.specialUse], special: d.specialUseSource === "extension" || d.specialUseSource === "user" };
+  }
   for (const f of d.flags ?? []) {
     const r = PAR_ATTRIBUT[f as string];
-    if (r) return { role: r, special: true };
+    if (r) return { role: r, special: false };
   }
-  if (d.specialUse && PAR_ATTRIBUT[d.specialUse]) return { role: PAR_ATTRIBUT[d.specialUse], special: true };
   const feuille = d.path.split(d.delimiter || "/").pop() ?? d.path;
   for (const [re, r] of PAR_NOM) if (re.test(feuille)) return { role: r, special: false };
   return null;
