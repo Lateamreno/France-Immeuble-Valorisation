@@ -491,7 +491,24 @@ export type Retombees = {
   offres: number;
   partages?: number;
   derniere_vue?: string;
+  /* Depuis le 19/11/26, à la demande du BO pour le rapport au propriétaire :
+     les compteurs valent pour une PÉRIODE quand on la demande, et Plein Bail
+     dit en plus qui a vu l'annonce et par où il est venu. Tout est
+     facultatif : une réponse à l'ancien format reste lisible. */
+  periode?: { depuis?: string; jusqu_a?: string };
+  /** Visiteurs distincts de la fiche. */
+  visiteurs?: number;
+  /** Rang moyen de l'annonce dans les listes où elle est apparue. */
+  position_moyenne?: number;
+  /** Alertes d'acquéreurs qui ont reçu l'annonce. */
+  alertes?: number;
+  /** Par où les visiteurs sont arrivés : recherche, alerte, direct, moteur, site, externe. */
+  sources?: Record<string, number>;
+  serie?: { pas?: string; points?: unknown[] };
 };
+
+/** La période sur laquelle on demande les retombées. Absente : le total. */
+export type PeriodeRetombees = { depuis?: string; jusquA?: string };
 
 /**
  * Demande les retombées à Plein Bail.
@@ -501,7 +518,7 @@ export type Retombees = {
  * références inconnues sont journalisées : ce sont des annonces que le BO croit
  * en ligne et qui n'existent plus chez eux.
  */
-export async function retombeesAnnonces(references: string[]): Promise<Retombees[]> {
+export async function retombeesAnnonces(references: string[], periode?: PeriodeRetombees): Promise<Retombees[]> {
   if (!PB_URL || !PB_TOKEN || references.length === 0) return [];
   /* Un aller-retour vers Plein Bail à chaque affichage de l'écran Diffusion,
      c'était deux secondes pour des compteurs de vues. Ils bougent à l'échelle
@@ -513,7 +530,11 @@ export async function retombeesAnnonces(references: string[]): Promise<Retombees
         const res = await fetch(PB_URL!, {
           method: "POST",
           headers: { Authorization: `Bearer ${PB_TOKEN!}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "retombees", references }),
+          body: JSON.stringify({
+            action: "retombees", references,
+            ...(periode?.depuis ? { depuis: periode.depuis } : {}),
+            ...(periode?.jusquA ? { jusqu_a: periode.jusquA } : {}),
+          }),
           cache: "no-store",
         });
         if (!res.ok) return [];
@@ -526,7 +547,7 @@ export async function retombeesAnnonces(references: string[]): Promise<Retombees
         return [];
       }
     },
-    ["pb-retombees", [...references].sort().join(",")],
+    ["pb-retombees", [...references].sort().join(","), periode?.depuis ?? "", periode?.jusquA ?? ""],
     { tags: ["pb_retombees"], revalidate: 300 },
   )();
 }

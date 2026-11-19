@@ -644,6 +644,14 @@ en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
 - Destinataires : **les vendeurs du bien seulement** (vérifié côté serveur). Le
   rapport part de la boîte de celui qui l'écrit, et reste rangé dans
   `fi_rapport_commercialisation` (le PDF se refait à la demande).
+- **Diffusion** : les retombées Plein Bail sont demandées **sur la période du
+  rapport** (`retombeesAnnonces(refs, { depuis, jusquA })`, action `retombees`
+  avec `depuis` / `jusqu_a`). Depuis le 19/11, Plein Bail rend en plus
+  `periode`, `visiteurs`, `position_moyenne`, `alertes`, `sources` (recherche,
+  alerte, direct, moteur, site, externe) et `serie` ; `blocPleinBail`
+  (`rapport-contenu.ts`) les met en tuiles et en une phrase d'origine. Un
+  compteur absent ne s'affiche pas — jamais « 0 » pour « on ne sait pas ». La
+  série par jour n'est pas encore dessinée.
 - **Reste à faire** : le rappel hebdomadaire au commercial (« il faut envoyer
   un rapport », avec ce qui est nouveau depuis le dernier) ; les vues et
   impressions du site France Immeuble (le site ne les transmet pas) ; SeLoger

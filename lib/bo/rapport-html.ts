@@ -48,7 +48,7 @@ export type ContenuRapport = {
   retoursNote?: string;
   visites: { date: string; qui: string; note?: string; texte: string }[];
   offres: { date: string; qui: string; note?: string; montant: string; statut: string }[];
-  diffusion: { source: string; lignes: { libelle: string; valeur: string }[] }[];
+  diffusion: { source: string; lignes: { libelle: string; valeur: string }[]; note?: string }[];
   legende: string;
 
   plait: PointRetour[];
@@ -190,8 +190,8 @@ tr{break-inside:avoid}
 td.n{white-space:nowrap;font-variant-numeric:tabular-nums}
 .g{display:inline-block;min-width:15pt;text-align:center;border-radius:3pt;font-size:8.5pt;font-weight:700;padding:0 4pt;background:${OR_FOND};color:${OR}}
 .gv{color:${GRIS}}
-.tuiles{display:flex;gap:6pt;margin:8pt 0 10pt}
-.tuile{flex:1;border:1px solid ${TRAIT};border-radius:5pt;padding:7pt 9pt}
+.tuiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6pt;margin:8pt 0 10pt}
+.tuile{border:1px solid ${TRAIT};border-radius:5pt;padding:7pt 9pt;break-inside:avoid}
 .tuile b{display:block;font-size:16pt;line-height:1.2}
 .tuile span{font-size:8pt;color:${GRIS}}
 .duo{display:flex;gap:10pt;margin:6pt 0 4pt}
@@ -226,7 +226,7 @@ ${c.actions.length ? `<table><thead><tr><th>Date</th><th>Action</th><th>Mode de 
 ${tuiles(c.chiffresDetail)}
 
 ${c.diffusion.length ? `<h2>La diffusion de l'annonce</h2>${c.diffusion.map((d) =>
-    `<h3>${ech(d.source)}</h3>${tuiles(d.lignes.map((l) => ({ valeur: l.valeur, libelle: l.libelle })))}`).join("")}` : ""}
+    `<h3>${ech(d.source)}</h3>${tuiles(d.lignes.map((l) => ({ valeur: l.valeur, libelle: l.libelle })))}${plein(d.note) ? `<p class="leg">${ech(d.note)}</p>` : ""}`).join("")}` : ""}
 
 <h2>Les retours des acquéreurs</h2>
 ${c.retours.length ? `<table><thead><tr><th>Acquéreur</th><th>Note</th><th>Retour</th></tr></thead><tbody>${c.retours.map((r) =>

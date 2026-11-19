@@ -142,3 +142,50 @@ export function contenuParDefaut(r: Rapport, ctx: ContexteRapport): ContenuRappo
     suite: "",
   };
 }
+
+/* ------------------------------------------------- Plein Bail, en mots --- */
+
+/** Ce que Plein Bail dit d'une annonce (lib/bo/diffusion.ts `Retombees`), réduit à ce qu'on en lit. */
+export type RetombeesLues = {
+  periode?: { depuis?: string; jusqu_a?: string };
+  vues?: number; visiteurs?: number; impressions?: number; position_moyenne?: number;
+  contacts?: number; telephones?: number; favoris?: number; alertes?: number;
+  sources?: Record<string, number>;
+};
+
+/* Par où les visiteurs sont arrivés. Une clé que Plein Bail ajouterait un jour
+   s'affiche telle quelle plutôt que de disparaître. */
+const ORIGINES: Record<string, string> = {
+  recherche: "recherche sur Plein Bail", alerte: "alerte e-mail", direct: "lien direct",
+  moteur: "moteur de recherche", site: "autres pages du site", externe: "autre site",
+};
+const nombre = (n: number) => Math.round(n).toLocaleString("fr-FR").replace(/[\u202f\u00a0]/g, " ");
+
+/**
+ * Le bloc « Plein Bail » de la diffusion : les compteurs en tuiles, l'origine
+ * des visiteurs en une phrase. Un compteur que Plein Bail n'envoie pas ne
+ * s'affiche pas — on n'écrit jamais « 0 » pour « on ne sait pas ».
+ */
+export function blocPleinBail(pb: RetombeesLues): ContenuRapport["diffusion"][number] {
+  const ligne = (v: number | undefined, libelle: string, valeur?: string) =>
+    (typeof v === "number" ? { libelle, valeur: valeur ?? nombre(v) } : null);
+  const lignes = [
+    ligne(pb.impressions, "apparitions dans les résultats"),
+    ligne(pb.position_moyenne, "position moyenne dans les résultats",
+      typeof pb.position_moyenne === "number" ? pb.position_moyenne.toFixed(1).replace(".", ",") : undefined),
+    ligne(pb.vues, "consultations de l'annonce"),
+    ligne(pb.visiteurs, "visiteurs distincts"),
+    ligne(pb.contacts, (pb.contacts ?? 0) > 1 ? "messages reçus" : "message reçu"),
+    ligne(pb.telephones, (pb.telephones ?? 0) > 1 ? "téléphones demandés" : "téléphone demandé"),
+    ligne(pb.alertes, "alertes envoyées à des acquéreurs"),
+    ligne(pb.favoris, (pb.favoris ?? 0) > 1 ? "mises en favori" : "mise en favori"),
+  ].filter((x): x is { libelle: string; valeur: string } => !!x);
+  const origines = Object.entries(pb.sources ?? {}).filter(([, n]) => typeof n === "number" && n > 0)
+    .sort((a, b) => b[1] - a[1]).map(([k, n]) => `${ORIGINES[k] ?? k} ${nombre(n)}`);
+  const d = pb.periode?.depuis, j = pb.periode?.jusqu_a;
+  return {
+    source: d && j ? `Plein Bail — ${periode(d, j).replace(/^D/, "d")}` : "Plein Bail",
+    lignes,
+    note: origines.length ? `Origine des visiteurs : ${origines.join(", ")}.` : undefined,
+  };
+}

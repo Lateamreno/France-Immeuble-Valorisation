@@ -14,7 +14,7 @@ import { retombeesAnnonces } from "@/lib/bo/diffusion";
 import {
   construireRapport, initialeDe, type EntreesRapport, type Personne, type Rapport,
 } from "@/lib/bo/rapport-commercialisation";
-import { contenuParDefaut } from "@/lib/bo/rapport-contenu";
+import { blocPleinBail, contenuParDefaut } from "@/lib/bo/rapport-contenu";
 import type { ContenuRapport } from "@/lib/bo/rapport-html";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -200,15 +200,14 @@ export async function preparerRapportDe(immeubleId: string, agentConnecte?: stri
 
   /* ---- La diffusion de l'annonce ---- */
   const diffusion: ContenuRapport["diffusion"] = [];
-  const [pb] = await retombeesAnnonces([`FI:${immeubleId}`]).catch(() => []);
+  /* Sur la période du rapport : du début de la commercialisation à cette
+     heure (arrondie, pour que deux ouvertures de suite relisent le cache). */
+  const heure = new Date(); heure.setMinutes(0, 0, 0);
+  const periodePb = rapport.debut ? { depuis: `${rapport.debut.slice(0, 10)}T00:00:00.000Z`, jusquA: heure.toISOString() } : undefined;
+  const [pb] = await retombeesAnnonces([`FI:${immeubleId}`], periodePb).catch(() => []);
   if (pb) {
-    const lignes = [
-      typeof pb.impressions === "number" ? { libelle: "apparitions dans les résultats", valeur: String(pb.impressions) } : null,
-      typeof pb.vues === "number" ? { libelle: "consultations de l'annonce", valeur: String(pb.vues) } : null,
-      { libelle: "messages reçus", valeur: String(pb.contacts ?? 0) },
-      { libelle: "téléphones demandés", valeur: String(pb.telephones ?? 0) },
-    ].filter((x): x is { libelle: string; valeur: string } => !!x);
-    diffusion.push({ source: "Plein Bail", lignes });
+    const bloc = blocPleinBail(pb);
+    if (bloc.lignes.length) diffusion.push(bloc);
   }
   const messagesSite = questions.filter((q) => /^site/i.test(S(q.source) ?? "")).length;
   const visitesSite = rapport.visitesParSource.find((s) => s.source === "Site France Immeuble")?.nombre ?? 0;
