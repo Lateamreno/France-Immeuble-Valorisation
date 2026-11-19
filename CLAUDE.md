@@ -373,6 +373,13 @@ contient plus que le vrai. Les boîtes réapprennent leurs dossiers quand
 `VERSION_DOSSIERS` change, et ce qu'elles montrent est journalisé
 (« [mails] dossiers vus »).
 
+Les envois que le BO avait rangés dans le doublon avant la correction
+(estimations comprises, avec leur pièce jointe) se rapatrient d'un clic depuis
+Mails › Ma boîte e-mail : le réglage dit combien de messages dorment dans le
+doublon depuis le branchement de la boîte, et les déplace dans le vrai dossier
+(`envoisAilleurs`, `rapatrierEnvois`). Rien d'automatique, rien de supprimé.
+Une estimation envoyée a toujours sa copie complète dans « Envoyés ».
+
 **Envois individuels (MAV, 19/11/26).** Une proposition faite à la main
 (jusqu'à cinq personnes) et la relance d'une seule personne sont de la
 correspondance : copiées dans « Envoyés » (revirement partiel du retour #479,

@@ -8,9 +8,11 @@
  * message qu'il attend.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { enregistrerBoite, supprimerBoite, verifierBoite } from "@/lib/bo/boite-actions";
+import {
+  enregistrerBoite, envoisAilleursBoite, rapatrierEnvoisBoite, supprimerBoite, verifierBoite,
+} from "@/lib/bo/boite-actions";
 
 export type BoiteAffichee = {
   agentId: string;
@@ -98,6 +100,40 @@ export function EcranReglages({ boites, chiffrementOk }: {
       <div className="rgl-liste">
         {boites.map((b) => <Carte key={b.agentId} b={b} actif={chiffrementOk} />)}
       </div>
+    </div>
+  );
+}
+
+/* MAV, 19/11/26 : les envois que le BO a rangés dans un doublon du dossier
+   d'envoi (« Éléments envoyés » à côté du vrai « Sent Items ») : on dit
+   combien il y en a, et on les déplace sur un clic — rien d'automatique. */
+function EnvoisAilleurs({ agentId }: { agentId: string }) {
+  const [r, setR] = useState<Awaited<ReturnType<typeof envoisAilleursBoite>> | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [pending, start] = useTransition();
+  useEffect(() => {
+    let vivant = true;
+    envoisAilleursBoite(agentId).then((x) => { if (vivant) setR(x); }).catch(() => undefined);
+    return () => { vivant = false; };
+  }, [agentId]);
+  if (msg) return <div className={msg.ok ? "rgl-ok" : "dif-avis"} style={{ marginTop: 10 }}>{msg.texte}</div>;
+  if (!r?.ok || r.lots.length === 0) return null;
+  const total = r.lots.reduce((t, l) => t + l.nombre, 0);
+  const depuis = new Date(r.depuis).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return (
+    <div className="dif-avis rgl-ailleurs" style={{ marginTop: 10 }}>
+      <span>
+        <b>{total} message{total > 1 ? "s envoyés" : " envoyé"} depuis le {depuis} {total > 1 ? "sont" : "est"} dans « {r.lots.map((l) => l.de).join(" », « ")} ».</b>
+        Ni le webmail ni le téléphone ne montrent ce dossier comme vos envois. Les déplacer les range dans « {r.lots[0].vers} »,
+        pièces jointes comprises ; rien n&apos;est supprimé.
+      </span>
+      <button type="button" className="fadd" disabled={pending}
+        onClick={() => start(async () => {
+          const x = await rapatrierEnvoisBoite(agentId).catch(() => ({ ok: false, message: "Le BO n'a pas répondu." }));
+          setMsg({ ok: x.ok, texte: x.message });
+        })}>
+        {pending ? "Déplacement…" : `Les déplacer dans « ${r.lots[0].vers} »`}
+      </button>
     </div>
   );
 }
@@ -214,6 +250,8 @@ function Carte({ b, actif }: { b: BoiteAffichee; actif: boolean }) {
             Le mot de passe est chiffré avant d&apos;être enregistré et ne redescend jamais
             dans le navigateur.
           </p>
+
+          {b.adresse && <EnvoisAilleurs agentId={b.agentId} />}
 
           {verdict && (
             <div className={verdict.ok ? "rgl-ok" : "dif-avis"} style={{ marginTop: 10 }}>{verdict.texte}</div>
