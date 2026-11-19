@@ -14,6 +14,7 @@ import {
   messageClair, verifier, type RoleDossier,
 } from "@/lib/mails/client";
 import { getAgents } from "@/lib/bubble/server";
+import { CLE_VERSION, VERSION_DOSSIERS } from "@/lib/mails/dossiers";
 
 const SB_URL = process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -116,8 +117,7 @@ export async function enregistrerBoite(r: Reglage) {
 
   /* On mémorise les chemins réels des dossiers découverts : ça évite un LIST
      à chaque affichage, et « Éléments envoyés » n'est pas devinable. */
-  const dossiers: Record<string, string> = {};
-  for (const d of v.dossiers) if (d.role && !dossiers[d.role]) dossiers[d.role] = d.chemin;
+  const dossiers: Record<string, string> = { ...v.retenus };
 
   const ligne: Record<string, unknown> = {
     agent_id: r.agentId,
@@ -125,7 +125,7 @@ export async function enregistrerBoite(r: Reglage) {
     nom_affiche: r.nomAffiche ?? null,
     imap_host: r.imapHost, imap_port: r.imapPort, imap_user: r.identifiant || r.adresse,
     smtp_host: r.smtpHost, smtp_port: r.smtpPort, smtp_user: r.identifiant || r.adresse,
-    dossiers,
+    dossiers: { ...dossiers, [CLE_VERSION]: VERSION_DOSSIERS },
     actif: true,
     derniere_ok: new Date().toISOString(),
     derniere_erreur: null,
