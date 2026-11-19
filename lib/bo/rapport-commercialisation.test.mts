@@ -1,4 +1,4 @@
-import { construireRapport, etiquette, initialeDe, offreDansTexte, type EntreesRapport, type Personne } from "./rapport-commercialisation.ts";
+import { construireRapport, etiquette, initialesDe, offreDansTexte, type EntreesRapport, type Personne } from "./rapport-commercialisation.ts";
 import { blocPleinBail } from "./rapport-contenu.ts";
 
 let ko = 0;
@@ -13,12 +13,13 @@ ok(offreDansTexte("Même à 5 k€/m² il n'irait pas") === undefined, "un prix 
 ok(offreDansTexte("Offre possible si le loyer passe à 900 €") === undefined, "un montant de loyer n'est pas une offre");
 
 console.log("— Ce que le propriétaire lit d'un acquéreur —");
-ok(initialeDe("DELARUE") === "D" && initialeDe("", "SBGROUP") === "S" && initialeDe("élan") === "E", "l'initiale, sans accent");
-ok(etiquette({ nom: "Mathilde DELARUE", initiale: "D", profil: "marchand de biens" }) === "D. — marchand de biens", "initiale et profil, jamais le nom");
+ok(initialesDe("Mathilde", "DELARUE") === "M. D." && initialesDe("Élie", "kabuya") === "E. K.", "prénom et nom en initiales, sans accent (#626)");
+ok(initialesDe(undefined, "DELARUE") === "D." && initialesDe("", "", "SBGROUP") === "S." && initialesDe("", "", "Jean Dupont") === "J. D." && initialesDe() === "X.", "sans prénom, sans fiche, sans rien");
+ok(etiquette({ nom: "Mathilde DELARUE", initiales: "M. D.", profil: "marchand de biens" }) === "M. D. — marchand de biens", "initiales et profil, jamais le nom");
 
 console.log("— Le rapport —");
 const qui = (nom: string, note?: string, profil = "investisseur"): Personne =>
-  ({ contactId: nom, nom, initiale: nom[0], profil, note });
+  ({ contactId: nom, nom, initiales: `${nom[0]}.`, profil, note });
 const e: EntreesRapport = {
   maintenant: "2026-11-19T09:00:00.000Z",
   prixMandat: 1_030_000,
@@ -54,7 +55,8 @@ ok(r.chiffres.contactes === 5 && r.chiffres.repondants === 5 && r.chiffres.tauxR
 ok(construireRapport({ ...e, reponses: [] }).chiffres.repondants === 4, "une proposition « Envoyée » sans réponse ni retour n'a pas répondu");
 ok(r.chiffres.refus === 2 && r.chiffres.refusMotives === 1 && r.refusSansExplication === 1, "le bouton « Pas intéressé » est un refus sans explication");
 ok(r.chiffres.dossiers === 1 && r.chiffres.interesses === 1, "dossiers téléchargés et intéressés");
-ok(r.retours.length === 1 && r.retours[0].qui === "A. — marchand de biens" && r.retours[0].note === "B", "un retour motivé : initiale, profil et note");
+ok(r.retours.length === 1 && r.retours[0].qui === "A. — marchand de biens" && r.retours[0].note === "B", "un retour motivé : initiales, profil et note");
+ok(r.retours[0].nom === "Alpha" && r.visites[0].nom === "Mike", "le nom complet reste à part, pour l'écran de l'agent");
 ok(r.parNote.find((l) => l.note === "B")?.repondants === 2, "les répondants par note");
 ok(r.visites.length === 2 && r.visites[0].qui === "M." && r.visites[0].aRelire && !r.visites[1].aRelire, "les visites effectuées ; la note de l'agent est à relire, pas le texte écrit pour le vendeur");
 ok(r.visitesParSource[0].source === "Plein Bail" || r.visitesParSource.some((s) => s.source === "Plein Bail" && s.nombre === 1), "les visites par source");

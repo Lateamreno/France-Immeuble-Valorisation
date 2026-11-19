@@ -21,7 +21,8 @@ export type Personne = {
   contactId?: string;
   /** Le nom complet : pour l'agent seulement, jamais dans le rapport. */
   nom: string;
-  initiale: string;
+  /** « M. D. » : les initiales du prénom et du nom, points compris (retour #626). */
+  initiales: string;
   /** « marchand de biens », « investisseur »… */
   profil?: string;
   /** La classe A–D de l'acquéreur. */
@@ -67,6 +68,8 @@ export type Action = { date: string; dateFin?: string; libelle: string; mode: st
 
 export type LigneRetour = {
   cle: string;
+  /** Le nom complet : pour l'écran de l'agent, jamais dans le rapport. */
+  nom: string;
   qui: string;
   note?: string;
   date?: string;
@@ -77,6 +80,8 @@ export type LigneRetour = {
 export type LigneVisite = {
   cle: string;
   date: string;
+  /** Le nom complet : pour l'écran de l'agent, jamais dans le rapport. */
+  nom: string;
   qui: string;
   note?: string;
   texte: string;
@@ -85,7 +90,7 @@ export type LigneVisite = {
   source?: string;
 };
 
-export type LigneOffre = { cle: string; date?: string; qui: string; note?: string; montant?: number; statut: string };
+export type LigneOffre = { cle: string; date?: string; nom: string; qui: string; note?: string; montant?: number; statut: string };
 
 export type Controle = {
   niveau: "alerte" | "ok";
@@ -131,14 +136,19 @@ const pluriel = (n: number, mot: string, pl = `${mot}s`) => `${n} ${n > 1 ? pl :
 
 /** « B. — marchand de biens » : ce que le propriétaire lit d'un acquéreur. */
 export function etiquette(p: Personne): string {
-  return p.profil ? `${p.initiale}. — ${p.profil}` : `${p.initiale}.`;
+  return p.profil ? `${p.initiales} — ${p.profil}` : p.initiales;
 }
 
-/** L'initiale d'une personne : celle de son nom, à défaut de sa société. */
-export function initialeDe(nom?: string, repli?: string): string {
-  const s = propre(nom) || propre(repli);
-  const l = s.normalize("NFD").replace(/[^A-Za-z]/g, "").charAt(0).toUpperCase();
-  return l || "X";
+/**
+ * Les initiales d'une personne, prénom puis nom : « M. D. » (retour #626 —
+ * « nom et prénom en initiales, pas juste le nom »). Sans prénom, celle du nom ;
+ * sans fiche, celles des deux premiers mots du nom saisi ou de la société.
+ */
+export function initialesDe(prenom?: string, nom?: string, repli?: string): string {
+  const lettre = (s?: string) => propre(s).normalize("NFD").replace(/[^A-Za-z]/g, "").charAt(0).toUpperCase();
+  const lettres = [lettre(prenom), lettre(nom)].filter(Boolean);
+  if (lettres.length === 0) lettres.push(...propre(repli).split(/[\s-]+/).map(lettre).filter(Boolean).slice(0, 2));
+  return lettres.length ? lettres.map((l) => `${l}.`).join(" ") : "X.";
 }
 
 /** Un refus qui ne dit rien : le bouton de la carte, ou un motif vide. */
@@ -251,6 +261,7 @@ export function construireRapport(e: EntreesRapport): Rapport {
     if (!texte) { if (refus) refusSansExplication++; continue; }
     retours.push({
       cle: p.id,
+      nom: p.qui.nom,
       qui: etiquette(p.qui),
       note: noteDe(p.qui.note) || undefined,
       date: p.commentaireLe,
@@ -266,7 +277,8 @@ export function construireRapport(e: EntreesRapport): Rapport {
   const visites: LigneVisite[] = faites.map((v) => ({
     cle: v.id,
     date: v.date,
-    qui: `${v.qui.initiale}.`,
+    nom: v.qui.nom,
+    qui: v.qui.initiales,
     note: noteDe(v.qui.note) || undefined,
     texte: propre(v.retourVendeur) || propre(v.retourInterne),
     aRelire: !propre(v.retourVendeur) && !!propre(v.retourInterne),
@@ -282,7 +294,7 @@ export function construireRapport(e: EntreesRapport): Rapport {
 
   /* ---- Les offres et le baromètre ---- */
   const offres: LigneOffre[] = [...e.offres].sort((a, b) => (b.prixHai ?? 0) - (a.prixHai ?? 0)).map((o) => ({
-    cle: o.id, date: o.date, qui: etiquette(o.qui), note: noteDe(o.qui.note) || undefined, montant: o.prixHai, statut: o.statut,
+    cle: o.id, date: o.date, nom: o.qui.nom, qui: etiquette(o.qui), note: noteDe(o.qui.note) || undefined, montant: o.prixHai, statut: o.statut,
   }));
   const haute = e.offres.filter((o) => (o.prixHai ?? 0) > 0).sort((a, b) => (b.prixHai ?? 0) - (a.prixHai ?? 0))[0];
   const barometre = e.prixMandat && e.prixMandat > 0 ? {

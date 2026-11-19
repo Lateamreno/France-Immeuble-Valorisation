@@ -12,7 +12,7 @@ import { fetchAll, getAgents, proprietairesDe } from "@/lib/bubble/server";
 import { adresseImmeuble, lireMandants } from "@/lib/mandat";
 import { retombeesAnnonces } from "@/lib/bo/diffusion";
 import {
-  construireRapport, initialeDe, type EntreesRapport, type Personne, type Rapport,
+  construireRapport, initialesDe, type EntreesRapport, type Personne, type Rapport,
 } from "@/lib/bo/rapport-commercialisation";
 import { blocPleinBail, contenuParDefaut } from "@/lib/bo/rapport-contenu";
 import type { ContenuRapport } from "@/lib/bo/rapport-html";
@@ -137,7 +137,7 @@ export async function preparerRapportDe(immeubleId: string, agentConnecte?: stri
     return {
       contactId,
       nom,
-      initiale: initialeDe(nomFamille, S(c?.entreprise_nom) ?? repliNom ?? nom),
+      initiales: initialesDe(S(c?.["prénom"]), nomFamille, S(c?.entreprise_nom) ?? repliNom ?? nom),
       profil: profilDe(c, S(recherche?.Cible) ?? connu?.cible),
       note: S(recherche?.Note) ?? connu?.note,
     };

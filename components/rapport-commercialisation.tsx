@@ -124,6 +124,12 @@ const OU_COMPLETER: Record<NonNullable<Controle["geste"]>, string> = {
 };
 
 type Etape = "controle" | "redaction" | "apercu";
+/** Les blocs que l'IA peut rédiger, chacun avec sa case « relu ». */
+type Bloc = "retient" | "plait" | "bloque" | "reperes" | "piste0" | "piste1" | "piste2" | "suite";
+const NOM_BLOC: Record<Bloc, string> = {
+  retient: "ce qu'on retient", plait: "ce qui plaît", bloque: "ce qui bloque", reperes: "les prix cités",
+  piste0: "la piste 1", piste1: "la piste 2", piste2: "la piste 3", suite: "la suite",
+};
 
 function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer: (envoye: boolean) => void }) {
   const [p, setP] = useState<Pret | null>(null);
@@ -135,6 +141,17 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
   const [sansRetours, setSansRetours] = useState<Set<number>>(new Set());
   const [sansVisites, setSansVisites] = useState<Set<number>>(new Set());
   const [avecBaro, setAvecBaro] = useState(true);
+  /* Retour #625 : ces trois listes se saisissent comme du texte, et ne se
+     découpent qu'au moment de partir. Les redécouper à chaque frappe retirait
+     l'espace qu'on venait de taper. */
+  const [plaitTxt, setPlaitTxt] = useState("");
+  const [bloqueTxt, setBloqueTxt] = useState("");
+  const [reperesTxt, setReperesTxt] = useState("");
+  const [pistes, setPistes] = useState<Piste[]>(() => [0, 1, 2].map(() => ({ titre: "", texte: "", implique: "" })));
+  /* MAV, 19/11 : « des cases à cocher pour tout ce qui est généré, pour pas
+     envoyer un truc qu'on a pas lu ». Ce que l'IA rédige arrive DÉCOCHÉ : un
+     bloc ne part que si l'agent le coche. */
+  const [ecartes, setEcartes] = useState<Set<Bloc>>(new Set());
   const [dest, setDest] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; texte: string } | null>(null);
   const [analyse, setAnalyse] = useState<string | null>(null);
@@ -158,10 +175,24 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
   /* Ce qui part vraiment : le contenu, moins les lignes retirées. */
   const final = useMemo<ContenuRapport | null>(() => (c ? {
     ...c,
+    retient: ecartes.has("retient") ? "" : c.retient,
+    plait: ecartes.has("plait") ? [] : texteEnPoints(plaitTxt),
+    bloque: ecartes.has("bloque") ? [] : texteEnPoints(bloqueTxt),
+    pistes: pistes.filter((x, i) => !ecartes.has(`piste${i}` as Bloc) && (x.titre.trim() || x.texte.trim())),
+    suite: ecartes.has("suite") ? "" : c.suite,
     retours: c.retours.filter((_, i) => !sansRetours.has(i)),
     visites: c.visites.filter((_, i) => !sansVisites.has(i)),
-    barometre: avecBaro ? c.barometre : undefined,
-  } : null), [c, sansRetours, sansVisites, avecBaro]);
+    barometre: avecBaro && c.barometre
+      ? { ...c.barometre, reperes: ecartes.has("reperes") ? [] : texteEnReperes(reperesTxt) } : undefined,
+  } : null), [c, sansRetours, sansVisites, avecBaro, plaitTxt, bloqueTxt, reperesTxt, pistes, ecartes]);
+  /* Les blocs décochés qui contiennent pourtant quelque chose : à signaler. */
+  const nonRelus = c ? ([...ecartes] as Bloc[]).filter((k) =>
+    k === "retient" ? c.retient.trim() : k === "suite" ? c.suite.trim()
+      : k === "plait" ? plaitTxt.trim() : k === "bloque" ? bloqueTxt.trim() : k === "reperes" ? reperesTxt.trim()
+        : pistes[Number(k.slice(5))]?.titre.trim() || pistes[Number(k.slice(5))]?.texte.trim()) : [];
+  const cocher = (k: Bloc, oui: boolean) => setEcartes((e) => {
+    const n = new Set(e); if (oui) n.delete(k); else n.add(k); return n;
+  });
   const apercu = useMemo(() => (final ? htmlMail(final) : ""), [final]);
 
   const proposer = () => startIa(async () => {
@@ -169,14 +200,18 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
     const r = await proposerAnalyseRapport(immeubleId).catch(() => ({ ok: false as const, message: "Le BO n'a pas répondu." }));
     if (!r.ok) { setAnalyse(r.message); return; }
     const a = r.analyse;
-    setC((x) => (x ? {
-      ...x,
-      retient: a.retient || x.retient,
-      plait: a.plait, bloque: a.bloque, pistes: a.pistes,
-      suite: a.suite || x.suite,
-      barometre: x.barometre ? { ...x.barometre, reperes: a.reperes } : x.barometre,
-    } : x));
-    setAnalyse("Analyse proposée : relisez et corrigez chaque champ, c'est un premier jet.");
+    setC((x) => (x ? { ...x, retient: a.retient || x.retient, suite: a.suite || x.suite } : x));
+    setPlaitTxt(pointsEnTexte(a.plait));
+    setBloqueTxt(pointsEnTexte(a.bloque));
+    setReperesTxt(reperesEnTexte(a.reperes));
+    setPistes([0, 1, 2].map((i) => ({ titre: a.pistes[i]?.titre ?? "", texte: a.pistes[i]?.texte ?? "", implique: a.pistes[i]?.implique ?? "" })));
+    /* Tout ce que l'IA vient d'écrire est décoché : il ne part que relu. */
+    setEcartes(new Set<Bloc>([
+      ...(a.retient ? ["retient" as const] : []), ...(a.plait.length ? ["plait" as const] : []),
+      ...(a.bloque.length ? ["bloque" as const] : []), ...(a.reperes.length ? ["reperes" as const] : []),
+      ...a.pistes.slice(0, 3).map((_, i) => `piste${i}` as Bloc), ...(a.suite ? ["suite" as const] : []),
+    ]));
+    setAnalyse("Analyse proposée, et décochée : relisez chaque bloc, corrigez-le, puis cochez-le pour qu'il parte.");
   });
 
   const voirPdf = () => startPdf(async () => {
@@ -195,11 +230,19 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
   });
 
   const alertes = p?.rapport.controles.filter((x) => x.niveau === "alerte").length ?? 0;
-  const pistes: Piste[] = c ? [...c.pistes, ...Array.from({ length: Math.max(0, 3 - c.pistes.length) }, () => ({ titre: "", texte: "", implique: "" }))] : [];
-  const setPiste = (i: number, k: keyof Piste, v: string) => {
-    const l = pistes.map((x, j) => (j === i ? { ...x, [k]: v } : x));
-    set("pistes", l.filter((x) => x.titre.trim() || x.texte.trim() || (x.implique ?? "").trim()));
-  };
+  const setPiste = (i: number, k: keyof Piste, v: string) =>
+    setPistes((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  /* L'intitulé d'un bloc, avec sa case : cochée, il part ; décochée, il reste ici. */
+  const tete = (k: Bloc, titre: string, aide?: string) => (
+    <span className="sv2-lbl rc-tete">
+      <label className="rc-lu">
+        <input type="checkbox" checked={!ecartes.has(k)} onChange={(e) => cocher(k, e.target.checked)} />
+        {titre}
+      </label>
+      {aide && <i>{aide}</i>}
+      {ecartes.has(k) && <em>décoché : ne partira pas</em>}
+    </span>
+  );
 
   const pied = (
     <>
@@ -302,8 +345,8 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                     : analyse ?? `Rédige « ce qu'on retient », ce qui plaît, ce qui bloque et des pistes, à partir des ${p.matiere.length} retours notés, sans aucun nom. Vous corrigez ensuite.`}
               </span>
             </div>
-            <label className="sv2-champ"><span className="sv2-lbl">Ce qu&apos;on retient</span>
-              <textarea className="min rc-ta" rows={3} value={c.retient} onChange={(e) => set("retient", e.target.value)} /></label>
+            <div className={`sv2-champ${ecartes.has("retient") ? " rc-off" : ""}`}>{tete("retient", "Ce qu'on retient")}
+              <textarea className="min rc-ta" rows={3} aria-label="Ce qu'on retient" value={c.retient} onChange={(e) => set("retient", e.target.value)} /></div>
             <label className="sv2-champ"><span className="sv2-lbl">Votre texte libre</span>
               <textarea className="min rc-ta" rows={5} value={c.libre} placeholder="Votre analyse, ce que vous proposez pour la suite…"
                 onChange={(e) => set("libre", e.target.value)} /></label>
@@ -312,12 +355,12 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
 
             <h4 className="rc-t">Le diagnostic <i>dans le PDF</i></h4>
             <div className="rc-deux">
-              <label className="sv2-champ"><span className="sv2-lbl">Ce qui plaît <i>un point par ligne</i></span>
-                <textarea className="min rc-ta" rows={4} value={pointsEnTexte(c.plait)} placeholder="Le potentiel de transformation · 2 retours"
-                  onChange={(e) => set("plait", texteEnPoints(e.target.value))} /></label>
-              <label className="sv2-champ"><span className="sv2-lbl">Ce qui bloque <i>un point par ligne</i></span>
-                <textarea className="min rc-ta" rows={4} value={pointsEnTexte(c.bloque)} placeholder="Le volume de travaux · 5 retours"
-                  onChange={(e) => set("bloque", texteEnPoints(e.target.value))} /></label>
+              <div className={`sv2-champ${ecartes.has("plait") ? " rc-off" : ""}`}>{tete("plait", "Ce qui plaît", "un point par ligne")}
+                <textarea className="min rc-ta" rows={4} aria-label="Ce qui plaît" value={plaitTxt} placeholder="Le potentiel de transformation · 2 retours"
+                  onChange={(e) => setPlaitTxt(e.target.value)} /></div>
+              <div className={`sv2-champ${ecartes.has("bloque") ? " rc-off" : ""}`}>{tete("bloque", "Ce qui bloque", "un point par ligne")}
+                <textarea className="min rc-ta" rows={4} aria-label="Ce qui bloque" value={bloqueTxt} placeholder="Le volume de travaux · 5 retours"
+                  onChange={(e) => setBloqueTxt(e.target.value)} /></div>
             </div>
             {c.barometre && (
               <div className="rc-bloc">
@@ -328,9 +371,9 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 </label>
                 {avecBaro && (
                   <div className="rc-deux">
-                    <label className="sv2-champ"><span className="sv2-lbl">Autres prix cités <i>libellé : montant</i></span>
-                      <textarea className="min rc-ta" rows={2} value={reperesEnTexte(c.barometre.reperes)} placeholder="Refus même à : 645000"
-                        onChange={(e) => set("barometre", { ...c.barometre!, reperes: texteEnReperes(e.target.value) })} /></label>
+                    <div className={`sv2-champ${ecartes.has("reperes") ? " rc-off" : ""}`}>{tete("reperes", "Autres prix cités", "libellé : montant")}
+                      <textarea className="min rc-ta" rows={2} aria-label="Autres prix cités" value={reperesTxt} placeholder="Refus même à : 645000"
+                        onChange={(e) => setReperesTxt(e.target.value)} /></div>
                     <label className="sv2-champ"><span className="sv2-lbl">Ce que ça implique</span>
                       <textarea className="min rc-ta" rows={2} value={c.barometre.commentaire}
                         onChange={(e) => set("barometre", { ...c.barometre!, commentaire: e.target.value })} /></label>
@@ -340,16 +383,17 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
             )}
             <span className="sv2-lbl">Les pistes pour vendre</span>
             <div className="rc-pistes">
-              {pistes.slice(0, 3).map((x, i) => (
-                <div key={i} className="rc-piste">
-                  <input className="min" value={x.titre} placeholder={`Piste ${i + 1}`} onChange={(e) => setPiste(i, "titre", e.target.value)} />
+              {pistes.map((x, i) => (
+                <div key={i} className={`rc-piste${ecartes.has(`piste${i}` as Bloc) ? " rc-off" : ""}`}>
+                  {tete(`piste${i}` as Bloc, `Piste ${i + 1}`)}
+                  <input className="min" value={x.titre} placeholder="Titre de la piste" aria-label={`Titre de la piste ${i + 1}`} onChange={(e) => setPiste(i, "titre", e.target.value)} />
                   <textarea className="min rc-ta" rows={3} value={x.texte} placeholder="Ce qu'on propose" onChange={(e) => setPiste(i, "texte", e.target.value)} />
                   <input className="min" value={x.implique ?? ""} placeholder="Ce que ça implique" onChange={(e) => setPiste(i, "implique", e.target.value)} />
                 </div>
               ))}
             </div>
-            <label className="sv2-champ"><span className="sv2-lbl">La suite <i>ce qui reste à faire</i></span>
-              <textarea className="min rc-ta" rows={2} value={c.suite} onChange={(e) => set("suite", e.target.value)} /></label>
+            <div className={`sv2-champ${ecartes.has("suite") ? " rc-off" : ""}`}>{tete("suite", "La suite", "ce qui reste à faire")}
+              <textarea className="min rc-ta" rows={2} aria-label="La suite" value={c.suite} onChange={(e) => set("suite", e.target.value)} /></div>
 
             <h4 className="rc-t">Les retours et les visites <i>décochez ce qui n&apos;est pas pour le propriétaire</i></h4>
             {c.retours.length === 0 && c.visites.length === 0 && <span className="mhint">Aucun retour motivé ni visite à lister.</span>}
@@ -358,7 +402,8 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 <input type="checkbox" checked={!sansRetours.has(i)} aria-label="Inclure ce retour" onChange={(e) => {
                   const n = new Set(sansRetours); if (e.target.checked) n.delete(i); else n.add(i); setSansRetours(n);
                 }} />
-                <span className="rc-qui">{r.qui}{r.note ? <em>{r.note}</em> : null}</span>
+                <span className="rc-qui"><b>{p.rapport.retours[i]?.nom ?? r.qui}</b>{r.note ? <em>{r.note}</em> : null}
+                  <i className="rc-envoi">dans le rapport : {r.qui}</i></span>
                 <textarea className="min rc-ta" rows={2} value={r.texte}
                   onChange={(e) => set("retours", c.retours.map((x, j) => (j === i ? { ...x, texte: e.target.value } : x)))} />
               </div>
@@ -368,7 +413,8 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 <input type="checkbox" checked={!sansVisites.has(i)} aria-label="Inclure cette visite" onChange={(e) => {
                   const n = new Set(sansVisites); if (e.target.checked) n.delete(i); else n.add(i); setSansVisites(n);
                 }} />
-                <span className="rc-qui">Visite du {v.date} · {v.qui}{v.note ? <em>{v.note}</em> : null}
+                <span className="rc-qui">Visite du {v.date} · <b>{p.rapport.visites[i]?.nom ?? v.qui}</b>{v.note ? <em>{v.note}</em> : null}
+                  <i className="rc-envoi">dans le rapport : {v.qui}</i>
                   {p.rapport.visites[i]?.aRelire && <i className="rc-relire">votre note interne : à relire</i>}</span>
                 <textarea className="min rc-ta" rows={2} value={v.texte}
                   onChange={(e) => set("visites", c.visites.map((x, j) => (j === i ? { ...x, texte: e.target.value } : x)))} />
@@ -392,6 +438,13 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 <button type="button" className={largeur === 640 ? "on" : undefined} onClick={() => setLargeur(640)}>Ordinateur</button>
               </div>
             </div>
+            {nonRelus.length > 0 && (
+              <span className="dif-avis">
+                {nonRelus.length > 1 ? `${nonRelus.length} blocs rédigés ne sont pas cochés et ne partiront pas` : "1 bloc rédigé n'est pas coché et ne partira pas"} :
+                {" "}{nonRelus.map((k) => NOM_BLOC[k]).join(", ")}.
+                {nonRelus.length > 1 ? " Relisez-les à l'étape 2 et cochez ceux que vous gardez." : " Relisez-le à l'étape 2 et cochez-le pour le garder."}
+              </span>
+            )}
             <div className="rc-cadre">
               <iframe title="Aperçu de l'e-mail" sandbox="" srcDoc={apercu} style={{ width: largeur }} />
             </div>
