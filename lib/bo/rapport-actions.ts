@@ -138,8 +138,10 @@ export async function proposerAnalyseRapport(immeubleId: string): Promise<
     const client = new Anthropic();
     const r = await client.beta.messages.create({
       model: "claude-opus-5-5",
-      max_tokens: 16000,
-      output_config: { effort: "high" },
+      max_tokens: 8000,
+      /* La fiche du bien a soixante secondes : un classement de retours en
+         thèmes n'a pas besoin de l'effort maximal, et doit rendre avant. */
+      output_config: { effort: "medium" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       system: CONSIGNES_ANALYSE,
