@@ -10,9 +10,10 @@ import { revalidatePath } from "next/cache";
 import { boiteDe, type Boite } from "@/lib/mails/boites";
 import { chiffrementDisponible, chiffrer } from "@/lib/mails/coffre";
 import {
-  deplacer, envoyerDepuis, lireMessage, listerMessages, marquerLus, marquerRepondu, telechargerPiece,
-  messageClair, verifier, type RoleDossier,
+  deplacer, envoisAilleurs, envoyerDepuis, lireMessage, listerMessages, marquerLus, marquerRepondu, rapatrierEnvois,
+  telechargerPiece, messageClair, verifier, type EnvoisAilleurs, type RoleDossier,
 } from "@/lib/mails/client";
+import { compteCourant } from "@/lib/auth/comptes";
 import { getAgents } from "@/lib/bubble/server";
 import { CLE_VERSION, VERSION_DOSSIERS } from "@/lib/mails/dossiers";
 
@@ -143,6 +144,54 @@ export async function enregistrerBoite(r: Reglage) {
   revalidatePath("/mails");
   revalidatePath("/mails/reglages");
   return { ok: true as const, dossiers };
+}
+
+/* Les envois que le BO a rangés dans le mauvais dossier (MAV, 19/11/26) : on
+   les compte à l'ouverture du réglage, on les déplace sur un clic. Chacun le
+   fait pour SA boîte ; la direction pour toutes. */
+async function peutToucher(agentId: string): Promise<boolean> {
+  const moi = await compteCourant();
+  if (!moi) return process.env.BO_AUTH?.trim().toLowerCase() !== "on";
+  return moi.agent_id === agentId || moi.role === "direction";
+}
+
+/** Depuis quand la boîte est branchée au BO : avant, rien n'est de son fait. */
+async function brancheeDepuis(agentId: string): Promise<Date> {
+  const repli = new Date(Date.now() - 183 * 86_400_000);
+  if (!SB_KEY) return repli;
+  const res = await fetch(`${SB_URL}/rest/v1/fi_boite_agent?select=cree_le&agent_id=eq.${encodeURIComponent(agentId)}&limit=1`, {
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+  }).catch(() => null);
+  const l = res?.ok ? ((await res.json()) as { cree_le: string | null }[])[0] : undefined;
+  return l?.cree_le ? new Date(l.cree_le) : repli;
+}
+
+export async function envoisAilleursBoite(agentId: string): Promise<
+  { ok: true; lots: EnvoisAilleurs[]; depuis: string } | { ok: false; erreur: string }
+> {
+  if (!(await peutToucher(agentId))) return { ok: false, erreur: "Ce n'est pas votre boîte." };
+  try {
+    const depuis = await brancheeDepuis(agentId);
+    return { ok: true, lots: await envoisAilleurs(await boite(agentId), depuis), depuis: depuis.toISOString() };
+  } catch (e) {
+    return { ok: false, erreur: messageClair(e) };
+  }
+}
+
+export async function rapatrierEnvoisBoite(agentId: string): Promise<{ ok: boolean; message: string }> {
+  if (!(await peutToucher(agentId))) return { ok: false, message: "Ce n'est pas votre boîte." };
+  try {
+    const r = await rapatrierEnvois(await boite(agentId), await brancheeDepuis(agentId));
+    revalidatePath("/mails");
+    return {
+      ok: true,
+      message: r.deplaces
+        ? `${r.deplaces} message${r.deplaces > 1 ? "s déplacés" : " déplacé"} dans « ${r.vers} », pièces jointes comprises.`
+        : "Rien à déplacer.",
+    };
+  } catch (e) {
+    return { ok: false, message: messageClair(e) };
+  }
 }
 
 export async function supprimerBoite(agentId: string) {

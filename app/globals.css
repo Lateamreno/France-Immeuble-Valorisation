@@ -9946,3 +9946,8 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .rc-apercu-h .mhint { margin: 0; flex: 1; min-width: 220px; }
 .rc-cadre { background: #e9eaec; border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; justify-content: center; overflow-x: auto; }
 .rc-cadre iframe { border: 0; background: #fff; height: 620px; max-width: 100%; border-radius: 6px; box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+
+/* Les envois rangés dans un doublon du dossier d'envoi (MAV, 19/11/26). */
+.rgl-ailleurs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.rgl-ailleurs > span { flex: 1; min-width: 240px; }
+.rgl-ailleurs b { display: inline; margin: 0 4px 0 0; font-size: inherit; }

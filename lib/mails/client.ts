@@ -774,6 +774,60 @@ export async function deplacer(b: Boite, role: RoleDossier, uids: number[], vers
   });
 }
 
+/* ------------------------------------- les envois rangés ailleurs ---
+ *
+ * MAV, 19/11/26 : « on peut faire en sorte que les estimations envoyées aussi
+ * soient dans les messages envoyés, avec la PJ ? ». Elles y vont désormais ;
+ * celles d'avant sont restées dans le doublon du dossier d'envoi (« Éléments
+ * envoyés » à côté du vrai « Sent Items »), où le BO les a rangées tant qu'il
+ * se trompait de dossier. On les compte, et sur un clic de l'agent on les
+ * déplace — les messages entiers, pièces jointes comprises.
+ */
+
+export type EnvoisAilleurs = { de: string; vers: string; nombre: number };
+
+/** Les autres dossiers d'envoi de la boîte, et le vrai. */
+async function doublonsEnvoyes(c: ImapFlow, b: Boite): Promise<{ vrai: string; autres: string[] }> {
+  const vrai = await chemin(c, "envoyes", b);
+  if (!vrai) return { vrai: "", autres: [] };
+  const liste = (await c.list()).filter(selectionnable);
+  return { vrai, autres: liste.filter((d) => roleDe(d) === "envoyes" && d.path !== vrai).map((d) => d.path) };
+}
+
+/** Combien de messages, depuis `depuis`, dorment dans un doublon du dossier d'envoi. */
+export async function envoisAilleurs(b: Boite, depuis: Date): Promise<EnvoisAilleurs[]> {
+  return avec(b, async (c) => {
+    const { vrai, autres } = await doublonsEnvoyes(c, b);
+    const out: EnvoisAilleurs[] = [];
+    for (const de of autres) {
+      await c.mailboxOpen(de, { readOnly: true });
+      const uids = (await c.search({ since: depuis }, { uid: true })) || [];
+      if (uids.length) out.push({ de, vers: vrai, nombre: uids.length });
+    }
+    return out;
+  });
+}
+
+/** Déplace ces messages dans le vrai dossier d'envoi. Rend le nombre déplacé. */
+export async function rapatrierEnvois(b: Boite, depuis: Date): Promise<{ deplaces: number; vers: string }> {
+  return avec(b, async (c) => {
+    const { vrai, autres } = await doublonsEnvoyes(c, b);
+    let deplaces = 0;
+    for (const de of autres) {
+      await c.mailboxOpen(de);
+      const uids = (await c.search({ since: depuis }, { uid: true })) || [];
+      /* Par paquets : une commande de plusieurs milliers d'identifiants est
+         refusée par certains serveurs. */
+      for (let i = 0; i < uids.length; i += 200) {
+        const paquet = uids.slice(i, i + 200);
+        await c.messageMove(paquet.join(","), vrai, { uid: true });
+        deplaces += paquet.length;
+      }
+    }
+    return { deplaces, vers: vrai };
+  });
+}
+
 /* --------------------------------------------------------- envoi --- */
 
 /**
