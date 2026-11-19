@@ -1,4 +1,5 @@
 import { construireRapport, etiquette, initialeDe, offreDansTexte, type EntreesRapport, type Personne } from "./rapport-commercialisation.ts";
+import { blocPleinBail } from "./rapport-contenu.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };
@@ -75,5 +76,20 @@ const avecOffre = construireRapport({
 ok(!avecOffre.controles.some((c) => c.geste === "offre"), "l'offre saisie, l'alerte disparaît");
 ok(avecOffre.barometre?.offreHaute?.pct === 49 && avecOffre.barometre.offreHaute.ecart === 530_000, "le baromètre : 49 % du prix, 530 000 € d'écart");
 ok(avecOffre.nouveau?.visites === 2 && avecOffre.nouveau.offres === 1 && avecOffre.nouveau.contactes === 1, "ce qui est nouveau depuis le dernier rapport");
+
+console.log("— Les retombées Plein Bail —");
+const pb = blocPleinBail({
+  periode: { depuis: "2026-11-01T00:00:00.000Z", jusqu_a: "2026-11-19T00:00:00.000Z" },
+  vues: 342, visiteurs: 211, impressions: 1890, position_moyenne: 4.3,
+  contacts: 7, telephones: 4, favoris: 11, alertes: 26,
+  sources: { recherche: 240, alerte: 41, direct: 38, moteur: 17, site: 4, externe: 2 },
+});
+ok(pb.source === "Plein Bail — du 1ᵉʳ au 19 novembre 2026", "la période que Plein Bail a comptée");
+ok(pb.lignes.find((l) => l.libelle === "apparitions dans les résultats")?.valeur === "1 890", "les apparitions, avec le séparateur de milliers");
+ok(pb.lignes.find((l) => l.libelle === "position moyenne dans les résultats")?.valeur === "4,3", "la position moyenne, à la française");
+ok(pb.lignes.length === 8 && pb.lignes.some((l) => l.libelle === "visiteurs distincts" && l.valeur === "211"), "les huit compteurs");
+ok(pb.note === "Origine des visiteurs : recherche sur Plein Bail 240, alerte e-mail 41, lien direct 38, moteur de recherche 17, autres pages du site 4, autre site 2.", "l'origine des visiteurs, de la plus fréquente à la plus rare");
+const ancien = blocPleinBail({ contacts: 1, telephones: 0 });
+ok(ancien.source === "Plein Bail" && ancien.lignes.length === 2 && ancien.lignes[0].libelle === "message reçu" && !ancien.note, "l'ancien format : seuls les compteurs envoyés s'affichent");
 
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }
