@@ -89,6 +89,26 @@ export async function pdfDepuisUrl(url: string, cookie?: string, maxOctets = PDF
   }
 }
 
+/**
+ * Imprime un document HTML complet en PDF A4. Pour une page sans image ni
+ * ressource distante (le rapport de commercialisation) : rien à attendre du
+ * réseau, les marges viennent de sa règle `@page`.
+ */
+export async function pdfDepuisHtml(html: string): Promise<Buffer> {
+  const opts = await navigateur();
+  const b = await puppeteer.launch(opts);
+  try {
+    const p = await b.newPage();
+    /* Le document vient de textes saisis : il ne doit rien exécuter ni rien
+       aller chercher. */
+    await p.setJavaScriptEnabled(false);
+    await p.setContent(html, { waitUntil: "load", timeout: 30_000 });
+    return Buffer.from(await p.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true }));
+  } finally {
+    await b.close();
+  }
+}
+
 /* Exécutée DANS la page imprimée : redessine chaque image à sa taille
    d'impression. Une même source garde le même résultat (la photo de l'agent,
    imprimée deux fois, n'est embarquée qu'une fois). */

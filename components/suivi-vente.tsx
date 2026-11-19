@@ -11,6 +11,7 @@ import { ContactPicker } from "@/components/contact-picker";
 import { BarreEnregistrer } from "@/components/barre-enregistrer";
 import { Modale } from "@/components/modale";
 import { Pastille } from "@/components/pastille";
+import { SectionRapport } from "@/components/rapport-commercialisation";
 import type { DonneesVente, Echange, LienPieces, Partie, Poste, RolePartie } from "@/lib/bo/vente";
 import type { MessageComplet } from "@/lib/mails/client";
 import { chercherContacts, type ContactTrouve } from "@/lib/bo/actions";
@@ -62,6 +63,7 @@ export function SuiviVente({ immeubleId }: { immeubleId: string }) {
   return (
     <div className="sv2">
       <Jalons d={d} immeubleId={immeubleId} onFait={recharger} />
+      <SectionRapport immeubleId={immeubleId} />
       <Parties d={d} immeubleId={immeubleId} onFait={recharger} />
       <Liens d={d} immeubleId={immeubleId} onFait={recharger} />
       <Echanges d={d} immeubleId={immeubleId} tour={tour} onEcrire={() => setEcrire(true)} />
