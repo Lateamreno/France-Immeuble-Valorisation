@@ -48,6 +48,10 @@ export const NAV: NavItem[] = [
   { href: "/objectifs", label: "Objectifs" },
   { href: "/analytics", label: "Datas" },
   { href: "/mailing", label: "Mailing" },
+  /* Formation (MAV, 19/11) : le parcours d'intégration des nouveaux
+     arrivants. La page est un document autonome (public/formation-cours.html),
+     affiché dans un cadre : on la met à jour sans toucher au reste du BO. */
+  { href: "/formation", label: "Formation" },
   /* Réglages de l'agence (retour #191) : identité sur les documents, barème
      d'honoraires, remise locataire. En bas du menu parce qu'on n'y va pas
      tous les jours — mais dans le menu, parce que c'est de là que le reste du

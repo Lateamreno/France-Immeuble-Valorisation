@@ -9951,3 +9951,7 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .rgl-ailleurs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .rgl-ailleurs > span { flex: 1; min-width: 240px; }
 .rgl-ailleurs b { display: inline; margin: 0 4px 0 0; font-size: inherit; }
+
+/* ============================ Formation ============================ */
+/* Le cours occupe toute la zone de travail, au-dessus de la barre de création. */
+.formation-cadre { display: block; width: 100%; height: calc(100vh - var(--bottbar-h) - 14px); border: 0; background: #FBF9F4; }
