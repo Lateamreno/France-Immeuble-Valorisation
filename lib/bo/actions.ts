@@ -237,7 +237,7 @@ export async function archiverImmeuble(
       /* MAV en copie cachée : « pour savoir si c'est bien parti et voir si les
          liens fonctionnent toujours ». */
       const bcc = await adresseCopieCachee(agentId);
-      await envoyerPourAgent(agentId, { to: mail.to.trim(), subject: mail.objet, text: mail.corps, bcc });
+      await envoyerPourAgent(agentId, { to: mail.to.trim(), subject: mail.objet, text: mail.corps, bcc, boiteObligatoire: true });
       envoi = { ok: true, message: `E-mail envoyé à ${mail.to.trim()}${bcc ? `, copie cachée à ${bcc}` : ""}.` };
     } catch (e) {
       envoi = { ok: false, message: `E-mail non envoyé : ${e instanceof Error ? e.message : "échec"}.` };
@@ -2897,6 +2897,7 @@ export async function envoyerEstimation(input: {
     from,
     replyTo,
     attachments: pieces,
+    boiteObligatoire: true,
   });
   const messageId = envoi.messageId;
 
@@ -6169,6 +6170,9 @@ export async function creerEtEnvoyerProposition(input: {
     if (!r.ok) throw new Error(r.message);
     attachments.push({ filename: r.piece.nom, content: r.piece.contenu, contentType: r.piece.type });
   }
+  /* Jusqu'à combien de destinataires une proposition à la main reste de la
+     correspondance, copiée dans « Envoyés ». */
+  const COPIE_JUSQUA = 5;
   let crees = 0;
   let envoyes = 0;
   const echecs: string[] = [];
@@ -6181,8 +6185,13 @@ export async function creerEtEnvoyerProposition(input: {
       await envoyerPourAgent(agentId, {
         to: p.email, subject: input.objet, text: input.message,
         attachments: attachments.length ? attachments : undefined,
-        /* Retour #479 : la commercialisation n'encombre pas les « Envoyés ». */
-        copieEnvoyes: false,
+        /* Retour #479 : la commercialisation n'encombre pas les « Envoyés ».
+           Revirement de MAV le 19/11 : une proposition faite à la main est un
+           message individuel — il veut la retrouver dans ses envoyés, sur son
+           webmail comme sur son téléphone. Au-delà de quelques personnes,
+           c'est un envoi groupé, et la règle #479 reprend. */
+        copieEnvoyes: input.personnes.length <= COPIE_JUSQUA,
+        boiteObligatoire: true,
       });
       envoyes++;
     } catch (e) {

@@ -3,9 +3,10 @@
  * MAV, 19/11/26 : « je veux voir mes e-mails envoyés sur mon portable et mon
  * webmail ; je te confirme que ce n'est pas le cas ». Sa boîte Exchange porte
  * DEUX dossiers d'envoi : le vrai, « Sent Items », et un « Éléments envoyés »
- * laissé par un ancien logiciel de messagerie. Exchange ne pose aucun attribut
- * spécial (\Sent) en IMAP, on se rabattait donc sur le nom, et le premier de
- * la liste gagnait : le mauvais. Les copies du BO partaient dans un dossier
+ * laissé par un ancien logiciel de messagerie (de même pour les brouillons et
+ * la corbeille). Exchange ne désigne aucun dossier en IMAP ; la bibliothèque
+ * devinait alors d'après les noms et marquait les DEUX, et le premier de la
+ * liste gagnait : le mauvais. Les copies du BO partaient dans un dossier
  * que ni le webmail ni le téléphone ne montrent comme « envoyés ».
  *
  * La règle : l'attribut spécial du serveur d'abord. Sinon, entre plusieurs
@@ -31,7 +32,7 @@ export type Candidat = {
 
 /** Ce numéro change quand la règle change : une boîte dont les dossiers ont
  *  été appris avec une règle plus ancienne les réapprend toute seule. */
-export const VERSION_DOSSIERS = "3";
+export const VERSION_DOSSIERS = "4";
 /** La clé qui garde ce numéro à côté des chemins, dans `fi_boite_agent.dossiers`. */
 export const CLE_VERSION = "_v";
 

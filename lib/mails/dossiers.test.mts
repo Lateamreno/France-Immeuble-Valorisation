@@ -5,26 +5,28 @@ const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${co
 
 console.log("— Quel dossier tient quel rôle —");
 
-/* La boîte de MAV : deux dossiers d'envoi, aucun attribut spécial. */
+/* La boîte de MAV, telle que le journal du serveur l'a montrée le 19/11 :
+   envois, brouillons et corbeille en double, aucun dossier désigné. */
 const mav: Candidat[] = [
+  { role: "envoyes", chemin: "Éléments envoyés", special: false },
   { role: "brouillons", chemin: "Brouillons", special: false },
+  { role: "indesirables", chemin: "Junk Email", special: false },
   { role: "corbeille", chemin: "Deleted Items", special: false },
   { role: "brouillons", chemin: "Drafts", special: false },
-  { role: "envoyes", chemin: "Éléments envoyés", special: false },
-  { role: "indesirables", chemin: "Junk Email", special: false },
+  { role: "corbeille", chemin: "Éléments supprimés", special: false },
   { role: "envoyes", chemin: "Sent Items", special: false },
 ];
-ok(rolesADepartager(mav).sort().join() === "brouillons,envoyes", "deux dossiers pour un rôle, sans attribut : il faut compter");
+ok(rolesADepartager(mav).sort().join() === "brouillons,corbeille,envoyes", "plusieurs dossiers pour un rôle, aucun désigné : il faut départager");
 /* Le doublon de MAV contient PLUS de messages que le vrai dossier : des années
    d'un ancien logiciel. Le nombre seul choisissait le mauvais (19/11). */
 const comptes = mav.map((c) => ({
   ...c,
-  messages: { "Sent Items": 900, "Éléments envoyés": 8400, Drafts: 79, Brouillons: 140 }[c.chemin],
+  messages: { "Sent Items": 900, "Éléments envoyés": 8400, Drafts: 79, Brouillons: 140, "Deleted Items": 2258, "Éléments supprimés": 5000 }[c.chemin],
 }));
 const choix = choisirDossiers(comptes);
 ok(choix.envoyes === "Sent Items", "corbeille et indésirables en anglais : le vrai dossier d'envoi est « Sent Items », même moins rempli");
 ok(choix.brouillons === "Drafts", "de même pour les brouillons");
-ok(choix.corbeille === "Deleted Items" && choix.indesirables === "Junk Email", "un seul candidat : c'est lui");
+ok(choix.corbeille === "Deleted Items" && choix.indesirables === "Junk Email", "la corbeille suit la même langue ; les indésirables, seul candidat, donnent cette langue");
 ok(choisirDossiers(mav).envoyes === "Sent Items", "sans même compter, la langue de la boîte suffit");
 
 /* Une boîte en français qui porte un « Sent » laissé par un autre logiciel. */
