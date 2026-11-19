@@ -630,9 +630,10 @@ en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
   paragraphes) **sans aucune image** — tableaux et styles sur chaque balise,
   600 px au plus, lisible sur mobile — et un **PDF joint** (compte rendu
   complet, puis diagnostic). L'aperçu appelle les mêmes fonctions que l'envoi.
-- **Aucun nom d'acquéreur** dans le rapport : initiale et profil (« B. —
-  marchand de biens »). Les noms n'apparaissent que dans le contrôle, que seul
-  l'agent lit. La **note A à D** est affichée, avec la légende de MAV : A a
+- **Aucun nom d'acquéreur** dans le rapport : initiales du prénom et du nom,
+  et profil (« M. D. — marchand de biens », retour #626). Le nom complet
+  n'apparaît qu'à l'écran de l'agent (contrôle et rédaction), jamais dans
+  ce qui part ni dans ce qui est gardé. La **note A à D** est affichée, avec la légende de MAV : A a
   déjà acheté ; B a déjà visité ou fait une offre, ou acteur reconnu ; C nous
   avons déjà échangé, sans visite ni offre ; D inscrit de lui-même sur le site,
   sans échange.
@@ -641,6 +642,12 @@ en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
   corrige. Chaque retour et chaque visite se décoche : une note interne n'est
   pas pour le propriétaire (la visite a `commentaire_externe`, pris en
   priorité ; à défaut `rex_fi`, signalé « à relire »).
+- **Rien de rédigé ne part sans avoir été relu** (MAV, 19/11) : chaque bloc
+  que l'IA peut écrire — ce qu'on retient, ce qui plaît, ce qui bloque, les
+  prix cités, chaque piste, la suite — a sa case. Ce que l'IA propose arrive
+  **décoché** ; un bloc décoché ne part pas, et l'aperçu le rappelle. Ces
+  listes se saisissent en texte libre et ne se découpent qu'au départ (#625 :
+  les redécouper à chaque frappe avalait les espaces).
 - Destinataires : **les vendeurs du bien seulement** (vérifié côté serveur). Le
   rapport part de la boîte de celui qui l'écrit, et reste rangé dans
   `fi_rapport_commercialisation` (le PDF se refait à la demande).

@@ -9951,3 +9951,14 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .rgl-ailleurs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .rgl-ailleurs > span { flex: 1; min-width: 240px; }
 .rgl-ailleurs b { display: inline; margin: 0 4px 0 0; font-size: inherit; }
+
+/* Rapport : la case « relu » de chaque bloc rédigé (MAV, 19/11), et le nom
+   complet que seul l'agent voit (#626). */
+.rc-tete { flex-wrap: wrap; }
+.rc-lu { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.rc-tete em { font-style: normal; font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 11.5px; color: #8a5300; }
+.rc-off textarea, .rc-off input.min { opacity: .5; }
+.rc-envoi { flex-basis: 100%; font-style: normal; font-size: 11.5px; color: var(--gray-txt); }
+/* ============================ Formation ============================ */
+/* Le cours occupe toute la zone de travail, au-dessus de la barre de création. */
+.formation-cadre { display: block; width: 100%; height: calc(100vh - var(--bottbar-h) - 14px); border: 0; background: #FBF9F4; }

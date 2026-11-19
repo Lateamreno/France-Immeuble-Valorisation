@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Formation France Immeuble</title>
+<style>
+:root{
+  /* Charte France Immeuble : noir, or, crème. Colonne de navigation noire à gauche, contenu sur papier crème. */
+  --ink:#0b0b0b;
+  --gold:#D9BF7D;
+  --gold-deep:#86692a;
+  --cream:#EFE9DE;
+  --paper:#FBF9F4;
+  --card:#ffffff;
+  --line:#ddd4c2;
+  --mute:#5c574d;
+  --ok:#2c6a49;
+  --ok-bg:#e8f1ea;
+  --warn:#9d4a14;
+  --warn-bg:#fbeee2;
+  --display:"GT America Extended","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --body:"GT America",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+svg.ic{width:1.25em;height:1.25em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--gold-deep);outline-offset:2px}
+
+/* ---------- Navigation ---------- */
+.side{position:fixed;inset:0 auto 0 0;width:264px;background:var(--ink);color:#fff;padding:26px 18px;display:flex;flex-direction:column;gap:20px;overflow-y:auto;z-index:5}
+.brand{font-family:var(--display);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:14px;line-height:1.3}
+.brand small{display:block;color:var(--gold);font-weight:400;letter-spacing:.1em;font-size:11px;margin-top:4px}
+.side nav{display:flex;flex-direction:column;gap:2px}
+.side nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;text-decoration:none;color:#d8d3c8;font-size:14px;border-left:2px solid transparent}
+.side nav a .n{font-variant-numeric:tabular-nums;color:var(--gold);font-size:12px;width:16px}
+.side nav a:hover{background:#1c1c1c;color:#fff}
+.side nav a.on{background:#1c1c1c;color:#fff;border-left-color:var(--gold)}
+.side nav a .done{margin-left:auto;color:var(--gold);opacity:0}
+.side nav a.read .done{opacity:1}
+.prog{margin-top:auto;font-size:12px;color:#bdb7aa}
+.bar{height:4px;background:#2a2a2a;border-radius:2px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--gold);transition:width .3s}
+
+main{margin-left:264px}
+.wrap{max-width:900px;margin:0 auto;padding:0 28px}
+
+/* ---------- En-tête ---------- */
+.hero{background:var(--ink);color:#fff;padding:54px 0 46px}
+.hero .eyebrow{color:var(--gold);font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+.hero h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,4.4vw,44px);line-height:1.12;margin:12px 0 14px;text-wrap:balance;letter-spacing:-.01em}
+.hero p{max-width:62ch;color:#d9d4c9;margin:0}
+.hero .tag{margin-top:22px;font-style:italic;color:var(--gold)}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#2b2b2b;border:1px solid #2b2b2b;margin-top:30px}
+.facts div{background:var(--ink);padding:16px}
+.facts b{display:block;font-family:var(--display);font-size:20px;color:var(--gold);font-variant-numeric:tabular-nums}
+.facts span{font-size:13px;color:#c9c4b8}
+
+/* ---------- Modules ---------- */
+section.mod{padding:56px 0 20px;border-bottom:1px solid var(--line)}
+.mhead{display:flex;gap:16px;align-items:flex-start;margin-bottom:22px}
+.mnum{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.12em;background:var(--ink);color:var(--gold);padding:8px 10px;border-radius:4px;white-space:nowrap}
+h2{font-family:var(--display);font-weight:700;font-size:clamp(22px,3vw,30px);line-height:1.2;margin:0;text-wrap:balance}
+.mhead p{margin:6px 0 0;color:var(--mute);max-width:65ch}
+h3{font-family:var(--display);font-size:19px;margin:38px 0 12px;display:flex;align-items:center;gap:10px;text-wrap:balance}
+h3 .ic{color:var(--gold-deep);width:1.3em;height:1.3em}
+h4{font-size:15px;margin:22px 0 6px;text-transform:uppercase;letter-spacing:.08em;color:var(--gold-deep)}
+p{margin:0 0 12px;max-width:70ch}
+ul,ol{margin:0 0 12px;padding-left:20px;max-width:70ch}
+li{margin-bottom:5px}
+strong{font-weight:650}
+
+.goals{background:var(--cream);border-radius:8px;padding:14px 18px;margin-bottom:8px}
+.goals b{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-deep)}
+.goals ul{margin:6px 0 0;list-style:none;padding:0;display:grid;gap:4px}
+.goals li{display:flex;gap:8px;align-items:flex-start;margin:0}
+.goals li .ic{color:var(--gold-deep);margin-top:.2em}
+
+.grid{display:grid;gap:14px;margin:14px 0 18px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card h5{margin:0 0 6px;font-size:15px;font-family:var(--display);display:flex;gap:8px;align-items:center}
+.card h5 .ic{color:var(--gold-deep)}
+.card p,.card ul{font-size:14.5px;margin-bottom:6px}
+.card .kpi{font-family:var(--display);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.card .sub{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.card.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card.dark h5 .ic,.card.dark .kpi{color:var(--gold)}
+.card.dark p{color:#d9d4c9}
+
+.note{display:flex;gap:12px;border-radius:8px;padding:14px 16px;margin:16px 0;font-size:15px;max-width:74ch}
+.note .ic{width:1.4em;height:1.4em;margin-top:.1em}
+.note p:last-child,.note ul:last-child{margin-bottom:0}
+.note b.t{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+.note.key{background:var(--cream);border-left:4px solid var(--gold)}
+.note.key .ic,.note.key b.t{color:var(--gold-deep)}
+.note.warn{background:var(--warn-bg);border-left:4px solid var(--warn)}
+.note.warn .ic,.note.warn b.t{color:var(--warn)}
+.note.fi{background:var(--ink);color:#fff}
+.note.fi .ic,.note.fi b.t{color:var(--gold)}
+.note.ok{background:var(--ok-bg);border-left:4px solid var(--ok)}
+.note.ok .ic,.note.ok b.t{color:var(--ok)}
+
+.tw{overflow-x:auto;margin:14px 0 18px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--ink);color:#fff;font-weight:600;font-size:13px;letter-spacing:.04em}
+tbody th{background:#f6f2ea;font-weight:650;white-space:nowrap}
+tr:last-child td,tr:last-child th{border-bottom:0}
+td.plus{color:var(--ok)}td.minus{color:var(--warn)}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.chip{font-size:12.5px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 10px}
+.chip.g{background:var(--ink);color:var(--gold);border-color:var(--ink)}
+
+/* Parcours de vente */
+.phase{margin:18px 0 6px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep);display:flex;align-items:center;gap:10px}
+.phase::after{content:"";flex:1;height:1px;background:var(--line)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;counter-reset:s}
+.step{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;position:relative;min-height:112px}
+.step .ic{width:26px;height:26px;color:var(--ink)}
+.step b{display:block;font-size:14px;margin-top:6px;line-height:1.25}
+.step span{font-size:12.5px;color:var(--mute);line-height:1.35;display:block;margin-top:3px}
+.step i{position:absolute;top:10px;right:12px;font-style:normal;font-family:var(--display);font-weight:700;color:var(--gold-deep);font-size:13px;font-variant-numeric:tabular-nums}
+
+.script{background:var(--card);border:1px dashed var(--gold-deep);border-radius:8px;padding:14px 16px;margin:12px 0;font-size:15px;max-width:74ch}
+.script b.t{display:flex;gap:8px;align-items:center;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-deep);margin-bottom:6px}
+.script p{font-style:italic;margin:0}
+
+.do{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.do>div{border-radius:8px;padding:14px 16px;font-size:14.5px}
+.do .y{background:var(--ok-bg)}.do .n{background:var(--warn-bg)}
+.do b.t{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.do .y b.t{color:var(--ok)}.do .n b.t{color:var(--warn)}
+.do ul{margin:0;padding-left:18px}
+
+/* Calculateurs */
+.calc{background:var(--ink);color:#fff;border-radius:10px;padding:20px;margin:16px 0 22px}
+.calc h5{margin:0 0 4px;font-family:var(--display);font-size:16px;display:flex;gap:8px;align-items:center}
+.calc h5 .ic{color:var(--gold)}
+.calc>p{color:#c9c4b8;font-size:13.5px;margin-bottom:14px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.fields label{font-size:12.5px;color:#c9c4b8;display:grid;gap:4px}
+.fields input{font:inherit;font-variant-numeric:tabular-nums;background:#1b1b1b;border:1px solid #3a3a3a;color:#fff;border-radius:6px;padding:8px 10px;width:100%}
+.fields input:focus{outline:2px solid var(--gold);border-color:var(--gold)}
+.out{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:#333;border:1px solid #333;border-radius:8px;overflow:hidden;margin-top:14px}
+.out div{background:#141414;padding:12px}
+.out span{display:block;font-size:12px;color:#bdb7aa}
+.out b{font-family:var(--display);font-size:20px;color:var(--gold);font-variant-numeric:tabular-nums}
+.verdict{margin-top:10px;font-size:14px;color:#e9e4d8}
+
+/* Quiz */
+.q{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin:12px 0}
+.q p.qq{font-weight:650;margin-bottom:10px}
+.q .opts{display:grid;gap:6px}
+.q button{font:inherit;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:9px 12px;cursor:pointer;color:var(--ink)}
+.q button:hover:not(:disabled){border-color:var(--gold-deep)}
+.q button.good{background:var(--ok-bg);border-color:var(--ok);color:var(--ok);font-weight:650}
+.q button.bad{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.q .exp{display:none;margin-top:10px;font-size:14.5px;color:var(--mute)}
+.q.done .exp{display:block}
+.score{background:var(--ink);color:#fff;border-radius:8px;padding:16px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin:16px 0}
+.score b{font-family:var(--display);font-size:22px;color:var(--gold);font-variant-numeric:tabular-nums}
+.btn{font:inherit;background:var(--gold);color:var(--ink);border:0;border-radius:6px;padding:9px 14px;font-weight:650;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+.readrow{margin:26px 0 30px}
+footer{padding:30px 0 60px;color:var(--mute);font-size:13px}
+
+@media (max-width:980px){
+  .side{position:sticky;inset:auto;top:0;width:auto;flex-direction:row;align-items:center;padding:10px 14px;gap:12px;overflow-x:auto}
+  .side nav{flex-direction:row}
+  .side nav a{white-space:nowrap;padding:6px 10px;border-left:0;border-bottom:2px solid transparent}
+  .side nav a.on{border-bottom-color:var(--gold)}
+  .side nav a .done{margin-left:4px}
+  .brand small,.prog{display:none}
+  .brand{white-space:nowrap;font-size:12px}
+  main{margin-left:0}
+  .steps{grid-template-columns:repeat(2,1fr)}
+  .g3,.g4{grid-template-columns:repeat(2,1fr)}
+  .facts{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:560px){
+  .wrap{padding:0 16px}
+  .g2,.g3,.g4,.do{grid-template-columns:1fr}
+  .mhead{flex-direction:column;gap:10px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.bar i{transition:none}}
+
+/* Dans le BO : la page vit dans un cadre, à droite du menu. Son propre menu passe en barre haute. */
+html.embed .side{position:sticky;inset:auto;top:0;width:auto;flex-direction:row;align-items:center;padding:10px 14px;gap:12px;overflow-x:auto}
+html.embed .side nav{flex-direction:row}
+html.embed .side nav a{white-space:nowrap;font-size:13px;gap:6px;padding:6px 8px;border-left:0;border-bottom:2px solid transparent}
+html.embed .side nav a.on{border-bottom-color:var(--gold)}
+html.embed .side nav a .done{margin-left:4px}
+html.embed .brand{display:none}
+html.embed .prog{margin:0 0 0 auto;white-space:nowrap;min-width:150px}
+html.embed main{margin-left:0}
+html.embed section.mod{scroll-margin-top:56px}
+</style>
+</head>
+<body>
+<script>if(window.self!==window.top){document.documentElement.classList.add("embed")}</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17.5 14c2.6 0 4.2 1.8 4.2 4.4"/></symbol>
+<symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><rect x="8" y="5" width="8" height="4"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 17h.01M12 17h.01M15.5 17h.01" stroke-width="2.2"/></symbol>
+<symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6zM14 2v4h4M9 12h6M9 16h6"/></symbol>
+<symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3M13 20h7"/></symbol>
+<symbol id="i-building" viewBox="0 0 24 24"><path d="M4 22V4h10v18M14 10h6v12M2 22h20M7 8h1M10 8h1M7 12h1M10 12h1M7 16h1M10 16h1M17 14h.5M17 18h.5"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-euro" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M15.5 8.5a4.5 4.5 0 100 7M7 11h6M7 13.5h5"/></symbol>
+<symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M7 21h10M4 7h16M6 7l-3 7h6zM18 7l-3 7h6z"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.5 11.5L20 3M16 7l3 3"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3L2 20h20zM12 10v5M12 17.5v.4"/></symbol>
+<symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0012 3z"/></symbol>
+<symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 6-7"/></symbol>
+<symbol id="i-hammer" viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-6-6zM13 9L3 19l2 2 10-10"/></symbol>
+<symbol id="i-crane" viewBox="0 0 24 24"><path d="M6 22V4h12M6 4L3 8M6 8h4M18 4v7M16 11h4v3h-4zM2 22h10"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V5zM9 12l2 2 4-4"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h6a2 2 0 012 2v14a2 2 0 00-2-2H4zM20 4h-6a2 2 0 00-2 2v14a2 2 0 012-2h6z"/></symbol>
+<symbol id="i-map" viewBox="0 0 24 24"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16 16l5.5 5.5"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></symbol>
+<symbol id="i-brief" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M3 13h18"/></symbol>
+<symbol id="i-percent" viewBox="0 0 24 24"><path d="M5 19L19 5"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 4.5 9-4.5"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 22V3M5 4h12l-2 4 2 4H5"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v11h14V10M10 21v-6h4v6"/></symbol>
+<symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6zM5 9v9M9.5 9v9M14.5 9v9M19 9v9M3 21h18M3 18h18"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2"/></symbol>
+<symbol id="i-quiz" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.8.6-1.5 1-1.5 2.2M12 17v.4"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 3h10v11H3z"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></symbol>
+<symbol id="i-ear" viewBox="0 0 24 24"><path d="M7 9a5 5 0 0110 0c0 3-3 4-3 7a3 3 0 01-6 0M10 9a2 2 0 014 0"/></symbol>
+</defs>
+</svg>
+
+<aside class="side">
+  <div class="brand">France Immeuble<small>Formation nouveaux arrivants</small></div>
+  <nav id="nav">
+    <a href="#m1" data-m="m1"><span class="n">1</span>France Immeuble<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m2" data-m="m2"><span class="n">2</span>Les acheteurs<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m3" data-m="m3"><span class="n">3</span>Les vendeurs<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m4" data-m="m4"><span class="n">4</span>Les chiffres clés<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m5" data-m="m5"><span class="n">5</span>Urbanisme et promotion<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m6" data-m="m6"><span class="n">6</span>Le processus de vente<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m7" data-m="m7"><span class="n">7</span>Techniques de vente<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m8" data-m="m8"><span class="n">8</span>Règles d'or<svg class="ic done"><use href="#i-check"/></svg></a>
+    <a href="#m9" data-m="m9"><span class="n">9</span>Quiz final<svg class="ic done"><use href="#i-check"/></svg></a>
+  </nav>
+  <div class="prog"><span id="progtxt">0 module lu sur 9</span><div class="bar"><i id="progbar"></i></div></div>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Parcours d'intégration</div>
+    <h1>Vendre des immeubles de rapport avec France Immeuble</h1>
+    <p>Ce parcours vous donne les bases du métier : qui achète, qui vend, comment on lit un immeuble en chiffres, comment se déroule une vente du premier appel à l'acte authentique, et comment se comporter face à un client. Comptez environ une heure, quiz compris.</p>
+    <p class="tag">« Un immeuble, France Immeuble. »</p>
+    <div class="facts">
+      <div><b>9</b><span>modules</span></div>
+      <div><b>3</b><span>calculateurs pour s'entraîner</span></div>
+      <div><b>13</b><span>étapes dans une vente</span></div>
+      <div><b>12</b><span>questions au quiz final</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============ MODULE 1 ============ -->
+<section class="mod" id="m1">
+  <div class="mhead"><span class="mnum">MODULE 1</span><div><h2>France Immeuble en bref</h2><p>Ce que nous faisons, pour qui, et ce qui nous distingue.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous savez présenter l'agence en trente secondes.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous connaissez le contenu d'un dossier France Immeuble.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous utilisez le bon vocabulaire.</li>
+  </ul></div>
+
+  <h3><svg class="ic"><use href="#i-target"/></svg>Notre positionnement</h3>
+  <p>France Immeuble est une agence <strong>spécialisée à 100 % dans la vente d'immeubles de rapport</strong>. Nous ne vendons ni appartements isolés ni maisons. Cette spécialisation est notre argument principal : le vendeur d'un immeuble cherche un interlocuteur qui parle rendement, état locatif et urbanisme, pas un généraliste.</p>
+  <div class="grid g4">
+    <div class="card"><div class="sub">Produit</div><div class="kpi">100 %</div><p>immeubles entiers, en monopropriété</p></div>
+    <div class="card"><div class="sub">Diffusion</div><div class="kpi">Offmarket</div><p>les dossiers partent d'abord vers notre base d'acquéreurs qualifiés</p></div>
+    <div class="card"><div class="sub">Secteur</div><div class="kpi">Île-de-France</div><p>en priorité, puis toute la France</p></div>
+    <div class="card"><div class="sub">Tickets</div><div class="kpi num">300 k€ à 30 M€</div><p>du petit immeuble de ville à l'actif institutionnel</p></div>
+  </div>
+  <div class="note fi"><svg class="ic"><use href="#i-star"/></svg><div><b class="t">Chez France Immeuble</b><p>Nos honoraires sont en général de 5 % du prix de vente (le barème en vigueur fait foi). Nous avons traité 365 immeubles depuis la création. On dit toujours « traités », jamais « vendus ».</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-folder"/></svg>Notre avantage : le dossier</h3>
+  <p>Un acheteur d'immeuble décide sur pièces. Nos dossiers sont construits comme ceux d'une banque d'affaires : complets, chiffrés, vérifiables. C'est ce qui fait que les investisseurs ouvrent nos envois, et c'est ce qu'il faut montrer à un vendeur pour obtenir son mandat.</p>
+  <div class="grid g4">
+    <div class="card"><h5><svg class="ic"><use href="#i-chart"/></svg>État financier</h5><p>Loyers, charges, taxe foncière, rendement.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-layers"/></svg>État locatif</h5><p>Lot par lot : surface, loyer, type et date de bail.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-users"/></svg>Données INSEE</h5><p>Population, revenus, tension locative du secteur.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-scale"/></svg>Plafonnement</h5><p>Encadrement des loyers applicable ou non.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-search"/></svg>État technique</h5><p>Toiture, façade, structure, réseaux, diagnostics.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-hammer"/></svg>Travaux chiffrés</h5><p>Un devis vaut mieux qu'une estimation orale.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-map"/></svg>PLU</h5><p>Zonage et potentiel de constructibilité.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-chat"/></svg>Avis du fondateur</h5><p>Notre lecture franche de l'opération.</p></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-book"/></svg>Le vocabulaire de base</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Terme</th><th>Ce que cela veut dire</th></tr></thead>
+    <tbody>
+      <tr><th>Immeuble de rapport</th><td>Immeuble détenu par un seul propriétaire et loué pour produire des revenus. C'est le terme que nous employons en priorité.</td></tr>
+      <tr><th>Monopropriété</th><td>Un seul propriétaire pour tout l'immeuble, par opposition à la copropriété.</td></tr>
+      <tr><th>Vente en bloc</th><td>Vente de l'immeuble entier, en une fois, à un seul acquéreur. Terme technique, à réserver aux échanges juridiques.</td></tr>
+      <tr><th>Vente à la découpe</th><td>L'immeuble est mis en copropriété puis vendu lot par lot.</td></tr>
+      <tr><th>Offmarket</th><td>Le bien est proposé sans annonce publique, directement à des acquéreurs identifiés.</td></tr>
+      <tr><th>État locatif</th><td>Tableau des lots, des locataires, des loyers et des baux.</td></tr>
+      <tr><th>HAI / FAI</th><td>Prix honoraires d'agence inclus (frais d'agence inclus).</td></tr>
+      <tr><th>AEM</th><td>Acte en main : prix + honoraires + frais de notaire. C'est ce que l'acheteur paie réellement.</td></tr>
+      <tr><th>Arbitrer</th><td>Vendre un actif pour en acheter un autre ou récupérer des liquidités.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="readrow"><button class="btn ghost" data-read="m1">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 2 ============ -->
+<section class="mod" id="m2">
+  <div class="mhead"><span class="mnum">MODULE 2</span><div><h2>Les acheteurs</h2><p>Trois familles : investisseurs, marchands de biens, promoteurs. Chacune a sa logique, ses critères et ses conditions suspensives.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous qualifiez un acheteur en quelques questions.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous savez quel immeuble proposer à quel profil.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous anticipez les conditions qu'il demandera.</li>
+  </ul></div>
+
+  <div class="note fi"><svg class="ic"><use href="#i-users"/></svg><div><b class="t">Chez France Immeuble</b><p>Notre base d'acquéreurs compte environ 80 % d'investisseurs et 20 % de marchands de biens.</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-chart"/></svg>A. Les investisseurs</h3>
+  <p>Ils achètent pour placer leur argent. Ils cherchent trois choses : <strong>rentabilité, pérennité, sécurité</strong>. Le dosage entre les trois change selon le profil.</p>
+  <div class="grid g3">
+    <div class="card"><h5><svg class="ic"><use href="#i-euro"/></svg>Le cash-flow</h5><div class="kpi num">8 à 10 % et plus</div><p><strong>Où :</strong> province, petites villes.</p><p><strong>Objectif :</strong> autofinancement et bénéfice mensuel après crédit, charges et impôts.</p><p><strong>Risque accepté :</strong> relocation plus lente, revente parfois à perte.</p><p><strong>En dossier :</strong> très méticuleux sur les travaux, la vacance et les impayés.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-scale"/></svg>L'équilibré</h5><div class="kpi num">5 à 8 %</div><p><strong>Où :</strong> banlieue, grandes villes de province.</p><p><strong>Objectif :</strong> opération presque autofinancée et plus-value à long terme.</p><p><strong>Critères :</strong> gares, écoles, commerces. L'emplacement garantit les locataires.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-bank"/></svg>Le patrimonial</h5><div class="kpi num">moins de 5 %</div><p><strong>Où :</strong> Paris, Lyon, Bordeaux, petite couronne.</p><p><strong>Objectif :</strong> la plus-value. Pas d'autofinancement sans gros apport.</p><p><strong>Critères :</strong> emplacement, qualité du bâti, architecture. Dispose déjà d'un patrimoine.</p></div>
+  </div>
+  <p>La plupart recherchent un immeuble sans problème de structure, déjà occupé par de bons locataires, avec peu d'entretien. D'autres voient au contraire les travaux comme une aubaine : ils achètent bas, rénovent et obtiennent un rendement élevé.</p>
+
+  <h4>Habitation ou immobilier d'entreprise ?</h4>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Habitation : la sécurité</th><th>Commerces et bureaux : le rendement</th></tr></thead>
+    <tbody>
+      <tr><th>Locataires</th><td>Faciles à trouver, mais longs à expulser (trêve hivernale du 1<sup>er</sup> novembre au 31 mars, procédures de plus d'un an)</td><td>Plus difficiles à trouver, parfois fragiles (créations, sociétés en difficulté)</td></tr>
+      <tr><th>Loyers</th><td>Peuvent être couverts par une assurance loyers impayés (GLI), dans les limites du contrat</td><td>Pas de garantie : en cas de faillite, les impayés peuvent être perdus</td></tr>
+      <tr><th>Rendement</th><td>Autour de 5 % en métropole, plus en province</td><td>Souvent au-delà de 8 %</td></tr>
+      <tr><th>Travaux</th><td>Entretien courant au locataire, tout le reste au propriétaire</td><td>Largement à la charge du locataire selon le bail, sauf les grosses réparations de l'article 606 du Code civil</td></tr>
+      <tr><th>Visibilité</th><td>Bail de 3 ans (6 ans si le bailleur est une société), préavis du locataire de 1 à 3 mois</td><td>Bail de 9 ans, sortie possible tous les 3 ans avec 6 mois de préavis</td></tr>
+      <tr><th>Charges et taxes</th><td>Charges récupérables limitées par décret</td><td>Taxe foncière refacturable si le bail le prévoit</td></tr>
+      <tr><th>Financement</th><td>Plus facile, sur de longues durées</td><td>Plus difficile, durées courtes, mensualités fortes</td></tr>
+      <tr><th>Qui achète</th><td>Particuliers surtout, quelques foncières, bailleurs sociaux</td><td>Foncières, banques, investisseurs aguerris</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note key"><svg class="ic"><use href="#i-book"/></svg><div><b class="t">Article 606 du Code civil</b><p>Les grosses réparations sont celles des gros murs et des voûtes, des poutres et des couvertures entières, des digues, murs de soutènement et de clôture en entier. Tout le reste est de l'entretien. Pour les baux commerciaux signés ou renouvelés depuis novembre 2014, ces grosses réparations ne peuvent plus être mises à la charge du locataire.</p></div></div>
+
+  <h4>Province ou métropole ?</h4>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Province</th><th>Métropoles et petite couronne</th></tr></thead>
+    <tbody>
+      <tr><th>Rendement</th><td class="num">8 à plus de 10 %</td><td class="num">3 à 6 %</td></tr>
+      <tr><th>Relocation</th><td>Lente : un logement peut rester vide plusieurs semaines</td><td>Rapide : le locataire suivant est souvent trouvé avant le départ</td></tr>
+      <tr><th>Prix au m²</th><td>Faible : les travaux ne se retrouvent pas toujours dans le prix de revente</td><td>Élevé</td></tr>
+      <tr><th>Plus-value</th><td>Faible</td><td>Importante</td></tr>
+      <tr><th>Acquéreur type</th><td>Investisseur de cash-flow</td><td>Investisseur patrimonial ou semi-patrimonial</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><svg class="ic"><use href="#i-hammer"/></svg>B. Les marchands de biens</h3>
+  <p>Ils achètent des immeubles à gros travaux, ou dont on peut augmenter la surface, puis <strong>revendent à la découpe</strong>. Ils cherchent le profit rapide et la bonne affaire.</p>
+  <div class="grid g3">
+    <div class="card"><div class="sub">Marge visée</div><div class="kpi num">20 %</div><p>de l'investissement global. Certains regardent à partir de 10 %.</p></div>
+    <div class="card"><div class="sub">Ce qui les rassure</div><p>Un devis, un plan d'architecte, un permis de construire déjà obtenu. Toute pièce qui prouve la faisabilité.</p></div>
+    <div class="card"><div class="sub">Occupation</div><p>Ils préfèrent acheter vide. Si l'immeuble est occupé, ils négocient le départ des locataires, dans le cadre légal ou contre indemnité.</p></div>
+  </div>
+  <p>La vitesse fait leur rentabilité : une réponse rapide et un dossier complet comptent autant que le prix. Ils bénéficient en général de frais d'acquisition réduits s'ils s'engagent à revendre dans les cinq ans.</p>
+
+  <h3><svg class="ic"><use href="#i-crane"/></svg>C. Les promoteurs</h3>
+  <p>Ils cherchent des <strong>terrains</strong>, bâtis ou non, pour construire des immeubles collectifs et vendre les logements neufs. Ils assemblent parfois plusieurs parcelles voisines. Ils achètent toujours sous condition d'obtention d'un permis de construire purgé de tout recours : la vente peut prendre plus de deux ans.</p>
+  <div class="note key"><svg class="ic"><use href="#i-percent"/></svg><div><b class="t">Leur seuil</b><p>Une opération se fait si la marge atteint environ 15 % du chiffre d'affaires. Le module 5 vous apprend à faire ce calcul.</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-lock"/></svg>Les conditions suspensives par profil</h3>
+  <p>Une condition suspensive est une clause de l'avant-contrat : si elle ne se réalise pas, la vente est annulée sans indemnité pour personne.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Profil</th><th>Conditions le plus souvent demandées</th><th>Délai habituel jusqu'à l'acte</th></tr></thead>
+    <tbody>
+      <tr><th>Investisseur</th><td><span class="chip">Prêt</span></td><td>Environ 3 mois</td></tr>
+      <tr><th>Marchand de biens</th><td><span class="chip">Prêt</span> <span class="chip">Permis de construire</span> <span class="chip">Étude préalable</span> <span class="chip">Libération des lieux</span></td><td>3 à 12 mois</td></tr>
+      <tr><th>Promoteur</th><td><span class="chip">Permis purgé</span> <span class="chip">Prêt</span> <span class="chip">Étude de sol</span> <span class="chip">Amiante, pollution</span> <span class="chip">Pré-commercialisation</span> <span class="chip">Libération des lieux</span></td><td>Jusqu'à 2 ans et plus</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note ok"><svg class="ic"><use href="#i-bulb"/></svg><div><b class="t">Le réflexe</b><p>Deux offres au même prix ne se valent pas. Une offre sans condition, ou avec la seule condition de prêt, a plus de valeur pour le vendeur qu'une offre plus haute suspendue à un permis.</p></div></div>
+  <div class="readrow"><button class="btn ghost" data-read="m2">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 3 ============ -->
+<section class="mod" id="m3">
+  <div class="mhead"><span class="mnum">MODULE 3</span><div><h2>Les vendeurs</h2><p>On ne vend pas un immeuble comme un appartement. Comprendre pourquoi le propriétaire vend, c'est déjà la moitié du mandat.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous identifiez le profil et la motivation d'un vendeur.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous savez qui doit signer le mandat.</li>
+  </ul></div>
+
+  <div class="grid g2">
+    <div class="card"><h5><svg class="ic"><use href="#i-home"/></svg>Le particulier bailleur</h5><p>Propriétaire depuis longtemps, souvent proche de la retraite. Il est attaché à son immeuble et connaît ses locataires.</p><p><strong>Attend :</strong> de la considération, de la pédagogie, un interlocuteur unique.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-users"/></svg>Les héritiers et indivisions</h5><p>Plusieurs décideurs, des intérêts parfois opposés, un besoin de partager. Le prix doit être justifié par écrit pour mettre tout le monde d'accord.</p><p><strong>Attention :</strong> tous les indivisaires doivent signer.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-brief"/></svg>La SCI familiale</h5><p>Le gérant est votre interlocuteur, mais ses pouvoirs dépendent des statuts. Une décision d'assemblée est souvent nécessaire pour vendre.</p><p><strong>À demander :</strong> Kbis, statuts, procès-verbal autorisant la vente.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-bank"/></svg>Le professionnel</h5><p>Foncière, marchand de biens, institutionnel, entreprise qui cède ses murs. Il raisonne en taux et en calendrier.</p><p><strong>Attend :</strong> des chiffres, de la réactivité, de la confidentialité.</p></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-search"/></svg>Pourquoi vendent-ils ?</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Motivation</th><th>Ce que cela implique pour vous</th></tr></thead>
+    <tbody>
+      <tr><th>Succession, partage</th><td>Délai souvent contraint, plusieurs signataires, prix à documenter.</td></tr>
+      <tr><th>Retraite, lassitude de gérer</th><td>Le vendeur veut de la simplicité. Mettez en avant la prise en charge complète.</td></tr>
+      <tr><th>Arbitrage</th><td>Il vend pour racheter autre chose. Il peut devenir aussi votre acheteur.</td></tr>
+      <tr><th>Travaux à venir</th><td>Toiture, ravalement, rénovation énergétique. Chiffrez les travaux pour objectiver le prix.</td></tr>
+      <tr><th>Besoin de liquidités</th><td>Urgence. Une offre sûre et rapide pèse plus qu'une offre haute et conditionnée.</td></tr>
+      <tr><th>Opportunité de marché</th><td>Vendeur peu pressé, exigeant sur le prix. Le suivi dans la durée fera la différence.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note key"><svg class="ic"><use href="#i-bulb"/></svg><div><b class="t">La question à poser</b><p>« Qu'allez-vous faire du produit de la vente ? » La réponse vous donne à la fois le prix dont il a réellement besoin et son calendrier.</p></div></div>
+  <div class="note warn"><svg class="ic"><use href="#i-alert"/></svg><div><b class="t">Avant tout mandat</b><p>Vérifiez qui est réellement propriétaire (titre de propriété ou attestation notariée) et qui a le pouvoir de signer. Un mandat signé par une personne qui n'en a pas le pouvoir ne vaut rien.</p></div></div>
+  <div class="readrow"><button class="btn ghost" data-read="m3">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 4 ============ -->
+<section class="mod" id="m4">
+  <div class="mhead"><span class="mnum">MODULE 4</span><div><h2>Les chiffres clés d'un immeuble</h2><p>Un investisseur compare des taux avant de comparer des façades. Vous devez pouvoir faire ces calculs de tête.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous calculez un rendement brut et un rendement net.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous lisez un état locatif.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous connaissez l'impact du DPE et de l'encadrement des loyers.</li>
+  </ul></div>
+
+  <h3><svg class="ic"><use href="#i-percent"/></svg>Les trois rendements</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Indicateur</th><th>Formule</th><th>À quoi il sert</th></tr></thead>
+    <tbody>
+      <tr><th>Rendement brut</th><td>Loyers annuels hors charges ÷ prix de vente</td><td>Le chiffre annoncé en premier, pour comparer vite.</td></tr>
+      <tr><th>Rendement brut acte en main</th><td>Loyers annuels ÷ (prix + frais de notaire)</td><td>Ce que l'investisseur regarde vraiment.</td></tr>
+      <tr><th>Rendement net</th><td>(Loyers − taxe foncière − charges non récupérables) ÷ prix acte en main</td><td>La réalité de l'exploitation, avant impôt et crédit.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Deux précisions : précisez toujours si le rendement est calculé sur les <strong>loyers actuels</strong> ou sur les <strong>loyers potentiels</strong> (lots vacants reloués, loyers remis au niveau du marché). Et comptez environ 7 à 8 % de frais d'acquisition dans l'ancien pour un investisseur classique.</p>
+
+  <div class="calc">
+    <h5><svg class="ic"><use href="#i-calc"/></svg>Calculateur de rendement</h5>
+    <p>Modifiez les valeurs pour voir l'effet sur les taux.</p>
+    <div class="fields">
+      <label for="r-prix">Prix de vente HAI (€)<input id="r-prix" type="number" value="1200000" step="10000" min="0"></label>
+      <label for="r-loy">Loyers annuels hors charges (€)<input id="r-loy" type="number" value="84000" step="1000" min="0"></label>
+      <label for="r-ch">Taxe foncière et charges non récupérables (€/an)<input id="r-ch" type="number" value="9000" step="500" min="0"></label>
+      <label for="r-fr">Frais d'acquisition (%)<input id="r-fr" type="number" value="7.5" step="0.1" min="0"></label>
+    </div>
+    <div class="out">
+      <div><span>Rendement brut</span><b id="r-o1">–</b></div>
+      <div><span>Prix acte en main</span><b id="r-o2">–</b></div>
+      <div><span>Brut acte en main</span><b id="r-o3">–</b></div>
+      <div><span>Rendement net</span><b id="r-o4">–</b></div>
+    </div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-layers"/></svg>Lire un état locatif</h3>
+  <p>C'est la pièce centrale du dossier. Pour chaque lot, vous devez connaître :</p>
+  <div class="chips"><span class="chip">Étage et type</span><span class="chip">Surface</span><span class="chip">Loyer hors charges</span><span class="chip">Provisions pour charges</span><span class="chip">Type de bail (nu, meublé, commercial)</span><span class="chip">Date d'entrée</span><span class="chip">Dépôt de garantie</span><span class="chip">Impayés éventuels</span><span class="chip">DPE</span></div>
+  <p>Trois indicateurs se déduisent du tableau : le <strong>taux d'occupation</strong> (lots loués ÷ lots totaux), le <strong>loyer moyen au m²</strong> à comparer au marché, et l'<strong>ancienneté des baux</strong>. Un bail ancien à loyer bas est un potentiel de revalorisation, mais aussi un locataire qu'on ne peut pas augmenter librement.</p>
+
+  <h3><svg class="ic"><use href="#i-scale"/></svg>Deux contraintes réglementaires qui pèsent sur le prix</h3>
+  <div class="grid g2">
+    <div class="card"><h5><svg class="ic"><use href="#i-alert"/></svg>La performance énergétique</h5>
+      <ul>
+        <li>Logements classés <strong>G</strong> : interdits à la location depuis le 1<sup>er</sup> janvier 2025.</li>
+        <li>Classe <strong>F</strong> : interdiction au 1<sup>er</sup> janvier 2028.</li>
+        <li>Classe <strong>E</strong> : interdiction au 1<sup>er</sup> janvier 2034.</li>
+        <li>Vente d'un immeuble en monopropriété classé E, F ou G : un <strong>audit énergétique</strong> s'ajoute au DPE.</li>
+      </ul>
+      <p>Un lot F ou G est un coût de travaux à chiffrer, donc un argument de négociation pour l'acheteur.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-euro"/></svg>L'encadrement des loyers</h5>
+      <p>Dans certaines villes (Paris, Lille, Lyon, Bordeaux, Montpellier, plusieurs territoires de Seine-Saint-Denis…), le loyer ne peut pas dépasser un plafond fixé par arrêté.</p>
+      <p>Un loyer supérieur au plafond est un risque pour l'acheteur : il peut être contraint de le baisser. Le dossier doit le signaler lot par lot.</p>
+      <p><strong>À vérifier à chaque dossier :</strong> le dispositif est expérimental et sa prolongation au-delà de novembre 2026 était en cours de vote à la date de rédaction.</p></div>
+  </div>
+
+  <div class="note fi"><svg class="ic"><use href="#i-layers"/></svg><div><b class="t">Chez France Immeuble : bloc ou découpe ?</b><p>Un immeuble vendu lot par lot se valorise souvent 15 à 25 % au-dessus de sa valeur en bloc, au prix d'un délai plus long et d'un cadre légal lourd (mise en copropriété, droits de préemption des locataires). Nous chiffrons les deux sorties pour le vendeur. Les mandats de découpe sont toujours en honoraires à la charge du vendeur.</p></div></div>
+  <div class="readrow"><button class="btn ghost" data-read="m4">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 5 ============ -->
+<section class="mod" id="m5">
+  <div class="mhead"><span class="mnum">MODULE 5</span><div><h2>Urbanisme et promotion</h2><p>Un immeuble vaut par ses loyers, mais aussi par ce qu'on peut construire sur son terrain. Voici le langage des promoteurs et des marchands de biens.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous calculez une charge foncière et une marge promoteur.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous estimez la constructibilité d'un terrain à partir du PLU.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous savez ce qu'est un permis purgé.</li>
+  </ul></div>
+
+  <h3><svg class="ic"><use href="#i-euro"/></svg>La charge foncière</h3>
+  <p>C'est le coût du terrain <strong>par mètre carré constructible</strong>. On additionne tout ce que coûte le foncier (prix, honoraires, notaire, démolition, dépollution, division, raccordements) et on divise par la surface de plancher réalisable.</p>
+  <p>Les développeurs fonciers connaissent la charge foncière acceptable sur leur secteur, le coût de construction au m² et le prix de revente du neuf. Ces trois chiffres leur donnent la marge en quelques secondes.</p>
+
+  <div class="calc">
+    <h5><svg class="ic"><use href="#i-calc"/></svg>Calculateur promoteur</h5>
+    <p>Exemple du cours : terrain à 500 000 € frais inclus, 100 000 € de frais annexes, 1 500 m² constructibles, revente à 3 500 €/m², construction à 2 500 €/m².</p>
+    <div class="fields">
+      <label for="p-ter">Prix du terrain, frais inclus (€)<input id="p-ter" type="number" value="500000" step="10000" min="0"></label>
+      <label for="p-fra">Frais annexes : démolition, dépollution… (€)<input id="p-fra" type="number" value="100000" step="5000" min="0"></label>
+      <label for="p-sdp">Surface de plancher constructible (m²)<input id="p-sdp" type="number" value="1500" step="50" min="1"></label>
+      <label for="p-pv">Prix de vente du neuf (€/m²)<input id="p-pv" type="number" value="3500" step="50" min="1"></label>
+      <label for="p-cc">Coût de construction (€/m²)<input id="p-cc" type="number" value="2500" step="50" min="0"></label>
+    </div>
+    <div class="out">
+      <div><span>Charge foncière</span><b id="p-o1">–</b></div>
+      <div><span>Marge brute par m²</span><b id="p-o2">–</b></div>
+      <div><span>Marge sur chiffre d'affaires</span><b id="p-o3">–</b></div>
+    </div>
+    <div class="verdict" id="p-v"></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-map"/></svg>Le PLU et ses règles</h3>
+  <p>Le <strong>Plan local d'urbanisme</strong> fixe ce qu'on a le droit de construire dans une commune. Il découpe le territoire en zones (urbaines, à urbaniser, agricoles, naturelles) et donne pour chacune les règles de hauteur, de retrait, d'alignement, d'aspect et d'emprise. Il se consulte en mairie ou sur le Géoportail de l'urbanisme.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Notion</th><th>Définition</th><th>Exemple pour un terrain de 1 000 m²</th></tr></thead>
+    <tbody>
+      <tr><th>Emprise au sol</th><td>Part du terrain que la base du bâtiment peut occuper, en pourcentage. Jamais plus de 100 %.</td><td>70 % → 700 m² au sol</td></tr>
+      <tr><th>Hauteur</th><td>En mètres, souvent complétée par une formule R+x+C : rez-de-chaussée, x étages, combles (ou A pour attique).</td><td>R+2+C = 3 niveaux pleins et un comble</td></tr>
+      <tr><th>Hauteur à l'égout</th><td>Point bas de la toiture, là où se trouve la gouttière.</td><td>9 m</td></tr>
+      <tr><th>Hauteur au faîtage</th><td>Point le plus haut de la toiture.</td><td>12 m</td></tr>
+      <tr><th>Surface de plancher (SDP)</th><td>Surface des planchers clos et couverts, murs intérieurs et cloisons compris. Elle a remplacé la SHON en 2012.</td><td>Voir le calcul ci-dessous</td></tr>
+      <tr><th>Surface habitable</th><td>Surface de plancher sans les murs ni les cloisons, là où la hauteur dépasse 1,80 m.</td><td>Environ 93 % de la SDP</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note key"><svg class="ic"><use href="#i-clock"/></svg><div><b class="t">Deux sigles que vous entendrez encore</b><p><strong>POS</strong> (plan d'occupation des sols) : l'ancêtre du PLU, aujourd'hui caduc. <strong>COS</strong> (coefficient d'occupation des sols) : il donnait la surface constructible en multipliant la surface du terrain (COS de 0,5 sur 1 000 m² = 500 m² de bâti). Il a été supprimé en 2014. Certains vendeurs raisonnent encore avec : ne le confondez pas avec l'emprise au sol.</p></div></div>
+
+  <h4>Méthode : estimer la constructibilité en six lignes</h4>
+  <p>On compte 3 m par niveau, plancher compris. Un étage de combles ne représente que 50 à 70 % de la surface d'un étage courant.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Étape</th><th>Calcul</th><th>Résultat</th></tr></thead>
+    <tbody>
+      <tr><th>1. Emprise au sol</th><td class="num">1 000 × 70 %</td><td class="num">700 m²</td></tr>
+      <tr><th>2. Niveaux pleins</th><td class="num">9 m à l'égout ÷ 3</td><td class="num">3 niveaux</td></tr>
+      <tr><th>3. Niveau de combles</th><td class="num">(12 − 9) ÷ 3</td><td class="num">1 niveau</td></tr>
+      <tr><th>4. Emprise constructible</th><td class="num">(700 × 3) + (700 × 1 × 0,5)</td><td class="num">2 450 m²</td></tr>
+      <tr><th>5. Surface de plancher</th><td class="num">700 × 0,75 + (2 450 − 700) × 0,80</td><td class="num">1 925 m²</td></tr>
+      <tr><th>6. Surface habitable</th><td class="num">1 925 × 0,93</td><td class="num">1 790 m²</td></tr>
+    </tbody>
+  </table></div>
+  <p>Les coefficients 0,75 (rez-de-chaussée) et 0,80 (étages) retirent les halls, cages d'escalier et locaux techniques. Ce sont des ordres de grandeur : seul un architecte donne un chiffre fiable.</p>
+
+  <div class="calc">
+    <h5><svg class="ic"><use href="#i-ruler"/></svg>Calculateur de constructibilité</h5>
+    <p>Reprend la méthode ci-dessus avec vos propres valeurs.</p>
+    <div class="fields">
+      <label for="c-ter">Surface du terrain (m²)<input id="c-ter" type="number" value="1000" step="10" min="0"></label>
+      <label for="c-emp">Emprise au sol autorisée (%)<input id="c-emp" type="number" value="70" step="5" min="0" max="100"></label>
+      <label for="c-ego">Hauteur à l'égout (m)<input id="c-ego" type="number" value="9" step="0.5" min="0"></label>
+      <label for="c-fai">Hauteur au faîtage (m)<input id="c-fai" type="number" value="12" step="0.5" min="0"></label>
+      <label for="c-com">Coefficient des combles (0,5 à 0,7)<input id="c-com" type="number" value="0.5" step="0.05" min="0" max="1"></label>
+    </div>
+    <div class="out">
+      <div><span>Emprise au sol</span><b id="c-o1">–</b></div>
+      <div><span>Niveaux</span><b id="c-o2">–</b></div>
+      <div><span>Surface de plancher</span><b id="c-o3">–</b></div>
+      <div><span>Surface habitable</span><b id="c-o4">–</b></div>
+    </div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-doc"/></svg>Le permis de construire</h3>
+  <p>C'est le dossier, préparé par un architecte, qui décrit ce que l'on veut construire en conformité avec le PLU : plans de masse, plans des niveaux, façades, volet paysager. Il est déposé au <strong>service urbanisme</strong> de la mairie, qui l'instruit.</p>
+  <div class="steps">
+    <div class="step"><i>1</i><svg class="ic"><use href="#i-doc"/></svg><b>Dépôt</b><span>en mairie, puis instruction de quelques mois</span></div>
+    <div class="step"><i>2</i><svg class="ic"><use href="#i-check"/></svg><b>Obtention</b><span>arrêté du maire</span></div>
+    <div class="step"><i>3</i><svg class="ic"><use href="#i-flag"/></svg><b>Affichage</b><span>panneau sur le terrain, constaté par commissaire de justice</span></div>
+    <div class="step"><i>4</i><svg class="ic"><use href="#i-shield"/></svg><b>Permis purgé</b><span>plus aucun recours possible : la condition suspensive est levée</span></div>
+  </div>
+  <p style="margin-top:14px">Les voisins et les tiers ont <strong>deux mois à partir de l'affichage</strong> sur le terrain pour contester. La mairie peut de son côté retirer un permis illégal pendant trois mois. C'est pourquoi on considère en pratique qu'un permis est purgé environ trois mois après son obtention.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Type de recours</th><th>Devant qui</th><th>À savoir</th></tr></thead>
+    <tbody>
+      <tr><th>Recours gracieux</th><td>Le maire qui a délivré le permis</td><td>Le tiers demande à la mairie de retirer le permis. Cette démarche prolonge le délai pour saisir le juge.</td></tr>
+      <tr><th>Recours contentieux</th><td>Le tribunal administratif</td><td>Procédure longue. Elle se termine parfois par un accord financier entre le promoteur et le requérant.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn"><svg class="ic"><use href="#i-alert"/></svg><div><b class="t">Idée reçue</b><p>Un voisin ne peut pas faire annuler un permis parce que l'immeuble lui déplaît. Le recours n'aboutit que si le permis ne respecte pas les règles d'urbanisme.</p></div></div>
+  <div class="readrow"><button class="btn ghost" data-read="m5">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 6 ============ -->
+<section class="mod" id="m6">
+  <div class="mhead"><span class="mnum">MODULE 6</span><div><h2>Le processus de vente</h2><p>Treize étapes, du premier contact à l'avis client. Entre chaque étape, le même travail de fond : préparer les rendez-vous et réunir les pièces.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous situez n'importe quel dossier dans le parcours.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous connaissez les trois mandats et leurs conséquences.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous expliquez à un client ce qui se passe entre l'offre et l'acte.</li>
+  </ul></div>
+
+  <div class="phase">Avant le mandat</div>
+  <div class="steps">
+    <div class="step"><i>01</i><svg class="ic"><use href="#i-phone"/></svg><b>Prise de contact</b><span>Lead entrant par le site ou prospection</span></div>
+    <div class="step"><i>02</i><svg class="ic"><use href="#i-calc"/></svg><b>Appel et estimation</b><span>Définition du projet, visite, avis de valeur</span></div>
+    <div class="step"><i>03</i><svg class="ic"><use href="#i-pen"/></svg><b>Mandat</b><span>Choix du type de mandat et signature</span></div>
+  </div>
+  <div class="phase">Commercialisation</div>
+  <div class="steps">
+    <div class="step"><i>04</i><svg class="ic"><use href="#i-folder"/></svg><b>Dossier complet</b><span>Réunion des pièces, rédaction</span></div>
+    <div class="step"><i>05</i><svg class="ic"><use href="#i-users"/></svg><b>Sélection des acquéreurs</b><span>Dans notre base interne, selon leurs critères</span></div>
+    <div class="step"><i>06</i><svg class="ic"><use href="#i-send"/></svg><b>Envoi offmarket</b><span>Diffusion ciblée du dossier</span></div>
+    <div class="step"><i>07</i><svg class="ic"><use href="#i-eye"/></svg><b>Retours et visites</b><span>Bon de visite, compte rendu au vendeur</span></div>
+    <div class="step"><i>08</i><svg class="ic"><use href="#i-euro"/></svg><b>Offres d'achat</b><span>Écrites, avec prix et conditions</span></div>
+    <div class="step"><i>09</i><svg class="ic"><use href="#i-scale"/></svg><b>Négociation</b><span>Contre-propositions jusqu'à l'accord</span></div>
+  </div>
+  <div class="phase">Sécurisation</div>
+  <div class="steps">
+    <div class="step"><i>10</i><svg class="ic"><use href="#i-lock"/></svg><b>Dataroom</b><span>Toutes les pièces pour le notaire et l'acquéreur</span></div>
+    <div class="step"><i>11</i><svg class="ic"><use href="#i-doc"/></svg><b>Notaire</b><span>Avant-contrat, levée des conditions, acte authentique</span></div>
+  </div>
+  <div class="phase">Clôture</div>
+  <div class="steps">
+    <div class="step"><i>12</i><svg class="ic"><use href="#i-check"/></svg><b>Honoraires</b><span>Perçus le jour de l'acte authentique</span></div>
+    <div class="step"><i>13</i><svg class="ic"><use href="#i-star"/></svg><b>Avis client</b><span>Demander un avis Google et une recommandation</span></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-phone"/></svg>A. Avant le mandat</h3>
+
+  <h4>1. La prospection</h4>
+  <p>Courrier, terrain, téléphone, e-mail, réseaux sociaux : tous les canaux sont bons. Le but n'est pas de vendre un produit au premier contact, c'est de <strong>créer un lien et de comprendre en quoi vous pouvez être utile</strong>.</p>
+  <ol>
+    <li>Présentez-vous et présentez l'agence, en une phrase.</li>
+    <li>Dites pourquoi vous appelez, sans détour.</li>
+    <li>Posez une question précise sur son activité et laissez-le parler.</li>
+    <li>Trouvez le sujet sur lequel vous pouvez montrer votre compétence.</li>
+    <li>Proposez ensuite un dossier, une estimation ou un partenariat.</li>
+  </ol>
+  <div class="script"><b class="t"><svg class="ic"><use href="#i-chat"/></svg>Exemple : un développeur foncier</b><p>« J'ai vu sur votre profil LinkedIn que vous êtes développeur foncier. Nous sommes une agence spécialisée dans la vente d'immeubles et nous avons régulièrement des biens dont le terrain peut accueillir une opération de promotion. Que recherchez-vous exactement en ce moment ? Je pense pouvoir vous proposer des dossiers qui correspondent. »</p></div>
+  <div class="script"><b class="t"><svg class="ic"><use href="#i-chat"/></svg>Exemple : un investisseur</b><p>« J'ai vu que vous étiez investisseur immobilier. Nous sommes spécialisés dans la vente d'immeubles et nous rentrons très régulièrement des biens que nous diffusons en offmarket. Quels types de biens recherchez-vous, pour que je vous envoie les dossiers qui correspondent ? »</p></div>
+  <div class="script"><b class="t"><svg class="ic"><use href="#i-chat"/></svg>Une fois le contact établi</b><p>« Par ailleurs, nous recherchons en permanence des immeubles en monopropriété pour nos clients. Si vous envisagez d'arbitrer un de vos biens, nous avons très probablement un acquéreur. À défaut, nous pouvons vous proposer l'estimation gratuite d'un actif dont vous aimeriez connaître la valeur. »</p></div>
+  <div class="note key"><svg class="ic"><use href="#i-target"/></svg><div><b class="t">À saisir dans le BO après chaque contact</b><p>Nom, prénom, téléphone, e-mail, et la qualification : acheteur, vendeur, apporteur, ou plusieurs à la fois. Pour un acheteur, la recherche détaillée : secteurs, budget minimum et maximum, type d'opération, rendement ou marge visés, type d'immeuble (habitation, bureaux, commerces, logistique).</p></div></div>
+
+  <h4>2. Le contact entrant</h4>
+  <p>Même logique : créer un lien. Cherchez à savoir pourquoi il vous appelle, ce qu'il attend, quel est son projet, pourquoi il vend ou achète. <strong>Le client se fait son opinion dans les premières minutes.</strong> Une bonne question montre plus de professionnalisme qu'un long discours.</p>
+  <p>Avec un acquéreur, prendre la recherche est simple. Avec un vendeur, c'est plus délicat : il ne vous connaît pas et cherche quelqu'un de confiance pour un bien qui vaut parfois plusieurs millions. Il doit être convaincu que vous cherchez à lui apporter le meilleur service, pas à lui soutirer de l'argent.</p>
+  <div class="note ok"><svg class="ic"><use href="#i-scale"/></svg><div><b class="t">L'argent n'est pas un tabou</b><p>Notre commission est un pourcentage : nous avons intérêt, comme le vendeur, à vendre au meilleur prix. Et sans acheteur il n'y a pas de vente : nous avons aussi intérêt à faire aboutir les offres. Tout est une question d'équilibre entre les deux parties.</p></div></div>
+
+  <h4>3. L'estimation</h4>
+  <div class="grid g3">
+    <div class="card"><h5><svg class="ic"><use href="#i-search"/></svg>Avant : préparer</h5><ul><li>Pré-remplir la fiche d'estimation avec les sources en ligne : cadastre, vues aériennes et de rue, PLU, ventes enregistrées (DVF).</li><li>Regarder la concurrence dans le quartier.</li><li>Préparer les réponses aux objections probables.</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-building"/></svg>Sur place : observer</h5><ul><li>Prendre un maximum d'informations.</li><li>Venir avec des supports : fiche d'estimation, fiche mandat, plaquette, barème.</li><li>Demander le prix qu'il espère.</li><li>Ne jamais paraître brouillon.</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-calc"/></svg>Au bureau : chiffrer</h5><ul><li>Rendement actuel et potentiel.</li><li>Constructibilité, état, occupation, emplacement.</li><li>Comparaison avec les ventes et les biens en vente du secteur.</li><li>Faire relire par un collègue.</li></ul></div>
+  </div>
+  <div class="note warn"><svg class="ic"><use href="#i-alert"/></svg><div><b class="t">Règle absolue</b><p>Aucun prix et aucune fourchette au premier rendez-vous. Si vous vous trompez, votre crédibilité est perdue et vous n'aurez plus d'argument. Au mieux, citez le prix d'un immeuble comparable vendu ou en vente à proximité.</p></div></div>
+  <p><strong>La restitution.</strong> Présentez l'estimation de vive voix, document sous les yeux, pour répondre aux objections tout de suite. Si elle a déjà été envoyée, faites le point au plus vite en gardant vos sources à portée de main.</p>
+  <p><strong>Le vendeur est déçu ?</strong> C'est fréquent. Écoutez, puis cherchez la raison : l'a-t-il acheté plus cher, a-t-il besoin d'une somme précise ? Expliquez vos doutes sur son prix, sources à l'appui, et visez un mandat à un prix raisonnable.</p>
+  <div class="grid g2">
+    <div class="card"><div class="sub">Mandat 15 % au-dessus du marché</div><p>Il reçoit des offres, qui ramènent naturellement au prix du marché.</p></div>
+    <div class="card"><div class="sub">Mandat 30 % au-dessus du marché</div><p>Il ne reçoit presque aucune offre. Le bien s'use et le vendeur perd du temps.</p></div>
+  </div>
+  <p>Si le mandat part trop haut, engagez-vous sur deux choses : mettre en avant tous les points forts, et faire des points réguliers pour ajuster la stratégie.</p>
+
+  <h4>4. Le mandat</h4>
+  <p>C'est le contrat qui lie le vendeur (le mandant) et l'agence (le mandataire). Il délimite notre mission et fixe nos honoraires. Il doit être <strong>écrit, signé avant toute négociation, limité dans le temps et inscrit au registre des mandats</strong> avec son numéro. Sans mandat valable, aucune commission n'est due.</p>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Simple</th><th>Exclusif</th><th>Semi-exclusif</th></tr></thead>
+    <tbody>
+      <tr><th>Qui peut vendre</th><td>Plusieurs agences et le propriétaire lui-même</td><td>Notre agence seule</td><td>Notre agence, et le propriétaire pour ses propres contacts</td></tr>
+      <tr><th>Rémunération</th><td>Seule l'agence qui vend est payée</td><td>Honoraires complets</td><td>Honoraires complets si nous vendons ; 50 % si le vendeur trouve lui-même un acquéreur que nous ne lui avons pas présenté (nous gérons alors l'administratif)</td></tr>
+      <tr><th>Délégation à un confrère</th><td class="minus">Non. Un confrère informé ira voir le vendeur en direct</td><td class="plus">Oui. Les confrères passent par nous, jamais par le propriétaire</td><td class="plus">Oui</td></tr>
+      <tr><th>Pour le vendeur</th><td>Sentiment de liberté, mais plusieurs interlocuteurs et un bien qui circule partout</td><td>Un seul interlocuteur, une diffusion maîtrisée, un engagement fort de l'agence</td><td>Le confort de l'exclusif en gardant la main sur son réseau</td></tr>
+      <tr><th>Bon de visite</th><td class="minus">Indispensable à chaque visite</td><td>Recommandé</td><td class="minus">Indispensable</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note fi"><svg class="ic"><use href="#i-star"/></svg><div><b class="t">Chez France Immeuble</b><p>Notre mandat semi-exclusif commence par une phase de test interne de deux à quatre semaines : le dossier est d'abord présenté à notre base d'acquéreurs, avant tout élargissement. L'argument pour le vendeur : son immeuble ne « traîne » pas sur le marché.</p></div></div>
+  <div class="note key"><svg class="ic"><use href="#i-book"/></svg><div><b class="t">À connaître sur l'exclusivité</b><p>Une clause d'exclusivité engage le vendeur pendant trois mois. Passé ce délai, il peut y mettre fin à tout moment par lettre recommandée, avec un préavis de quinze jours.</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-eye"/></svg>B. Après le mandat</h3>
+
+  <h4>1. Le bon de visite</h4>
+  <p>Il prouve que c'est vous qui avez présenté le bien à ce visiteur. Sur un mandat simple, il vous protège si le visiteur tente ensuite de traiter en direct avec le propriétaire ou avec une autre agence. Il mentionne l'identité complète du visiteur : nom, prénom, date de naissance, adresse. Vérifiez la pièce d'identité en cas de doute, et faites-le signer <strong>avant</strong> la visite. Pour une société, notez aussi sa dénomination et la qualité du signataire.</p>
+  <p>Dans la foulée, envoyez un e-mail au propriétaire pour l'informer de la visite.</p>
+
+  <h4>2. Le compte rendu de visite</h4>
+  <p>À remplir systématiquement, avec la typologie de l'acheteur. Il indique ce qui a plu, ce qui a déplu, et le prix auquel le visiteur pourrait faire une offre. Envoyez-le au propriétaire le plus vite possible, avec vos commentaires.</p>
+  <div class="grid g2">
+    <div class="card"><h5><svg class="ic"><use href="#i-shield"/></svg>Il prouve votre travail</h5><p>Le vendeur voit que son bien est présenté et suivi.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-chart"/></svg>Il prépare l'ajustement du prix</h5><p>Dix retours identiques sur le prix valent mieux que votre seul avis.</p></div>
+  </div>
+  <div class="note warn"><svg class="ic"><use href="#i-alert"/></svg><div><b class="t">À ne jamais oublier</b><p>Ne pas faire de point après une visite, ne serait-ce que par téléphone, est très mal vécu par les propriétaires. Ils ont le sentiment de ne pas être tenus au courant.</p></div></div>
+
+  <h4>3. L'offre et la contre-offre</h4>
+  <p>L'offre d'achat est <strong>toujours écrite, datée et signée</strong>. Elle indique le prix, les conditions suspensives, le mode de financement et sa durée de validité. Une offre claire et documentée (justificatif de fonds, accord de principe bancaire) a beaucoup plus de poids.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Situation</th><th>Ce qui se passe</th></tr></thead>
+    <tbody>
+      <tr><th>Le vendeur accepte l'offre</th><td>Il y a accord sur la chose et sur le prix : les deux parties sont engagées. En pratique, l'acquéreur non professionnel d'un bien d'habitation garde son droit de rétractation après l'avant-contrat, et les ventes forcées sont rares.</td></tr>
+      <tr><th>L'offre est inférieure ou conditionnée</th><td>Incitez le vendeur à faire une contre-proposition plutôt qu'à refuser. L'acheteur peut l'accepter, la refuser et maintenir son offre, ou proposer un autre prix. Le cycle recommence jusqu'à l'accord ou la rupture.</td></tr>
+      <tr><th>L'offre est au prix du mandat</th><td>Le vendeur reste libre de refuser : notre mandat est un mandat d'entremise, il ne nous permet pas de l'engager. Et nos honoraires ne sont dus que si la vente est effectivement conclue.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note ok"><svg class="ic"><use href="#i-bulb"/></svg><div><b class="t">L'astuce</b><p>Gardez toujours de côté l'offre la plus haute. Un propriétaire qui refuse aujourd'hui peut se raviser dans quelques semaines.</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-doc"/></svg>C. De l'avant-contrat à l'acte</h3>
+
+  <h4>1. L'avant-contrat</h4>
+  <p>Quand les parties sont d'accord sur le prix, on signe l'avant-contrat. Il peut être signé en agence, mais <strong>nous le faisons chez le notaire</strong> pour que tout soit encadré. Il vaut vente une fois les conditions suspensives levées et le délai de rétractation écoulé.</p>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Compromis de vente</th><th>Promesse unilatérale de vente</th></tr></thead>
+    <tbody>
+      <tr><th>Qui s'engage</th><td>Vendeur et acheteur</td><td>Le vendeur s'engage à vendre ; l'acheteur a une option pendant un délai</td></tr>
+      <tr><th>Somme versée</th><td>Dépôt de garantie, en général 5 à 10 % du prix</td><td>Indemnité d'immobilisation, en général 10 % du prix</td></tr>
+      <tr><th>Où va l'argent</th><td colspan="2">Sur le compte séquestre du notaire jusqu'à l'acte</td></tr>
+      <tr><th>Si l'acheteur renonce sans motif</th><td colspan="2">Après le délai de rétractation, la somme reste acquise au vendeur</td></tr>
+      <tr><th>Si une condition suspensive échoue</th><td colspan="2">La somme est restituée à l'acheteur</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note key"><svg class="ic"><use href="#i-clock"/></svg><div><b class="t">Le délai de rétractation</b><p>Dix jours, pour l'acquéreur non professionnel d'un bien à usage d'habitation. Il court à partir du lendemain de la première présentation de la lettre recommandée qui lui notifie l'acte. Un acquéreur professionnel n'en bénéficie pas.</p></div></div>
+
+  <h4>2. La levée des conditions suspensives</h4>
+  <div class="grid g2">
+    <div class="card"><h5><svg class="ic"><use href="#i-bank"/></svg>Le droit de préemption urbain</h5>
+      <p>Dans les zones où il s'applique, le notaire adresse à la mairie une <strong>déclaration d'intention d'aliéner</strong> (DIA) après la signature de l'avant-contrat. La commune a <strong>deux mois</strong> pour dire si elle achète à la place de l'acquéreur. Son silence vaut renonciation.</p>
+      <p>Si elle préempte au prix, le vendeur est payé et l'agence aussi, à condition que les honoraires figurent dans la DIA. Si elle propose moins, le vendeur peut accepter, maintenir son prix (le juge peut alors être saisi pour le fixer) ou renoncer à vendre.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-users"/></svg>Le droit de préemption des locataires</h5>
+      <p>Pour la vente en bloc d'un immeuble d'habitation ou mixte de <strong>plus de cinq logements</strong>, chaque locataire dispose d'un droit de préemption sur son logement, <strong>sauf si l'acquéreur s'engage à proroger les baux en cours pendant six ans</strong> à compter de l'acte. La liste des locataires concernés est alors annexée à l'acte.</p>
+      <p>À cinq logements ou moins, pas de préemption des locataires en cas de vente en bloc. Les locaux commerciaux ne donnent pas non plus de droit de préférence à leur locataire quand l'immeuble est cédé globalement.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-euro"/></svg>L'obtention du prêt</h5>
+      <p>La banque ne donne son accord définitif qu'une fois l'avant-contrat signé. La condition de prêt protège donc l'acheteur : sans financement, il se retire sans perdre son dépôt.</p>
+      <p>La clause fixe un délai (souvent 45 à 60 jours) et les caractéristiques du prêt. Pour s'en prévaloir, l'acheteur doit justifier de refus de banques conformes à la clause, en général deux. S'il obtient son prêt, il transmet l'accord pour lever la condition.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-crane"/></svg>L'obtention du permis de construire</h5>
+      <p>Demandée quand l'acheteur veut surélever, agrandir ou construire. Le prix d'un terrain dépend de ce qu'on peut bâtir dessus : il est logique que la vente soit suspendue à la possibilité réelle de construire.</p>
+      <p>La condition n'est levée que lorsque le permis est <strong>purgé</strong>, c'est-à-dire à la fin des délais de recours (voir module 5).</p></div>
+  </div>
+  <div class="note key"><svg class="ic"><use href="#i-doc"/></svg><div><b class="t">En cas de vente occupée</b><p>L'acquéreur reprend les baux tels quels. Il récupère les dépôts de garantie et les engagements de caution, et il doit notifier ses coordonnées à chaque locataire. Il engage une relation avec des locataires qu'il n'a pas choisis : d'où l'importance, dans le dossier, du statut de chaque bail et de la solvabilité des occupants.</p></div></div>
+
+  <h4>3. L'acte authentique</h4>
+  <p>Quand toutes les conditions sont levées, le notaire fait signer l'acte authentique. Ce jour-là, l'acheteur devient propriétaire, le vendeur reçoit le prix et l'agence perçoit ses honoraires.</p>
+  <div class="grid g2">
+    <div class="card"><div class="sub">Vente classique</div><div class="kpi">Environ 3 mois</div><p>entre l'avant-contrat et l'acte</p></div>
+    <div class="card"><div class="sub">Avec condition de permis</div><div class="kpi">Jusqu'à 2 ans</div><p>selon l'instruction et les recours</p></div>
+  </div>
+  <div class="readrow"><button class="btn ghost" data-read="m6">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 7 ============ -->
+<section class="mod" id="m7">
+  <div class="mhead"><span class="mnum">MODULE 7</span><div><h2>Techniques de vente</h2><p>Aucune technique ne remplace un dossier maîtrisé. Elles servent à mieux écouter, mieux présenter et mieux conclure.</p></div></div>
+  <div class="goals"><b>À la fin de ce module</b><ul>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous structurez un rendez-vous vendeur pour viser l'exclusivité.</li>
+    <li><svg class="ic"><use href="#i-check"/></svg>Vous traitez les objections les plus courantes.</li>
+  </ul></div>
+
+  <h3><svg class="ic"><use href="#i-key"/></svg>Les cinq principes</h3>
+  <div class="grid g3">
+    <div class="card"><h5><svg class="ic"><use href="#i-ear"/></svg>Comprendre le projet</h5><p>Avant de proposer quoi que ce soit, sachez ce que le client veut et pourquoi.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-target"/></svg>Proposer juste</h5><p>Uniquement les biens qui correspondent vraiment. Un envoi hors cible vous décrédibilise.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-folder"/></svg>Dossier complet</h5><p>Avant de proposer un bien, et toujours avec vous devant le client.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-shield"/></svg>Objections préparées</h5><p>Repérez à l'avance les points bloquants du dossier et préparez une réponse à chacun.</p></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-phone"/></svg>Demander le retour</h5><p>Rappelez après chaque envoi. Un client a pu manquer le dossier ou buter sur un faux problème.</p></div>
+    <div class="card dark"><h5><svg class="ic"><use href="#i-percent"/></svg>La règle du 20/80</h5><p>Vous parlez 20 % du temps, le client 80 %. Questions ouvertes, prise de notes, reformulation.</p></div>
+  </div>
+  <div class="do">
+    <div class="y"><b class="t"><svg class="ic"><use href="#i-check"/></svg>À dire</b><ul><li>« Nous », « on », le nom de l'agence</li><li>Des formulations positives et précises</li><li>Des chiffres sourcés</li><li>Un peu d'humour quand le moment s'y prête</li></ul></div>
+    <div class="n"><b class="t"><svg class="ic"><use href="#i-x"/></svg>À éviter</b><ul><li>« Moi je », « personnellement »</li><li>Les mots négatifs et les critiques des confrères</li><li>Les approximations</li><li>Un ton monotone</li></ul></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-star"/></svg>Le rendez-vous vendeur : viser l'exclusivité</h3>
+  <p>Cette méthode vient de la formation commerciale et repose sur une image olympique. Fixez vos objectifs avant d'entrer.</p>
+  <div class="grid g3">
+    <div class="card dark"><div class="sub" style="color:#D9BF7D">Médaille d'or</div><p>Le mandat exclusif.</p></div>
+    <div class="card"><div class="sub">Médaille d'argent</div><p>Le mandat simple.</p></div>
+    <div class="card"><div class="sub">Médaille de bronze</div><p>Un prochain rendez-vous daté pour signer.</p></div>
+  </div>
+  <div class="steps">
+    <div class="step"><i>1</i><svg class="ic"><use href="#i-target"/></svg><b>Fixer l'objectif</b><span>L'exclusivité en ligne de mire dès la préparation</span></div>
+    <div class="step"><i>2</i><svg class="ic"><use href="#i-chat"/></svg><b>S'asseoir d'abord</b><span>Un quart d'heure d'échange avant de visiter : motivations, urgence, éléments pour la négociation</span></div>
+    <div class="step"><i>3</i><svg class="ic"><use href="#i-search"/></svg><b>Questionner sur les confrères</b><span>Qui a-t-il vu ? Qui doit-il voir ? Sur quels critères choisit-il ?</span></div>
+    <div class="step"><i>4</i><svg class="ic"><use href="#i-building"/></svg><b>Visiter en positif</b><span>Atouts, puis défauts si le prix espéré est trop haut, puis atout : c'est le « sandwich »</span></div>
+    <div class="step"><i>5</i><svg class="ic"><use href="#i-pen"/></svg><b>Se rasseoir pour conclure</b><span>Laissez votre sacoche sur la table pour y revenir naturellement</span></div>
+    <div class="step"><i>6</i><svg class="ic"><use href="#i-flag"/></svg><b>Or, or, argent, bronze</b><span>Proposer l'exclusif, le reproposer après l'objection, puis le simple, puis un rendez-vous</span></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-users"/></svg>Le déroulé d'un entretien client</h3>
+  <ol>
+    <li><strong>Préparer :</strong> se renseigner sur le lieu, le quartier, l'interlocuteur.</li>
+    <li><strong>Se présenter :</strong> prénom, nom, fonction, France Immeuble.</li>
+    <li><strong>Briser la glace :</strong> un sujet hors affaire, tiré du lieu ou de la préparation.</li>
+    <li><strong>Créer la confiance :</strong> présenter l'agence, sa spécialité, sa méthode, avec un support.</li>
+    <li><strong>Découvrir :</strong> besoins et budget, par des questions ouvertes, en prenant des notes.</li>
+    <li><strong>Reformuler :</strong> « Si je résume, vous cherchez… »</li>
+    <li><strong>Présenter :</strong> les biens ou le service qui répondent exactement à ce qui a été dit.</li>
+    <li><strong>Conclure :</strong> une prochaine étape datée, jamais « on se rappelle ».</li>
+    <li><strong>Consolider :</strong> revenir sur le projet du client, répondre aux dernières questions, fixer le suivi.</li>
+  </ol>
+
+  <h3><svg class="ic"><use href="#i-shield"/></svg>Répondre aux objections</h3>
+  <p>Deux leviers : apporter une <strong>solution</strong> au problème, ou le <strong>compenser</strong> par un point fort.</p>
+  <div class="tw"><table>
+    <thead><tr><th>L'acheteur dit</th><th>Votre réponse</th></tr></thead>
+    <tbody>
+      <tr><th>« Il y a trop de travaux »</th><td>Un devis chiffré joint au dossier. Le montant devient un élément de calcul et non une crainte.</td></tr>
+      <tr><th>« C'est loin des transports »</th><td>Un fait local : la plupart des habitants se déplacent en voiture, le stationnement est facile, le taux d'occupation est bon.</td></tr>
+      <tr><th>« Il y a un lot vacant »</th><td>Le loyer de marché et le délai moyen de relocation du secteur : la vacance devient un potentiel.</td></tr>
+      <tr><th>« C'est trop cher »</th><td>« À quel prix l'opération fonctionne-t-elle pour vous ? » Puis encouragez une offre écrite.</td></tr>
+      <tr><th>« Je vais réfléchir »</th><td>« Bien sûr. Sur quel point précis souhaitez-vous réfléchir ? » Puis fixez une date de rappel.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note ok"><svg class="ic"><use href="#i-bulb"/></svg><div><b class="t">Quand le prix bloque</b><p>Une offre basse n'est jamais perdue. Au mieux elle passe. Au pire, elle devient votre meilleur argument pour obtenir une baisse de prix du vendeur.</p></div></div>
+
+  <h3><svg class="ic"><use href="#i-bulb"/></svg>La technique de la « porte au nez »</h3>
+  <p>Des expériences de psychologie sociale l'ont montré : une personne accepte bien plus facilement une demande raisonnable si elle vient de refuser une demande beaucoup plus coûteuse. Dans l'expérience la plus connue, le taux d'acceptation passait d'environ 17 % à 50 %.</p>
+  <p><strong>Application :</strong> c'est la logique « or, or, argent, bronze ». Vous demandez d'abord l'exclusivité. Si elle est refusée, le mandat simple ou le rendez-vous de signature paraît une concession naturelle. La technique fonctionne à condition que la première demande soit sincère et défendable.</p>
+  <div class="readrow"><button class="btn ghost" data-read="m7">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 8 ============ -->
+<section class="mod" id="m8">
+  <div class="mhead"><span class="mnum">MODULE 8</span><div><h2>Les règles d'or</h2><p>Ce qu'il faut retenir si vous ne deviez garder qu'une page.</p></div></div>
+
+  <div class="note fi"><svg class="ic"><use href="#i-star"/></svg><div><b class="t">L'état d'esprit</b><p>Être le meilleur vous rendra riche. Essayer de vendre à tout prix vous fera perdre votre image et vous rendra moyen. Professionnalisme, rigueur, énergie et dévouement : le client vous le rend en recommandations, en parrainages et en avis.</p></div></div>
+
+  <div class="do">
+    <div class="y"><b class="t"><svg class="ic"><use href="#i-check"/></svg>Toujours</b><ul>
+      <li>Qualifier chaque contact et le saisir dans le BO</li>
+      <li>Vérifier qui est propriétaire et qui peut signer</li>
+      <li>Avoir un mandat écrit et enregistré avant de commercialiser</li>
+      <li>Compléter le dossier avant de le diffuser</li>
+      <li>Faire signer le bon de visite avant d'entrer</li>
+      <li>Rendre compte au vendeur après chaque visite</li>
+      <li>Obtenir les offres par écrit</li>
+      <li>Rappeler les acquéreurs pour avoir leur retour</li>
+      <li>Faire challenger son estimation par un collègue</li>
+      <li>Demander un avis client après la vente</li>
+    </ul></div>
+    <div class="n"><b class="t"><svg class="ic"><use href="#i-x"/></svg>Jamais</b><ul>
+      <li>Donner un prix au premier rendez-vous</li>
+      <li>Prendre un mandat très au-dessus du marché sans plan d'ajustement</li>
+      <li>Parler d'un mandat simple à un confrère</li>
+      <li>Envoyer un dossier à un acquéreur hors cible</li>
+      <li>Laisser un vendeur sans nouvelles</li>
+      <li>Critiquer un confrère devant un client</li>
+      <li>Promettre un délai ou un prix que vous ne maîtrisez pas</li>
+      <li>Communiquer le nom d'un locataire à un tiers</li>
+      <li>Dire « immeubles vendus » pour nos 365 immeubles traités</li>
+      <li>Donner un avis juridique ou fiscal à la place du notaire</li>
+    </ul></div>
+  </div>
+
+  <h3><svg class="ic"><use href="#i-folder"/></svg>Les pièces à réunir pour un dossier</h3>
+  <div class="grid g3">
+    <div class="card"><h5><svg class="ic"><use href="#i-doc"/></svg>Juridique</h5><ul><li>Titre de propriété</li><li>Kbis et statuts si société</li><li>Références cadastrales</li><li>Règlement de copropriété s'il existe</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-layers"/></svg>Locatif</h5><ul><li>État locatif à jour</li><li>Baux et avenants</li><li>Quittances récentes</li><li>Situation des impayés</li><li>Dépôts de garantie</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-chart"/></svg>Financier</h5><ul><li>Taxe foncière</li><li>Charges et contrats d'entretien</li><li>Assurance de l'immeuble</li><li>Travaux réalisés et factures</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-search"/></svg>Technique</h5><ul><li>DPE et diagnostics</li><li>Audit énergétique si E, F ou G</li><li>Plans et surfaces</li><li>Devis des travaux à prévoir</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-map"/></svg>Urbanisme</h5><ul><li>Zonage et règlement du PLU</li><li>Droit de préemption applicable</li><li>Encadrement des loyers</li><li>Permis ou études existants</li></ul></div>
+    <div class="card"><h5><svg class="ic"><use href="#i-eye"/></svg>Visuel</h5><ul><li>Photos extérieures et intérieures</li><li>Parties communes</li><li>Toiture et cave si accessibles</li><li>Environnement immédiat</li></ul></div>
+  </div>
+  <div class="note warn"><svg class="ic"><use href="#i-lock"/></svg><div><b class="t">Confidentialité</b><p>Les baux contiennent des données personnelles. Dans un dossier diffusé, les noms des locataires sont masqués. Les baux complets ne sont transmis qu'à un acquéreur engagé, par la dataroom.</p></div></div>
+  <div class="readrow"><button class="btn ghost" data-read="m8">Marquer ce module comme lu</button></div>
+</section>
+
+<!-- ============ MODULE 9 ============ -->
+<section class="mod" id="m9">
+  <div class="mhead"><span class="mnum">MODULE 9</span><div><h2>Quiz final</h2><p>Douze questions pour vérifier vos acquis. Chaque réponse est expliquée.</p></div></div>
+  <div id="quiz"></div>
+  <div class="score"><div>Votre score : <b id="sc">0 / 12</b> <span id="scmsg"></span></div><button class="btn" id="reset">Recommencer le quiz</button></div>
+</section>
+
+<footer>
+  <p>Support de formation interne France Immeuble. Version de novembre 2026.</p>
+  <p>Les règles juridiques sont résumées pour la pédagogie et évoluent régulièrement. En cas de doute sur un dossier, la réponse appartient au notaire ou à l'avocat.</p>
+</footer>
+</div>
+</main>
+
+<script>
+(function(){
+  var MODS=['m1','m2','m3','m4','m5','m6','m7','m8','m9'];
+  var KEY='fi-formation-lus';
+  var read={};
+  try{read=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){read={}}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(read))}catch(e){}}
+  function paint(){
+    var n=0;
+    MODS.forEach(function(m){
+      var a=document.querySelector('#nav a[data-m="'+m+'"]');
+      if(read[m]){n++;a.classList.add('read')}else{a.classList.remove('read')}
+      var b=document.querySelector('button[data-read="'+m+'"]');
+      if(b){b.textContent=read[m]?'Module lu. Annuler':'Marquer ce module comme lu'}
+    });
+    document.getElementById('progtxt').textContent=n+(n>1?' modules lus':' module lu')+' sur '+MODS.length;
+    document.getElementById('progbar').style.width=(n/MODS.length*100)+'%';
+  }
+  document.querySelectorAll('button[data-read]').forEach(function(b){
+    b.addEventListener('click',function(){var m=b.getAttribute('data-read');read[m]=!read[m];save();paint()});
+  });
+  document.querySelectorAll('#nav a').forEach(function(a){
+    a.addEventListener('click',function(e){
+      var t=document.getElementById(a.getAttribute('data-m'));
+      if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'})}
+    });
+  });
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(en){
+        if(en.isIntersecting){
+          document.querySelectorAll('#nav a').forEach(function(a){a.classList.toggle('on',a.getAttribute('data-m')===en.target.id)});
+        }
+      });
+    },{rootMargin:'-20% 0px -70% 0px'});
+    MODS.forEach(function(m){io.observe(document.getElementById(m))});
+  }
+
+  /* ----- Calculateurs ----- */
+  var nf0=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0});
+  var nf1=new Intl.NumberFormat('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1});
+  function v(id){var x=parseFloat(document.getElementById(id).value);return isFinite(x)?x:0}
+  function set(id,t){document.getElementById(id).textContent=t}
+  function pct(x){return isFinite(x)?nf1.format(x*100)+' %':'–'}
+
+  function rendement(prix,loy,ch,fr){
+    var aem=prix*(1+fr/100);
+    return {brut:loy/prix,aem:aem,brutAem:loy/aem,net:(loy-ch)/aem};
+  }
+  function promoteur(ter,fra,sdp,pv,cc){
+    var cf=(ter+fra)/sdp,marge=pv-cc-cf;
+    return {cf:cf,marge:marge,taux:marge/pv};
+  }
+  function construct(ter,emp,ego,fai,com){
+    var sol=ter*emp/100;
+    var pleins=Math.floor(ego/3+1e-9);
+    var combles=(fai-ego)>=3?1:0;
+    var ec=sol*pleins+sol*combles*com;
+    var sdp=pleins>0?sol*0.75+(ec-sol)*0.80:0;
+    return {sol:sol,pleins:pleins,combles:combles,ec:ec,sdp:sdp,hab:sdp*0.93};
+  }
+  function calcR(){
+    var prix=v('r-prix');if(prix<=0){['r-o1','r-o2','r-o3','r-o4'].forEach(function(i){set(i,'–')});return}
+    var r=rendement(prix,v('r-loy'),v('r-ch'),v('r-fr'));
+    set('r-o1',pct(r.brut));set('r-o2',nf0.format(r.aem)+' €');set('r-o3',pct(r.brutAem));set('r-o4',pct(r.net));
+  }
+  function calcP(){
+    var sdp=v('p-sdp'),pv=v('p-pv');
+    if(sdp<=0||pv<=0){['p-o1','p-o2','p-o3'].forEach(function(i){set(i,'–')});set('p-v','');return}
+    var r=promoteur(v('p-ter'),v('p-fra'),sdp,pv,v('p-cc'));
+    set('p-o1',nf0.format(r.cf)+' €/m²');set('p-o2',nf0.format(r.marge)+' €/m²');set('p-o3',pct(r.taux));
+    set('p-v',r.taux>=0.15?'La marge atteint le seuil de 15 % : l\'opération est finançable pour un promoteur.':'La marge est sous le seuil de 15 % : à ce prix de terrain, un promoteur ne suivra pas.');
+  }
+  function calcC(){
+    var r=construct(v('c-ter'),v('c-emp'),v('c-ego'),v('c-fai'),v('c-com'));
+    set('c-o1',nf0.format(r.sol)+' m²');
+    set('c-o2',r.pleins+(r.pleins>1?' pleins':' plein')+(r.combles?' + 1 comble':''));
+    set('c-o3',nf0.format(r.sdp)+' m²');set('c-o4',nf0.format(r.hab)+' m²');
+  }
+  ['r-prix','r-loy','r-ch','r-fr'].forEach(function(i){document.getElementById(i).addEventListener('input',calcR)});
+  ['p-ter','p-fra','p-sdp','p-pv','p-cc'].forEach(function(i){document.getElementById(i).addEventListener('input',calcP)});
+  ['c-ter','c-emp','c-ego','c-fai','c-com'].forEach(function(i){document.getElementById(i).addEventListener('input',calcC)});
+  calcR();calcP();calcC();
+
+  /* ----- Quiz ----- */
+  var Q=[
+   {q:"Un investisseur achète un immeuble à Paris à 3,5 % de rendement. Que recherche-t-il avant tout ?",o:["Un cash-flow mensuel immédiat","La plus-value à long terme et la qualité de l'emplacement","Une revente à la découpe dans l'année"],a:1,e:"C'est le profil patrimonial : il dispose déjà d'un patrimoine et mise sur l'emplacement et le bâti."},
+   {q:"Un immeuble est proposé à 1 200 000 € et rapporte 96 000 € de loyers annuels. Quel est son rendement brut ?",o:["6 %","8 %","12,5 %"],a:1,e:"96 000 ÷ 1 200 000 = 8 %."},
+   {q:"Au premier rendez-vous d'estimation, le vendeur vous demande « une idée du prix ». Que faites-vous ?",o:["Vous donnez une fourchette large pour ne pas le frustrer","Vous ne donnez ni prix ni fourchette, et citez au mieux un bien comparable du secteur","Vous donnez le prix qu'il espère pour obtenir le mandat"],a:1,e:"Aucun prix avant d'avoir réellement fait l'estimation : une erreur vous coûte votre crédibilité."},
+   {q:"Quel type d'acheteur demande presque toujours une condition suspensive de permis de construire purgé ?",o:["L'investisseur patrimonial","Le promoteur","Le bailleur social"],a:1,e:"Le promoteur n'achète que s'il est certain de pouvoir construire. La vente peut durer plus de deux ans."},
+   {q:"Terrain à 500 000 € frais inclus, 100 000 € de frais annexes, 1 500 m² de surface de plancher. Quelle est la charge foncière ?",o:["333 €/m²","400 €/m²","600 €/m²"],a:1,e:"(500 000 + 100 000) ÷ 1 500 = 400 €/m²."},
+   {q:"Sur un mandat simple, quel document faut-il faire signer avant chaque visite ?",o:["Le compte rendu de visite","Le bon de visite","L'offre d'achat"],a:1,e:"Le bon de visite prouve que vous avez présenté le bien à ce visiteur. Le compte rendu, lui, est destiné au vendeur après la visite."},
+   {q:"Vente en bloc d'un immeuble d'habitation : à partir de combien de logements les locataires ont-ils un droit de préemption, sauf prorogation des baux de six ans ?",o:["Plus de deux logements","Plus de cinq logements","Plus de vingt logements"],a:1,e:"Le seuil est de plus de cinq logements. L'acquéreur évite la préemption en s'engageant à proroger les baux six ans."},
+   {q:"Un acquéreur fait une offre exactement au prix du mandat. Le vendeur est-il obligé d'accepter ?",o:["Oui, sinon il doit les honoraires à l'agence","Non, il reste libre de refuser et les honoraires ne sont dus que si la vente est conclue","Oui, mais seulement en mandat exclusif"],a:1,e:"Le mandat d'entremise ne permet pas à l'agence d'engager le vendeur, et aucune rémunération n'est due sans vente effectivement conclue."},
+   {q:"Quel est le délai de rétractation d'un particulier qui achète un immeuble d'habitation ?",o:["7 jours","10 jours","1 mois"],a:1,e:"Dix jours à compter du lendemain de la première présentation de la lettre recommandée."},
+   {q:"En rendez-vous, quelle part du temps de parole doit revenir au client ?",o:["Environ 20 %","Environ 50 %","Environ 80 %"],a:2,e:"Vous parlez 20 %, il parle 80 %. C'est en écoutant que vous obtenez les informations utiles."},
+   {q:"Un acheteur trouve le bien trop cher. Quel est le bon réflexe ?",o:["Clore le dossier avec lui","L'encourager à indiquer son prix et à faire une offre écrite","Lui promettre que le vendeur baissera"],a:1,e:"Au mieux l'offre passe. Au pire, elle sert d'argument auprès du vendeur pour ajuster le prix."},
+   {q:"Dans un mandat semi-exclusif, que se passe-t-il si le vendeur trouve lui-même un acquéreur que nous ne lui avons pas présenté ?",o:["Nous ne touchons rien","Nous gérons la partie administrative et percevons 50 % de la commission","Nous percevons la totalité de la commission"],a:1,e:"C'est la contrepartie de la liberté laissée au vendeur de vendre par son propre réseau."}
+  ];
+  var score=0,answered=0;
+  function build(){
+    var box=document.getElementById('quiz');box.innerHTML='';score=0;answered=0;
+    Q.forEach(function(it,i){
+      var d=document.createElement('div');d.className='q';
+      var p=document.createElement('p');p.className='qq';p.textContent=(i+1)+'. '+it.q;d.appendChild(p);
+      var o=document.createElement('div');o.className='opts';
+      it.o.forEach(function(txt,j){
+        var b=document.createElement('button');b.type='button';b.textContent=txt;
+        b.addEventListener('click',function(){
+          if(d.classList.contains('done'))return;
+          d.classList.add('done');answered++;
+          var bs=o.querySelectorAll('button');
+          bs.forEach(function(x){x.disabled=true});
+          bs[it.a].classList.add('good');
+          if(j===it.a){score++}else{b.classList.add('bad')}
+          upd();
+        });
+        o.appendChild(b);
+      });
+      d.appendChild(o);
+      var e=document.createElement('div');e.className='exp';e.textContent=it.e;d.appendChild(e);
+      box.appendChild(d);
+    });
+    upd();
+  }
+  function upd(){
+    set('sc',score+' / '+Q.length);
+    var m='';
+    if(answered===Q.length){
+      m=score>=10?'Excellent, vous êtes prêt pour le terrain.':score>=7?'Bonne base. Relisez les modules où vous avez hésité.':'Reprenez les modules 4 à 6 avant de recommencer.';
+      if(score>=10&&!read.m9){read.m9=true;save();paint()}
+    }
+    set('scmsg',m);
+  }
+  document.getElementById('reset').addEventListener('click',build);
+  build();paint();
+})();
+</script>
+</body>
+</html>
