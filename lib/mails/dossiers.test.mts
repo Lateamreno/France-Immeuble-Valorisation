@@ -1,0 +1,50 @@
+import { choisirDossiers, rolesADepartager, type Candidat } from "./dossiers.ts";
+
+let ko = 0;
+const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };
+
+console.log("— Quel dossier tient quel rôle —");
+
+/* La boîte de MAV : deux dossiers d'envoi, aucun attribut spécial. */
+const mav: Candidat[] = [
+  { role: "brouillons", chemin: "Brouillons", special: false },
+  { role: "corbeille", chemin: "Deleted Items", special: false },
+  { role: "brouillons", chemin: "Drafts", special: false },
+  { role: "envoyes", chemin: "Éléments envoyés", special: false },
+  { role: "indesirables", chemin: "Junk Email", special: false },
+  { role: "envoyes", chemin: "Sent Items", special: false },
+];
+ok(rolesADepartager(mav).sort().join() === "brouillons,envoyes", "deux dossiers pour un rôle, sans attribut : il faut compter");
+const comptes = mav.map((c) => ({
+  ...c,
+  messages: { "Sent Items": 8400, "Éléments envoyés": 310, Drafts: 79, Brouillons: 2 }[c.chemin],
+}));
+const choix = choisirDossiers(comptes);
+ok(choix.envoyes === "Sent Items", "le vrai dossier d'envoi est celui qui contient le plus de messages");
+ok(choix.brouillons === "Drafts", "de même pour les brouillons");
+ok(choix.corbeille === "Deleted Items" && choix.indesirables === "Junk Email", "un seul candidat : c'est lui");
+
+ok(choisirDossiers(mav).envoyes === "Éléments envoyés", "sans compte, le premier de la liste, comme avant");
+
+/* Un serveur qui désigne lui-même le dossier : on le croit, quel que soit le nombre. */
+const designe: Candidat[] = [
+  { role: "envoyes", chemin: "Envoyés perso", special: false, messages: 9000 },
+  { role: "envoyes", chemin: "Sent", special: true, messages: 3 },
+];
+ok(rolesADepartager(designe).length === 0, "attribut spécial présent : rien à compter");
+ok(choisirDossiers(designe).envoyes === "Sent", "l'attribut spécial du serveur l'emporte");
+
+/* La boîte de Romain : tout en français, un seul dossier par rôle. */
+const romain: Candidat[] = [
+  { role: "envoyes", chemin: "Éléments envoyés", special: false },
+  { role: "corbeille", chemin: "Éléments supprimés", special: false },
+];
+ok(rolesADepartager(romain).length === 0 && choisirDossiers(romain).envoyes === "Éléments envoyés", "un seul dossier d'envoi en français : il reste retenu");
+
+const egal: Candidat[] = [
+  { role: "envoyes", chemin: "A", special: false, messages: 5 },
+  { role: "envoyes", chemin: "B", special: false, messages: 5 },
+];
+ok(choisirDossiers(egal).envoyes === "A", "à égalité, le premier de la liste");
+
+if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }

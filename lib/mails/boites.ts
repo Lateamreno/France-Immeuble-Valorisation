@@ -120,6 +120,18 @@ function versBoite(l: LigneBoite): Boite | null {
   };
 }
 
+/** Garde les chemins des dossiers qu'une boîte vient de réapprendre. */
+export async function memoriserDossiers(agentId: string, dossiers: Record<string, string>): Promise<void> {
+  if (!SB_KEY) return;
+  const res = await fetch(`${SB_URL}/rest/v1/fi_boite_agent?agent_id=eq.${encodeURIComponent(agentId)}`, {
+    method: "PATCH",
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ dossiers, maj_le: new Date().toISOString() }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Écriture ${res.status}`);
+}
+
 /* ------------------------------------------------- résolution --- */
 
 /**

@@ -17,7 +17,12 @@ import type { Boite } from "@/lib/mails/boites";
 
 /* ------------------------------------------------------- dossiers --- */
 
-export type RoleDossier = "reception" | "envoyes" | "brouillons" | "indesirables" | "corbeille";
+import {
+  CLE_VERSION, VERSION_DOSSIERS, choisirDossiers, rolesADepartager, type Candidat, type RoleDossier,
+} from "@/lib/mails/dossiers";
+import { memoriserDossiers } from "@/lib/mails/boites";
+
+export type { RoleDossier };
 
 export type Dossier = {
   role: RoleDossier | null;
@@ -47,16 +52,45 @@ const PAR_NOM: [RegExp, RoleDossier][] = [
   [/(trash|deleted|corbeille|supprim)/i, "corbeille"],
 ];
 
-function roleDe(d: ListResponse): RoleDossier | null {
-  if (d.path.toUpperCase() === "INBOX") return "reception";
+/** Le rôle d'un dossier, et si c'est le serveur lui-même qui le désigne. */
+function roleEtOrigine(d: ListResponse): { role: RoleDossier; special: boolean } | null {
+  if (d.path.toUpperCase() === "INBOX") return { role: "reception", special: true };
   for (const f of d.flags ?? []) {
     const r = PAR_ATTRIBUT[f as string];
-    if (r) return r;
+    if (r) return { role: r, special: true };
   }
-  if (d.specialUse && PAR_ATTRIBUT[d.specialUse]) return PAR_ATTRIBUT[d.specialUse];
+  if (d.specialUse && PAR_ATTRIBUT[d.specialUse]) return { role: PAR_ATTRIBUT[d.specialUse], special: true };
   const feuille = d.path.split(d.delimiter || "/").pop() ?? d.path;
-  for (const [re, r] of PAR_NOM) if (re.test(feuille)) return r;
+  for (const [re, r] of PAR_NOM) if (re.test(feuille)) return { role: r, special: false };
   return null;
+}
+
+function roleDe(d: ListResponse): RoleDossier | null {
+  return roleEtOrigine(d)?.role ?? null;
+}
+
+const selectionnable = (d: ListResponse) => !(d.flags as Set<string> | undefined)?.has("\\Noselect");
+
+/**
+ * Le dossier de chaque rôle, tel que la boîte le tient vraiment.
+ *
+ * Deux dossiers peuvent prétendre au même rôle (un « Éléments envoyés » laissé
+ * par un ancien logiciel à côté du vrai « Sent Items ») : on compte alors les
+ * messages, voir lib/mails/dossiers.
+ */
+async function decouvrir(c: ImapFlow, liste?: ListResponse[]): Promise<Record<string, string>> {
+  const dossiers = (liste ?? await c.list()).filter(selectionnable);
+  const candidats: Candidat[] = [];
+  for (const d of dossiers) {
+    const r = roleEtOrigine(d);
+    if (r) candidats.push({ role: r.role, chemin: d.path, special: r.special });
+  }
+  const aCompter = rolesADepartager(candidats);
+  for (const cand of candidats) {
+    if (!aCompter.includes(cand.role)) continue;
+    cand.messages = await c.status(cand.chemin, { messages: true }).then((s) => s.messages ?? 0, () => 0);
+  }
+  return { ...choisirDossiers(candidats), reception: "INBOX" };
 }
 
 /* ------------------------------------------------------ connexion --- */
@@ -211,7 +245,9 @@ export type Entete = {
   pj: number;
 };
 
-export type Verdict = { ok: true; dossiers: Dossier[]; adresse: string } | { ok: false; erreur: string };
+export type Verdict =
+  | { ok: true; dossiers: Dossier[]; /** Le chemin retenu pour chaque rôle. */ retenus: Record<string, string>; adresse: string }
+  | { ok: false; erreur: string };
 
 /** Teste la connexion et découvre les dossiers. C'est le bouton « Vérifier ». */
 export async function verifier(b: Boite): Promise<Verdict> {
@@ -221,14 +257,16 @@ export async function verifier(b: Boite): Promise<Verdict> {
        répondrait « ça marche » quoi qu'on tape. */
     return await avecNeuf(b, async (c) => {
       const liste = await c.list();
+      const retenus = await decouvrir(c, liste);
+      /* Un dossier qui porte un rôle sans être celui retenu (le doublon) est
+         montré comme un dossier ordinaire : c'est ce qu'il est. */
       const dossiers: Dossier[] = liste
-        .filter((d) => !(d.flags as Set<string> | undefined)?.has("\\Noselect"))
-        .map((d) => ({
-          role: roleDe(d),
-          chemin: d.path,
-          nom: d.name || d.path,
-        }));
-      return { ok: true as const, dossiers, adresse: b.adresse };
+        .filter(selectionnable)
+        .map((d) => {
+          const role = roleDe(d);
+          return { role: role && retenus[role] === d.path ? role : null, chemin: d.path, nom: d.name || d.path };
+        });
+      return { ok: true as const, dossiers, retenus, adresse: b.adresse };
     });
   } catch (e) {
     return { ok: false as const, erreur: messageClair(e) };
@@ -260,12 +298,23 @@ export function messageClair(e: unknown): string {
 }
 
 /** Le chemin réel d'un rôle, découvert à la volée si on ne l'a pas déjà. */
-async function chemin(c: ImapFlow, role: RoleDossier, connus?: Record<string, string>) {
-  if (connus?.[role]) return connus[role];
+async function chemin(c: ImapFlow, role: RoleDossier, b: Boite): Promise<string | undefined> {
   if (role === "reception") return "INBOX";
-  const liste = await c.list();
-  const trouve = liste.find((d) => roleDe(d) === role);
-  return trouve?.path;
+  /* Des chemins appris avec une règle plus ancienne (le premier dossier venu)
+     se réapprennent une fois, puis sont gardés : c'est ce qui remet les
+     copies de MAV dans son vrai « Sent Items » sans qu'il ait rien à refaire. */
+  if (b.dossiers?.[CLE_VERSION] !== VERSION_DOSSIERS) await reapprendre(c, b);
+  return b.dossiers?.[role];
+}
+
+/** Redemande ses dossiers à la boîte, et les garde pour la suite. */
+async function reapprendre(c: ImapFlow, b: Boite) {
+  b.dossiers = { ...(await decouvrir(c)), [CLE_VERSION]: VERSION_DOSSIERS };
+  if (b.origine === "base") {
+    await memoriserDossiers(b.agentId, b.dossiers).catch((e) => {
+      console.error(`[mails] dossiers de ${b.adresse} non mémorisés :`, e instanceof Error ? e.message : e);
+    });
+  }
 }
 
 export type Page = {
@@ -289,7 +338,7 @@ export async function listerMessages(
   combien = 40,
 ): Promise<Page> {
   return avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     const boite = await c.mailboxOpen(ch, { readOnly: true });
     const total = boite.exists;
     if (total === 0) return { messages: [], total: 0, nonLus: 0, chemin: ch };
@@ -420,7 +469,7 @@ export async function chercherEchanges(
   const liste = [...new Set(adresses.map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")))];
   if (liste.length === 0) return [];
   return avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     await c.mailboxOpen(ch, { readOnly: true });
     const critere = { or: liste.flatMap((a) => [{ from: a }, { to: a }, { cc: a }]) };
     const uids = (await c.search(depuis ? { ...critere, since: depuis } : critere, { uid: true })) || [];
@@ -538,7 +587,7 @@ export async function lireMessage(
   marquerLu = true,
 ): Promise<MessageComplet | null> {
   return avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     await c.mailboxOpen(ch, { readOnly: !marquerLu });
 
     /* On demande d'abord la STRUCTURE, pas le message.
@@ -661,7 +710,7 @@ export async function telechargerPiece(
   b: Boite, role: RoleDossier, uid: number, part: string,
 ): Promise<{ nom: string; type: string; contenu: Buffer } | null> {
   return avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     await c.mailboxOpen(ch, { readOnly: true });
     const d = await c.download(String(uid), part, { uid: true, maxBytes: 25 * 1024 * 1024 });
     if (!d?.content) return null;
@@ -679,7 +728,7 @@ export async function telechargerPiece(
 export async function marquerLus(b: Boite, role: RoleDossier, uids: number[], lu: boolean) {
   if (uids.length === 0) return;
   await avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     await c.mailboxOpen(ch);
     const liste = uids.join(",");
     if (lu) await c.messageFlagsAdd(liste, ["\\Seen"], { uid: true });
@@ -698,8 +747,8 @@ export async function marquerLus(b: Boite, role: RoleDossier, uids: number[], lu
 export async function deplacer(b: Boite, role: RoleDossier, uids: number[], vers: RoleDossier) {
   if (uids.length === 0) return;
   await avec(b, async (c) => {
-    const source = (await chemin(c, role, b.dossiers)) ?? "INBOX";
-    const cible = await chemin(c, vers, b.dossiers);
+    const source = (await chemin(c, role, b)) ?? "INBOX";
+    const cible = await chemin(c, vers, b);
     if (!cible) throw new Error(`Ce compte n'a pas de dossier « ${vers} ».`);
     if (cible === source) return;
     await c.mailboxOpen(source);
@@ -771,7 +820,7 @@ export async function envoyerDepuis(b: Boite, m: {
   try {
     const brut = await composerMessage({ ...options, messageId: String(info.messageId ?? m.messageId ?? "") });
     await avec(b, async (c) => {
-      const ch = await chemin(c, "envoyes", b.dossiers);
+      const ch = await chemin(c, "envoyes", b);
       if (!ch) throw new Error("aucun dossier « Envoyés » chez ce fournisseur");
       try {
         await c.append(ch, brut, ["\\Seen"]);
@@ -779,8 +828,8 @@ export async function envoyerDepuis(b: Boite, m: {
         /* Le nom mémorisé peut être périmé (dossier renommé, boîte migrée) :
            on redemande la liste au serveur et on retente une fois sur le
            dossier qu'il marque lui-même \Sent. */
-        const liste = await c.list();
-        const vrai = liste.find((d) => roleDe(d) === "envoyes")?.path;
+        await reapprendre(c, b);
+        const vrai = b.dossiers?.envoyes;
         if (!vrai || vrai === ch) throw e;
         await c.append(vrai, brut, ["\\Seen"]);
       }
@@ -804,7 +853,7 @@ async function composerMessage(options: nodemailer.SendMailOptions): Promise<Buf
 /** Marque un message comme répondu — le petit chevron des clients mail. */
 export async function marquerRepondu(b: Boite, role: RoleDossier, uid: number) {
   await avec(b, async (c) => {
-    const ch = (await chemin(c, role, b.dossiers)) ?? "INBOX";
+    const ch = (await chemin(c, role, b)) ?? "INBOX";
     await c.mailboxOpen(ch);
     await c.messageFlagsAdd(String(uid), ["\\Answered"], { uid: true });
   }).catch(() => undefined);
