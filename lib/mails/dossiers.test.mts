@@ -1,4 +1,4 @@
-import { choisirDossiers, rolesADepartager, type Candidat } from "./dossiers.ts";
+import { choisirDossiers, langueDe, rolesADepartager, type Candidat } from "./dossiers.ts";
 
 let ko = 0;
 const ok = (cond: boolean, quoi: string) => { if (!cond) ko++; console.log(`${cond ? "✓" : "✗"} ${quoi}`); };
@@ -15,16 +15,34 @@ const mav: Candidat[] = [
   { role: "envoyes", chemin: "Sent Items", special: false },
 ];
 ok(rolesADepartager(mav).sort().join() === "brouillons,envoyes", "deux dossiers pour un rôle, sans attribut : il faut compter");
+/* Le doublon de MAV contient PLUS de messages que le vrai dossier : des années
+   d'un ancien logiciel. Le nombre seul choisissait le mauvais (19/11). */
 const comptes = mav.map((c) => ({
   ...c,
-  messages: { "Sent Items": 8400, "Éléments envoyés": 310, Drafts: 79, Brouillons: 2 }[c.chemin],
+  messages: { "Sent Items": 900, "Éléments envoyés": 8400, Drafts: 79, Brouillons: 140 }[c.chemin],
 }));
 const choix = choisirDossiers(comptes);
-ok(choix.envoyes === "Sent Items", "le vrai dossier d'envoi est celui qui contient le plus de messages");
+ok(choix.envoyes === "Sent Items", "corbeille et indésirables en anglais : le vrai dossier d'envoi est « Sent Items », même moins rempli");
 ok(choix.brouillons === "Drafts", "de même pour les brouillons");
 ok(choix.corbeille === "Deleted Items" && choix.indesirables === "Junk Email", "un seul candidat : c'est lui");
+ok(choisirDossiers(mav).envoyes === "Sent Items", "sans même compter, la langue de la boîte suffit");
 
-ok(choisirDossiers(mav).envoyes === "Éléments envoyés", "sans compte, le premier de la liste, comme avant");
+/* Une boîte en français qui porte un « Sent » laissé par un autre logiciel. */
+const francaise: Candidat[] = [
+  { role: "corbeille", chemin: "Éléments supprimés", special: false },
+  { role: "indesirables", chemin: "Courrier indésirable", special: false },
+  { role: "envoyes", chemin: "Sent", special: false, messages: 4000 },
+  { role: "envoyes", chemin: "Éléments envoyés", special: false, messages: 12 },
+];
+ok(choisirDossiers(francaise).envoyes === "Éléments envoyés", "boîte en français : le vrai dossier d'envoi est le français");
+
+/* Aucune langue ne se dégage : le nombre de messages départage. */
+const muette: Candidat[] = [
+  { role: "envoyes", chemin: "Sent Items", special: false, messages: 8400 },
+  { role: "envoyes", chemin: "Éléments envoyés", special: false, messages: 310 },
+];
+ok(choisirDossiers(muette).envoyes === "Sent Items", "sans langue reconnue, le plus rempli");
+ok(langueDe("Sent Items") === "en" && langueDe("Éléments envoyés") === "fr" && langueDe("Clients") === null, "la langue d'un nom de dossier");
 
 /* Un serveur qui désigne lui-même le dossier : on le croit, quel que soit le nombre. */
 const designe: Candidat[] = [

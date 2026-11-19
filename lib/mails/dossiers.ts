@@ -8,10 +8,14 @@
  * la liste gagnait : le mauvais. Les copies du BO partaient dans un dossier
  * que ni le webmail ni le téléphone ne montrent comme « envoyés ».
  *
- * La règle : l'attribut spécial du serveur d'abord ; sinon, entre plusieurs
- * dossiers du même rôle, celui qui contient le plus de messages — le vrai
- * dossier d'envoi d'une boîte a des années de courrier, le doublon presque
- * rien. À égalité, le premier de la liste, comme avant.
+ * La règle : l'attribut spécial du serveur d'abord. Sinon, entre plusieurs
+ * dossiers du même rôle, celui qui parle la LANGUE de la boîte — celle des
+ * dossiers qui, eux, n'ont pas de doublon : une corbeille « Deleted Items » et
+ * des indésirables « Junk Email » disent que le vrai dossier d'envoi est
+ * « Sent Items ». Le nombre de messages ne départage qu'en dernier : le
+ * doublon de MAV, nourri pendant des années par l'ancien logiciel, en contient
+ * PLUS que le vrai (première règle essayée le 19/11, elle a choisi le
+ * mauvais). À égalité, le premier de la liste, comme avant.
  */
 
 export type RoleDossier = "reception" | "envoyes" | "brouillons" | "indesirables" | "corbeille";
@@ -27,7 +31,7 @@ export type Candidat = {
 
 /** Ce numéro change quand la règle change : une boîte dont les dossiers ont
  *  été appris avec une règle plus ancienne les réapprend toute seule. */
-export const VERSION_DOSSIERS = "2";
+export const VERSION_DOSSIERS = "3";
 /** La clé qui garde ce numéro à côté des chemins, dans `fi_boite_agent.dossiers`. */
 export const CLE_VERSION = "_v";
 
@@ -40,16 +44,44 @@ export function rolesADepartager(candidats: Candidat[]): RoleDossier[] {
     .map(([r]) => r);
 }
 
+type Langue = "en" | "fr";
+const ANGLAIS = /^(sent( items| messages| mail)?|drafts?|deleted( items| messages)?|trash|junk( e-?mail)?|spam)$/i;
+const FRANCAIS = /(envoy|brouillon|supprim|corbeille|ind[ée]sirable)/i;
+
+/** La langue du nom d'un dossier standard, quand elle se reconnaît. */
+export function langueDe(chemin: string): Langue | null {
+  const feuille = chemin.split(/[/.]/).pop() ?? chemin;
+  if (ANGLAIS.test(feuille.trim())) return "en";
+  if (FRANCAIS.test(feuille)) return "fr";
+  return null;
+}
+
 /** Le dossier retenu pour chaque rôle. */
 export function choisirDossiers(candidats: Candidat[]): Partial<Record<RoleDossier, string>> {
   const out: Partial<Record<RoleDossier, string>> = {};
   const roles = [...new Set(candidats.map((c) => c.role))];
+  const douteux: RoleDossier[] = [];
   for (const role of roles) {
     const cs = candidats.filter((c) => c.role === role);
     const special = cs.find((c) => c.special);
-    if (special) { out[role] = special.chemin; continue; }
-    let retenu = cs[0];
-    for (const c of cs) if ((c.messages ?? -1) > (retenu.messages ?? -1)) retenu = c;
+    if (special) out[role] = special.chemin;
+    else if (cs.length === 1) out[role] = cs[0].chemin;
+    else douteux.push(role);
+  }
+  /* La langue de la boîte : celle des dossiers déjà tranchés. */
+  const voix = { en: 0, fr: 0 };
+  for (const [role, ch] of Object.entries(out)) {
+    if (role === "reception") continue;
+    const l = langueDe(ch as string);
+    if (l) voix[l]++;
+  }
+  const langue: Langue | null = voix.en > voix.fr ? "en" : voix.fr > voix.en ? "fr" : null;
+  for (const role of douteux) {
+    const cs = candidats.filter((c) => c.role === role);
+    const memeLangue = langue ? cs.filter((c) => langueDe(c.chemin) === langue) : [];
+    const parmi = memeLangue.length ? memeLangue : cs;
+    let retenu = parmi[0];
+    for (const c of parmi) if ((c.messages ?? -1) > (retenu.messages ?? -1)) retenu = c;
     out[role] = retenu.chemin;
   }
   return out;

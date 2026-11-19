@@ -90,7 +90,14 @@ async function decouvrir(c: ImapFlow, liste?: ListResponse[]): Promise<Record<st
     if (!aCompter.includes(cand.role)) continue;
     cand.messages = await c.status(cand.chemin, { messages: true }).then((s) => s.messages ?? 0, () => 0);
   }
-  return { ...choisirDossiers(candidats), reception: "INBOX" };
+  const retenus = { ...choisirDossiers(candidats), reception: "INBOX" };
+  /* Ce que la boîte a montré et ce qu'on en a retenu : des noms de dossiers et
+     des nombres, rien de privé. C'est ce journal qui a permis de comprendre
+     pourquoi la première règle choisissait le mauvais dossier. */
+  console.info("[mails] dossiers vus :", candidats.filter((x) => x.role !== "reception")
+    .map((x) => `${x.role}=${x.chemin}${x.special ? "*" : ""}${x.messages !== undefined ? `(${x.messages})` : ""}`).join(" | "),
+  "→ envoyés :", retenus.envoyes ?? "aucun");
+  return retenus;
 }
 
 /* ------------------------------------------------------ connexion --- */
