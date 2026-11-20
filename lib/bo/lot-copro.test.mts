@@ -1,21 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  natureDe, estUnLot, enCopropriete, echeancesBail, dureeEnClair, reperesBail,
+  enCopropriete, aUnCommerce, tantiemesVendus, echeancesBail, dureeEnClair, reperesBail,
   tonTauxEffort, chargesAnnuelles, lireRegistre,
 } from "./lot-copro.ts";
 
 const AUJ = new Date("2026-11-20T00:00:00Z");
 
-test("une fiche d'avant la nature est un immeuble entier", () => {
-  assert.equal(natureDe({}), "immeuble");
-  assert.equal(natureDe({ nature: "n'importe quoi" }), "immeuble");
-  assert.equal(estUnLot({}), false);
-  assert.equal(estUnLot({ nature: "local_commercial" }), true);
-});
-
 test("la copropriété se dit, elle ne se devine pas", () => {
-  assert.equal(enCopropriete({ nature: "local_commercial" }), false);
+  assert.equal(enCopropriete({}), false);
   assert.equal(enCopropriete({ en_copropriete: "true" }), false);
   assert.equal(enCopropriete({ en_copropriete: true }), true);
 });
@@ -99,4 +92,15 @@ test("le registre : comptes publiés, ou rien", () => {
   const sans = lireRegistre({ siren: "123456789", finances: null, dirigeants: [] });
   assert.deepEqual(sans, { siren: "123456789" });
   assert.equal(lireRegistre({ siren: "12" }), null);
+});
+
+test("les tantièmes vendus s'additionnent lot par lot", () => {
+  assert.equal(tantiemesVendus({ lots: [{ numero: "2", tantiemes: 60 }, { numero: "31", tantiemes: 27 }, { numero: "40" }] }), 87);
+  assert.equal(tantiemesVendus({ lots: [{ numero: "2" }] }), undefined);
+  assert.equal(tantiemesVendus({}), undefined);
+});
+
+test("un commerce parmi les lots ouvre l'emplacement commercial", () => {
+  assert.equal(aUnCommerce([{ Destination: "Cave" }, { Destination: "Commerce" }]), true);
+  assert.equal(aUnCommerce([{ Destination: "Logement" }]), false);
 });

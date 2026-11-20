@@ -17,7 +17,7 @@
  * offre qu'on tient à jour.
  */
 
-import { chargesDuDossier } from "@/lib/bo/dossier-charges";
+import { chargesDuDossier, estUneTaxe, nomCharge } from "@/lib/bo/dossier-charges";
 import { pagesLot } from "@/lib/bo/dossier-lot";
 import type { BienData } from "@/lib/bubble/server";
 import { rendements } from "./rendements";
@@ -127,7 +127,8 @@ export function construireDossierVente(
 
   /* --- Charges : récupérables et non récupérables, ligne par ligne --- */
   const charges = b.charges.map((c) => ({
-    type: S(c.Type_charge) || "Charge",
+    type: nomCharge(S(c.Type_charge), S(c.type_autre)),
+    taxe: estUneTaxe(S(c.Type_charge)) || estUneTaxe(S(c.type_autre)),
     total: N(c.total_an),
     recup: N(c.recup_an),
     nonRecup: N(c.non_recup_an),

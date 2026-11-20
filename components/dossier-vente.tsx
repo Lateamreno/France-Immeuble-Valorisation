@@ -357,12 +357,12 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           );
         })()}
 
-        <div className="dv-terrain">
+        {/* Terrain et PLU : pas pour un bien en copropriété (MAV, 20/11). */}
+        {!d.lot && <div className="dv-terrain">
           <div className="dv-t-col">
             <div className="dv-t-h"><Ic d={I.plan} /> Terrain</div>
             <span>Parcelle</span><b>{nc(d.terrain.parcelle)}</b>
             <span>Superficie</span><b>{d.terrain.superficie !== undefined ? `${group(d.terrain.superficie)} m²` : "n.c."}</b>
-            <span>Façade</span><b>{d.terrain.facade !== undefined ? `${group(d.terrain.facade)} m` : "n.c."}</b>
           </div>
           <div className="dv-t-img">
             {d.terrain.image
@@ -376,7 +376,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             <span>Emprise max</span><b>{d.plu.emprise !== undefined ? `${d.plu.emprise} %` : "n.c."}</b>
             <span>Hauteur max</span><b>{d.plu.hauteur !== undefined ? `${d.plu.hauteur} m` : "n.c."}</b>
           </div>
-        </div>
+        </div>}
       </>} />
 
       {/* ---------------------------------------------- 5. État locatif */}

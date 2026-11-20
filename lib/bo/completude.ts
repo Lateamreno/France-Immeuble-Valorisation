@@ -307,22 +307,25 @@ export function manquesDossier(b: SourceCompletude): Manque[] {
      cadastre. » Le dossier imprime un bloc en trois colonnes — terrain, plan,
      PLU — qui sortait rempli de « n.c. » parce que rien ne le réclamait. Il
      devient bloquant, comme les autres pages que le document imprime. */
+  /* MAV, 20/11 : un bien en copropriété n'a pas à renseigner le terrain ni le
+     PLU — on n'y vend pas de constructibilité. Le bloc ne se réclame donc que
+     pour un immeuble entier, et le dossier ne l'imprime pas non plus. */
+  const copropriete = im.en_copropriete === true;
   const terrain: ChampManquant[] = [];
   const cadastre = lienCadastre(im);
   const urba = lienUrbanisme(im);
   if (b.parcelles.length === 0) terrain.push({ cle: "ref_cadastre", label: "Référence cadastrale", lien: cadastre });
   if (N(im.ter_surface) === undefined) terrain.push({ cle: "ter_surface", label: "Surface du terrain", unite: "m²", lien: cadastre });
-  /* Retour #241 : « avant de rédiger le dossier il faut aussi que tu m'obliges
-     à mettre l'info sur la façade dans la partie parcelle et PLU — là c'est
-     indiqué comme vide, c'est pas possible. » */
-  if (N(im.ter_facade) === undefined) terrain.push({ cle: "ter_facade", label: "Façade sur rue", unite: "m", lien: cadastre });
+  /* Revirement de MAV le 20/11 sur le retour #241 : la longueur de façade
+     « ne sert à rien et nous rajoute une action ». Elle n'est plus demandée,
+     ni saisie, ni imprimée. */
   if (!S(im.plu_zone)) terrain.push({ cle: "plu_zone", label: "Zone du PLU", lien: urba });
   /* Retour #235 : « tu m'avais pas demandé le type de zone dans les champs
      obligatoires. » Le dossier l'imprime entre parenthèses après la zone. */
   if (!S(im.plu_Type_zone)) terrain.push({ cle: "plu_Type_zone", label: "Type de zone", lien: urba });
   if (N(im.plu_emprise) === undefined) terrain.push({ cle: "plu_emprise", label: "Emprise au sol max", unite: "%", lien: urba });
   if (N(im.plu_hauteur) === undefined) terrain.push({ cle: "plu_hauteur", label: "Hauteur max", unite: "m", lien: urba });
-  if (terrain.length || !S(im.ter_parcelle_img)) {
+  if (!copropriete && (terrain.length || !S(im.ter_parcelle_img))) {
     out.push({
       cle: "terrain", titre: "Le terrain et l'urbanisme sont incomplets", bloquant: true,
       /* Retour #236 : « quand on clique sur ouvrir la page on tombe sur les

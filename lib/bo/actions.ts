@@ -20,8 +20,7 @@ import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
 import { refusPrixDelegation } from "@/lib/bo/delegation-prix";
 import { MOTIF_TEST } from "@/lib/referentiels";
 import {
-  NATURES, lireRegistre, type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal,
-  type Nature, type SocieteRegistre,
+  lireRegistre, type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal, type SocieteRegistre,
 } from "@/lib/bo/lot-copro";
 
 const SB_URL =
@@ -1454,7 +1453,6 @@ export async function saveSecteurDest(
 
 /** Ce que portent les pages « Bail et locataire », « Copropriété » et l'emplacement commercial. */
 export type LotCoproPatch = Partial<{
-  nature: Nature;
   en_copropriete: boolean;
   bail_local: BailLocal;
   locataire_local: LocataireLocal;
@@ -1463,13 +1461,12 @@ export type LotCoproPatch = Partial<{
 }>;
 
 /**
- * Enregistre la nature du bien et les blocs propres à un lot. Chaque bloc est
+ * Enregistre « en copropriété » et les blocs propres à un bien en copropriété. Chaque bloc est
  * envoyé entier : `bo_patch_doc` fusionne au premier niveau, un bloc partiel
  * effacerait donc ses autres lignes.
  */
 export async function updateLotCopro(immeubleId: string, patch: LotCoproPatch) {
   const clean: Record<string, unknown> = {};
-  if (patch.nature !== undefined && NATURES.some((n) => n.cle === patch.nature)) clean.nature = patch.nature;
   if (patch.en_copropriete !== undefined) clean.en_copropriete = patch.en_copropriete === true;
   for (const k of ["bail_local", "locataire_local", "copro", "emp_commerce"] as const) {
     const v = patch[k];
@@ -2004,8 +2001,7 @@ export async function createImmeuble(input: {
   numero_rue?: string;
   proprietaireId?: string;
   source?: string;
-  /** Ce qu'on vend (CLAUDE.md §7.11) ; absent = un immeuble entier. */
-  nature?: Nature;
+  /** Un bien en copropriété (CLAUDE.md §7.11) ; absent = un immeuble entier. */
   enCopropriete?: boolean;
   /** Adresse géocodée choisie dans les suggestions (retour #59). */
   geo?: { lat: number; lon: number; label: string };
@@ -2028,7 +2024,6 @@ export async function createImmeuble(input: {
       // Le BO range la provenance dans `source` (minuscule) : c'est elle que
       // lisent les listes et les stats.
       source: input.source,
-      nature: input.nature && input.nature !== "immeuble" && NATURES.some((n) => n.cle === input.nature) ? input.nature : undefined,
       en_copropriete: input.enCopropriete === true ? true : undefined,
       "Created Date": now,
       "Modified Date": now,

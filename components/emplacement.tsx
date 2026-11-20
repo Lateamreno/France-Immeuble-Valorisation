@@ -900,7 +900,6 @@ function ParcellesTab({ b }: { b: BienData }) {
      façade, celle du terrain. Les chiffres suivent la saisie en cours. */
   const supSaisie = parcs.reduce((t, d) => t + (parse(d.sup) ?? 0), 0);
   const surface = supSaisie || num(im.ter_surface);
-  const facade = parse(facadeT);
   const nbParcelles = parcs.filter((d) => d.ref.trim()).length;
 
   /* Les liens ouvrent directement le bien : le point d'adresse est déjà
@@ -995,9 +994,6 @@ function ParcellesTab({ b }: { b: BienData }) {
           <span className={`fchip${surface === undefined ? " off" : ""}`}>
             Surface <b>{surface !== undefined ? `${fr1(surface)} m²` : "—"}</b>
           </span>
-          <span className={`fchip${facade === undefined ? " off" : ""}`}>
-            Façade <b>{facade !== undefined ? `${fr1(facade)} m` : "—"}</b>
-          </span>
           <span className={`fchip${sansParcelle ? " off" : ""}`}>
             {nbParcelles > 1 ? "Parcelles" : "Parcelle"} <b>{nbParcelles}</b>
           </span>
@@ -1072,14 +1068,8 @@ function ParcellesTab({ b }: { b: BienData }) {
 
       <div className="terr-duo">
         <div className="terr-liste">
-          <label className={`terr-box terr-fac${facade === undefined ? " manque" : ""}`}>
-            <span className="k">Façade sur rue <i>(une pour tout le terrain)</i></span>
-            <span className="terr-fac-v">
-              <input className="min" value={facadeT} placeholder="m" inputMode="decimal"
-                onChange={(e) => setFacadeT(e.target.value)} />
-              <i>m</i>
-            </span>
-          </label>
+          {/* La façade sur rue se saisissait ici (#241). MAV, 20/11 : « ça ne
+              sert à rien et ça nous rajoute une action » — retirée. */}
           {parcs.length === 0 && (
             <div className="terr-box manque terr-vide">
               Aucune parcelle. Remplissez-les automatiquement, ou ajoutez-les à la main.
