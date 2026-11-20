@@ -228,16 +228,12 @@ export function ModaleRecherche({
               Modifier la recherche
             </button>
           )}
-          {detail.aProposer > 0 && (
-            onAProposer ? (
-              <button type="button" className="savebar-go" onClick={() => onAProposer(detail)}>
-                <span className="ch">›</span> Voir les immeubles à proposer
-              </button>
-            ) : (
-              <Link className="savebar-go" href={`/acheteurs?recherche=${detail.id}`}>
-                <span className="ch">›</span> Voir les immeubles à proposer
-              </Link>
-            )
+          {/* Sans panneau à ouvrir, pas de bouton : l'ancien repli menait à
+              une page qui n'existe pas (404 vu par MAV le 20/11). */}
+          {detail.aProposer > 0 && onAProposer && (
+            <button type="button" className="savebar-go" onClick={() => onAProposer(detail)}>
+              <span className="ch">›</span> Voir les immeubles à proposer
+            </button>
           )}
         </>
       }

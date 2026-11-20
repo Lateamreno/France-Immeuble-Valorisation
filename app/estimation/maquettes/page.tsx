@@ -32,7 +32,7 @@ export default async function MaquettesPage({
           Ajoutez <code>?e=</code> suivi de l&apos;identifiant d&apos;une estimation
           pour afficher les maquettes avec celle-ci.
         </p>
-        <Link href="/estimations">← Choisir une estimation</Link>
+        <Link href="/estimation">← Choisir une estimation</Link>
       </div>
     );
   }

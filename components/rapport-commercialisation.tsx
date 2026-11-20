@@ -93,7 +93,7 @@ export function SectionRapport({ immeubleId }: { immeubleId: string }) {
       </p>
       {erreur && <span className="dif-avis">{erreur}</span>}
       {liste && liste.length > 0 && (
-        <ul className="rc-envoyes">
+        <ul className="rpc-envoyes">
           {liste.map((r) => (
             <li key={r.id}>
               <b>{jourHeure(r.envoyeLe)}</b>
@@ -234,8 +234,8 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
     setPistes((l) => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   /* L'intitulé d'un bloc, avec sa case : cochée, il part ; décochée, il reste ici. */
   const tete = (k: Bloc, titre: string, aide?: string) => (
-    <span className="sv2-lbl rc-tete">
-      <label className="rc-lu">
+    <span className="sv2-lbl rpc-tete">
+      <label className="rpc-lu">
         <input type="checkbox" checked={!ecartes.has(k)} onChange={(e) => cocher(k, e.target.checked)} />
         {titre}
       </label>
@@ -276,8 +276,8 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
 
   return (
     <Modale titre="Rapport de commercialisation" largeur={940} onFermer={() => onFermer(false)} fermeDehors={false} pied={pied}>
-      <div className="rc">
-        <div className="seg rc-etapes">
+      <div className="rpc">
+        <div className="seg rpc-etapes">
           {([["controle", "1 · Contrôle"], ["redaction", "2 · Rédaction"], ["apercu", "3 · Aperçu et envoi"]] as const).map(([k, l]) => (
             <button key={k} type="button" className={etape === k ? "on" : undefined} disabled={!c} onClick={() => setEtape(k)}>{l}</button>
           ))}
@@ -286,14 +286,14 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
         {!p && !erreur && <div className="fempty">Lecture de la commercialisation…</div>}
 
         {p && c && etape === "controle" && (
-          <div className="rc-controle">
+          <div className="rpc-controle">
             <p className="mhint">
               Avant de rédiger : le rapport ne dit que ce qui est noté dans le BO. Voici ce qui semble manquer.
               {p.rapport.nouveau && <> Depuis le dernier rapport ({jourHeure(p.rapport.nouveau.depuis)}) : {p.rapport.nouveau.contactes} nouveaux acquéreurs contactés, {p.rapport.nouveau.reponses} réponses, {p.rapport.nouveau.visites} visites, {p.rapport.nouveau.offres} offres.</>}
             </p>
             {p.rapport.controles.map((x, i) => (
-              <div key={i} className={`rc-ligne ${x.niveau}`}>
-                <span className="rc-p" aria-hidden>{x.niveau === "alerte" ? "!" : "✓"}</span>
+              <div key={i} className={`rpc-ligne ${x.niveau}`}>
+                <span className="rpc-p" aria-hidden>{x.niveau === "alerte" ? "!" : "✓"}</span>
                 <div>
                   <b>{x.titre}</b>
                   {x.detail && <span>{x.detail}</span>}
@@ -301,19 +301,19 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 </div>
               </div>
             ))}
-            <div className="rc-chiffres">
+            <div className="rpc-chiffres">
               {c.chiffresDetail.map((x) => <div key={x.libelle}><b>{x.valeur}</b><span>{x.libelle}</span></div>)}
             </div>
           </div>
         )}
 
         {p && c && etape === "redaction" && (
-          <div className="rc-redac">
-            <div className="rc-bloc">
+          <div className="rpc-redac">
+            <div className="rpc-bloc">
               <span className="sv2-lbl">Destinataires</span>
               {p.destinataires.length === 0 && <span className="dif-avis">Aucun propriétaire de ce bien n&apos;a d&apos;adresse e-mail : à renseigner sur sa fiche.</span>}
               {p.destinataires.map((d) => (
-                <label key={d.email} className="rc-case">
+                <label key={d.email} className="rpc-case">
                   <input type="checkbox" checked={dest.has(d.email)} onChange={(e) => {
                     const n = new Set(dest); if (e.target.checked) n.add(d.email); else n.delete(d.email); setDest(n);
                   }} />
@@ -325,17 +325,17 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
             <label className="sv2-champ"><span className="sv2-lbl">Objet</span>
               <input className="min" value={c.objet} onChange={(e) => set("objet", e.target.value)} /></label>
 
-            <h4 className="rc-t">L&apos;e-mail</h4>
-            <div className="rc-deux">
+            <h4 className="rpc-t">L&apos;e-mail</h4>
+            <div className="rpc-deux">
               <label className="sv2-champ"><span className="sv2-lbl">Formule d&apos;appel</span>
                 <input className="min" value={c.salutation} onChange={(e) => set("salutation", e.target.value)} /></label>
               <label className="sv2-champ"><span className="sv2-lbl">Introduction</span>
                 <input className="min" value={c.intro} onChange={(e) => set("intro", e.target.value)} /></label>
             </div>
             <label className="sv2-champ"><span className="sv2-lbl">Ce qui a été fait</span>
-              <textarea className="min rc-ta" rows={2} value={c.fait} onChange={(e) => set("fait", e.target.value)} /></label>
+              <textarea className="min rpc-ta" rows={2} value={c.fait} onChange={(e) => set("fait", e.target.value)} /></label>
 
-            <div className="rc-ia">
+            <div className="rpc-ia">
               <button type="button" className="fadd" disabled={pendingIa || !p.iaDisponible || p.matiere.length === 0} onClick={proposer}>
                 {pendingIa ? "Analyse en cours…" : "Proposer l'analyse"}
               </button>
@@ -345,91 +345,91 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                     : analyse ?? `Rédige « ce qu'on retient », ce qui plaît, ce qui bloque et des pistes, à partir des ${p.matiere.length} retours notés, sans aucun nom. Vous corrigez ensuite.`}
               </span>
             </div>
-            <div className={`sv2-champ${ecartes.has("retient") ? " rc-off" : ""}`}>{tete("retient", "Ce qu'on retient")}
-              <textarea className="min rc-ta" rows={3} aria-label="Ce qu'on retient" value={c.retient} onChange={(e) => set("retient", e.target.value)} /></div>
+            <div className={`sv2-champ${ecartes.has("retient") ? " rpc-off" : ""}`}>{tete("retient", "Ce qu'on retient")}
+              <textarea className="min rpc-ta" rows={3} aria-label="Ce qu'on retient" value={c.retient} onChange={(e) => set("retient", e.target.value)} /></div>
             <label className="sv2-champ"><span className="sv2-lbl">Votre texte libre</span>
-              <textarea className="min rc-ta" rows={5} value={c.libre} placeholder="Votre analyse, ce que vous proposez pour la suite…"
+              <textarea className="min rpc-ta" rows={5} value={c.libre} placeholder="Votre analyse, ce que vous proposez pour la suite…"
                 onChange={(e) => set("libre", e.target.value)} /></label>
             <label className="sv2-champ"><span className="sv2-lbl">Signature</span>
-              <textarea className="min rc-ta" rows={4} value={c.signature} onChange={(e) => set("signature", e.target.value)} /></label>
+              <textarea className="min rpc-ta" rows={4} value={c.signature} onChange={(e) => set("signature", e.target.value)} /></label>
 
-            <h4 className="rc-t">Le diagnostic <i>dans le PDF</i></h4>
-            <div className="rc-deux">
-              <div className={`sv2-champ${ecartes.has("plait") ? " rc-off" : ""}`}>{tete("plait", "Ce qui plaît", "un point par ligne")}
-                <textarea className="min rc-ta" rows={4} aria-label="Ce qui plaît" value={plaitTxt} placeholder="Le potentiel de transformation · 2 retours"
+            <h4 className="rpc-t">Le diagnostic <i>dans le PDF</i></h4>
+            <div className="rpc-deux">
+              <div className={`sv2-champ${ecartes.has("plait") ? " rpc-off" : ""}`}>{tete("plait", "Ce qui plaît", "un point par ligne")}
+                <textarea className="min rpc-ta" rows={4} aria-label="Ce qui plaît" value={plaitTxt} placeholder="Le potentiel de transformation · 2 retours"
                   onChange={(e) => setPlaitTxt(e.target.value)} /></div>
-              <div className={`sv2-champ${ecartes.has("bloque") ? " rc-off" : ""}`}>{tete("bloque", "Ce qui bloque", "un point par ligne")}
-                <textarea className="min rc-ta" rows={4} aria-label="Ce qui bloque" value={bloqueTxt} placeholder="Le volume de travaux · 5 retours"
+              <div className={`sv2-champ${ecartes.has("bloque") ? " rpc-off" : ""}`}>{tete("bloque", "Ce qui bloque", "un point par ligne")}
+                <textarea className="min rpc-ta" rows={4} aria-label="Ce qui bloque" value={bloqueTxt} placeholder="Le volume de travaux · 5 retours"
                   onChange={(e) => setBloqueTxt(e.target.value)} /></div>
             </div>
             {c.barometre && (
-              <div className="rc-bloc">
-                <label className="rc-case">
+              <div className="rpc-bloc">
+                <label className="rpc-case">
                   <input type="checkbox" checked={avecBaro} onChange={(e) => setAvecBaro(e.target.checked)} />
                   <span>Montrer le baromètre de prix</span>
                   <i>prix du mandat{c.barometre.offreHaute ? " et offre la plus haute" : ", aucune offre saisie"}</i>
                 </label>
                 {avecBaro && (
-                  <div className="rc-deux">
-                    <div className={`sv2-champ${ecartes.has("reperes") ? " rc-off" : ""}`}>{tete("reperes", "Autres prix cités", "libellé : montant")}
-                      <textarea className="min rc-ta" rows={2} aria-label="Autres prix cités" value={reperesTxt} placeholder="Refus même à : 645000"
+                  <div className="rpc-deux">
+                    <div className={`sv2-champ${ecartes.has("reperes") ? " rpc-off" : ""}`}>{tete("reperes", "Autres prix cités", "libellé : montant")}
+                      <textarea className="min rpc-ta" rows={2} aria-label="Autres prix cités" value={reperesTxt} placeholder="Refus même à : 645000"
                         onChange={(e) => setReperesTxt(e.target.value)} /></div>
                     <label className="sv2-champ"><span className="sv2-lbl">Ce que ça implique</span>
-                      <textarea className="min rc-ta" rows={2} value={c.barometre.commentaire}
+                      <textarea className="min rpc-ta" rows={2} value={c.barometre.commentaire}
                         onChange={(e) => set("barometre", { ...c.barometre!, commentaire: e.target.value })} /></label>
                   </div>
                 )}
               </div>
             )}
             <span className="sv2-lbl">Les pistes pour vendre</span>
-            <div className="rc-pistes">
+            <div className="rpc-pistes">
               {pistes.map((x, i) => (
-                <div key={i} className={`rc-piste${ecartes.has(`piste${i}` as Bloc) ? " rc-off" : ""}`}>
+                <div key={i} className={`rpc-piste${ecartes.has(`piste${i}` as Bloc) ? " rpc-off" : ""}`}>
                   {tete(`piste${i}` as Bloc, `Piste ${i + 1}`)}
                   <input className="min" value={x.titre} placeholder="Titre de la piste" aria-label={`Titre de la piste ${i + 1}`} onChange={(e) => setPiste(i, "titre", e.target.value)} />
-                  <textarea className="min rc-ta" rows={3} value={x.texte} placeholder="Ce qu'on propose" onChange={(e) => setPiste(i, "texte", e.target.value)} />
+                  <textarea className="min rpc-ta" rows={3} value={x.texte} placeholder="Ce qu'on propose" onChange={(e) => setPiste(i, "texte", e.target.value)} />
                   <input className="min" value={x.implique ?? ""} placeholder="Ce que ça implique" onChange={(e) => setPiste(i, "implique", e.target.value)} />
                 </div>
               ))}
             </div>
-            <div className={`sv2-champ${ecartes.has("suite") ? " rc-off" : ""}`}>{tete("suite", "La suite", "ce qui reste à faire")}
-              <textarea className="min rc-ta" rows={2} aria-label="La suite" value={c.suite} onChange={(e) => set("suite", e.target.value)} /></div>
+            <div className={`sv2-champ${ecartes.has("suite") ? " rpc-off" : ""}`}>{tete("suite", "La suite", "ce qui reste à faire")}
+              <textarea className="min rpc-ta" rows={2} aria-label="La suite" value={c.suite} onChange={(e) => set("suite", e.target.value)} /></div>
 
-            <h4 className="rc-t">Les retours et les visites <i>décochez ce qui n&apos;est pas pour le propriétaire</i></h4>
+            <h4 className="rpc-t">Les retours et les visites <i>décochez ce qui n&apos;est pas pour le propriétaire</i></h4>
             {c.retours.length === 0 && c.visites.length === 0 && <span className="mhint">Aucun retour motivé ni visite à lister.</span>}
             {c.retours.map((r, i) => (
-              <div key={`r${i}`} className={`rc-retour${sansRetours.has(i) ? " off" : ""}`}>
+              <div key={`r${i}`} className={`rpc-retour${sansRetours.has(i) ? " off" : ""}`}>
                 <input type="checkbox" checked={!sansRetours.has(i)} aria-label="Inclure ce retour" onChange={(e) => {
                   const n = new Set(sansRetours); if (e.target.checked) n.delete(i); else n.add(i); setSansRetours(n);
                 }} />
-                <span className="rc-qui"><b>{p.rapport.retours[i]?.nom ?? r.qui}</b>{r.note ? <em>{r.note}</em> : null}
-                  <i className="rc-envoi">dans le rapport : {r.qui}</i></span>
-                <textarea className="min rc-ta" rows={2} value={r.texte}
+                <span className="rpc-qui"><b>{p.rapport.retours[i]?.nom ?? r.qui}</b>{r.note ? <em>{r.note}</em> : null}
+                  <i className="rpc-envoi">dans le rapport : {r.qui}</i></span>
+                <textarea className="min rpc-ta" rows={2} value={r.texte}
                   onChange={(e) => set("retours", c.retours.map((x, j) => (j === i ? { ...x, texte: e.target.value } : x)))} />
               </div>
             ))}
             {c.visites.map((v, i) => (
-              <div key={`v${i}`} className={`rc-retour${sansVisites.has(i) ? " off" : ""}`}>
+              <div key={`v${i}`} className={`rpc-retour${sansVisites.has(i) ? " off" : ""}`}>
                 <input type="checkbox" checked={!sansVisites.has(i)} aria-label="Inclure cette visite" onChange={(e) => {
                   const n = new Set(sansVisites); if (e.target.checked) n.delete(i); else n.add(i); setSansVisites(n);
                 }} />
-                <span className="rc-qui">Visite du {v.date} · <b>{p.rapport.visites[i]?.nom ?? v.qui}</b>{v.note ? <em>{v.note}</em> : null}
-                  <i className="rc-envoi">dans le rapport : {v.qui}</i>
-                  {p.rapport.visites[i]?.aRelire && <i className="rc-relire">votre note interne : à relire</i>}</span>
-                <textarea className="min rc-ta" rows={2} value={v.texte}
+                <span className="rpc-qui">Visite du {v.date} · <b>{p.rapport.visites[i]?.nom ?? v.qui}</b>{v.note ? <em>{v.note}</em> : null}
+                  <i className="rpc-envoi">dans le rapport : {v.qui}</i>
+                  {p.rapport.visites[i]?.aRelire && <i className="rpc-relire">votre note interne : à relire</i>}</span>
+                <textarea className="min rpc-ta" rows={2} value={v.texte}
                   onChange={(e) => set("visites", c.visites.map((x, j) => (j === i ? { ...x, texte: e.target.value } : x)))} />
               </div>
             ))}
             <label className="sv2-champ"><span className="sv2-lbl">Précision sous les retours</span>
               <input className="min" value={c.retoursNote ?? ""} onChange={(e) => set("retoursNote", e.target.value)} /></label>
             <label className="sv2-champ"><span className="sv2-lbl">Légende des notes A à D</span>
-              <textarea className="min rc-ta" rows={2} value={c.legende} onChange={(e) => set("legende", e.target.value)} /></label>
+              <textarea className="min rpc-ta" rows={2} value={c.legende} onChange={(e) => set("legende", e.target.value)} /></label>
           </div>
         )}
 
         {p && c && etape === "apercu" && (
-          <div className="rc-apercu">
-            <div className="rc-apercu-h">
+          <div className="rpc-apercu">
+            <div className="rpc-apercu-h">
               <span className="mhint">
                 L&apos;e-mail tel qu&apos;il arrivera, sans aucune image à charger. À {[...dest].join(", ") || "personne : choisissez un destinataire à l'étape 2"}.
               </span>
@@ -445,7 +445,7 @@ function FenetreRapport({ immeubleId, onFermer }: { immeubleId: string; onFermer
                 {nonRelus.length > 1 ? " Relisez-les à l'étape 2 et cochez ceux que vous gardez." : " Relisez-le à l'étape 2 et cochez-le pour le garder."}
               </span>
             )}
-            <div className="rc-cadre">
+            <div className="rpc-cadre">
               <iframe title="Aperçu de l'e-mail" sandbox="" srcDoc={apercu} style={{ width: largeur }} />
             </div>
             <span className="mhint">

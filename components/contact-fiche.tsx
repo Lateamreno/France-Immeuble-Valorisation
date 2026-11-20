@@ -26,6 +26,7 @@ import { dmy, jourIso, S } from "@/lib/format";
 import { EchangesContact } from "@/components/mails";
 import { CarteRecherche, ModaleRecherche } from "@/components/carte-recherche";
 import { ModaleRechercheEdition } from "@/components/recherche-modale";
+import { PanneauAProposer } from "@/components/a-proposer";
 import { ModaleOffre, ModaleProposition, ModaleVisite } from "@/components/actions-rapides";
 import type { VignetteData } from "@/components/vignette-contact";
 import {
@@ -156,6 +157,9 @@ export function ContactFiche({ d, echanges = [] }: {
   /* Retour #453 : « quand je clique sur la recherche je veux directement
      qu'on m'affiche la modale de modification de recherche ». */
   const [edition, setEdition] = useState<RechercheCard | null>(null);
+  /** La recherche dont on ouvre les immeubles à proposer (MAV, 20/11 : le
+   *  bouton menait à une page qui n'existe pas). */
+  const [aProposer, setAProposer] = useState<string | null>(null);
   /** Retour #589 : les recherches supprimées ne s'affichent qu'à la demande. */
   const [voirAnciennes, setVoirAnciennes] = useState(false);
   const router = useRouter();
@@ -575,6 +579,7 @@ export function ContactFiche({ d, echanges = [] }: {
             const anciennes = d.recherches.filter((r) => r.group === "archivees");
             const carte = (r: (typeof d.recherches)[number]) => (
               <CarteRecherche key={r.id} r={r} onDetail={setDetail} onModifier={setEdition} clicCarte sansContact supprimable
+                onAProposer={(x) => setAProposer(x.id)}
                 mention={d.mandatRechercheActif && r.group !== "archivees" ? "Mandat de recherche actif" : undefined} />
             );
             return (
@@ -748,8 +753,13 @@ export function ContactFiche({ d, echanges = [] }: {
       {detail && (
         <ModaleRecherche
           detail={detail} onClose={() => setDetail(null)}
+          onAProposer={(x) => { setDetail(null); setAProposer(x.id); }}
           onModifier={(x) => { setDetail(null); setEdition(x); }}
         />
+      )}
+      {aProposer && (
+        <PanneauAProposer rechercheId={aProposer}
+          onFermer={() => { setAProposer(null); router.refresh(); }} />
       )}
       {edition && (
         <ModaleRechercheEdition
