@@ -362,6 +362,8 @@ export async function envoyerMail(m: {
    *  toute réponse renverra dans `In-Reply-To`. Voir lib/bo/rattachement.ts. */
   messageId?: string;
   attachments?: PieceJointe[];
+  /** La version mise en forme, en plus du texte (rappel du lundi). */
+  html?: string;
 }) {
   const c = CONF();
   if (!mailConfigure()) throw new Error("Envoi non configuré (SMTP_HOST / SMTP_USER / SMTP_PASS / MAIL_FROM)");
@@ -390,6 +392,7 @@ export async function envoyerMail(m: {
     text: vers
       ? `— Envoi de recette. Destinataire réel : ${m.to}${m.cc ? ` · copie : ${m.cc}` : ""}${m.bcc ? ` · copie cachée : ${m.bcc}` : ""} —\n\n${m.text}`
       : m.text,
+    html: m.html,
     attachments: m.attachments,
   });
   return String(info.messageId ?? "");

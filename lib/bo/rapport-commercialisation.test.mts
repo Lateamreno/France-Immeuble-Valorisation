@@ -1,4 +1,4 @@
-import { construireRapport, etiquette, initialesDe, offreDansTexte, type EntreesRapport, type Personne } from "./rapport-commercialisation.ts";
+import { construireRapport, etiquette, initialesDe, motifAdministratif, offreDansTexte, type EntreesRapport, type Personne } from "./rapport-commercialisation.ts";
 import { blocPleinBail } from "./rapport-contenu.ts";
 
 let ko = 0;
@@ -61,6 +61,23 @@ ok(r.parNote.find((l) => l.note === "B")?.repondants === 2, "les répondants par
 ok(r.visites.length === 2 && r.visites[0].qui === "M." && r.visites[0].aRelire && !r.visites[1].aRelire, "les visites effectuées ; la note de l'agent est à relire, pas le texte écrit pour le vendeur");
 ok(r.visitesParSource[0].source === "Plein Bail" || r.visitesParSource.some((s) => s.source === "Plein Bail" && s.nombre === 1), "les visites par source");
 ok(r.barometre?.prixMandat === 1_030_000 && !r.barometre.offreHaute, "sans offre saisie, le baromètre n'a que le prix du mandat");
+
+console.log("— Une proposition fermée d'office n'est pas une réponse —");
+ok(motifAdministratif("***** ANNULEE AUTOMATIQUEMENT SUITE A L'ACCEPTATION D'UNE OFFRE") && motifAdministratif("Doublon - J'ai renvoyé le dossier mis à jour")
+  && motifAdministratif("Ancienne commercialisation") && motifAdministratif("[i]Ancien backoffice[/i]") && motifAdministratif("Mise à jour du dossier - Nouvel envoi"),
+  "annulation d'office, doublon, ancien dossier, mise à jour");
+ok(!motifAdministratif("Trop de travaux") && !motifAdministratif("N'est plus en recherche") && !motifAdministratif("") && !motifAdministratif("Type de bien hors de sa recherche"), "un vrai motif d'acquéreur n'en est pas un");
+const ferme = construireRapport({
+  ...e, reponses: [],
+  propositions: [
+    { id: "f1", qui: qui("Fox", "B"), creeLe: "2026-11-03T15:06:00.000Z", salveId: "s1", statut: "Refusée (sans offre)", motifRefus: "***** ANNULEE AUTOMATIQUEMENT SUITE A L'ACCEPTATION D'UNE OFFRE *****" },
+    { id: "f2", qui: qui("Golf", "C"), creeLe: "2026-11-03T15:06:00.000Z", salveId: "s1", statut: "Refusée (sans offre)", motifRefus: "Doublon - Envoi du dossier mis à jour", commentaire: "Rappelle en janvier" },
+    { id: "f3", qui: qui("Hotel", "C"), creeLe: "2026-11-03T15:06:00.000Z", salveId: "s1", statut: "Refusée (sans offre)", motifRefus: "Trop cher" },
+  ],
+});
+ok(ferme.chiffres.contactes === 3 && ferme.chiffres.repondants === 2, "fermée d'office sans rien d'autre : contactée, pas répondante ; avec un commentaire, elle a répondu");
+ok(ferme.chiffres.refus === 1 && ferme.refusSansExplication === 0, "elle ne compte ni comme un refus, ni comme un refus sans explication");
+ok(ferme.retours.map((x) => x.texte).join(" | ") === "Rappelle en janvier | Trop cher", "son motif ne part pas au propriétaire ; son commentaire, si");
 
 console.log("— Les contrôles —");
 const titres = r.controles.map((c) => c.titre).join(" | ");
