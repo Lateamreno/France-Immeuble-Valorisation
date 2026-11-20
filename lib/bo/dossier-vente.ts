@@ -17,6 +17,7 @@
  * offre qu'on tient à jour.
  */
 
+import { pagesLot } from "@/lib/bo/dossier-lot";
 import type { BienData } from "@/lib/bubble/server";
 import { rendements } from "./rendements";
 import { photoUrl } from "./dossier";
@@ -385,6 +386,15 @@ export function construireDossierVente(
       potentiel: lots.reduce((s, l) =>
         s + ((N(l.loyer) ?? 0) > 0 ? N(l.loyer)! * 12 : situationLot(l.Type_bail) === "rattache" ? 0 : (N(l.loyer_max) ?? 0) * 12), 0),
     },
+
+    /* Les pages d'un bien en copropriété : le bail, le locataire, la
+       copropriété (20/11/26). `null` pour un immeuble entier. Le locataire
+       n'est nommé que si le dossier le dit (`locataire_nomme`). */
+    lot: pagesLot(b, {
+      prixHai: hai > 0 ? hai : undefined,
+      nommerLocataire: d.locataire_nomme === true,
+      aujourdHui: typeof d.date === "string" && !Number.isNaN(new Date(d.date).getTime()) ? new Date(d.date) : new Date(),
+    }),
 
     /* Page 6 — état financier */
     revenus, revenusTot: { actuel: loyers, potentiel: loyersMax, occupation },

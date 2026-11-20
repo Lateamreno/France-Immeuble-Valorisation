@@ -29,10 +29,10 @@ export default async function ApercuDossier({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ nu?: string; hai?: string; pct?: string; v?: string }>;
+  searchParams: Promise<{ nu?: string; hai?: string; pct?: string; v?: string; loc?: string }>;
 }) {
   const { id } = await params;
-  const { nu, hai, pct, v } = await searchParams;
+  const { nu, hai, pct, v, loc } = await searchParams;
   const b = await getBien(id).catch(() => null);
   if (!b) {
     return (
@@ -50,6 +50,8 @@ export default async function ApercuDossier({
     prix_hai: N(hai),
     "honos_taux_%": N(pct),
     date: new Date().toISOString(),
+    /* Bien en copropriété : nommer le locataire est un choix de l'écran. */
+    locataire_nomme: loc === "1",
   };
 
   /* Retours #460 et #463 : une photo dont Bubble n'a plus le fichier ne
