@@ -96,14 +96,16 @@ const IC_POI: Record<string, React.ReactNode> = {
  * Elle le dit maintenant, elle a maigri, et la page y gagne la place qu'il
  * fallait pour grossir les polices (#223, #224, #225).
  */
-function Page({ titre, picto, pied, enfants, nu, compact }: {
+function Page({ titre, picto, pied, enfants, nu, compact, tasse }: {
   titre?: string; picto?: React.ReactNode; pied?: string;
   enfants: React.ReactNode; nu?: boolean;
   /** Page très chargée : interlignes et titres resserrés (état financier). */
   compact?: boolean;
+  /** Tableaux longs : moins d'air entre les lignes, polices inchangées. */
+  tasse?: boolean;
 }) {
   return (
-    <section className={`dv-page${nu ? " nue" : ""}${compact ? " serre" : ""}`}>
+    <section className={`dv-page${nu ? " nue" : ""}${compact ? " serre" : ""}${tasse ? " tasse" : ""}`}>
       <div className="dv-in">
         {/* Retours #408 à #416 : « il manque le bandeau horizontal de rappel
             de la page » — comme le dossier actuel, en plus de la tranche (qui
@@ -598,7 +600,7 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
       )}
 
       {/* -------------------------------------------- 6. État financier */}
-      <Page titre="Etat financier" picto={I.euro} pied={pied} compact enfants={<>
+      <Page titre="Etat financier" picto={I.euro} pied={pied} compact tasse={d.chargesPage.tasse} enfants={<>
         <h2 className="dv-h"><Ic d={I.camembert} /> Coût d&apos;acquisition</h2>
         <table className="dv-tab fin">
           <thead>
@@ -665,9 +667,9 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
             <tr><th>Type de charge</th><th className="c">Montant</th><th className="c">Récupérable</th><th className="r">Non récupérable</th></tr>
           </thead>
           <tbody>
-            {d.charges.map((c, i) => (
+            {d.chargesPage.lignes.map((c, i) => (
               <tr key={i}>
-                <td>{c.type}</td>
+                <td>{c.type}{c.postes ? <i> ({c.postes} postes, détail page suivante)</i> : null}</td>
                 <td className="c">{c.total !== undefined ? `${group(c.total)} €/an` : "n.c."}</td>
                 <td className="c">{c.recup !== undefined ? `${group(c.recup)} €/an` : "n.c."}</td>
                 <td className="r">{c.nonRecup !== undefined ? `${group(c.nonRecup)} €/an` : "n.c."}</td>
@@ -722,6 +724,37 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
           <p>Le potentiel reprend les mêmes formules, sur les loyers de l&apos;immeuble loué à 100 % et un prix majoré des travaux à prévoir.</p>
         </div>
       </>} />
+
+      {/* Plus de treize charges : la page d'avant n'en garde que les taxes,
+          le détail complet est ici (MAV, 20/11). */}
+      {d.chargesPage.detail && (
+        <Page titre="Détail des charges" picto={I.euro} pied={pied} compact tasse={d.chargesPage.detail.tasse} enfants={<>
+          <h2 className="dv-h"><Ic d={I.carte} /> Charges, poste par poste</h2>
+          <table className="dv-tab fin">
+            <thead>
+              <tr><th>Type de charge</th><th className="c">Montant</th><th className="c">Récupérable</th><th className="r">Non récupérable</th></tr>
+            </thead>
+            <tbody>
+              {d.chargesPage.detail.lignes.map((c, i) => (
+                <tr key={i}>
+                  <td>{c.type}</td>
+                  <td className="c">{c.total !== undefined ? `${group(c.total)} €/an` : "n.c."}</td>
+                  <td className="c">{c.recup !== undefined ? `${group(c.recup)} €/an` : "n.c."}</td>
+                  <td className="r">{c.nonRecup !== undefined ? `${group(c.nonRecup)} €/an` : "n.c."}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="tot">Total</td>
+                <td className="c">{group(d.chargesTot.total)} €/an</td>
+                <td className="c">{group(d.chargesTot.recup)} €/an</td>
+                <td className="r or">{group(d.chargesTot.nonRecup)} €/an</td>
+              </tr>
+            </tfoot>
+          </table>
+        </>} />
+      )}
 
       {/* --------------------------------------- 7. Conditions de vente */}
       <Page titre="Conditions de la vente" picto={I.ampoule} pied={pied} enfants={<>

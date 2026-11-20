@@ -614,6 +614,22 @@ va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
 
 ---
 
+### 7.8 bis Dossier de présentation — un tableau de charges trop long (20/11/26)
+
+La page « État financier » porte quatre tableaux : à l'interligne normal elle
+ne tient que cinq lignes de charges (avec deux lignes de revenus). Argenteuil,
+douze charges, perdait son tableau « Rendement » sous le pied de page. Règle
+tranchée par MAV (`lib/bo/dossier-charges.ts`, pur, testé) :
+- **d'abord resserrer les lignes** (classe `tasse` : 9,5 → 7,1 mm), polices
+  inchangées (retours #223 à #239) — seulement quand la page déborderait ;
+- **au-delà de treize charges**, la page ne garde que les **taxes** une à une
+  (foncière, bureaux, balayage…) et réunit le reste sur « Autres charges
+  (n postes, détail page suivante) » ; une page **« Détail des charges »** suit.
+Les totaux ne bougent pas. Un dossier déjà enregistré garde son PDF : il faut
+en refaire une version pour profiter de la correction.
+
+---
+
 ### 7.9 Rapport de commercialisation — le point envoyé au propriétaire (19/11/26)
 
 Décidé avec MAV le 19/11 (maquettes : artifact « Rapport de commercialisation »).

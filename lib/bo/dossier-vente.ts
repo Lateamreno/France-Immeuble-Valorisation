@@ -17,6 +17,7 @@
  * offre qu'on tient à jour.
  */
 
+import { chargesDuDossier } from "@/lib/bo/dossier-charges";
 import { pagesLot } from "@/lib/bo/dossier-lot";
 import type { BienData } from "@/lib/bubble/server";
 import { rendements } from "./rendements";
@@ -399,6 +400,9 @@ export function construireDossierVente(
     /* Page 6 — état financier */
     revenus, revenusTot: { actuel: loyers, potentiel: loyersMax, occupation },
     charges, chargesTot,
+    /* Tableau long : lignes resserrées, puis taxes + « autres charges » et
+       une page de détail (MAV, 20/11 — dossier d'Argenteuil). */
+    chargesPage: chargesDuDossier(charges, revenus.length),
 
     /* Page 7 — conditions de la vente */
     /* Le profil se saisit sur la fiche du PROPRIÉTAIRE, à côté du motif de
