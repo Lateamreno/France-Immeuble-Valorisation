@@ -662,9 +662,45 @@ en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
 - **Reste à faire** : le rappel hebdomadaire au commercial (« il faut envoyer
   un rapport », avec ce qui est nouveau depuis le dernier) ; les vues et
   impressions du site France Immeuble (le site ne les transmet pas) ; SeLoger
-  et Leboncoin quand le multidiffuseur existera ; le passage automatique
-  d'une note à l'autre selon les actions (demandé par MAV le 19/11, à cadrer :
-  il change qui reçoit les salves).
+  et Leboncoin quand le multidiffuseur existera.
+
+### 7.10 Notes des acquéreurs — elles montent toutes seules (20/11/26)
+
+La légende de MAV (19/11) fait foi : **A** a déjà acheté ; **B** a déjà visité
+ou fait une offre, ou acteur reconnu ; **C** nous avons déjà échangé, sans
+visite ni offre ; **D** inscrit de lui-même sur le site, sans échange.
+
+- **Une seule note, sur le contact** (`bo_contact.data.Note`). Chaque
+  recherche en porte la copie, tenue par un déclencheur — c'est elle que lisent
+  les salves. Avant, les montées d'office ne touchaient que le contact : la
+  salve suivante continuait de lire l'ancienne note.
+- **Une seule porte pour monter : `fi_note_monter(contact, note, motif)`**
+  (migrations `notes_acquereurs_*`). Des déclencheurs de la base l'appellent :
+  offre « Vendu » → A ; visite « Effectuée » ou offre déposée → B ; suivi
+  « Manuel » écrit par un agent → C. Le BO l'appelle aussi pour la visite
+  programmée (retour #523, antérieur). Ne pas écrire `Note` par un autre chemin
+  pour une montée d'office.
+- **On ne fait que monter.** Une note qu'un agent **baisse à la main** garde la
+  trace (`note_baissee`) et ne remonte pas d'office au niveau d'où elle vient ;
+  un acte plus fort la remonte quand même (baissée de B à C : une vente la
+  passe en A).
+- **Le C ne classe que des acquéreurs** (#605) : case « Acheter » cochée ou au
+  moins une recherche. Piège vécu le 20/11 : `not (x = 'true' or …)` vaut NULL
+  quand la case est absente, et un `if NULL` ne garde rien — 277 fiches de
+  vendeurs sont passées en C quelques minutes. Toujours `coalesce`.
+- **En attente de MAV : le C sur simple réponse d'un acquéreur** (e-mail, SMS,
+  « Intéressé », compte du site). La fonction `fi_note_reponse` existe, son
+  déclencheur est retiré : sortir du D donne l'agent attitré et l'off-market
+  sur le compte du site (`compte-site.ts`), jusqu'ici réservés à un contact que
+  l'agence a eu. Ne pas le remettre sans sa réponse.
+- `fi_note_journal` garde chaque passage (de, à, motif, date), ceux faits à la
+  main compris. La fiche contact dit d'où vient la note affichée, et
+  n'enregistre la note que si l'agent l'a changée (une fiche restée ouverte
+  remettrait sinon l'ancienne valeur, lue comme une baisse voulue).
+- Le compte du site reçoit une note montée d'office à la reprise de 3 h
+  (`deposerTousLesComptes`), pas dans la minute.
+
+---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)
 

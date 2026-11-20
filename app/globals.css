@@ -6222,6 +6222,7 @@ a.cfc-doc:hover { border-color: var(--slate); }
   padding: 5px 9px; font: inherit; font-size: 12px; font-weight: 600; color: var(--slate);
 }
 .cfx-promo:hover { background: #fff3d2; }
+.cfx-note-pourquoi { display: block; margin-top: 4px; font-size: 11.5px; line-height: 1.35; color: var(--gray-txt); }
 .cfx-promo i { font-style: normal; font-weight: 400; color: var(--gray-txt); }
 
 /* ================== Module Mails façon Gmail (retour #108) ==================

@@ -250,7 +250,12 @@ export function ContactFiche({ d, echanges = [] }: {
       await updateContact(id, {
         "Civilité": civ || undefined, "prénom": prenom || undefined, nom: nom || undefined,
         email: email || undefined, portable: portable || undefined, fixe: fixe || undefined,
-        acheteur, vendeur, interagence, Types: types, Note: note || undefined,
+        acheteur, vendeur, interagence, Types: types,
+        /* La note ne part que si l'agent l'a changée ici : elle monte aussi
+           toute seule (visite, offre, réponse…), et une fiche restée ouverte
+           la remettrait sinon à son ancienne valeur — ce que la base lirait
+           comme une baisse voulue. */
+        ...(note !== S(c.Note) ? { Note: note || undefined } : {}),
         date_naissance: naissance || undefined,
         lieu_naissance_geo: versGeo(lieuNaissance),
         adresse_geo: versGeo(adresse),
@@ -413,8 +418,10 @@ export function ContactFiche({ d, echanges = [] }: {
                     <option value="">Non classé</option>
                     {NOTES_CONTACT.map((n) => <option key={n.cle} value={n.cle}>{n.label}</option>)}
                   </select>
-                  {/* Le classement monte avec les actes : on le propose plutôt
-                      que de réécrire la fiche sans le dire. */}
+                  {/* La note monte toute seule avec les actes (MAV, 19/11) :
+                      la fiche dit pourquoi, pour qu'un changement ne surprenne pas. */}
+                  {origineNote(c, note) && <span className="cfx-note-pourquoi">{origineNote(c, note)}</span>}
+                  {/* Reste la proposition, pour une note baissée à la main. */}
                   {d.promotion && rangNote(d.promotion.note) < rangNote(note) && (
                     <button type="button" className="cfx-promo" onClick={() => setNote(d.promotion!.note)}>
                       ↑ Passer en <b className={`note n${d.promotion.note}`}>{d.promotion.note}</b>
@@ -896,6 +903,24 @@ function LigneSociete({ contactId, s, onDetacher }: {
  *  (marge, largeur du titre), `cfx-v` parce que l'habillage des cases —
  *  bordure, police — est écrit sur `.cfx-v input` et doit continuer à
  *  s'appliquer. */
+/** D'où vient la note affichée : le dernier passage automatique, ou la baisse faite à la main. */
+const MOTIFS_NOTE: Record<string, string> = {
+  achat: "il a acheté", offre: "il a fait une offre", visite: "une visite",
+  "échange": "un échange noté", appel: "le premier appel", "réponse": "il a répondu à un envoi",
+};
+function origineNote(c: Record<string, unknown>, note: string): string | undefined {
+  const jour = (v: unknown) => (typeof v === "string" && v.length >= 10 ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(2, 4)}` : "");
+  const b = c.note_baissee as { de?: string; a?: string; le?: string } | undefined;
+  if (b?.de && note && note === (b.a ?? note) && note === (typeof c.Note === "string" ? c.Note : "")) {
+    return `Baissée à la main de ${b.de} à ${note}${jour(b.le) ? ` le ${jour(b.le)}` : ""} : elle ne remontera pas d'office en ${b.de}.`;
+  }
+  const a = c.note_auto as { de?: string | null; a?: string; motif?: string; le?: string } | undefined;
+  if (!a?.motif || note !== (typeof c.Note === "string" ? c.Note : "")) return undefined;
+  const arrivee = a.a ?? ({ achat: "A", offre: "B", visite: "B", appel: "C", "échange": "C", "réponse": "C" } as Record<string, string>)[a.motif];
+  if (arrivee !== note) return undefined;
+  return `Passée ${a.de ? `de ${a.de} ` : ""}en ${note}${jour(a.le) ? ` le ${jour(a.le)}` : ""} d'office : ${MOTIFS_NOTE[a.motif] ?? a.motif}.`;
+}
+
 const LIGNE = "cfx-r cfx-v";
 
 /** Une ligne label + contenu, pour ce qui n'est pas « un titre + une case »

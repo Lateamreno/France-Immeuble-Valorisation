@@ -92,6 +92,12 @@ async function rpc(fn: string, args: Record<string, unknown>) {
      rien changer. Ce point de passage est unique : toutes les écritures du BO
      y arrivent, c'est ce qui rend l'invalidation fiable. */
   const table = typeof args.p_table === "string" ? args.p_table : "";
+  /* Une visite, une offre ou un suivi peuvent faire monter la note d'un
+     acquéreur par les déclencheurs de la base (fi_note_monter) : la fiche du
+     contact et ses recherches doivent alors se relire elles aussi. */
+  if (fn === "fi_note_monter" || ["bo_visite", "bo_offre", "bo_suivi"].includes(table)) {
+    for (const t of ["bo_contact", "bo_recherche"]) revalidateTag(t, { expire: 0 });
+  }
   if (!table) return;
   // Les deux, et volontairement. `revalidateTag` est celui qui purge à coup sûr
   // les entrées posées par `unstable_cache` ; `updateTag`, taillé pour la
@@ -3021,18 +3027,19 @@ export async function deleteDocument(immeubleId: string, documentId: string) {
 /** Programme une visite. */
 /**
  * Retours #523 à #525 : « un client qui visite passe automatiquement en B »,
- * « dès qu'un client fait une offre il passe automatiquement en B ». On ne fait
- * que monter : un A reste A, un B reste B ; C, D et « sans note » passent en B.
+ * « dès qu'un client fait une offre il passe automatiquement en B ».
+ *
+ * La note ne se monte que par une porte, `fi_note_monter` (migration
+ * `notes_acquereurs_automatiques`, MAV 19/11) : elle ne fait que monter, tient
+ * le journal `fi_note_journal`, recopie la note sur les recherches du contact
+ * (ce que lisent les salves) et ne remonte pas d'office une note qu'un agent a
+ * baissée à la main. Les déclencheurs de la base l'appellent déjà pour une
+ * visite « Effectuée », une offre, une vente, une réponse ou un échange noté ;
+ * ici, c'est la visite programmée, qui montait déjà en B avant eux.
  */
 async function passerEnB(contactIds: string[] | undefined, motif: "visite" | "offre") {
   for (const id of contactIds ?? []) {
-    const c = await bqOne("bo_contact", id).catch(() => null);
-    if (!c || c.Note === "A" || c.Note === "B") continue;
-    await rpc("bo_patch_doc", {
-      p_table: "bo_contact",
-      p_id: id,
-      p_patch: { Note: "B", note_auto: { de: c.Note ?? null, motif, le: new Date().toISOString() } },
-    });
+    await rpc("fi_note_monter", { p_contact: id, p_note: "B", p_motif: motif }).catch(() => undefined);
   }
 }
 

@@ -1538,11 +1538,11 @@ async function recevoirOffreAcquereur(ref: string, b: Record<string, unknown>) {
     site_annonce: cleCompte(b.proposition) ? undefined : immeubleId,
     "Created Date": now.toISOString(), "Modified Date": now.toISOString(),
   });
-  /* Retour #525 : celui qui fait une offre passe en B (on ne fait que monter). */
-  const [c] = await lire(`bo_contact?select=id,data&id=eq.${encodeURIComponent(contactId)}`);
-  if (c && c.data.Note !== "A" && c.data.Note !== "B") {
-    await rpc("bo_patch_doc", { p_table: "bo_contact", p_id: contactId, p_patch: { Note: "B", note_auto: { de: c.data.Note ?? null, motif: "offre", le: now.toISOString() } } });
-  }
+  /* Retour #525 : celui qui fait une offre passe en B. Le déclencheur de la
+     base (trg_fi_note_offre) l'a déjà fait à l'insertion de l'offre ; l'appel
+     reste, sans effet quand c'est fait — une seule porte, fi_note_monter. */
+  await rpc("fi_note_monter", { p_contact: contactId, p_note: "B", p_motif: "offre" }).catch(() => undefined);
+  for (const t of ["bo_contact", "bo_recherche"]) invaliderTable(t);
   await questionCompte(`${id}_q`, {
     nature: "offre", contactId, immeubleId, source: "Site - Compte client",
     message: `Offre à ${eur(montant)}${jours ? `, valable ${jours} jours` : ""}.\n${commentaire}`,
