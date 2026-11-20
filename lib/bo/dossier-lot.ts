@@ -12,14 +12,14 @@
  */
 import {
   bailLocalDe, chargesAnnuelles, coproDe, emplacementCommerceDe, enCopropriete, estBailCommercial,
-  etatLocatifDuLot, libelleNature, locataireLocalDe, natureDe, reperesBail, type Echeance,
+  etatLocatifDuLot, locataireLocalDe, reperesBail, tantiemesVendus, type Echeance,
 } from "./lot-copro";
 
 export type Ligne = [string, string];
 
 export type PagesLot = {
-  /** « Local commercial », « Bureaux »… pour la tranche de la couverture. */
-  nature: string;
+
+
   bail?: {
     frise?: { effet: string; echeances: Echeance[]; avancement: number };
     lignes: Ligne[];
@@ -71,7 +71,7 @@ export function pagesLot(
     loyerAnnuel: el.loyerAnnuel, prixHai: o.prixHai, surface: el.surface,
     effet: commercial || bail.fin ? el.effet : undefined, bail, locataire: loc, aujourdHui: o.aujourdHui,
   });
-  const out: PagesLot = { nature: libelleNature(natureDe(im)) };
+  const out: PagesLot = {};
   const loue = !!el.loyerAnnuel;
 
   /* --- Le bail : seulement si le local est loué --- */
@@ -156,13 +156,22 @@ export function pagesLot(
     ["Chauffage, eau", copro.chauffage],
     ["Fonds de travaux", copro.fonds_travaux ? `${eur(copro.fonds_travaux)}${copro.fonds_travaux_au ? ` au ${enLettres(copro.fonds_travaux_au)}` : ""}` : ""],
   ]);
+  /* Une ligne par lot de copropriété : deux lots sous un même bail gardent
+     chacun leurs tantièmes (MAV, 20/11). */
+  const nb = (n: number) => n.toLocaleString("fr-FR").replace(/\s/g, " ");
+  const sur = (t: number) => `${nb(t)}${copro.tantiemes_base ? ` / ${nb(copro.tantiemes_base)}` : ""}`;
+  const lotsCopro = (copro.lots ?? []).filter((l) => (l.numero ?? "").trim() || (l.designation ?? "").trim() || l.tantiemes);
+  const vendus = tantiemesVendus(copro);
+  const lotsVendus: [string, string][] = lotsCopro.map((l) => [
+    [l.numero?.trim() ? `Lot n° ${l.numero.trim()}` : "Lot", l.designation?.trim()].filter(Boolean).join(" — "),
+    lotsCopro.length > 1 && l.tantiemes ? `${sur(l.tantiemes)} tantièmes` : "compris dans la vente",
+  ]);
   const lot = garder([
-    ["Lots vendus", copro.lots_vendus],
-    ["Tantièmes généraux", copro.tantiemes ? `${copro.tantiemes.toLocaleString("fr-FR").replace(/[  ]/g, " ")}${copro.tantiemes_base ? ` / ${copro.tantiemes_base.toLocaleString("fr-FR").replace(/[  ]/g, " ")}` : ""}` : ""],
+    ...lotsVendus,
+    [lotsVendus.length > 1 ? "Tantièmes, ensemble" : "Tantièmes généraux", vendus ? sur(vendus) : ""],
     ["Charges", copro.charges_trimestre ? `${eur(copro.charges_trimestre)} par trimestre · ${eur(annee)} par an` : ""],
     ["dont récupérables", copro.charges_recuperables ? `${eur(copro.charges_recuperables)} par an` : ""],
     ["Fonds de travaux, part du lot", copro.fonds_travaux_lot ? `${eur(copro.fonds_travaux_lot)} par an` : ""],
-    ["Taxe foncière", copro.taxe_fonciere ? `${eur(copro.taxe_fonciere)}${copro.taxe_fonciere_annee ? ` en ${copro.taxe_fonciere_annee}` : ""}` : ""],
     ["Usage permis", copro.usage],
   ]);
   const travaux = (copro.travaux ?? []).filter((t) => (t.libelle ?? "").trim()).map((t) => ({

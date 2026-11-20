@@ -11,7 +11,22 @@
  */
 import { TAXES } from "../referentiels";
 
-export type LigneCharge = { type: string; total?: number; recup?: number; nonRecup?: number; postes?: number };
+export type LigneCharge = {
+  type: string; total?: number; recup?: number; nonRecup?: number; postes?: number;
+  /** Décidé sur le type d'origine, avant qu'une précision n'allonge le libellé. */
+  taxe?: boolean;
+};
+
+/**
+ * Le nom imprimé d'une charge : son type, précisé quand l'agent l'a nommée
+ * (« Entretien — chaudière »). Une ligne « Autre » précisée ne garde que sa
+ * précision : « Autre — gardiennage » n'apprend rien de plus que « Gardiennage ».
+ */
+export function nomCharge(type: string, precision?: string): string {
+  const p = (precision ?? "").trim();
+  if (!p) return type || "Charge";
+  return !type || type === "Autre" ? p.charAt(0).toUpperCase() + p.slice(1) : `${type} — ${p}`;
+}
 
 /** Jusqu'à treize charges, tout tient sur la page une fois les lignes resserrées. */
 export const SEUIL_REPLI = 13;
@@ -36,8 +51,9 @@ export function chargesDuDossier(charges: LigneCharge[], nbRevenus: number): {
   if (charges.length <= SEUIL_REPLI) {
     return { lignes: charges, tasse: charges.length + nbRevenus > LIGNES_A_L_AISE };
   }
-  const taxes = charges.filter((c) => estUneTaxe(c.type));
-  const autres = charges.filter((c) => !estUneTaxe(c.type));
+  const taxe = (c: LigneCharge) => c.taxe ?? estUneTaxe(c.type);
+  const taxes = charges.filter(taxe);
+  const autres = charges.filter((c) => !taxe(c));
   const lignes: LigneCharge[] = autres.length
     ? [...taxes, { type: "Autres charges", postes: autres.length, total: somme(autres, "total"), recup: somme(autres, "recup"), nonRecup: somme(autres, "nonRecup") }]
     : taxes;

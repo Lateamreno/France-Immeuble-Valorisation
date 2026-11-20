@@ -1,28 +1,23 @@
 /**
- * Le bien vendu par lot (local commercial, bureaux, local d'activité) —
+ * Le bien en copropriété vendu seul (local commercial, bureaux, logement…) —
  * étape 1 du cadrage du 20/11/26 (CLAUDE.md §7.11).
  *
- * Deux renseignements se saisissent sur la fiche : la **nature** du bien (ce
- * qu'on vend) et s'il est **en copropriété**. C'est la copropriété, et elle
- * seule, qui ouvre les pages « Bail et locataire » et « Copropriété » de la
- * fiche et du dossier (MAV, 20/11 : « la différence de dossier ne se fait pas
- * en fonction de ce que contient le bien, mais seulement s'il est en
- * copropriété ou non »). La nature ne sert qu'à nommer les choses.
+ * Un seul renseignement se saisit sur la fiche : le bien est-il **en
+ * copropriété** ? C'est lui, et lui seul, qui ouvre les pages « Bail et
+ * locataire » et « Copropriété » de la fiche et du dossier (MAV, 20/11 : « la
+ * différence de dossier ne se fait pas en fonction de ce que contient le bien,
+ * mais seulement s'il est en copropriété ou non »). Ce que le bien contient —
+ * commerce, bureaux, logement, cave, parking — se lit dans l'état locatif,
+ * comme pour un immeuble (revirement du 20/11 : la « nature » qu'on demandait
+ * à la création a disparu).
+ *
+ * Les **lots de copropriété** ne sont pas les lignes de l'état locatif : un
+ * seul bail peut couvrir deux lots aux tantièmes différents (MAV, 20/11). Ils
+ * se saisissent donc à part, sur la page Copropriété.
  *
  * Ce fichier ne lit ni n'écrit rien : il décrit les données et calcule les
  * repères qu'un investisseur regarde en premier.
  */
-
-export const NATURES = [
-  { cle: "immeuble", libelle: "Immeuble entier", lot: false },
-  { cle: "local_commercial", libelle: "Local commercial", lot: true },
-  { cle: "bureaux", libelle: "Bureaux", lot: true },
-  { cle: "local_activite", libelle: "Local d'activité", lot: true },
-  { cle: "appartement", libelle: "Appartement", lot: true },
-  { cle: "parking_cave", libelle: "Parking, cave", lot: true },
-] as const;
-
-export type Nature = (typeof NATURES)[number]["cle"];
 
 const texte = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const nombre = (v: unknown) => {
@@ -30,19 +25,11 @@ const nombre = (v: unknown) => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-/** La nature saisie sur la fiche ; une fiche d'avant le 20/11 est un immeuble entier. */
-export function natureDe(im: Record<string, unknown>): Nature {
-  const n = texte(im.nature);
-  return NATURES.some((x) => x.cle === n) ? (n as Nature) : "immeuble";
-}
-
-export const libelleNature = (n: Nature) => NATURES.find((x) => x.cle === n)!.libelle;
-
-/** Vrai quand la fiche décrit un lot, pas un immeuble entier. */
-export const estUnLot = (im: Record<string, unknown>) => NATURES.find((x) => x.cle === natureDe(im))!.lot;
-
 /** La copropriété ouvre les pages « Bail et locataire » et « Copropriété ». */
 export const enCopropriete = (im: Record<string, unknown>) => im.en_copropriete === true;
+
+/** Un commerce parmi les lots : la page « Emplacement commercial » a un sens. */
+export const aUnCommerce = (lots: Record<string, unknown>[]) => lots.some((l) => texte(l.Destination) === "Commerce");
 
 /* ------------------------------------------------------------------ */
 /* Ce qui se saisit                                                    */
@@ -92,6 +79,9 @@ export type LocataireLocal = Partial<{
   note_interne: string;
 }>;
 
+/** Un lot de copropriété vendu : son numéro au règlement, ce que c'est, ses tantièmes. */
+export type LotCopro = { numero?: string; designation?: string; tantiemes?: number };
+
 export type TravauxVotes = { libelle: string; montant?: number; part?: number; appels?: string; charge?: string };
 
 export type Copro = Partial<{
@@ -104,14 +94,12 @@ export type Copro = Partial<{
   chauffage: string;
   fonds_travaux: number;
   fonds_travaux_au: string;
-  lots_vendus: string;
-  tantiemes: number;
+  /** Les lots de copropriété vendus, chacun avec ses tantièmes. */
+  lots: LotCopro[];
   tantiemes_base: number;
   charges_trimestre: number;
   charges_recuperables: number;
   fonds_travaux_lot: number;
-  taxe_fonciere: number;
-  taxe_fonciere_annee: number;
   usage: string;
   ag_date: string;
   travaux: TravauxVotes[];
@@ -326,6 +314,12 @@ export function reperesBail(e: EntreesReperes): Reperes {
 
 /** Lecture du taux d'effort, pour la couleur de la tuile : au-delà de 12 %, un commerce peine à payer. */
 export const tonTauxEffort = (t?: number) => (t === undefined ? "" : t <= 10 ? "bon" : t <= 12 ? "moyen" : "tendu");
+
+/** Les tantièmes vendus : la somme de ceux des lots, quand au moins un est saisi. */
+export function tantiemesVendus(c: Copro): number | undefined {
+  const t = (c.lots ?? []).map((l) => l.tantiemes).filter((x): x is number => typeof x === "number" && x > 0);
+  return t.length ? t.reduce((a, b) => a + b, 0) : undefined;
+}
 
 /** Les charges annuelles du lot, d'après l'appel trimestriel. */
 export const chargesAnnuelles = (c: Copro) => (c.charges_trimestre && c.charges_trimestre > 0 ? Math.round(c.charges_trimestre * 4) : undefined);

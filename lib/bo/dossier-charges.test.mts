@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chargesDuDossier, estUneTaxe } from "./dossier-charges.ts";
+import { chargesDuDossier, estUneTaxe, nomCharge } from "./dossier-charges.ts";
 
 const c = (type: string, total: number) => ({ type, total, recup: total, nonRecup: 0 });
 const ARGENTEUIL = [
@@ -49,4 +49,20 @@ test("ce qui compte comme une taxe", () => {
 test("un montant inconnu reste inconnu dans la ligne réunie", () => {
   const tout = Array.from({ length: 14 }, (_, i) => ({ type: `Poste ${i}` }));
   assert.equal(chargesDuDossier(tout, 1).lignes[0].total, undefined);
+});
+
+test("une charge précisée s'imprime avec sa précision", () => {
+  assert.equal(nomCharge("Entretien", "chaudière"), "Entretien — chaudière");
+  assert.equal(nomCharge("Autre", "gardiennage"), "Gardiennage");
+  assert.equal(nomCharge("Autre", "  "), "Autre");
+  assert.equal(nomCharge("Eau"), "Eau");
+  assert.equal(nomCharge("", ""), "Charge");
+});
+
+test("une taxe précisée reste une taxe dans le regroupement", () => {
+  const tout = [
+    { type: "CRL — bureaux du 2e", taxe: true, total: 900 },
+    ...Array.from({ length: 14 }, (_, i) => ({ type: `Entretien — poste ${i}`, taxe: false, total: 100 })),
+  ];
+  assert.deepEqual(chargesDuDossier(tout, 1).lignes.map((l) => l.type), ["CRL — bureaux du 2e", "Autres charges"]);
 });

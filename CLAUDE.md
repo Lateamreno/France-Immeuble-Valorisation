@@ -628,6 +628,16 @@ tranchée par MAV (`lib/bo/dossier-charges.ts`, pur, testé) :
 Les totaux ne bougent pas. Un dossier déjà enregistré garde son PDF : il faut
 en refaire une version pour profiter de la correction.
 
+Les lignes de même type ne sont **pas** réunies (MAV : « non, garde »). Pour
+les distinguer, toute charge peut porter une **précision** (`type_autre`,
+ouverte à tous les types le 20/11) que le dossier imprime : « Entretien —
+chaudière » ; une ligne « Autre » précisée ne garde que sa précision
+(`nomCharge`).
+
+**La longueur de façade a disparu du BO** (MAV, 20/11, revirement du retour
+#241 : « ça ne sert à rien et ça nous rajoute une action ») : ni demandée, ni
+saisie, ni imprimée. `ter_facade` reste en base sur les anciennes fiches.
+
 ---
 
 ### 7.9 Rapport de commercialisation — le point envoyé au propriétaire (19/11/26)
@@ -760,14 +770,23 @@ d'affaires dans le dossier : « si on peut, mais pas forcément tout le temps »
 renseignements arrivent au fil de l'eau : une ligne vide ne s'imprime pas.
 
 **Étape 1, livrée le 20/11 : le bien en copropriété vendu seul.**
-- Deux renseignements sur la fiche (`bo_immeuble`) : `nature` (immeuble,
-  local_commercial, bureaux, local_activite, appartement, parking_cave) et
-  `en_copropriete`. Ils se posent à la création (« Que vend-on ? ») et se
-  corrigent par la puce sous le prix, en tête du menu de la fiche.
-- `en_copropriete` ouvre « Bail et locataire » et « Copropriété » ; la nature
-  « local commercial » ouvre « Emplacement commercial »
+- **Un seul renseignement sur la fiche** (`bo_immeuble`) : `en_copropriete`.
+  Il se pose à la création (« Que vend-on ? » : un immeuble entier, ou un bien
+  en copropriété) et se corrige par la puce sous le prix, en tête du menu de la
+  fiche. **Revirement de MAV le 20/11** : la « nature » (local commercial,
+  appartement…) demandée à la création le matin a disparu — « le type de bien
+  se lit dans la partie état locatif », et on dit « logement », pas
+  « appartement » (ce peut être une maison).
+- `en_copropriete` ouvre « Bail et locataire » et « Copropriété » ; un lot
+  « Commerce » à l'état locatif y ajoute « Emplacement commercial »
   (`components/lot-copro.tsx`). Blocs enregistrés entiers sur la fiche :
   `bail_local`, `locataire_local`, `copro`, `emp_commerce` (`updateLotCopro`).
+- **Les lots de copropriété ne sont pas les lignes de l'état locatif** (MAV,
+  20/11, rue Damrémont : deux lots aux tantièmes différents sous un seul
+  bail). Ils se saisissent sur la page Copropriété (`copro.lots` : numéro,
+  désignation, tantièmes) ; l'état locatif garde une ligne par chose louée.
+- Un bien en copropriété **ne renseigne ni terrain ni PLU** : la fabrication
+  du dossier ne les réclame pas et le dossier n'imprime pas le bloc.
 - **L'état locatif reste la source** du loyer, du type de bail, de la date
   d'effet, du dépôt et de l'indice : la page les relit
   (`etatLocatifDuLot`), elle ne les recopie pas. Elle n'ajoute que les clauses

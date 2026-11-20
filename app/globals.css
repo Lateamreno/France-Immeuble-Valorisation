@@ -10038,3 +10038,8 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .dos-loc input { margin-top: 3px; }
 .dos-loc span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--slate); }
 .dos-loc i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
+.lc-tab.lots { min-width: 0; }
+.lc-tab.lots td:nth-child(1) { width: 96px; }
+.lc-tab.lots td:nth-child(2) { width: auto; }
+.lc-tab.lots td:nth-child(3) { width: 110px; }
+.lc-total { display: inline-flex; align-items: center; min-height: 34px; font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--slate); font-variant-numeric: tabular-nums; }

@@ -160,14 +160,16 @@ function ModaleCharge({ b, charge, onFermer }: {
       if (charge) {
         await updateCharge(immeubleId, String(charge._id), {
           Type_charge: type,
-          type_autre: type === "Autre" ? (autre || null) : null,
+          /* MAV, 20/11 : deux lignes « Entretien » ne se distinguaient pas. La
+             précision vaut pour tous les types, et le dossier l'imprime. */
+          type_autre: autre.trim() || null,
           ...montants,
           commentaire: comment || null,
         });
       } else {
         await addCharge(immeubleId, {
           Type_charge: type,
-          type_autre: type === "Autre" ? autre || undefined : undefined,
+          type_autre: autre.trim() || undefined,
           total_an: t, recup_an: r, non_recup_an: nonRecup,
           commentaire: comment || undefined,
         });
@@ -190,9 +192,11 @@ function ModaleCharge({ b, charge, onFermer }: {
           <button key={tc} type="button" className={`mopt${type === tc ? " on" : ""}`} onClick={() => setType(tc)}>{tc}</button>
         ))}
       </div>
-      {type === "Autre" && (
-        <input className="min" style={{ marginTop: 6 }} placeholder="Précisez le type" value={autre} onChange={(e) => setAutre(e.target.value)} />
-      )}
+      {/* MAV, 20/11 : la précision se donne pour tous les types — « Entretien »
+          deux fois ne dit pas de quoi. Le dossier l'imprime après le type. */}
+      <input className="min" style={{ marginTop: 6 }}
+        placeholder={type === "Autre" ? "Précisez le type" : "Précision, imprimée dans le dossier (facultatif) : chaudière, ascenseur…"}
+        value={autre} onChange={(e) => setAutre(e.target.value)} />
       {/* Retour #256 : chaque case dit ce qu'elle attend, et porte son
           unité. « Total €/an » en gris dans la case disparaissait dès la
           première frappe — on ne savait plus laquelle était laquelle. */}

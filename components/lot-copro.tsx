@@ -16,9 +16,9 @@ import { useRouter } from "next/navigation";
 import type { BienData } from "@/lib/bubble/server";
 import { societeDuSiren, updateLotCopro } from "@/lib/bo/actions";
 import {
-  NATURES, QUALITES_EMPLACEMENT, QUI_PAIE, bailLocalDe, chargesAnnuelles, coproDe, emplacementCommerceDe,
-  enCopropriete, estBailCommercial, etatLocatifDuLot, libelleNature, locataireLocalDe, natureDe, reperesBail, tonTauxEffort,
-  type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal, type Nature, type TravauxVotes,
+  QUALITES_EMPLACEMENT, QUI_PAIE, bailLocalDe, chargesAnnuelles, coproDe, emplacementCommerceDe,
+  enCopropriete, estBailCommercial, etatLocatifDuLot, locataireLocalDe, reperesBail, tantiemesVendus, tonTauxEffort,
+  type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal, type LotCopro, type TravauxVotes,
 } from "@/lib/bo/lot-copro";
 import { INDICES_BAIL } from "@/lib/referentiels";
 import { useBaseSaisie } from "@/lib/base-saisie";
@@ -134,22 +134,24 @@ function Choix({ libelle, valeur, options, onChange }: { libelle: string; valeur
   );
 }
 
-/* ----------------------------------------------- la nature, dans le rail --- */
+/* ------------------------------------- la copropriété, dans le rail --- */
 
-/** La puce du rail : ce qu'on vend, et si c'est en copropriété. Un clic la corrige. */
-export function PuceNature({ b }: { b: BienData }) {
+/**
+ * La puce du rail : immeuble entier, ou bien en copropriété. Un clic la
+ * corrige. Ce que le bien contient ne se demande pas ici : il se lit dans
+ * l'état locatif (MAV, 20/11).
+ */
+export function PuceCopro({ b }: { b: BienData }) {
   const router = useRouter();
   const id = String(b.im._id);
   const [ouverte, setOuverte] = useState(false);
-  const [nature, setNature] = useState<Nature>(natureDe(b.im));
   const [copro, setCopro] = useState(enCopropriete(b.im));
   const [pending, start] = useTransition();
-  const ouvrir = () => { setNature(natureDe(b.im)); setCopro(enCopropriete(b.im)); setOuverte(true); };
-  const unLot = nature !== "immeuble";
   return (
     <>
-      <button type="button" className="lc-puce" onClick={ouvrir} title="Corriger la nature du bien">
-        {libelleNature(natureDe(b.im))}{enCopropriete(b.im) ? " · copropriété" : ""}
+      <button type="button" className="lc-puce" title="Immeuble entier ou bien en copropriété ?"
+        onClick={() => { setCopro(enCopropriete(b.im)); setOuverte(true); }}>
+        {enCopropriete(b.im) ? "Bien en copropriété" : "Immeuble entier"}
       </button>
       {ouverte && (
         <Modale titre={<b>Que vend-on ?</b>} onFermer={() => setOuverte(false)} largeur={520}
@@ -158,31 +160,19 @@ export function PuceNature({ b }: { b: BienData }) {
             <button type="button" className="fadd" onClick={() => setOuverte(false)}>Annuler</button>
             <button type="button" className="kgo" disabled={pending}
               onClick={() => start(async () => {
-                await updateLotCopro(id, { nature, en_copropriete: copro });
+                await updateLotCopro(id, { en_copropriete: copro });
                 setOuverte(false);
                 router.refresh();
               })}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
           </>}>
           <div className="nat-choix">
             <div className="seg">
-              <button type="button" className={!unLot ? "on" : undefined} onClick={() => setNature("immeuble")}>Un immeuble entier</button>
-              <button type="button" className={unLot ? "on" : undefined}
-                onClick={() => { if (!unLot) { setNature("local_commercial"); setCopro(true); } }}>Un lot</button>
+              <button type="button" className={!copro ? "on" : undefined} onClick={() => setCopro(false)}>Un immeuble entier</button>
+              <button type="button" className={copro ? "on" : undefined} onClick={() => setCopro(true)}>Un bien en copropriété</button>
             </div>
-            {unLot && (
-              <div className="nat-puces">
-                {NATURES.filter((n) => n.lot).map((n) => (
-                  <button key={n.cle} type="button" className={`nat-puce${nature === n.cle ? " on" : ""}`} onClick={() => setNature(n.cle)}>{n.libelle}</button>
-                ))}
-              </div>
-            )}
-            <label className="nat-copro">
-              <input type="checkbox" checked={copro} onChange={(e) => setCopro(e.target.checked)} />
-              En copropriété
-            </label>
             <p className="mhint">
-              La copropriété ouvre les pages « Bail et locataire » et « Copropriété » de la fiche, et les ajoute au dossier.
-              La nature sert à nommer le bien ; elle ne change pas le dossier.
+              Un bien en copropriété ouvre les pages « Bail et locataire » et « Copropriété » de la fiche, et les ajoute au dossier.
+              Ce que le bien contient (commerce, bureaux, logement, cave, parking) se saisit dans l&apos;état locatif.
             </p>
           </div>
         </Modale>
@@ -369,15 +359,26 @@ export function CoproSection({ b }: { b: BienData }) {
   const id = String(b.im._id);
   const [c, setC] = useState<Copro>(() => coproDe(b.im));
   const travaux = c.travaux ?? [];
-  const courant = nettoyer({ ...c, travaux: travaux.map((t) => nettoyer(t)).filter((t) => (t.libelle ?? "").trim()) }) as Copro;
+  /* Les lots de copropriété se saisissent ici, à part de l'état locatif : un
+     seul bail peut couvrir deux lots aux tantièmes différents (MAV, 20/11). */
+  const lots = c.lots ?? [];
+  const courant = nettoyer({
+    ...c,
+    travaux: travaux.map((t) => nettoyer(t)).filter((t) => (t.libelle ?? "").trim()),
+    lots: lots.map((l) => nettoyer(l)).filter((l) => Object.keys(l).length > 0),
+  }) as Copro;
   if (courant.travaux && courant.travaux.length === 0) delete courant.travaux;
+  if (courant.lots && courant.lots.length === 0) delete courant.lots;
+  const majLot = (i: number, patch: Partial<LotCopro>) =>
+    setC((p) => ({ ...p, lots: (p.lots ?? []).map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
+  const vendus = tantiemesVendus(c);
   const { modifie, avant, poser } = useBaseSaisie(courant);
   const [pending, start] = useTransition();
   const maj = <K extends keyof Copro>(k: K, v: Copro[K]) => setC((p) => ({ ...p, [k]: v }));
   const majTravaux = (i: number, patch: Partial<TravauxVotes>) =>
     setC((p) => ({ ...p, travaux: (p.travaux ?? []).map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
   const annee = chargesAnnuelles(c);
-  const quote = c.tantiemes && c.tantiemes_base && c.tantiemes_base > 0 ? c.tantiemes / c.tantiemes_base : undefined;
+  const quote = vendus && c.tantiemes_base && c.tantiemes_base > 0 ? vendus / c.tantiemes_base : undefined;
 
   const enregistrer = () => start(async () => {
     await updateLotCopro(id, { copro: courant });
@@ -403,19 +404,40 @@ export function CoproSection({ b }: { b: BienData }) {
           </div>
         </div>
         <div className="lc-bloc">
-          <Titre>Le lot dans la copropriété</Titre>
+          <Titre>Les lots de copropriété vendus</Titre>
+          <table className="lc-tab lots">
+            <thead><tr><th>N° de lot</th><th>Désignation</th><th>Tantièmes</th><th /></tr></thead>
+            <tbody>
+              {lots.map((l, i) => (
+                <tr key={i}>
+                  <td><input className="min" aria-label="Numéro de lot" value={l.numero ?? ""} onChange={(e) => majLot(i, { numero: e.target.value })} /></td>
+                  <td><input className="min" aria-label="Désignation" placeholder="Local, réserve, cave, parking…" value={l.designation ?? ""} onChange={(e) => majLot(i, { designation: e.target.value })} /></td>
+                  <td><SaisieNombre className="min n" aria-label="Tantièmes" valeur={l.tantiemes} onChange={(v) => majLot(i, { tantiemes: v })} /></td>
+                  <td>
+                    <button type="button" className="lc-x" title="Retirer ce lot" aria-label="Retirer ce lot"
+                      onClick={() => setC((p) => ({ ...p, lots: (p.lots ?? []).filter((_, j) => j !== i) }))}>✕</button>
+                  </td>
+                </tr>
+              ))}
+              {lots.length === 0 && <tr><td colSpan={4} className="lc-rien">Aucun lot saisi.</td></tr>}
+            </tbody>
+          </table>
+          <button type="button" className="fadd" onClick={() => setC((p) => ({ ...p, lots: [...(p.lots ?? []), {}] }))}>+ Ajouter un lot de copropriété</button>
+          <p className="mhint">
+            Les lots du règlement de copropriété, pas les lignes de l&apos;état locatif : un seul bail peut couvrir deux lots aux tantièmes différents.
+          </p>
           <div className="lc-grille">
-            <Texte libelle="Lots vendus" valeur={c.lots_vendus} onChange={(v) => maj("lots_vendus", v)} aide="n° 2 (local) et n° 31 (réserve)" />
-            <span />
-            <Nombre libelle="Tantièmes généraux" valeur={c.tantiemes} onChange={(v) => maj("tantiemes", v)} />
+            <Champ libelle="Tantièmes vendus">
+              <span className="lc-total">{vendus !== undefined ? vendus.toLocaleString("fr-FR") : "—"}</span>
+            </Champ>
             <Nombre libelle="sur" valeur={c.tantiemes_base} onChange={(v) => maj("tantiemes_base", v)} aide={quote !== undefined ? `Soit ${pct(quote * 100)} de l'immeuble` : "1 000, 10 000…"} />
             <Nombre libelle="Charges par trimestre" valeur={c.charges_trimestre} onChange={(v) => maj("charges_trimestre", v)} suffixe="€"
               aide={annee !== undefined ? `Soit ${eur(annee)} par an` : undefined} />
             <Nombre libelle="dont récupérables, par an" valeur={c.charges_recuperables} onChange={(v) => maj("charges_recuperables", v)} suffixe="€" />
             <Nombre libelle="Fonds de travaux, part du lot" valeur={c.fonds_travaux_lot} onChange={(v) => maj("fonds_travaux_lot", v)} suffixe="€ / an" />
             <span />
-            <Nombre libelle="Taxe foncière" valeur={c.taxe_fonciere} onChange={(v) => maj("taxe_fonciere", v)} suffixe="€" />
-            <Nombre libelle="Année" valeur={c.taxe_fonciere_annee} onChange={(v) => maj("taxe_fonciere_annee", v)} />
+            {/* La taxe foncière se saisit dans les charges de l'état locatif,
+                que la fabrication du dossier réclame déjà : pas deux fois. */}
           </div>
           <Texte libelle="Usage permis par le règlement" valeur={c.usage} onChange={(v) => maj("usage", v)} lignes={2} />
         </div>

@@ -7,10 +7,10 @@ const lot = { _id: "L1", Destination: "Commerce", surface_carrez: 92, loyer: 482
 const reserve = { _id: "L2", Destination: "Cave", surface_carrez: 30 };
 const bail = { LOTs: ["L1"], date_start: "2019-04-01T00:00:00.000Z", loyer_init: 4333.33, depot_garantie: 14487, indice_type: "ILC" };
 const im = {
-  en_copropriete: true, nature: "local_commercial",
+  en_copropriete: true,
   bail_local: { revision: "04-01", destination: "Restauration traditionnelle", taxe_fonciere: "Le locataire", charges_copro: "Le locataire", gros_travaux: "Le bailleur", droit_preference: true },
   locataire_local: { enseigne: "Le Comptoir d'Exemple", societe: "EXEMPLE RESTAURATION", activite: "Restaurant", creee_le: "2016-09-14", dirigeant: "Alex Exemple, président", etablissements: 1, ca: 612000, ca_annee: 2025, note_interne: "paie en retard" },
-  copro: { lots_total: 24, lots_principaux: 14, syndic: "Cabinet Exemple", tantiemes: 87, tantiemes_base: 1000, charges_trimestre: 412, travaux: [{ libelle: "Ravalement", montant: 148000, part: 12876, charge: "Vendeur" }, { libelle: "  " }] },
+  copro: { lots_total: 24, lots_principaux: 14, syndic: "Cabinet Exemple", lots: [{ numero: "2", designation: "local", tantiemes: 60 }, { numero: "31", designation: "réserve", tantiemes: 27 }], tantiemes_base: 1000, charges_trimestre: 412, travaux: [{ libelle: "Ravalement", montant: 148000, part: 12876, charge: "Vendeur" }, { libelle: "  " }] },
   emp_commerce: { qualite: "N° 1 bis", concurrents: "3 restaurants à moins de 200 m" },
 };
 const b = { im, lots: [lot, reserve], baux: [bail], locataires: [] };
@@ -22,7 +22,6 @@ test("pas de copropriété, pas de page", () => {
 
 test("le bail : échéances, lignes, qui paie quoi, à savoir", () => {
   const p = pagesLot(b, { prixHai: 990000, aujourdHui: AUJ })!;
-  assert.equal(p.nature, "Local commercial");
   assert.deepEqual(p.bail!.frise!.echeances.map((e) => e.date), ["2022-03-31", "2025-03-31", "2028-03-31"]);
   const l = Object.fromEntries(p.bail!.lignes);
   assert.equal(l["Type"], "Commercial 3/6/9");
@@ -65,7 +64,10 @@ test("la copropriété : lignes remplies seulement, travaux sans ligne vide", ()
   const tout = pagesLot(b, { prixHai: 990000, aujourdHui: AUJ })!;
   const c = tout.copro!;
   assert.deepEqual(c.lignes, [["Nombre de lots", "24, dont 14 principaux"], ["Syndic", "Cabinet Exemple"]]);
-  assert.deepEqual(c.lot, [["Tantièmes généraux", "87 / 1 000"], ["Charges", "412 € par trimestre · 1 648 € par an"]]);
+  assert.deepEqual(c.lot, [
+    ["Lot n° 2 — local", "60 / 1 000 tantièmes"], ["Lot n° 31 — réserve", "27 / 1 000 tantièmes"],
+    ["Tantièmes, ensemble", "87 / 1 000"], ["Charges", "412 € par trimestre · 1 648 € par an"],
+  ]);
   assert.equal(c.travaux.length, 1);
   assert.equal(c.travaux[0].part, "12 876 €");
   assert.deepEqual(tout.emplacement, [["Qualité de l'emplacement", "N° 1 bis"]]);
@@ -76,5 +78,9 @@ test("un local libre n'a ni page bail ni page locataire", () => {
   assert.equal(p.bail, undefined);
   assert.equal(p.locataire, undefined);
   assert.equal(p.copro, undefined);
-  assert.equal(p.nature, "Immeuble entier");
+});
+
+test("un seul lot de copropriété : une ligne, et ses tantièmes en dessous", () => {
+  const c = pagesLot({ ...b, im: { ...im, copro: { lots: [{ numero: "2", tantiemes: 87 }], tantiemes_base: 1000 } } }, { prixHai: 990000, aujourdHui: AUJ })!.copro!;
+  assert.deepEqual(c.lot, [["Lot n° 2", "compris dans la vente"], ["Tantièmes généraux", "87 / 1 000"]]);
 });

@@ -38,8 +38,8 @@ import { AddMandatButton } from "@/components/mandat-create";
 import { AjouterDelegation, ModifierDelegation, estDelegation, partFi } from "@/components/delegation";
 import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
-import { BailLocataireSection, CoproSection, EmplacementCommerceSection, PuceNature } from "@/components/lot-copro";
-import { enCopropriete, natureDe } from "@/lib/bo/lot-copro";
+import { BailLocataireSection, CoproSection, EmplacementCommerceSection, PuceCopro } from "@/components/lot-copro";
+import { aUnCommerce, enCopropriete } from "@/lib/bo/lot-copro";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
@@ -552,14 +552,13 @@ export function BienFiche({
     { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: pastille("proprietaire") },
     { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: pastille("emplacement") },
     { key: "locatif", label: "Etat locatif", icon: I.key, indicator: pastille("locatif") },
-    /* La copropriété, et elle seule, ouvre ces deux pages (MAV, 20/11) ;
-       l'emplacement commercial ne concerne que les murs de commerce. */
+    /* La copropriété, et elle seule, ouvre ces pages (MAV, 20/11) ;
+       l'emplacement commercial s'y ajoute quand l'état locatif porte un
+       commerce — le type du bien ne se demande plus, il se lit là. */
     ...(enCopropriete(im) ? [
       { key: "bail" as const, label: "Bail et locataire", icon: I.brief },
       { key: "copro" as const, label: "Copropriété", icon: I.folder },
-    ] : []),
-    ...(natureDe(im) === "local_commercial" ? [
-      { key: "commerce" as const, label: "Emplacement commercial", icon: I.signpost },
+      ...(aUnCommerce(b.lots) ? [{ key: "commerce" as const, label: "Emplacement commercial", icon: I.signpost }] : []),
     ] : []),
     { key: "technique", label: "Etat technique", icon: I.tech, indicator: pastille("technique") },
     { key: "prix", label: "Description et prix", icon: I.euro, indicator: pastille("prix") },
@@ -737,7 +736,7 @@ export function BienFiche({
             <div className="bt" title={b.adresseComplete || undefined}>{b.ville}</div>
             <div><span className="bst">{b.statut}</span></div>
             {b.prix && <div className="bp">{b.prix}</div>}
-            <PuceNature b={b} />
+            <PuceCopro b={b} />
           </div>
         </div>
         {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
