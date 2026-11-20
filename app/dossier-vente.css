@@ -508,3 +508,10 @@ body:has(.dv.nu) .fadd, body:has(.dv.nu) .fchip { display: none; }
 .dv-chiffres > div { background: var(--dv-carte); border-radius: 1.5mm; padding: 4mm 2mm; text-align: center; }
 .dv-chiffres b { display: block; font-size: 16pt; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dv-chiffres span { display: block; margin-top: 1mm; font-size: 8.5pt; color: var(--dv-gris); }
+
+/* Tableau long (MAV, 20/11 — Argenteuil) : moins d'air entre les lignes, les
+   polices ne bougent pas. La ligne passe de 9,5 à 7,1 mm. */
+.dv-page.serre.tasse .dv-tab td { padding: 1.15mm 3mm; line-height: 1.3; }
+.dv-page.serre.tasse .dv-tab th { padding: 1.4mm 3mm; line-height: 1.3; }
+.dv-page.serre.tasse .dv-tab tfoot td { padding-top: 1.4mm; }
+.dv-page.serre.tasse .dv-h { margin: 3mm 8mm 1.6mm; }
