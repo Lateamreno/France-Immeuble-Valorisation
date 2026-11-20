@@ -80,7 +80,7 @@ export function cheminPublic(chemin: string): boolean {
     /* Les machines : chacune a sa propre clé (site, Claude, MailingVox, crons). */
     || chemin.startsWith("/api/site/") || chemin.startsWith("/api/claude/")
     || chemin.startsWith("/api/mailingvox/") || chemin === "/api/mails/releve"
-    || chemin === "/api/relances/tourner"
+    || chemin === "/api/relances/tourner" || chemin === "/api/rapports/rappel"
     /* Le lien de désinscription des campagnes : le destinataire n'a pas de
        compte, son jeton suffit (lib/bo/campagnes-actions.ts). */
     || chemin === "/desabonnement" || chemin === "/api/desabonnement"

@@ -283,3 +283,18 @@ export async function envoyerRapport(immeubleId: string, contenu: ContenuRapport
     message: `Rapport envoyé depuis ${r.expediteur} à ${a.join(", ")}.${copie}${range ? "" : " Il n'a pas pu être rangé dans l'historique."}`,
   };
 }
+
+/**
+ * L'essai du rappel du lundi : la personne connectée reçoit le sien tout de
+ * suite, à sa seule adresse. Ne compte pas pour la semaine.
+ */
+export async function essayerRappelRapport(): Promise<{ ok: boolean; message: string }> {
+  const { moi } = await session();
+  if (!moi) return { ok: false, message: "Échec : connectez-vous pour recevoir votre rappel." };
+  try {
+    const { essayerRappel } = await import("@/lib/bo/rapport-rappel-serveur");
+    return await essayerRappel(moi);
+  } catch (e) {
+    return { ok: false, message: `Échec : ${e instanceof Error ? e.message : "le rappel n'a pas pu être préparé."}` };
+  }
+}

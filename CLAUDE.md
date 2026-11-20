@@ -659,10 +659,27 @@ en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
   (`rapport-contenu.ts`) les met en tuiles et en une phrase d'origine. Un
   compteur absent ne s'affiche pas — jamais « 0 » pour « on ne sait pas ». La
   série par jour n'est pas encore dessinée.
-- **Reste à faire** : le rappel hebdomadaire au commercial (« il faut envoyer
-  un rapport », avec ce qui est nouveau depuis le dernier) ; les vues et
-  impressions du site France Immeuble (le site ne les transmet pas) ; SeLoger
-  et Leboncoin quand le multidiffuseur existera.
+- **Une proposition fermée d'office n'est pas une réponse** (20/11) : une
+  proposition « Refusée » dont le motif est administratif (`motifAdministratif` :
+  « annulée automatiquement » à l'acceptation d'une offre, doublon, ancien
+  dossier, mise à jour) ne compte ni comme un répondant ni comme un refus, et
+  son motif ne part pas au propriétaire. Sur les vraies fiches, 2 459
+  annulations d'office gonflaient les répondants (387 sur 408 pour un bien).
+- **Le rappel du lundi (20/11)** : chaque lundi à 8 h de Paris, un e-mail **à
+  l'agent** — jamais au propriétaire — liste ses biens en vente sous mandat
+  (statuts 5 à 7, mandat de vente « En cours », agent du mandat sinon de la
+  fiche) : rapport à envoyer et ce qu'il y a de nouveau depuis le dernier,
+  biens sur lesquels il ne s'est rien passé, biens à jour (rapport de moins de
+  sept jours). Rien si tout est à jour. Un bien sans agent actif va à la
+  direction. `lib/bo/rapport-rappel.ts` (pur, testé),
+  `rapport-rappel-serveur.ts`, cron `/api/rapports/rappel` (toutes les dix
+  minutes le lundi matin, l'heure de Paris lue dans le code), une ligne de
+  `fi_rapport_rappel` par agent et par semaine. Essai à sa seule adresse :
+  Réglages › Envois, « M'envoyer le mien maintenant ».
+- **Reste à faire** : les vues et impressions du site France Immeuble (le site
+  ne les transmet pas) ; SeLoger et Leboncoin quand le multidiffuseur
+  existera ; borner un rapport au mandat en cours quand un bien a été
+  commercialisé plusieurs fois (aujourd'hui il remonte au tout premier envoi).
 
 ### 7.10 Notes des acquéreurs — elles montent toutes seules (20/11/26)
 

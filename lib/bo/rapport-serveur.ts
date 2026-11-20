@@ -84,8 +84,13 @@ export async function rapportsEnvoyes(immeubleId: string): Promise<LigneRapport[
   );
 }
 
-export async function preparerRapportDe(immeubleId: string, agentConnecte?: string): Promise<RapportPrepare> {
-  const [ims, mandats, props, comms, visitesB, offresB, questions, agents, envoyes] = await Promise.all([
+/**
+ * Ce que la base sait de la commercialisation d'un bien, calculé. Sert le
+ * rapport au propriétaire, et le rappel du lundi à l'agent (qui n'a besoin ni
+ * de l'annonce ni des destinataires).
+ */
+export async function chargerRapport(immeubleId: string) {
+  const [ims, mandats, props, comms, visitesB, offresB, questions, envoyes] = await Promise.all([
     fetchAll("immeuble", [{ key: "_id", constraint_type: "equals", value: immeubleId }], 1),
     fetchAll("mandat", [{ key: "IMMEUBLEs", constraint_type: "contains", value: immeubleId }], 50).catch(() => []),
     fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 5000).catch(() => []),
@@ -93,11 +98,10 @@ export async function preparerRapportDe(immeubleId: string, agentConnecte?: stri
     fetchAll("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 500).catch(() => []),
     fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: immeubleId }], 200).catch(() => []),
     fetchAll("question", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 500, undefined, ["source", "Created Date"]).catch(() => []),
-    getAgents().catch(() => []),
     rapportsEnvoyes(immeubleId),
   ]);
   const im = ims[0];
-  if (!im) return { ok: false, message: "Bien introuvable." };
+  if (!im) return null;
 
   const [reponses, relancesB] = await Promise.all([
     lire<{ proposition_id: string | null; canal: string; recu_le: string; traite_le: string | null; texte: string | null }>(
@@ -197,6 +201,13 @@ export async function preparerRapportDe(immeubleId: string, agentConnecte?: stri
      relance des propositions : sinon chaque relance compterait deux fois. */
   if (!entrees.relances?.length) entrees.relances = undefined;
   const rapport = construireRapport(entrees);
+  return { im, signe, questions, envoyes, entrees, rapport };
+}
+
+export async function preparerRapportDe(immeubleId: string, agentConnecte?: string): Promise<RapportPrepare> {
+  const [charge, agents] = await Promise.all([chargerRapport(immeubleId), getAgents().catch(() => [])]);
+  if (!charge) return { ok: false, message: "Bien introuvable." };
+  const { im, signe, questions, envoyes, entrees, rapport } = charge;
 
   /* ---- La diffusion de l'annonce ---- */
   const diffusion: ContenuRapport["diffusion"] = [];

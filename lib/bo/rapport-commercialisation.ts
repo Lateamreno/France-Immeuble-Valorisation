@@ -154,6 +154,18 @@ export function initialesDe(prenom?: string, nom?: string, repli?: string): stri
 /** Un refus qui ne dit rien : le bouton de la carte, ou un motif vide. */
 const sansExplication = (motif?: string) => !propre(motif) || /bouton rcs|^pas int[ée]ress[ée]\.?$/i.test(propre(motif));
 
+/**
+ * Un « refus » qui n'en est pas un : la proposition a été fermée par le BO ou
+ * par l'agent, pas par l'acquéreur — annulation d'office à l'acceptation d'une
+ * offre, doublon d'un dossier renvoyé, reliquat d'une ancienne
+ * commercialisation. Vu le 20/11 sur les vraies fiches : 2 459 propositions
+ * « annulées automatiquement » et des centaines de « Doublon » comptaient
+ * comme autant d'acquéreurs qui avaient répondu, et leur motif serait parti
+ * au propriétaire comme un retour.
+ */
+export const motifAdministratif = (motif?: string) =>
+  /annul[ée]e automatiquement|^doublon|^\[?i?\]?ancien(ne)?\b|mise [àa] jour du dossier|nouvel envoi|renvoy[ée] (le|la)\b/i.test(propre(motif));
+
 const estRefus = (statut: string) => /^refus/i.test(statut);
 const estInteresse = (statut: string) => /int[ée]ress/i.test(statut);
 const visiteFaite = (statut: string) => /effectu/i.test(statut);
@@ -234,13 +246,15 @@ export function construireRapport(e: EntreesRapport): Rapport {
     if (!r.propositionId) continue;
     reponsesPar.set(r.propositionId, [...(reponsesPar.get(r.propositionId) ?? []), r]);
   }
+  /* Fermée d'office : ni un refus, ni une réponse. */
+  const fermee = (p: EntreesRapport["propositions"][number]) => estRefus(p.statut) && motifAdministratif(p.motifRefus);
   const aRepondu = (p: EntreesRapport["propositions"][number]) =>
-    reponsesPar.has(p.id) || p.statut !== "Envoyée" || !!propre(p.commentaire) || !!propre(p.retourSms)
+    reponsesPar.has(p.id) || (p.statut !== "Envoyée" && !fermee(p)) || !!propre(p.commentaire) || !!propre(p.retourSms)
     || !!p.interesseLe || !!p.dossierLe;
   const contactes = new Set(props.map((p) => p.qui.contactId ?? p.id));
   const repondants = new Set(props.filter(aRepondu).map((p) => p.qui.contactId ?? p.id));
   const dossiers = props.filter((p) => p.dossierLe || (reponsesPar.get(p.id) ?? []).some((r) => r.canal === "rcs_dossier")).length;
-  const refusees = props.filter((p) => estRefus(p.statut));
+  const refusees = props.filter((p) => estRefus(p.statut) && !fermee(p));
   const interesses = props.filter((p) => !estRefus(p.statut) && (estInteresse(p.statut) || p.interesseLe
     || (reponsesPar.get(p.id) ?? []).some((r) => r.canal === "rcs_interesse")));
 
@@ -256,7 +270,7 @@ export function construireRapport(e: EntreesRapport): Rapport {
   const retours: LigneRetour[] = [];
   let refusSansExplication = 0;
   for (const p of props) {
-    const refus = estRefus(p.statut);
+    const refus = estRefus(p.statut) && !fermee(p);
     const texte = refus && !sansExplication(p.motifRefus) ? propre(p.motifRefus) : propre(p.commentaire);
     if (!texte) { if (refus) refusSansExplication++; continue; }
     retours.push({

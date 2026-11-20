@@ -18,6 +18,10 @@
     {
       "path": "/api/site/tourner",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/rapports/rappel",
+      "schedule": "*/10 6,7 * * 1"
     }
   ]
 }

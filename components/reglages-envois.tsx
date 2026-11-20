@@ -11,6 +11,7 @@
 import { useState, useTransition } from "react";
 import { brancherRetoursSms, relireRetoursSms } from "@/lib/bo/actions";
 import { EssaiRcs } from "@/components/essai-rcs";
+import { essayerRappelRapport } from "@/lib/bo/rapport-actions";
 
 export type EtatEnvois = {
   masse: {
@@ -45,6 +46,7 @@ function Ligne({ ok, libelle, detail }: { ok: boolean | "info"; libelle: string;
 export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgRappel, setMsgRappel] = useState<string | null>(null);
 
   return (
     <>
@@ -135,6 +137,29 @@ export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
       </div>
       {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
       {etat.essaiRcs && <EssaiRcs actif={etat.sms.configure} />}
+
+      {/* Le rappel du lundi (MAV, 19/11) : à l'agent, jamais au propriétaire. */}
+      <h2 className="fsub">Rapports aux propriétaires : le rappel du lundi</h2>
+      <p className="rgl-aide">
+        Chaque lundi à 8 h, chaque agent reçoit par e-mail la liste de ses biens en vente sous mandat : ceux qui
+        attendent un rapport au propriétaire, ce qu&apos;il y a de nouveau depuis le dernier, et ceux sur lesquels
+        il ne s&apos;est rien passé. Rien ne part chez un propriétaire : le rapport se relit et s&apos;envoie depuis
+        le Suivi de la vente du bien.
+      </p>
+      <div className="rgl-env-act">
+        <button
+          type="button" className="fchip" disabled={pending}
+          onClick={() => start(async () => {
+            setMsgRappel(null);
+            const r = await essayerRappelRapport();
+            setMsgRappel(r.message);
+          })}
+        >
+          {pending ? "Préparation…" : "M'envoyer le mien maintenant"}
+        </button>
+        <span className="rgl-aide">Un essai, à votre seule adresse. Il ne remplace pas celui de lundi.</span>
+      </div>
+      {msgRappel && <p className={msgRappel.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msgRappel}</p>}
     </>
   );
 }
