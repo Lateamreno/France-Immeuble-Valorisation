@@ -2647,11 +2647,12 @@ export async function getContact(id: string): Promise<ContactData | null> {
       String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),
 
     promotion: (() => {
-      /* A : il a acheté, ou son offre est allée jusqu'à l'acceptation.
-         B : il a visité ou déposé une offre, quelle qu'en soit l'issue.
-         C : on l'a contacté — une proposition partie ou un suivi écrit. */
-      const abouti = offres.find((o) =>
-        ["Acceptée", "Compromis programmé", "Compromis signé", "Vente prévue", "Vendu"].includes(String(o.Statut ?? "")));
+      /* La légende de MAV (19/11) fait foi, et la base l'applique déjà toute
+         seule (fi_note_monter). Cette proposition ne sert donc plus qu'aux
+         fiches que l'automatisme n'a pas montées : une note baissée à la main.
+         A : il a acheté. B : il a visité ou fait une offre. C : nous avons
+         échangé — un suivi écrit par l'agence, pas un dossier envoyé. */
+      const abouti = offres.find((o) => String(o.Statut ?? "") === "Vendu");
       /* #605 (MAV, 05/11) : « un client qui n'a pas encore été appelé ne peut
          être automatiquement en C. De toute façon les propriétaires ne sont pas
          forcément acheteurs, donc le mieux c'est de ne pas mettre de note pour
@@ -2664,16 +2665,15 @@ export async function getContact(id: string): Promise<ContactData | null> {
         return String(s.Type ?? "") !== "Formulaire" && !canaux.some((k) => k === "Formulaire" || k === "Site");
       });
       const merite = abouti ? "A" : offres.length > 0 || visites.length > 0 ? "B"
-        : propositions.length > 0 || suivisAgence.length > 0 ? "C" : undefined;
+        : c.acheteur === true && suivisAgence.length > 0 ? "C" : undefined;
       if (!merite || rangNote(merite) >= rangNote(S2(c.Note))) return undefined;
-      const st = String(abouti?.Statut ?? "");
       const quand = jjmmaa(abouti?.date_acte ?? abouti?.date_compromis ?? abouti?.date);
       const motif = merite === "A"
-        ? `${st === "Vendu" ? "vendu" : `offre ${st.toLowerCase()}`}${quand ? ` le ${quand}` : ""}`
+        ? `a acheté${quand ? ` le ${quand}` : ""}`
         : merite === "B"
           ? [offres.length ? `${offres.length} offre${offres.length > 1 ? "s" : ""}` : "",
              visites.length ? `${visites.length} visite${visites.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" et ")
-          : `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} envoyée${propositions.length > 1 ? "s" : ""}`;
+          : `${suivisAgence.length} échange${suivisAgence.length > 1 ? "s" : ""} noté${suivisAgence.length > 1 ? "s" : ""}`;
       return { note: merite, motif };
     })(),
   };
