@@ -493,3 +493,18 @@ body:has(.dv.nu) .fadd, body:has(.dv.nu) .fchip { display: none; }
   }
   .dv-page:last-child { break-after: auto; page-break-after: auto; }
 }
+
+/* ---------------------------------- Bien en copropriété (20/11/26) --- */
+/* La frise du bail : la durée écoulée en or, un trait par échéance. */
+.dv-frise { position: relative; height: 13mm; margin: 4mm 10mm 5mm; }
+.dv-frise i { position: absolute; left: 0; right: 0; top: 3mm; height: 1.6mm; border-radius: 1mm; background: var(--dv-ligne); }
+.dv-frise u { position: absolute; left: 0; top: 3mm; height: 1.6mm; border-radius: 1mm; background: var(--dv-or); }
+.dv-frise s { position: absolute; top: 1.4mm; width: .5mm; height: 4.8mm; background: var(--dv-texte); }
+.dv-frise em { position: absolute; top: 7.4mm; font-style: normal; font-size: 9pt; color: var(--dv-gris); white-space: nowrap; }
+.dv-savoir { margin: 0 8mm; }
+.dv-savoir p { margin: 0 0 2.5mm; font-size: 10.5pt; line-height: 1.5; overflow-wrap: anywhere; }
+.dv-savoir b { color: var(--dv-or-clair); }
+.dv-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin: 0 8mm 4mm; }
+.dv-chiffres > div { background: var(--dv-carte); border-radius: 1.5mm; padding: 4mm 2mm; text-align: center; }
+.dv-chiffres b { display: block; font-size: 16pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dv-chiffres span { display: block; margin-top: 1mm; font-size: 8.5pt; color: var(--dv-gris); }

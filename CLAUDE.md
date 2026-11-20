@@ -717,6 +717,87 @@ visite ni offre ; **D** inscrit de lui-même sur le site, sans échange.
 - Le compte du site reçoit une note montée d'office à la reprise de 3 h
   (`deposerTousLesComptes`), pas dans la minute.
 
+### 7.11 Vente par lot — découpe et locaux commerciaux (cadrage du 20/11/26)
+
+Cadrage : artifact « Vendre des lots : appartements à la découpe et locaux
+commerciaux » ; maquettes de l'étape 1 : artifact « Dossier local commercial ».
+MAV a répondu à tout le 20/11 et donné son accord pour l'étape 1.
+
+**Le principe : une fiche = une chose à vendre.** Un lot mis en vente est une
+fiche comme les autres, rattachée à son immeuble ; propositions, visites,
+offres, annonces, suivi de la vente et tableau de bord ne changent pas.
+
+**Ce qui décide des pages (fiche et dossier) : la copropriété, pas le
+contenu.** Un bien en copropriété reçoit les pages « Copropriété » et « Bail
+et locataire » ; commerce, bureaux ou local d'activité, c'est le même dossier.
+Un immeuble mixte garde le dossier d'immeuble, **sans** page Bail et
+locataire. Seule exception à venir : le dossier d'un appartement vide (plans,
+exposition, écoles et commerces, diagnostics expliqués, frais d'acte estimés,
+rendement, travaux).
+
+**Locaux commerciaux.** Toujours les murs, loués ou vides — jamais un fonds
+ni un droit au bail. Un mandat par local. La société locataire se préremplit
+depuis son SIREN (registre public, déjà utilisé par le BO) ; le chiffre
+d'affaires donné de vive voix se saisit à part. Enseigne, société et chiffre
+d'affaires dans le dossier : « si on peut, mais pas forcément tout le temps »
+— un choix à chaque dossier, et jamais dans une annonce publique (§8.3). Les
+renseignements arrivent au fil de l'eau : une ligne vide ne s'imprime pas.
+
+**Étape 1, livrée le 20/11 : le bien en copropriété vendu seul.**
+- Deux renseignements sur la fiche (`bo_immeuble`) : `nature` (immeuble,
+  local_commercial, bureaux, local_activite, appartement, parking_cave) et
+  `en_copropriete`. Ils se posent à la création (« Que vend-on ? ») et se
+  corrigent par la puce sous le prix, en tête du menu de la fiche.
+- `en_copropriete` ouvre « Bail et locataire » et « Copropriété » ; la nature
+  « local commercial » ouvre « Emplacement commercial »
+  (`components/lot-copro.tsx`). Blocs enregistrés entiers sur la fiche :
+  `bail_local`, `locataire_local`, `copro`, `emp_commerce` (`updateLotCopro`).
+- **L'état locatif reste la source** du loyer, du type de bail, de la date
+  d'effet, du dépôt et de l'indice : la page les relit
+  (`etatLocatifDuLot`), elle ne les recopie pas. Elle n'ajoute que les clauses
+  et la société. Les loyers de l'état locatif sont **mensuels**.
+- `lib/bo/lot-copro.ts` (pur, testé) : échéances triennales (la veille de
+  l'anniversaire), congé six mois avant, durée ferme restante, rendement,
+  taux d'effort (comptes publiés d'abord, chiffre déclaré à défaut et nommé
+  comme tel), lecture du registre (`societeDuSiren`).
+- Dossier : `lib/bo/dossier-lot.ts` (pur, testé) ajoute « Le bail », « Le
+  locataire et les chiffres » et « Copropriété » après l'état locatif. Le
+  locataire n'est nommé que si la case « Nommer le locataire dans ce dossier »
+  est cochée à la fabrication (`locataire_nomme` sur `bo_dossier`, décochée
+  au départ). Le dirigeant, la note interne et les concurrents ne s'impriment
+  jamais.
+- Pas encore fait : résumé du procès-verbal par l'IA, transports et commerces
+  voisins proposés d'office, dépôt du bail depuis la page, couverture propre
+  au local, version « local libre » de la page.
+
+**Découpe (étapes suivantes, décidées mais pas codées).**
+- L'agent scinde quand il veut : un bouton sur chaque lot de l'état locatif
+  (« mettre ce lot en vente à part ») et un bouton pour tous ; rappel si le
+  règlement de copropriété n'est pas encore au coffre.
+- Le plus souvent **un seul mandat pour tous les lots**, avec un prix par lot
+  (Nanterre) : faire signer un mandat par lot à des indivisaires serait trop
+  lourd.
+- L'immeuble reste proposé **en bloc** pendant que ses lots sont en vente. À
+  la première offre acceptée sur un lot, le bloc passe « sous offre » ; ce lot
+  vendu, le bloc est retiré et l'immeuble devient « vendu à la découpe ».
+- Une offre peut porter sur plusieurs lots à un prix global : on choisit les
+  lots depuis la fiche de l'immeuble, ils se réunissent en une seule fiche pour
+  le suivi de la vente.
+- Lot occupé : proposé d'abord au locataire, puis vendu occupé. **Un seul
+  prix**, celui du mandat, libre ou occupé. Le compte à rebours de préemption
+  part de l'envoi du recommandé ou de l'acte du commissaire de justice.
+- Budget, charges par lot et syndic provisoire ne sont connus qu'après la
+  division, pas au mandat.
+- Tableau de bord : les lots regroupés sous leur immeuble dans chaque colonne,
+  chacun reconnaissable (plusieurs lots à la même adresse). Rapport au
+  propriétaire : **un par immeuble**, tous ses lots dedans.
+- Acquéreurs d'appartements : dans le fichier, mais **complètement à part** —
+  ce ne sont pas des acheteurs d'immeubles, aucune communication France
+  Immeuble ne leur part. Un acheteur d'immeubles peut cocher « d'accord pour
+  des lots de copropriété » et reçoit alors les lots, libres ou occupés, qui
+  lui correspondent.
+- Portails : Leboncoin signé ; SeLoger écarté (trop cher).
+
 ---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)

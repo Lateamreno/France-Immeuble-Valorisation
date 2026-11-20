@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { BienData } from "@/lib/bubble/server";
 import { euros, S } from "@/lib/format";
 import { apercuPdfDossier, createDossier, genererPdfDossier, updateBien } from "@/lib/bo/actions";
+import { enCopropriete, locataireLocalDe } from "@/lib/bo/lot-copro";
 import { LienDossier } from "@/components/lien-dossier";
 import { bloquants, manquesDossier } from "@/lib/bo/completude";
 import { descriptifAVerifier, descriptifAuto } from "@/lib/bo/descriptif";
@@ -30,6 +31,11 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const [createdId, setCreatedId] = useState<string | null>(null);
   /** L'aperçu a été fabriqué : c'est ce qui ouvre l'enregistrement (#219). */
   const [vu, setVu] = useState(false);
+  /* Bien en copropriété : nommer le locataire dans le dossier se décide à
+     chaque dossier (MAV, 20/11 : « si on peut, mais pas forcément tout le
+     temps »). Décoché au départ : sans geste, rien de nominatif ne sort. */
+  const aLocataire = enCopropriete(b.im) && Object.keys(locataireLocalDe(b.im)).some((k) => ["enseigne", "societe", "ca"].includes(k));
+  const [nommer, setNommer] = useState(false);
 
   const agg = useMemo(() => {
     const lots = b.lots;
@@ -76,7 +82,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
   const apercu = () =>
     start(async () => {
       setErrPdf(null);
-      const r = await apercuPdfDossier(immeubleId, { hai: vHai, pct: vPct, version: prochaine });
+      const r = await apercuPdfDossier(immeubleId, { hai: vHai, pct: vPct, version: prochaine, nommerLocataire: aLocataire && nommer });
       setPdf(r.ok ? { url: r.url, ko: r.ko } : null);
       setVu(r.ok);
       if (!r.ok) setErrPdf(r.message);
@@ -89,6 +95,7 @@ export function AddDossierButton({ b }: { b: BienData }) {
         prix_hai: vHai,
         honos_pct: vPct,
         isPublic: false,
+        nommerLocataire: aLocataire && nommer,
         snapshot: {
           surface: agg.surface, occupation: agg.occupation,
           loyer_hc_an: agg.loyersAn, loyer_hc_an_max: agg.loyersMaxAn,
@@ -201,6 +208,16 @@ export function AddDossierButton({ b }: { b: BienData }) {
               là où l'œil n'est plus une fois qu'on a cliqué. D'où un
               bandeau qui occupe le haut de l'écran, dit à quelle étape on
               est, et demande explicitement de ne pas relancer. */}
+          {aLocataire && !createdId && (
+            <label className="dos-loc">
+              <input type="checkbox" checked={nommer} disabled={pending}
+                onChange={(e) => { setNommer(e.target.checked); setVu(false); setPdf(null); }} />
+              <span>
+                <b>Nommer le locataire dans ce dossier</b>
+                <i>Enseigne, société et chiffre d&apos;affaires publié. Décoché : l&apos;activité et l&apos;ancienneté seulement, le chiffre d&apos;affaires « communiqué sur demande ».</i>
+              </span>
+            </label>
+          )}
           {pending && (
             <div className="dos-encours" role="status" aria-live="polite">
               <span className="dos-encours-r" aria-hidden="true" />

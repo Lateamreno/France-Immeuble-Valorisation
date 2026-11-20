@@ -473,6 +473,130 @@ export function DossierVente({ d, nu }: { d: DossierVente; nu?: boolean }) {
         });
       })()}
 
+      {/* ---------------- Bien en copropriété : bail, locataire, copropriété
+          (20/11/26). Une page sans rien à dire ne s'imprime pas. */}
+      {d.lot?.bail && (
+        <Page titre="Le bail" picto={I.cle} pied={pied} compact enfants={<>
+          {d.lot.bail.frise && (
+            <div className="dv-frise" aria-hidden>
+              <i /><u style={{ width: `${d.lot.bail.frise.avancement * 100}%` }} />
+              <s style={{ left: 0 }} /><em style={{ left: 0 }}>{d.lot.bail.frise.effet.slice(0, 4)}</em>
+              {d.lot.bail.frise.echeances.map((e, i, t) => {
+                const dernier = i === t.length - 1;
+                const left = dernier ? undefined : `${((i + 1) / t.length) * 100}%`;
+                return (
+                  <span key={e.date}>
+                    <s style={dernier ? { right: 0 } : { left }} />
+                    <em style={dernier ? { right: 0 } : { left, transform: "translateX(-50%)" }}>{e.date.slice(0, 4)}</em>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <table className="dv-tab cond">
+            <tbody>{d.lot.bail.lignes.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+          </table>
+          {d.lot.bail.quiPaie.length > 0 && (
+            <>
+              <h2 className="dv-h"><Ic d={I.billet} /> Qui paie quoi</h2>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.bail.quiPaie.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+          {d.lot.bail.aSavoir.length > 0 && (
+            <>
+              <h2 className="dv-h or"><Ic d={I.ampoule} /> À savoir</h2>
+              <div className="dv-savoir">{d.lot.bail.aSavoir.map((t) => <p key={t}>{t}</p>)}</div>
+            </>
+          )}
+        </>} />
+      )}
+      {d.lot?.locataire && (
+        <Page titre="Le locataire et les chiffres" picto={I.perso} pied={pied} compact enfants={<>
+          {d.lot.locataire.lignes.length > 0 && (
+            <>
+              <h2 className="dv-h"><Ic d={I.boutique} /> L&apos;exploitant</h2>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.locataire.lignes.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+          {d.lot.locataire.chiffres.length > 0 && (
+            <>
+              <h2 className="dv-h"><Ic d={I.courbe} /> Les chiffres de l&apos;investissement</h2>
+              <div className="dv-chiffres">
+                {d.lot.locataire.chiffres.map((c) => <div key={c.libelle}><b>{c.valeur}</b><span>{c.libelle}</span></div>)}
+              </div>
+              {d.lot.locataire.lecture.length > 0 && (
+                <table className="dv-tab cond">
+                  <tbody>{d.lot.locataire.lecture.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+                </table>
+              )}
+            </>
+          )}
+          {d.lot.emplacement && (
+            <>
+              <h2 className="dv-h"><Ic d={I.pin} /> Emplacement commercial</h2>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.emplacement.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+        </>} />
+      )}
+      {d.lot && !d.lot.locataire && d.lot.emplacement && (
+        <Page titre="Emplacement commercial" picto={I.pin} pied={pied} enfants={<>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.emplacement!.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>} />
+      )}
+      {d.lot?.copro && (
+        <Page titre="Copropriété" picto={I.brique} pied={pied} compact enfants={<>
+          {d.lot.copro.lignes.length > 0 && (
+            <>
+              <h2 className="dv-h"><Ic d={I.brique} /> La copropriété</h2>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.copro.lignes.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+          {d.lot.copro.lot.length > 0 && (
+            <>
+              <h2 className="dv-h"><Ic d={I.cle} /> Le lot dans la copropriété</h2>
+              <table className="dv-tab cond">
+                <tbody>{d.lot.copro.lot.map(([k, v]) => <tr key={k}><td>{k}</td><td className="r">{v}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+          {(d.lot.copro.travaux.length > 0 || d.lot.copro.resume || d.lot.copro.aPrevoir) && (
+            <>
+              <h2 className="dv-h"><Ic d={I.outil} /> Assemblée et travaux{d.lot.copro.assemblee ? ` · ${d.lot.copro.assemblee}` : ""}</h2>
+              {d.lot.copro.travaux.length > 0 && (
+                <table className="dv-tab fin">
+                  <thead><tr><th>Travaux votés</th><th className="c">Montant</th><th className="c">Part du lot</th><th className="r">À la charge de</th></tr></thead>
+                  <tbody>
+                    {d.lot.copro.travaux.map((t) => (
+                      <tr key={t.libelle}>
+                        <td>{t.libelle}{t.appels ? <i> · {t.appels}</i> : null}</td>
+                        <td className="c">{t.montant || "n.c."}</td><td className="c">{t.part || "n.c."}</td><td className="r">{t.charge || "n.c."}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {(d.lot.copro.resume || d.lot.copro.aPrevoir) && (
+                <div className="dv-savoir">
+                  {d.lot.copro.resume && <p>{d.lot.copro.resume}</p>}
+                  {d.lot.copro.aPrevoir && <p><b>À prévoir :</b> {d.lot.copro.aPrevoir}</p>}
+                </div>
+              )}
+            </>
+          )}
+        </>} />
+      )}
+
       {/* -------------------------------------------- 6. État financier */}
       <Page titre="Etat financier" picto={I.euro} pied={pied} compact enfants={<>
         <h2 className="dv-h"><Ic d={I.camembert} /> Coût d&apos;acquisition</h2>

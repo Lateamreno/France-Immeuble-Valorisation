@@ -19,6 +19,10 @@ import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
 import { refusPrixDelegation } from "@/lib/bo/delegation-prix";
 import { MOTIF_TEST } from "@/lib/referentiels";
+import {
+  NATURES, lireRegistre, type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal,
+  type Nature, type SocieteRegistre,
+} from "@/lib/bo/lot-copro";
 
 const SB_URL =
   process.env.SUPABASE_URL ?? "https://sojtmhdrzmdbtqborxsi.supabase.co";
@@ -1446,6 +1450,55 @@ export async function saveSecteurDest(
   refresh(immeubleId);
 }
 
+/* ---------- Le bien vendu par lot : nature, bail, copropriété (§7.11) ---------- */
+
+/** Ce que portent les pages « Bail et locataire », « Copropriété » et l'emplacement commercial. */
+export type LotCoproPatch = Partial<{
+  nature: Nature;
+  en_copropriete: boolean;
+  bail_local: BailLocal;
+  locataire_local: LocataireLocal;
+  copro: Copro;
+  emp_commerce: EmplacementCommerce;
+}>;
+
+/**
+ * Enregistre la nature du bien et les blocs propres à un lot. Chaque bloc est
+ * envoyé entier : `bo_patch_doc` fusionne au premier niveau, un bloc partiel
+ * effacerait donc ses autres lignes.
+ */
+export async function updateLotCopro(immeubleId: string, patch: LotCoproPatch) {
+  const clean: Record<string, unknown> = {};
+  if (patch.nature !== undefined && NATURES.some((n) => n.cle === patch.nature)) clean.nature = patch.nature;
+  if (patch.en_copropriete !== undefined) clean.en_copropriete = patch.en_copropriete === true;
+  for (const k of ["bail_local", "locataire_local", "copro", "emp_commerce"] as const) {
+    const v = patch[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) clean[k] = v;
+  }
+  if (Object.keys(clean).length === 0) return;
+  await rpc("bo_patch_doc", { p_table: "bo_immeuble", p_id: immeubleId, p_patch: clean });
+  refresh(immeubleId);
+}
+
+/**
+ * Ce que le registre public sait d'une société, pour préremplir le locataire
+ * d'un local (MAV, 20/11 : « si tu peux préremplir directement c'est beaucoup
+ * mieux »). Rien n'est enregistré : l'agent relit, puis enregistre.
+ */
+export async function societeDuSiren(
+  siren: string,
+): Promise<{ ok: true; societe: SocieteRegistre } | { ok: false; erreur: string }> {
+  const s = siren.replace(/\D/g, "");
+  if (s.length !== 9) return { ok: false, erreur: "Un SIREN compte neuf chiffres." };
+  const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${s}&per_page=1`, { cache: "no-store" }).catch(() => null);
+  if (!r?.ok) return { ok: false, erreur: "Le registre des entreprises ne répond pas. Réessayez dans un instant." };
+  const d = (await r.json().catch(() => null)) as { results?: Record<string, unknown>[] } | null;
+  const e = d?.results?.find((x) => x.siren === s);
+  const societe = e ? lireRegistre(e) : null;
+  if (!societe) return { ok: false, erreur: "Aucune société à ce numéro dans le registre." };
+  return { ok: true, societe };
+}
+
 /* ---------- État technique (composants / travaux) ---------- */
 
 /** Année de construction + état général du bâti. */
@@ -1951,6 +2004,9 @@ export async function createImmeuble(input: {
   numero_rue?: string;
   proprietaireId?: string;
   source?: string;
+  /** Ce qu'on vend (CLAUDE.md §7.11) ; absent = un immeuble entier. */
+  nature?: Nature;
+  enCopropriete?: boolean;
   /** Adresse géocodée choisie dans les suggestions (retour #59). */
   geo?: { lat: number; lon: number; label: string };
 }) {
@@ -1972,6 +2028,8 @@ export async function createImmeuble(input: {
       // Le BO range la provenance dans `source` (minuscule) : c'est elle que
       // lisent les listes et les stats.
       source: input.source,
+      nature: input.nature && input.nature !== "immeuble" && NATURES.some((n) => n.cle === input.nature) ? input.nature : undefined,
+      en_copropriete: input.enCopropriete === true ? true : undefined,
       "Created Date": now,
       "Modified Date": now,
     }),
@@ -2544,7 +2602,7 @@ export async function genererPdfDossier(immeubleId: string, dossierId: string) {
  */
 export async function apercuPdfDossier(
   immeubleId: string,
-  input: { hai: number; pct: number; version: number },
+  input: { hai: number; pct: number; version: number; nommerLocataire?: boolean },
 ) {
   try {
     const { pdfDepuisUrl } = await import("./pdf");
@@ -2554,6 +2612,7 @@ export async function apercuPdfDossier(
     const proto = h.get("x-forwarded-proto") ?? (hote.startsWith("localhost") ? "http" : "https");
     const q = new URLSearchParams({
       nu: "1", hai: String(input.hai), pct: String(input.pct), v: String(input.version),
+      ...(input.nommerLocataire ? { loc: "1" } : null),
     });
     const pdf = await pdfDepuisUrl(
       `${proto}://${hote}/bien/${immeubleId}/dossier/apercu?${q}`,
@@ -3246,6 +3305,9 @@ export async function createDossier(
     prix_hai: number;
     honos_pct: number;
     isPublic: boolean;
+    /** Bien en copropriété : le dossier nomme-t-il le locataire (enseigne,
+     *  société, chiffre d'affaires) ? Un choix à chaque dossier (§7.11). */
+    nommerLocataire?: boolean;
     snapshot: {
       surface: number; occupation: number; loyer_hc_an: number; loyer_hc_an_max: number;
       travaux: number; ville?: string; zipcode?: string;
@@ -3272,6 +3334,7 @@ export async function createDossier(
       version: input.version,
       last_version: true,
       public: input.isPublic,
+      locataire_nomme: input.nommerLocataire === true ? true : undefined,
       date: now,
       prix_hai: input.prix_hai,
       prix_nv: nv,

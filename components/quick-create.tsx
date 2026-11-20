@@ -6,6 +6,7 @@ import { enregistrerAgents, useAgentCourant } from "@/lib/bo/agent-courant";
 import { QUICK_CREATE } from "@/lib/nav";
 import type { Agent } from "@/lib/bubble/server";
 import { createImmeuble } from "@/lib/bo/actions";
+import { NATURES, libelleNature, type Nature } from "@/lib/bo/lot-copro";
 import { FenetreNouveauContact } from "@/components/nouveau-contact";
 import { AdresseInput, type AdresseChoisie } from "@/components/adresse-input";
 import { ContactPicker } from "@/components/contact-picker";
@@ -104,13 +105,19 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
   const { slug: agent, choisir: setAgent } = useAgentCourant(agents);
   const [proprio, setProprio] = useState<{ id: string; nom: string } | null>(null);
   const [picker, setPicker] = useState(false);
+  /* Ce qu'on vend (MAV, 20/11) : un immeuble entier par défaut — rien ne
+     change pour qui ne touche pas à la ligne. La copropriété ouvre les pages
+     « Bail et locataire » et « Copropriété » de la fiche. */
+  const [nature, setNature] = useState<Nature>("immeuble");
+  const [copro, setCopro] = useState(false);
+  const unLot = nature !== "immeuble";
 
   const pret = !!adresse?.ville && !!source;
 
   const nomAgent = agents.find((a) => a.slug === agent)?.name;
   return (
     <FenetreAjout
-      icone={ICA.immeuble} titre="Créer un nouvel immeuble" onFermer={onClose}
+      icone={ICA.immeuble} titre="Créer un nouveau bien" onFermer={onClose}
       pied={
         <>
           <span style={{ flex: 1 }} />
@@ -127,6 +134,7 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
                   rue: adresse.rue, numero_rue: adresse.numero,
                   proprietaireId: proprio?.id,
                   source,
+                  nature, enCopropriete: copro,
                   geo: adresse.lat !== undefined && adresse.lon !== undefined
                     ? { lat: adresse.lat, lon: adresse.lon, label: adresse.label }
                     : undefined,
@@ -135,10 +143,33 @@ function NewImmeubleModal({ agents, onClose }: { agents: Agent[]; onClose: () =>
                 router.push(`/bien/${id}`);
               })
             }
-          ><span className="ch">›</span> Créer l&apos;immeuble</button>
+          ><span className="ch">›</span> {unLot ? "Créer le bien" : "Créer l'immeuble"}</button>
         </>
       }
     >
+      <Ligne icone={ICA.immeuble} titre="Que vend-on ?"
+        resume={<Resume>{libelleNature(nature)}{copro ? " · en copropriété" : ""}</Resume>}>
+        <div className="nat-choix">
+          <div className="seg">
+            <button type="button" className={!unLot ? "on" : undefined}
+              onClick={() => { setNature("immeuble"); setCopro(false); }}>Un immeuble entier</button>
+            <button type="button" className={unLot ? "on" : undefined}
+              onClick={() => { if (!unLot) { setNature("local_commercial"); setCopro(true); } }}>Un lot</button>
+          </div>
+          {unLot && (
+            <div className="nat-puces">
+              {NATURES.filter((n) => n.lot).map((n) => (
+                <button key={n.cle} type="button" className={`nat-puce${nature === n.cle ? " on" : ""}`}
+                  onClick={() => setNature(n.cle)}>{n.libelle}</button>
+              ))}
+            </div>
+          )}
+          <label className="nat-copro">
+            <input type="checkbox" checked={copro} onChange={(e) => setCopro(e.target.checked)} />
+            En copropriété
+          </label>
+        </div>
+      </Ligne>
       <Ligne icone={ICA.repere} titre="Adresse" manque={!adresse?.ville && "Indiquez l'adresse de l'immeuble"}>
         <AdresseInput autoFocus onChoisir={setAdresse} />
         {adresse && (

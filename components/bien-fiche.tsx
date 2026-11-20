@@ -38,6 +38,8 @@ import { AddMandatButton } from "@/components/mandat-create";
 import { AjouterDelegation, ModifierDelegation, estDelegation, partFi } from "@/components/delegation";
 import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
+import { BailLocataireSection, CoproSection, EmplacementCommerceSection, PuceNature } from "@/components/lot-copro";
+import { enCopropriete, natureDe } from "@/lib/bo/lot-copro";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
 import { LienDossier } from "@/components/lien-dossier";
@@ -92,6 +94,9 @@ type SectionKey =
   | "commercialisations" | "propositions" | "visites" | "offres"
   /* Retour #549 : le suivi de la vente — jalons, notaires, échanges. */
   | "vente"
+  /* Le bien vendu par lot (20/11/26, CLAUDE.md §7.11) : ces pages n'existent
+     que pour un bien en copropriété. */
+  | "bail" | "copro" | "commerce"
   /* Écran greffé sur la fiche (l'estimation, le mandat) : il reste monté
      pendant qu'on visite les autres sections, pour ne rien perdre de la
      saisie (#96, #125). */
@@ -104,6 +109,7 @@ const SECTIONS: readonly SectionKey[] = [
   "photos", "estimations", "mandats", "dossiers", "tous-docs", "diffusion",
   "acheteurs", "notes", "decoupe", "encours",
   "commercialisations", "propositions", "visites", "offres", "vente",
+  "bail", "copro", "commerce",
 ];
 
 /**
@@ -546,6 +552,15 @@ export function BienFiche({
     { key: "proprietaire", label: "Propriétaire", icon: I.user, indicator: pastille("proprietaire") },
     { key: "emplacement", label: "Emplacement", icon: I.signpost, indicator: pastille("emplacement") },
     { key: "locatif", label: "Etat locatif", icon: I.key, indicator: pastille("locatif") },
+    /* La copropriété, et elle seule, ouvre ces deux pages (MAV, 20/11) ;
+       l'emplacement commercial ne concerne que les murs de commerce. */
+    ...(enCopropriete(im) ? [
+      { key: "bail" as const, label: "Bail et locataire", icon: I.brief },
+      { key: "copro" as const, label: "Copropriété", icon: I.folder },
+    ] : []),
+    ...(natureDe(im) === "local_commercial" ? [
+      { key: "commerce" as const, label: "Emplacement commercial", icon: I.signpost },
+    ] : []),
     { key: "technique", label: "Etat technique", icon: I.tech, indicator: pastille("technique") },
     { key: "prix", label: "Description et prix", icon: I.euro, indicator: pastille("prix") },
     { key: "photos", label: "Photos", icon: I.cam, indicator: manque("photos") ? <span className="ncount">{b.photos.length}</span> : <span className="okv">✓</span> },
@@ -626,6 +641,24 @@ export function BienFiche({
               )}
               {sect === "emplacement" && <EmplacementSection b={b} tab={sous.emplacement} onTab={majSous("emplacement")} />}
               {sect === "locatif" && <LocatifSection b={b} tab={sous.locatif} onTab={majSous("locatif")} />}
+              {sect === "bail" && (
+                <>
+                  <SectTitle icon={I.brief} title="Bail et locataire" />
+                  <BailLocataireSection b={b} versLocatif={() => setSect("locatif")} />
+                </>
+              )}
+              {sect === "copro" && (
+                <>
+                  <SectTitle icon={I.folder} title="Copropriété" />
+                  <CoproSection b={b} />
+                </>
+              )}
+              {sect === "commerce" && (
+                <>
+                  <SectTitle icon={I.signpost} title="Emplacement commercial" />
+                  <EmplacementCommerceSection b={b} />
+                </>
+              )}
               {sect === "technique" && <TechniqueSection b={b} tab={sous.technique} onTab={majSous("technique")} />}
               {sect === "prix" && (
                 <PrixSection b={b}
@@ -704,6 +737,7 @@ export function BienFiche({
             <div className="bt" title={b.adresseComplete || undefined}>{b.ville}</div>
             <div><span className="bst">{b.statut}</span></div>
             {b.prix && <div className="bp">{b.prix}</div>}
+            <PuceNature b={b} />
           </div>
         </div>
         {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}
