@@ -1,0 +1,747 @@
+"use client";
+
+/**
+ * La modale d'une recherche acquéreur — création et modification
+ * (retours #330, #332).
+ *
+ * MAV : « il faut qu'en cliquant sur une recherche on puisse la modifier avec
+ * le popup qui s'ouvre » (#330) et « quand on clique sur créer une recherche
+ * il faut la modale de recherche qui va créer la recherche pour le client »
+ * (#332). C'est le même écran : une recherche avec un identifiant se modifie,
+ * une recherche sans identifiant se crée. Deux modales auraient divergé au
+ * premier champ ajouté.
+ *
+ * Elle porte aussi les EXCLUSIONS (#332), le seul concept vraiment neuf ici :
+ * ce que l'acquéreur refuse, par opposition à ce qu'il cherche. Voir
+ * lib/bo/exclusions.ts pour la raison — « il veut QUE de l'habitation, on
+ * exclut le commerce ».
+ *
+ * Elle se termine, en création, en passant la main au panneau des biens à
+ * proposer : « à la fin du processus de création on va dire s'il y a des biens
+ * qui correspondent ». Le panneau vit dans components/a-proposer.tsx.
+ */
+
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ContactPicker } from "@/components/contact-picker";
+import { DESTINATIONS, ModaleAttenteRecherche } from "@/components/carte-recherche";
+import { ICA } from "@/components/ajout-rapide";
+import { Modale, useQuestion } from "@/components/modale";
+import { Champ } from "@/components/champ";
+import { Copier } from "@/components/copier";
+import { CIBLES } from "@/lib/referentiels";
+import { DEPARTEMENTS, REGIONS, departementsDe } from "@/lib/geo-fr";
+import { aPlatVille, etiquetteVille } from "@/lib/bo/villes";
+
+/** Une commune proposée à la frappe. */
+type VillePredite = { nom: string; departement: string; population?: number };
+
+/**
+ * Les communes qui commencent comme la saisie, depuis le référentiel officiel
+ * (geo.api.gouv.fr, sans clé, ouvert aux navigateurs). Appelé directement
+ * depuis la page : plus rapide qu'un détour par le serveur, et seule la
+ * saisie part (MAV, 12-13/11). La métropole d'abord, puis les plus peuplées :
+ * « Saint-Denis » donne celle du 93 avant celle de La Réunion.
+ */
+async function predireVilles(saisie: string): Promise<VillePredite[]> {
+  const q = saisie.trim();
+  if (q.length < 2 || q.length > 60) return [];
+  const r = await fetch(
+    `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,codeDepartement,population&boost=population&limit=10`,
+  ).catch(() => null);
+  if (!r?.ok) return [];
+  const j = (await r.json().catch(() => [])) as { nom?: string; codeDepartement?: string; population?: number }[];
+  /* La métropole avant l'outre-mer, puis les plus peuplées : « Saint-Ouen »
+     donne Saint-Ouen-sur-Seine (93) avant le village du Loir-et-Cher. */
+  const outreMer = (d: string) => d.startsWith("97") ? 1 : 0;
+  return j
+    .filter((c) => c.nom && c.codeDepartement)
+    .map((c) => ({ nom: String(c.nom), departement: String(c.codeDepartement), population: c.population }))
+    .sort((a, b) => outreMer(a.departement) - outreMer(b.departement) || (b.population ?? 0) - (a.population ?? 0));
+}
+import {
+  chargerExclusions, enregistrerRecherche, reactiverRecherche, supprimerRecherche, type SaisieRecherche,
+} from "@/lib/bo/actions";
+
+const num = (s: string) => {
+  const v = parseFloat(s.replace(/[^\d.,-]/g, "").replace(",", "."));
+  return Number.isFinite(v) ? v : undefined;
+};
+
+/**
+ * Sépare les milliers pendant la frappe (retours #350, #351).
+ *
+ * MAV : « sur les budgets tu mets des écarts entre les milliers 1 000 000 »,
+ * et « sépare toujours les milliers ». On ne reformate que la partie entière :
+ * une décimale en cours de frappe (« 9, » avant le 2 de « 9,2 ») doit survivre
+ * au caractère suivant, sinon le champ se bat contre celui qui le remplit.
+ *
+ * L'espace posé est une espace insécable étroite, celle de `toLocaleString`
+ * française — et `num` ci-dessus la retire déjà, comme tout ce qui n'est ni
+ * chiffre ni séparateur.
+ */
+const grouperMilliers = (s: string) => {
+  const propre = s.replace(/[^\d.,]/g, "").replace(/\./g, ",");
+  const [ent = "", ...reste] = propre.split(",");
+  const groupe = ent.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return reste.length ? `${groupe},${reste.join("")}` : groupe;
+};
+
+/**
+ * La clé de comparaison d'un texte saisi : sans accent, sans ponctuation, et
+ * sans le pluriel final (retour #352).
+ *
+ * MAV : « la saisie de texte était sensible aux accents fais en sorte que ce
+ * ne soit pas le cas ». Et c'est aussi ce qui lui a fait croire que « Bureau »
+ * manquait aux destinations : il tapait « bureaux », et `startsWith` disait
+ * non. Le référentiel est au singulier, la tête ne l'est pas.
+ */
+export const clefTexte = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "")
+    .replace(/[sx]$/, "");
+
+/* Les pictos des sections (#341 : « ajoute de la structure, des pictos et de
+   la couleur »). Dessinés au trait, comme le reste du rail : une modale n'a pas
+   à introduire un deuxième vocabulaire graphique. */
+const IC = {
+  cible: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" /></>,
+  geo: <><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z" /><circle cx="12" cy="10" r="2.6" /></>,
+  euro: <><circle cx="12" cy="12" r="8.5" /><path d="M15.5 9.2a4.4 4.4 0 0 0-6.6 1.2M15.5 14.8a4.4 4.4 0 0 1-6.6-1.2M7.6 11h5M7.6 13.4h5" /></>,
+  note: <><path d="M5 4h11l3 3v13H5z" /><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4" /></>,
+  interdit: <><circle cx="12" cy="12" r="8.5" /><path d="M6.4 6.4 17.6 17.6" /></>,
+};
+
+/** Les initiales d'un nom, pour la vignette du client. */
+function initiales(nom: string) {
+  return nom.split(/\s+/).filter(Boolean).slice(0, 2).map((m) => m[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+/**
+ * Une coordonnée du client, avec son bouton de copie (#342) — le `Copier`
+ * partagé, qui sait déjà dire quand la copie a pris ou a été refusée.
+ */
+function Coordonnee({ valeur, vide }: { valeur?: string; vide: string }) {
+  if (!valeur) return <span className="off">{vide}</span>;
+  return (
+    <span className="rmod-co">
+      {valeur}
+      <Copier valeur={valeur} titre={`Copier ${valeur}`} petit />
+    </span>
+  );
+}
+
+
+/**
+ * Un montant, une surface, un pourcentage — milliers séparés et unité
+ * toujours lisible (retours #350, #351).
+ *
+ * MAV : « mets toujours les unités à la fin des chiffres même quand les cases
+ * sont remplies ». L'unité était un `placeholder`, donc elle disparaissait au
+ * premier caractère tapé : « 1000000 » ne disait plus si on lisait des euros
+ * ou des mètres carrés. Elle est maintenant posée à droite du champ, dans le
+ * même cadre, et elle reste.
+ *
+ * Le cadre est porté par l'enveloppe et non par l'`input` : sinon l'unité se
+ * retrouve à l'extérieur, et deux bordures côte à côte se lisent comme deux
+ * champs.
+ */
+function ChampChiffre({
+  valeur, onChange, unite, large,
+}: {
+  valeur: string;
+  onChange: (v: string) => void;
+  unite: string;
+  /** Les budgets tiennent plus de chiffres qu'un pourcentage. */
+  large?: boolean;
+}) {
+  return (
+    <span className={`rm-nb${large ? " large" : ""}${valeur ? " on" : ""}`}>
+      <input
+        inputMode="decimal"
+        value={valeur}
+        onChange={(e) => onChange(grouperMilliers(e.target.value))}
+      />
+      <i aria-hidden="true">{unite}</i>
+    </span>
+  );
+}
+
+/**
+ * Un choix multiple à liste déroulante, avec prédiction (#341).
+ *
+ * MAV : « une liste déroulante choix multiples […] si on peut taper les régions
+ * et départements et qu'ils nous font la prédiction de la suite, c'est top ».
+ *
+ * Trois raisons de préférer ça aux cases à cocher qu'il y avait :
+ *   • dix-huit régions et cent un départements en cases, c'est un mur qui
+ *     occupe l'écran entier — la modale ne tenait plus à 100 % de zoom ;
+ *   • un département se tape au code (« 93 ») bien plus vite qu'il ne se
+ *     cherche dans une grille ;
+ *   • la prédiction porte sur le CODE ET SUR LE NOM : celui qui tape
+ *     « seine-saint » trouve le 93 sans le connaître par cœur.
+ *
+ * Ce qui est retenu reste affiché en étiquettes AU-DESSUS du champ : une
+ * sélection qu'il faut rouvrir un menu pour relire n'existe pas.
+ */
+function ChoixMultiple({
+  options, valeur, onChange, placeholder, libre, villes: avecVilles,
+}: {
+  /** Le référentiel : `cle` est ce qu'on enregistre, `nom` ce qu'on lit. */
+  options: { cle: string; nom: string }[];
+  valeur: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+  /** Autorise une valeur hors référentiel (les villes, qui n'ont pas de liste). */
+  libre?: boolean;
+  /** Prédit les communes de France à mesure qu'on tape (MAV, 12/11). */
+  villes?: boolean;
+}) {
+  const [saisie, setSaisie] = useState("");
+  const [ouvert, setOuvert] = useState(false);
+  /* Les communes prédites pour la saisie en cours, demandées après un court
+     temps d'arrêt de la frappe. Celles déjà retenues sont écartées. */
+  const [predites, setPredites] = useState<{ pour: string; liste: VillePredite[] }>({ pour: "", liste: [] });
+  useEffect(() => {
+    const t = saisie.trim();
+    if (!avecVilles || t.length < 2) return;
+    let vivant = true;
+    const minuterie = setTimeout(() => {
+      predireVilles(t).then((liste) => { if (vivant) setPredites({ pour: t, liste }); }).catch(() => undefined);
+    }, 180);
+    return () => { vivant = false; clearTimeout(minuterie); };
+  }, [saisie, avecVilles]);
+  /* Comparaison à plat (#352) : « bureaux » trouve « Bureau », « ile de
+     france » trouve « Île-de-France », « seine saint » trouve le 93. */
+  const q = clefTexte(saisie);
+  const propositions = options
+    .filter((o) => !valeur.includes(o.cle))
+    .filter((o) => !q || clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).includes(q))
+    .slice(0, 8);
+  const nomDe = (c: string) => options.find((o) => o.cle === c)?.nom ?? c;
+
+  const retenir = (cle: string) => {
+    if (!valeur.includes(cle)) onChange([...valeur, cle]);
+    setSaisie("");
+    setOuvert(false);
+  };
+  /* Retour #623 — « je peux pas ajouter des villes ici ». Une ville ne
+     s'ajoutait qu'avec Entrée, et seulement si rien du référentiel ne lui
+     ressemblait : « Saint-Denis » donnait le 93 (Seine-Saint-Denis), et rien à
+     l'écran ne disait qu'on pouvait ajouter une ville. En saisie libre, la
+     liste propose donc toujours « Ajouter la ville … », et Entrée ne prend une
+     proposition du référentiel que si elle COMMENCE par ce qu'on a tapé
+     (« seine-saint » → 93, « 93 » → 93) ; sinon, c'est la ville. */
+  const texte = saisie.trim();
+  const dejaLa = valeur.some((x) => clefTexte(x) === clefTexte(texte));
+  const exacte = options.some((o) => clefTexte(o.cle) === q || clefTexte(o.nom) === q);
+  const villesPredites = avecVilles && texte.length >= 2 && clefTexte(predites.pour) === q
+    ? predites.liste.filter((v, i, t) => !valeur.includes(etiquetteVille(v.nom, v.departement))
+      && t.findIndex((w) => w.nom === v.nom && w.departement === v.departement) === i)
+    : [];
+  /* Le texte tel quel (une ville sans département, qui vaut pour toutes ses
+     homonymes) ne s'offre plus qu'à défaut de commune trouvée. */
+  const ajoutLibre = libre && texte.length >= 2 && !dejaLa && !exacte && villesPredites.length === 0 ? texte : null;
+  const commencePar = propositions.find((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q));
+  /* Entrée : d'abord un département ou une région qui commence par la saisie
+     (« 93 », « seine-saint »), puis la commune la plus peuplée qui porte ce
+     nom, puis le texte tel quel. */
+  const valider = () => {
+    if (commencePar) return retenir(commencePar.cle);
+    /* Plusieurs communes portent exactement ce nom (Saint-Denis du 93, de
+       La Réunion…) : Entrée ne choisit pas à la place de l'agent, il clique. */
+    const homonymes = villesPredites.filter((v) => aPlatVille(v.nom) === aPlatVille(texte));
+    if (homonymes.length > 1) { setOuvert(true); return; }
+    if (villesPredites[0]) return retenir(etiquetteVille(villesPredites[0].nom, villesPredites[0].departement));
+    if (ajoutLibre) return retenir(ajoutLibre);
+    if (propositions[0]) return retenir(propositions[0].cle);
+  };
+  const debut = commencePar ? propositions.filter((o) => clefTexte(o.cle).startsWith(q) || clefTexte(o.nom).startsWith(q)) : [];
+  const reste = propositions.filter((o) => !debut.includes(o));
+  const hab = (n?: number) => n ? `${n >= 10000 ? Math.round(n / 1000).toLocaleString("fr-FR") + " 000" : n.toLocaleString("fr-FR")} hab.` : "";
+
+  return (
+    <div className="rmx">
+      {valeur.length > 0 && (
+        <div className="rmx-tags">
+          {valeur.map((v) => (
+            <span key={v} className="rm-mot" title={nomDe(v)}>
+              {v === nomDe(v) ? v : `${v} — ${nomDe(v)}`}
+              <button type="button" onClick={() => onChange(valeur.filter((x) => x !== v))}
+                aria-label={`Retirer ${nomDe(v)}`}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="rmx-champ">
+        {/* La barre verticale devant l'exemple dit qu'on peut taper ici
+            (MAV, 28/09, suite du #435). */}
+        <input
+          className="min" placeholder={`| ${placeholder}`} value={saisie}
+          onChange={(e) => { setSaisie(e.target.value); setOuvert(true); }}
+          onFocus={() => setOuvert(true)}
+          /* Le flou est différé : sans ça, le clic sur une proposition
+             refermerait la liste avant que le clic n'aboutisse. */
+          onBlur={() => setTimeout(() => setOuvert(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); valider(); }
+            if (e.key === "Escape") setOuvert(false);
+          }}
+        />
+        {/* Retour #435 — « mets-moi quand même des flèches vers le bas quand je
+            peux sélectionner des items, même si je peux les taper ». */}
+        <button type="button" className={`rmx-chev${ouvert ? " on" : ""}`} tabIndex={-1}
+          aria-label={ouvert ? "Fermer la liste" : "Ouvrir la liste"}
+          onMouseDown={(e) => { e.preventDefault(); setOuvert((v) => !v); }}>▾</button>
+        {ouvert && (propositions.length > 0 || villesPredites.length > 0 || ajoutLibre) && (
+          <div className="rmx-liste">
+            {debut.map((o) => (
+              <button key={o.cle} type="button" className="rmx-o"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(o.cle)}>
+                {o.cle !== o.nom && <b>{o.cle}</b>}
+                {o.nom}
+              </button>
+            ))}
+            {villesPredites.map((v) => (
+              <button key={`${v.nom}-${v.departement}`} type="button" className="rmx-o rmx-ville"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(etiquetteVille(v.nom, v.departement))}>
+                <b>{v.departement}</b>
+                {v.nom}
+                {v.population ? <span className="rmx-hab">{hab(v.population)}</span> : null}
+              </button>
+            ))}
+            {reste.map((o) => (
+              <button key={o.cle} type="button" className="rmx-o"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(o.cle)}>
+                {o.cle !== o.nom && <b>{o.cle}</b>}
+                {o.nom}
+              </button>
+            ))}
+            {ajoutLibre && (
+              <button type="button" className="rmx-o rmx-ajout"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => retenir(ajoutLibre)}>
+                + Ajouter « {ajoutLibre} » (sans département)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+export type RetourModale = { id: string; creation: boolean };
+
+/**
+ * Ce dont la modale a besoin pour se préremplir — rien de plus.
+ *
+ * Une `RechercheCard` de l'écran Recherches satisfait ce type. L'écran
+ * Acheteurs, lui, n'a que la ligne brute du miroir : il compose ce petit objet
+ * plutôt que de rappeler le serveur pour reconstruire une carte complète, dont
+ * il n'utiliserait que sept champs (#347).
+ */
+export type DepartRecherche = {
+  id: string;
+  destinations: string[];
+  lieux: string[];
+  commentaire?: string;
+  /* Les coordonnées vivent sur le contact — c'est déjà là que la carte de
+     l'écran Recherches les range, donc une `RechercheCard` satisfait ce type
+     sans rien ajouter. */
+  contact?: { id: string; nom: string; tel?: string; email?: string };
+  brut: {
+    cible?: string;
+    prixMin?: number; prixMax?: number;
+    surfaceMin?: number; surfaceMax?: number;
+    occupMin?: number; occupMax?: number;
+    renta?: number;
+  };
+  /** Où elle en est (#453) : c'est ce qui choisit entre « Mettre en attente »
+   *  et « Réactiver » au pied de la modale. Absent : en cours. */
+  group?: "en_cours" | "en_attente" | "archivees";
+  attente?: { fin?: string; motif?: string };
+};
+
+const IC_PIED = {
+  corbeille: <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
+  sablier: <><path d="M6 3h12M6 21h12M8 3v4l4 5 4-5V3M8 21v-4l4-5 4 5v4" /></>,
+  relance: <><path d="M4 12a8 8 0 1 0 2.3-5.7" /><path d="M4 4v5h5" /></>,
+};
+
+export function ModaleRechercheEdition({
+  depart, contactImpose, agentId, onFermer, onEnregistre,
+}: {
+  /** La recherche à modifier (#330) ; absente, on en crée une (#332). */
+  depart?: DepartRecherche;
+  /** Sur une fiche contact, l'acquéreur est déjà connu. */
+  contactImpose?: { id: string; nom: string };
+  agentId?: string;
+  onFermer: () => void;
+  onEnregistre: (r: RetourModale) => void;
+}) {
+  const creation = !depart;
+  const [pending, start] = useTransition();
+  const [picker, setPicker] = useState(false);
+  /* Retour #453 — « reprends les mêmes boutons en bas que le BO Bubble avec
+     le même code couleur » : Supprimer en rouge, Mettre en attente en vert
+     cerclé, Enregistrer la recherche en vert plein. */
+  const router = useRouter();
+  const { confirmer, question } = useQuestion();
+  const [attente, setAttente] = useState(false);
+  const [pendingEtat, startEtat] = useTransition();
+  const contactId = contactImpose?.id ?? depart?.contact?.id;
+
+  const supprimer = async () => {
+    if (!depart) return;
+    const ok = await confirmer(
+      <>
+        La recherche sera <b>archivée</b> : elle sort des recherches en cours, du matching et des
+        envois. Les propositions encore en attente passeront <b>refusées</b>, motif « N&apos;est plus en
+        recherche ».
+      </>,
+      { titre: "Supprimer cette recherche ?", oui: "Supprimer", danger: true },
+    );
+    if (!ok) return;
+    startEtat(async () => {
+      await supprimerRecherche(depart.id, contactId);
+      router.refresh();
+      onFermer();
+    });
+  };
+
+  const reactiver = () => {
+    if (!depart) return;
+    startEtat(async () => {
+      await reactiverRecherche(depart.id, contactId);
+      router.refresh();
+      onFermer();
+    });
+  };
+  const [contact, setContact] = useState<{ id: string; nom: string } | undefined>(
+    contactImpose ?? (depart?.contact ? { id: depart.contact.id, nom: depart.contact.nom } : undefined),
+  );
+
+  /* La carte affiche « Investissement locatif » ; la base attend
+     « Investisseur ». On repart donc de la valeur brute (#330). */
+  const [cible, setCible] = useState(depart?.brut.cible ?? "");
+  const [destinations, setDestinations] = useState<string[]>(depart?.destinations ?? []);
+  /* La carte mélange villes et départements dans `lieux` ; on les resépare sur
+     la forme du code — c'est ce que fait déjà le serveur pour les afficher. */
+  const lieux = depart?.lieux.filter((l) => l !== "France entière") ?? [];
+  const [dpts, setDpts] = useState<string[]>(lieux.filter((l) => /^(?:\d{2,3}|2[AB])$/.test(l)));
+  /* Les régions étaient absentes des critères positifs : seules les
+     exclusions en avaient. Le secteur se saisit maintenant aux trois échelles
+     (#341). Une entrée qui porte un nom de région est reconnue comme telle. */
+  const [regions, setRegions] = useState<string[]>(
+    lieux.filter((l) => (REGIONS as readonly string[]).includes(l)),
+  );
+  const [villes, setVilles] = useState<string[]>(
+    lieux.filter((l) => !/^(?:\d{2,3}|2[AB])$/.test(l) && !(REGIONS as readonly string[]).includes(l)),
+  );
+
+  /* Les fourchettes se remplissent avec les valeurs en base : une modale de
+     modification qui présente des cases vides oblige à tout retaper, et la
+     moindre distraction efface un critère (#330). */
+  /* Groupés dès l'ouverture : une modale de modification qui présente
+     « 1000000 » demande le même effort de lecture qu'une case vide (#351). */
+  const dep = (v?: number) => (v === undefined ? "" : grouperMilliers(String(v)));
+  const [prixMin, setPrixMin] = useState(dep(depart?.brut.prixMin));
+  const [prixMax, setPrixMax] = useState(dep(depart?.brut.prixMax));
+  const [surfMin, setSurfMin] = useState(dep(depart?.brut.surfaceMin));
+  const [surfMax, setSurfMax] = useState(dep(depart?.brut.surfaceMax));
+  const [occMin, setOccMin] = useState(dep(depart?.brut.occupMin));
+  const [occMax, setOccMax] = useState(dep(depart?.brut.occupMax));
+  const [renta, setRenta] = useState(dep(depart?.brut.renta));
+  const [commentaire, setCommentaire] = useState(depart?.commentaire ?? "");
+
+  const [exDest, setExDest] = useState<string[]>([]);
+  const [exVilles, setExVilles] = useState<string[]>([]);
+  const [exDpts, setExDpts] = useState<string[]>([]);
+  const [exRegions, setExRegions] = useState<string[]>([]);
+  const [voirExclusions, setVoirExclusions] = useState(false);
+
+  /* Les exclusions ne sont pas sur la carte : elles vivent dans une table à
+     part et se chargent à l'ouverture. */
+  useEffect(() => {
+    if (!depart) return;
+    let vivant = true;
+    chargerExclusions(depart.id).then((e) => {
+      if (!vivant) return;
+      setExDest(e.destinations);
+      setExVilles(e.villes);
+      setExDpts(e.departements);
+      setExRegions(e.regions);
+      if (e.destinations.length || e.villes.length || e.departements.length || e.regions.length) {
+        setVoirExclusions(true);
+      }
+    });
+    return () => { vivant = false; };
+  }, [depart]);
+
+  const enregistrer = () =>
+    start(async () => {
+      const saisie: SaisieRecherche = {
+        id: depart?.id,
+        contactId: contact?.id,
+        cible: cible || undefined,
+        destinations,
+        villes,
+        /* Une région retenue s'enregistre en DÉPARTEMENTS : le miroir Bubble
+           n'a pas de champ région sur une recherche, et le moteur de matching
+           raisonne au département. Créer une notion que rien ne sait comparer
+           ensuite reviendrait à afficher un critère qui ne filtre rien. */
+        departements: [...new Set([...dpts, ...regions.flatMap(departementsDe)])],
+        prixMin: num(prixMin), prixMax: num(prixMax),
+        surfaceMin: num(surfMin), surfaceMax: num(surfMax),
+        occupMin: num(occMin), occupMax: num(occMax),
+        renta: num(renta),
+        commentaire,
+        exclusions: {
+          destinations: exDest, villes: exVilles,
+          departements: exDpts, regions: exRegions,
+        },
+      };
+      const id = await enregistrerRecherche(saisie, agentId);
+      onEnregistre({ id, creation });
+    });
+
+  const nbExclusions = exDest.length + exVilles.length + exDpts.length + exRegions.length;
+
+  const DEST_OPT = DESTINATIONS.map((d) => ({ cle: d.cle, nom: d.cle }));
+  const DPT_OPT = DEPARTEMENTS.map((d) => ({ cle: d.code, nom: d.nom }));
+  const REG_OPT = REGIONS.map((r) => ({ cle: r, nom: r }));
+  /* Version C (#601) : un seul champ « Où » — la prédiction trouve une région,
+     un département (par son code ou son nom) ; le reste est une ville. */
+  const LIEU_OPT = [...REG_OPT, ...DPT_OPT];
+  /** Un pas de ± 0,5 point sur le rendement, écrit à la française. */
+  const pas = (v: string, d: number) => {
+    const n = (num(v) ?? 0) + d;
+    return n <= 0 ? "" : String(Math.round(n * 10) / 10).replace(".", ",");
+  };
+
+  return (
+    <>
+      {/* Retour #341 — « fais la modale un peu moins grande, je veux voir la
+          totalité des infos à l'intérieur quand je suis en 100 % de zoom ».
+          Le corps passe sur DEUX COLONNES : ce qui était une colonne de
+          quatorze champs empilés tient maintenant en une hauteur d'écran.
+
+          `brut` : le corps garde sa classe `rmod-b` (hauteur bornée, défilement).
+          Tant que le sélecteur de contact est ouvert par-dessus, la fenêtre ne
+          reçoit pas la fermeture : Échap doit refermer le sélecteur, pas la
+          recherche en cours de saisie. */}
+      <Modale
+        titre={
+          /* Retour #527 : le bandeau des fenêtres d'ajout, comme l'ancien BO. */
+          <span className="aj-titre"><svg viewBox="0 0 24 24" aria-hidden>{ICA.loupe}</svg>
+            {creation ? "Nouvelle recherche" : "Modifier la recherche"}</span>
+        }
+        onFermer={picker ? undefined : onFermer}
+        className="rmod aj-tete"
+        fermeDehors={false}
+        brut
+        pied={
+          <>
+            <button className="fadd" type="button" onClick={onFermer}>Annuler</button>
+            <span style={{ flex: 1 }} />
+            {depart && (
+              <button className="kgo danger rmod-pied-ic" type="button" disabled={pendingEtat} onClick={supprimer}>
+                <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.corbeille}</svg>Supprimer
+              </button>
+            )}
+            {depart && depart.group !== "archivees" && (
+              depart.group === "en_attente" ? (
+                <button className="kgo green rmod-pied-ic" type="button" disabled={pendingEtat} onClick={reactiver}>
+                  <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.relance}</svg>
+                  {pendingEtat ? "Réactivation…" : "Réactiver la recherche"}
+                </button>
+              ) : (
+                <button className="kgo green rmod-pied-ic" type="button" disabled={pendingEtat} onClick={() => setAttente(true)}>
+                  <svg viewBox="0 0 24 24" aria-hidden>{IC_PIED.sablier}</svg>Mettre en attente
+                </button>
+              )
+            )}
+            <button className="savebar-go" type="button" disabled={pending} onClick={enregistrer}>
+              <span className="ch">›</span>{" "}
+              {pending ? "Enregistrement…" : creation ? "Créer la recherche" : "Enregistrer la recherche"}
+            </button>
+          </>
+        }
+      >
+        <div className="modal-b rmod-b">
+          {/* --- La carte du client, comme sur le BO (#341) --------------- */}
+          <div className="rmod-cli">
+            {contact ? (
+              <>
+                <span className="rmod-av">{initiales(contact.nom)}</span>
+                <div className="rmod-cli-c">
+                  <a className="rmod-cli-n" href={`/contact/${contact.id}`} target="_blank" rel="noreferrer">
+                    {contact.nom} ↗
+                  </a>
+                  <div className="rmod-cli-co">
+                    <Coordonnee valeur={depart?.contact?.tel} vide="pas de téléphone" />
+                    <Coordonnee valeur={depart?.contact?.email} vide="pas d'e-mail" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rmod-cli-c">
+                <b className="rmod-cli-n">Aucun contact rattaché</b>
+                <span className="rm-avert">
+                  Une recherche sans contact ne peut recevoir ni e-mail ni proposition.
+                </span>
+              </div>
+            )}
+            {!contactImpose && (
+              <button type="button" className="fadd" onClick={() => setPicker(true)}>
+                {contact ? "Changer" : "Rattacher"}
+              </button>
+            )}
+          </div>
+
+          {/* Retour #601 — version C choisie par MAV (05/11) : la recherche en
+              lignes, à lire d'un coup d'œil et à corriger au téléphone. Les
+              valeurs ressemblent à du texte tant qu'on n'y touche pas ; les
+              choix fermés sont des pastilles. Rien ne part avant « Enregistrer
+              la recherche ». */}
+          <div className="rl">
+            <div className="rl-k">Profil</div>
+            <div className="rl-v">
+              {CIBLES.map((c) => (
+                <button key={c} type="button" className={`rl-chip${cible === c ? " on" : ""}`}
+                  aria-pressed={cible === c} onClick={() => setCible(cible === c ? "" : c)}>{c}</button>
+              ))}
+            </div>
+
+            <div className="rl-k">Destinations</div>
+            <div className="rl-v">
+              {DESTINATIONS.map((d) => {
+                const on = destinations.includes(d.cle);
+                return (
+                  <button key={d.cle} type="button" className={`rl-chip${on ? " on" : ""}`} aria-pressed={on}
+                    onClick={() => setDestinations(on ? destinations.filter((x) => x !== d.cle) : [...destinations, d.cle])}>
+                    {d.cle}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="rl-k">Où</div>
+            <div className="rl-v rl-large">
+              <ChoixMultiple options={LIEU_OPT} valeur={[...regions, ...dpts, ...villes]} libre villes
+                onChange={(v) => {
+                  setRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
+                  setDpts(v.filter((x) => /^(?:\d{2,3}|2[AB])$/.test(x)));
+                  setVilles(v.filter((x) => !/^(?:\d{2,3}|2[AB])$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
+                }}
+                placeholder="Une région, un département (93, seine-saint…) ou une ville" />
+              {regions.length > 0 && (
+                <span className="rl-aide">
+                  À l&apos;enregistrement, une région devient ses {new Set(regions.flatMap(departementsDe)).size} départements.
+                </span>
+              )}
+              {!regions.length && !dpts.length && !villes.length && <span className="rl-aide">Rien : France entière.</span>}
+            </div>
+
+            <div className="rl-k">Budget</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={prixMin} onChange={setPrixMin} unite="€" large />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={prixMax} onChange={setPrixMax} unite="€" large />
+            </div>
+
+            <div className="rl-k">Rendement</div>
+            <div className="rl-v">
+              <span className="rl-a">au moins</span>
+              <button type="button" className="rl-pas" aria-label="Rendement moins 0,5 point"
+                onClick={() => setRenta(pas(renta, -0.5))}>−</button>
+              <ChampChiffre valeur={renta} onChange={setRenta} unite="%" />
+              <button type="button" className="rl-pas" aria-label="Rendement plus 0,5 point"
+                onClick={() => setRenta(pas(renta, 0.5))}>+</button>
+            </div>
+
+            <div className="rl-k">Occupation</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={occMin} onChange={setOccMin} unite="%" />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={occMax} onChange={setOccMax} unite="%" />
+            </div>
+
+            <div className="rl-k">Surface</div>
+            <div className="rl-v">
+              <ChampChiffre valeur={surfMin} onChange={setSurfMin} unite="m²" />
+              <span className="rl-a">à</span>
+              <ChampChiffre valeur={surfMax} onChange={setSurfMax} unite="m²" />
+            </div>
+
+            <div className="rl-k">Notes</div>
+            <div className="rl-v rl-large">
+              <textarea className="rl-notes" rows={2} value={commentaire}
+                onChange={(e) => setCommentaire(e.target.value)}
+                placeholder="Ce que l'acquéreur a dit et qu'aucune case ne dit…" />
+            </div>
+
+            <div className="rl-k">Exclusions</div>
+            <div className="rl-v rl-large">
+              {/* Retour #332 : repliées par défaut, ouvertes dès qu'il y en a. */}
+              <button type="button" className="rmod-excl-b rl-excl" onClick={() => setVoirExclusions(!voirExclusions)}>
+                <span className="rmod-ic rouge"><svg viewBox="0 0 24 24">{IC.interdit}</svg></span>
+                {nbExclusions > 0 ? `${nbExclusions} exclusion${nbExclusions > 1 ? "s" : ""}` : "Aucune"}
+                <span className="ch">{voirExclusions ? "▾" : "▸"}</span>
+              </button>
+              {voirExclusions && (
+                <div className="rm-excl">
+                  <p className="rm-aide">
+                    Ce que cette recherche <b>refuse</b>, quoi qu&apos;elle demande par ailleurs.
+                    Cocher « Logement » laisse passer les immeubles mixtes — c&apos;est voulu.
+                    Exclure « Commerce » ici les écarte.
+                  </p>
+                  <Champ libelle="Destinations exclues">
+                    <ChoixMultiple options={DEST_OPT} valeur={exDest} onChange={setExDest}
+                      placeholder="Commerce, Bureau…" />
+                  </Champ>
+                  {/* MAV, 13/11 : « je veux pouvoir choisir région, ville et
+                      départements et les ajouter ou exclure ». Un seul champ,
+                      comme « Où » : la prédiction trouve les trois. */}
+                  <Champ libelle="Lieux exclus">
+                    <ChoixMultiple options={LIEU_OPT} valeur={[...exRegions, ...exDpts, ...exVilles]} libre villes
+                      onChange={(v) => {
+                        setExRegions(v.filter((x) => (REGIONS as readonly string[]).includes(x)));
+                        setExDpts(v.filter((x) => /^(?:\d{2,3}|2[AB])$/.test(x)));
+                        setExVilles(v.filter((x) => !/^(?:\d{2,3}|2[AB])$/.test(x) && !(REGIONS as readonly string[]).includes(x)));
+                      }}
+                      placeholder="Une région, un département ou une ville à écarter" />
+                  </Champ>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modale>
+
+      {question}
+      {attente && depart && (
+        <ModaleAttenteRecherche
+          r={{ id: depart.id, contact: contactId ? { id: contactId, nom: contactImpose?.nom ?? depart.contact?.nom ?? "" } : undefined }}
+          onFermer={() => setAttente(false)}
+          onFait={() => { setAttente(false); router.refresh(); onFermer(); }}
+        />
+      )}
+
+      {picker && (
+        <ContactPicker
+          titre="Rattacher un acquéreur"
+          libelleValider="Rattacher"
+          valeurActuelle={contact?.nom}
+          onAnnuler={() => setPicker(false)}
+          onValider={(c) => { setContact({ id: c.id, nom: c.nom }); setPicker(false); }}
+        />
+      )}
+    </>
+  );
+}
