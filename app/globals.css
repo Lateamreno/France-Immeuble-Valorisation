@@ -10043,3 +10043,53 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .lc-tab.lots td:nth-child(2) { width: auto; }
 .lc-tab.lots td:nth-child(3) { width: 110px; }
 .lc-total { display: inline-flex; align-items: center; min-height: 34px; font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--slate); font-variant-numeric: tabular-nums; }
+
+/* ====== Constructibilité lue par l'IA (onglet Parcelles et PLU) ==========
+   Une ligne par case du PLU : la valeur proposée, puis ce qui permet de la
+   vérifier — la règle, l'extrait du règlement, la page. */
+.plu-ia { margin-top: 12px; border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 14px 16px; }
+.plu-ia.vide { border-style: dashed; background: #fcfbf7; }
+.plu-tete { display: flex; align-items: flex-start; gap: 16px; }
+.plu-tete > div { flex: 1; min-width: 0; }
+.plu-tete b { font-family: var(--font-title); font-size: 13px; color: var(--slate); }
+.plu-tete p { margin: 3px 0 0; font-size: 12px; color: var(--gray-txt); line-height: 1.5; max-width: 78ch; }
+.plu-tete a, .plu-ext a { color: var(--slate); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.plu-go { margin: 0; flex: none; font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--slate); }
+.plu-go:disabled { opacity: .55; cursor: default; }
+.plu-attente { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 12.5px; font-weight: 700; color: var(--slate); }
+.plu-attente i { font-weight: 400; font-style: normal; color: var(--gray-txt); }
+.plu-tourne { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--gold-bo); animation: plu-tour .8s linear infinite; flex: none; }
+@keyframes plu-tour { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .plu-tourne { animation: none; } }
+.plu-l { display: grid; grid-template-columns: 118px 128px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line-lt); margin-top: 12px; }
+.plu-l + .plu-l { margin-top: 0; }
+.plu-l .k { font-size: 12px; color: var(--gray-txt); padding-top: 3px; }
+.plu-l .v { font-family: var(--font-title); font-size: 17px; font-weight: 700; color: var(--slate); line-height: 1.25; overflow-wrap: anywhere; }
+.plu-l .v i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--gray-txt); }
+.plu-l .v.vide { font-size: 13px; color: var(--gray-txt); }
+.plu-l .d { min-width: 0; }
+.plu-ecart { display: block; margin-top: 4px; font-family: var(--font-body); font-size: 11.5px; font-weight: 700; color: var(--orange); }
+.plu-regle { margin: 0 0 6px; font-size: 12.5px; color: var(--slate); line-height: 1.5; }
+.plu-src { margin: 0; font-size: 12px; color: var(--gray-txt); line-height: 1.5; }
+.plu-ext { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plu-ext li { border-left: 3px solid var(--gold-bo); background: #fbfaf5; padding: 6px 10px; font-size: 12px; line-height: 1.5; color: var(--slate-2); }
+.plu-ext q { display: block; quotes: "« " " »"; overflow-wrap: anywhere; }
+.plu-ext a, .plu-ext .pg { display: inline-block; margin-top: 3px; font-size: 11.5px; }
+.plu-ctl { margin: 0; font-size: 11.5px; font-weight: 700; }
+.plu-ctl.ok { color: #2c8a1b; }
+.plu-ctl.voir { color: var(--orange); }
+.plu-ctl.non { color: var(--red); }
+.plu-ia.vide .plu-ctl, .plu-tete + .plu-ctl { margin-top: 10px; }
+.plu-reserve { margin: 12px 0 0; border: 1px solid #e8c48a; background: #fffaf0; border-radius: 4px; padding: 9px 12px; font-size: 12.5px; color: #8a5300; line-height: 1.5; }
+.plu-plus { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-lt); }
+.plu-plus > b { font-size: 12px; color: var(--gray-txt); font-weight: 700; }
+.plu-plus ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--slate); line-height: 1.55; }
+.plu-plus ul.court { columns: 2; column-gap: 28px; font-size: 12px; color: var(--slate-2); }
+.plu-plus .plu-ext { margin-top: 5px; }
+.plu-pied { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-lt); }
+.plu-pied span { flex: 1; font-size: 12px; color: var(--gray-txt); line-height: 1.5; }
+@media (max-width: 760px) {
+  .plu-l { grid-template-columns: 1fr; gap: 4px; }
+  .plu-tete, .plu-pied { flex-direction: column; align-items: stretch; }
+  .plu-plus ul.court { columns: 1; }
+}

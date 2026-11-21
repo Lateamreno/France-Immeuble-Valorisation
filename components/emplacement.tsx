@@ -33,6 +33,7 @@ import { lienMaps } from "@/lib/bo/maps";
 const itineraireGoogle: typeof itineraireBrut = (im, vers, opts = {}) =>
   itineraireBrut(im, vers, { ...opts, moyen: opts.moyen === "en bus" ? "en transport" : opts.moyen });
 import { TENSIONS_LOCATIVES } from "@/lib/referentiels";
+import { LecturePluIa } from "@/components/plu-ia";
 
 const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 const parse = (s: string) => (s === "" ? undefined : parseFloat(s.replace(",", ".")));
@@ -1117,10 +1118,10 @@ function ParcellesTab({ b }: { b: BienData }) {
             d'aller sur Géoportail pré-rempli. Après pareil, si t'as un site qui
             extrait le PLU selon une adresse, c'est top. »
             Le Géoportail de l'urbanisme est le service officiel : il centre sur
-            le point et affiche le zonage de la commune. Aucun service ne rend
-            la zone, la hauteur et l'emprise en texte — ces trois valeurs sortent
-            du règlement, qui est un PDF par commune. On ouvre donc la carte à
-            la bonne parcelle, et les quatre cases restent à recopier. */}
+            le point et affiche le zonage de la commune. La hauteur et l'emprise
+            sortent du règlement, un PDF par commune : les liens ouvrent la carte
+            à la bonne parcelle, et depuis le 20/11 la lecture par l'IA, sous les
+            cases, propose les quatre valeurs avec de quoi les vérifier. */}
         <a className="mopt" href={lienGpu} target="_blank" rel="noreferrer"
           onClick={() => copierTexte(adresse)}>Géoportail Urbanisme ↗</a>
         <a className="mopt" href={lienGeoportail} target="_blank" rel="noreferrer"
@@ -1163,6 +1164,12 @@ function ParcellesTab({ b }: { b: BienData }) {
           <i>%</i>
         </label>
       </div>
+      {/* MAV, 20/11 : « remplir la constructibilité par IA […] avec un détail
+          quelque part pour qu'on puisse vérifier ». La lecture propose, les
+          cases restent à enregistrer. */}
+      <LecturePluIa immeubleId={immeubleId} im={im} localise={lat !== undefined && lon !== undefined}
+        actuel={{ zone, type: typeZone, hauteur, emprise }}
+        onReprendre={(c) => { setZone(c.zone); setTypeZone(c.type); setHauteur(c.hauteur); setEmprise(c.emprise); }} />
       <BarreEnregistrer modifie={pluModifie || parcModifie} pending={pending} onEnregistrer={savePlu} onAnnuler={annulerPlu} />
     </>
   );

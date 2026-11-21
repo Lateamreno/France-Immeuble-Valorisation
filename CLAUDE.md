@@ -833,6 +833,42 @@ renseignements arrivent au fil de l'eau : une ligne vide ne s'imprime pas.
   lui correspondent.
 - Portails : Leboncoin signé ; SeLoger écarté (trop cher).
 
+### 7.12 Constructibilité lue par l'IA (21/11/26, en preview)
+
+Demande de MAV (20/11) : « remplir la constructibilité par IA quand on fait les
+dossiers immeubles […] avec un détail quelque part pour qu'on puisse vérifier
+que le taff a été bien fait ». Onglet Emplacement › Parcelles et PLU, sous les
+quatre cases (`components/plu-ia.tsx`).
+
+- **Deux sources, jamais confondues à l'écran.** La **zone** et son **type**
+  viennent du Géoportail de l'urbanisme (API ouverte de l'IGN,
+  `apicarto.ign.fr/api/gpu`), au point de l'adresse : donnée officielle, sans
+  IA, en trois secondes. L'**emprise** et la **hauteur** sont lues par l'IA dans
+  le PDF du règlement, que le même Géoportail désigne.
+- **Le détail qui permet de vérifier** : chaque chiffre arrive avec la règle en
+  une phrase, l'**extrait du règlement** que l'IA cite (citations de l'API :
+  le texte vient du PDF, pas du modèle) et un lien vers **la page** du PDF. Un
+  contrôle sans IA dit si le chiffre retenu figure bien dans l'extrait
+  (« chiffre cité », « extrait sans le chiffre : à relire », « aucun extrait »).
+- **Rien n'est écrit d'office.** La lecture est gardée à part sur la fiche
+  (`plu_ia`) ; « Reprendre ces valeurs » remplit les cases, que l'agent
+  enregistre comme une saisie. Un type de zone déjà saisi (« Centre ancien »,
+  « Zone d'activités »), plus fin que le code U / AU / A / N, n'est pas écrasé.
+  Un bien en copropriété n'a pas de constructibilité : la route refuse.
+- **Comment** (`lib/bo/plu.ts` pur et testé, `plu-serveur.ts`, route
+  `/api/plu-ia`, cinq minutes au plus) : le règlement est téléchargé, son texte
+  tiré page par page (`unpdf`) ; un règlement fait 300 à 600 pages, donc l'IA
+  reçoit d'abord son **plan** (une ligne par page) et désigne les pages à lire,
+  45 au plus ; ces pages lui sont envoyées **en PDF** (`pdf-lib`) — en PDF et
+  pas en texte, parce qu'un système d'indices s'explique souvent par un schéma
+  (Argenteuil : « UAi7c5 » = destination, forme urbaine, densité c → 70 %,
+  hauteur 5 → 19 m). Une relance au plus si l'IA dit qu'il lui manque des pages.
+- Sans zonage numérisé, sans PDF, ou devant un règlement scanné trop long, la
+  lecture le dit et s'arrête à ce qu'elle sait.
+- **État au 21/11** : en preview seulement. Toute la chaîne a tourné en local
+  sur Argenteuil **contre un faux serveur d'API** (aucune clé dans la session de
+  travail) ; la première vraie lecture par l'IA reste à faire sur la preview.
+
 ---
 
 ## 8. Garde-fous (invariants — ne jamais contourner)
