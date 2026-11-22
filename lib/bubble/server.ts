@@ -1646,20 +1646,33 @@ const imLabel = (im?: Record<string, unknown>) =>
     ? `${im.adresse_ville ?? ""} (${im.adresse_zipcode ?? ""}) - ${[im.adresse_numero_rue, im.adresse_rue].filter(Boolean).join(" ")}`
     : "";
 
+/** Ce que la ligne d'un immeuble affiche et ce sur quoi la liste filtre. */
+const CHAMPS_LISTE_IM = [
+  "AGENT", "PROPRIETAIRE", "Statut", "standby_Statut", "Modified Date", "photo_main_compressed",
+  "adresse_ville", "adresse_zipcode", "adresse_numero_rue", "adresse_rue", "adresse_region", "region",
+  "surface_carrez", "occupation_lots", "fin_renta_ba", "prix_hai", "Cibles", "Destination_principale",
+];
+
 export async function listImmeubles(): Promise<ListCard[]> {
   await loadInitials();
   const ims = await fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }]);
-  const archived = await bq("immeuble", {
-    constraints: [{ key: "archived", constraint_type: "equals", value: "true" }],
-    limit: 100, sort: "Modified Date", desc: true,
-  }).catch(() => ({ results: [] as Record<string, unknown>[], remaining: 0 }));
-  const tous = [...ims, ...archived.results];
+  /* MAV, 22/11 : « je veux tous pouvoir les voir, c'est la valeur ajoutée de
+     la société ». L'onglet Archivés ne chargeait que les cent fiches modifiées
+     le plus récemment, sur 1 690 : les autres n'étaient ni listées ni trouvées
+     par la recherche, qui ne cherche que dans ce qui est chargé. On les charge
+     toutes, avec les seules clés que la ligne affiche. */
+  const archives = await fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "true" }], 10000,
+    { field: "Modified Date", desc: true }, CHAMPS_LISTE_IM).catch(() => [] as Record<string, unknown>[]);
+  const tous = [...ims, ...archives];
   const contactIds = tous.map((i) => String(i.PROPRIETAIRE ?? "")).filter(Boolean);
   /* Les coordonnées vivent sur l'adresse géocodée, pas sur l'immeuble : c'est
-     elles qui permettent d'ouvrir la façade en Street View (retour #122). */
+     elles qui permettent d'ouvrir la façade en Street View (retour #122). Pour
+     les archives anciennes, le lien retombe sur la recherche de l'adresse :
+     mille six cents géocodages de plus à chaque ouverture ne le valent pas. */
+  const avecPoint = [...ims, ...archives.slice(0, 100)];
   const [contactsR, adressesR] = await Promise.all([
-    parIds("contact", contactIds),
-    parChamp("adresse", "IMMEUBLE", tous.map((i) => String(i._id))).catch(() => []),
+    parIds("contact", contactIds, 100, CHAMPS_LIBELLE_CONTACT),
+    parChamp("adresse", "IMMEUBLE", avecPoint.map((i) => String(i._id))).catch(() => []),
   ]);
   const contacts = new Map<string, Record<string, unknown>>();
   for (const r of contactsR) contacts.set(String(r._id), r);
@@ -1724,7 +1737,7 @@ export async function listImmeubles(): Promise<ListCard[]> {
   return [
     ...ims.filter((i) => String(i.standby_Statut ?? "Traité") === "Traité").map((i) => card(i, "en_cours")),
     ...ims.filter((i) => String(i.standby_Statut ?? "Traité") !== "Traité").map((i) => card(i, "en_attente")),
-    ...archived.results.map((i) => card(i, "archives")),
+    ...archives.map((i) => card(i, "archives")),
   ].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
 }
 
