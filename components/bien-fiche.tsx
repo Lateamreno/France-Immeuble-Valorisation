@@ -39,6 +39,7 @@ import { AjouterDelegation, ModifierDelegation, estDelegation, partFi } from "@/
 import { lireEtat } from "@/lib/diffusion";
 import { EmplacementTabs, ONGLETS_EMPLACEMENT } from "@/components/emplacement";
 import { BailLocataireSection, CoproSection, EmplacementCommerceSection, PuceCopro } from "@/components/lot-copro";
+import { LienLots } from "@/components/scission";
 import { aUnCommerce, enCopropriete } from "@/lib/bo/lot-copro";
 import { TechniqueTabs, ONGLETS_TECHNIQUE } from "@/components/technique";
 import { AddDossierButton } from "@/components/dossier-create";
@@ -737,6 +738,7 @@ export function BienFiche({
             <div><span className="bst">{b.statut}</span></div>
             {b.prix && <div className="bp">{b.prix}</div>}
             <PuceCopro b={b} />
+            <LienLots b={b} />
           </div>
         </div>
         {b.standby && b.standby !== "Traité" && <BandeauAttente b={b} />}

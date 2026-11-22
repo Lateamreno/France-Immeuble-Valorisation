@@ -23,6 +23,7 @@ import { correspond, destinationsDesLots, type CriteresBien } from "@/lib/bo/mat
 import { lireExclusionsDe, toutesLesExclusions } from "@/lib/bo/exclusions";
 import { codeDepartement, regionDe } from "@/lib/geo-fr";
 import { adresseComplete, villeArrondissement } from "@/lib/ville";
+import { ficheLotDe, type FicheLot } from "@/lib/bo/scission";
 import { lireSociete, nommerSocietes, societesDeContact, societesDeContacts } from "@/lib/bo/societes-lecture";
 import type { SocieteNommee } from "@/lib/societes";
 import { cache } from "react";
@@ -527,7 +528,7 @@ export async function getDashboardLive(
     "ESTIMATIONs", "standby_Statut", "adresse_dpt", "adresse_numero_rue", "adresse_rue", "adresse_ville",
     "adresse_zipcode", "fin_renta_ba", "fin_renta_bm", "fin_loyers_an", "fin_loyers_an_max", "occupation_lots",
     "photo_main_compressed", "prix_hai", "prix_hai_m", "surface_carrez",
-    "date_contact_form", "fin_charges_total", "CHARGEs",
+    "date_contact_form", "fin_charges_total", "CHARGEs", "lot_de", "lot_libelle",
   ];
   const [imsActifs, imsArchives, suivis, offres, mandats, dossiers] = await Promise.all([
     fetchAll("immeuble", [{ key: "archived", constraint_type: "equals", value: "false" }], 2000, undefined, clesIm),
@@ -818,6 +819,8 @@ export async function getDashboardLive(
       /* #551 : « Paris 11ème » plutôt que « Paris (75) » ; l'adresse au survol. */
       villeNom: villeArrondissement(im.adresse_ville, im.adresse_zipcode) ?? (String(im.adresse_ville ?? "") || "Ville inconnue"),
       dpt: villeArrondissement(im.adresse_ville, im.adresse_zipcode) ? undefined : String(im.adresse_dpt ?? "") || undefined,
+      lot: typeof im.lot_de === "string" && im.lot_de ? String(im.lot_libelle ?? "Lot") : undefined,
+      lotDe: typeof im.lot_de === "string" && im.lot_de ? im.lot_de : undefined,
       contact: contactLabel(contacts.get(im.PROPRIETAIRE as string)),
       adresse,
       photo,
@@ -1200,6 +1203,10 @@ export type BienData = {
   typologies: { destination: string; label: string }[];
   /** Adresse géocodée (type Bubble « adresse ») : geo.lat / geo.lng / maps_url. */
   adr: Record<string, unknown> | null;
+  /** Les fiches de lots mis en vente à part depuis cet immeuble (§7.11, étape 2). */
+  lotsEnVente: FicheLot[];
+  /** Pour une fiche de lot : l'immeuble dont elle vient. */
+  immeubleParent?: { id: string; adresse: string; statut: string };
   secteur: Record<string, unknown> | null;
   baux: Record<string, unknown>[];
   locataires: Record<string, unknown>[];
@@ -1259,6 +1266,15 @@ export async function getBien(id: string): Promise<BienData | null> {
   const one = await bq("immeuble", { constraints: [{ key: "_id", constraint_type: "equals", value: id }], limit: 1 });
   const im = one.results[0];
   if (!im) return null;
+  /* Vente par lot (§7.11) : les fiches de lots nées de cet immeuble, et, pour
+     une fiche de lot, l'immeuble d'où elle vient. Lancées ici, attendues à la fin. */
+  const lotsEnVenteP = fetchAll("immeuble", [{ key: "lot_de", constraint_type: "equals", value: id }], 300, undefined,
+    ["Statut", "prix_hai", "lot_libelle", "lots_origine", "archived"]).catch(() => []);
+  const parentId = typeof im.lot_de === "string" ? im.lot_de : "";
+  const parentP = parentId
+    ? fetchAll("immeuble", [{ key: "_id", constraint_type: "equals", value: parentId }], 1, undefined,
+      ["Statut", "adresse_numero_rue", "adresse_rue", "adresse_ville"]).catch(() => [])
+    : Promise.resolve([] as Record<string, unknown>[]);
 
   const chargeIds = Array.isArray(im.CHARGEs) ? (im.CHARGEs as string[]) : [];
   const parcelleIds = Array.isArray(im.PARCELLEs) ? (im.PARCELLEs as string[]) : [];
@@ -1366,6 +1382,12 @@ export async function getBien(id: string): Promise<BienData | null> {
       String(b["Created Date"] ?? "").localeCompare(String(a["Created Date"] ?? "")),
     ),
     adr: adresses[0] ?? null,
+    lotsEnVente: (await lotsEnVenteP).map(ficheLotDe),
+    immeubleParent: await parentP.then(([p]) => (p ? {
+      id: String(p._id),
+      adresse: [[p.adresse_numero_rue, p.adresse_rue].filter(Boolean).join(" "), p.adresse_ville].filter(Boolean).join(", "),
+      statut: String(p.Statut ?? ""),
+    } : undefined)),
     typologies,
     secteur,
     baux: [...baux].sort((a, b) => String(b["Created Date"]).localeCompare(String(a["Created Date"]))),
@@ -3098,6 +3120,8 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       destinations,
       cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
       repartition,
+      /* Une fiche de lot ne part qu'aux recherches qui acceptent les lots (§7.11). */
+      lot: typeof im.lot_de === "string" && im.lot_de !== "",
     },
   };
 }
@@ -3470,6 +3494,8 @@ export type RechercheCard = {
     surfaceMin?: number; surfaceMax?: number;
     occupMin?: number; occupMax?: number;
     renta?: number;
+    /** D'accord pour des lots de copropriété (§7.11) : reçoit les lots vendus à part. */
+    okLots?: boolean;
   };
   /** Immeubles en mandat qui correspondent et qu'on ne lui a jamais envoyés. */
   aProposer: number;
@@ -3538,6 +3564,7 @@ export function critereBien(im: Record<string, unknown>): CriteresBien {
       ? toutes
       : typeof im.Destination_principale === "string" ? [im.Destination_principale as string] : [],
     cibles: Array.isArray(im.Cibles) ? (im.Cibles as string[]) : [],
+    lot: typeof im.lot_de === "string" && im.lot_de !== "",
   };
 }
 
@@ -3574,13 +3601,13 @@ export async function repartitionDes(ids: string[]): Promise<Map<string, NonNull
 const CHAMPS_RECHERCHE = [
   "ACHETEUR", "SUIVI", "Cible", "Destinations", "IMMEUBLES_hidden", "IMMEUBLEs_proposed", "MANDATs", "Note",
   "agent", "archived", "standby", "commentaire", "dpts", "villes", "email", "phone", "occup_max", "occup_min",
-  "prix_max", "prix_min", "renta", "surface_max", "surface_min", "Modified Date", "Created Date",
+  "prix_max", "prix_min", "renta", "surface_max", "surface_min", "Modified Date", "Created Date", "ok_lots",
 ];
 /** Les clés d'un immeuble qu'il faut pour le proposer : critères, statut, libellé. */
 const CHAMPS_IMMEUBLE_CRITERES = [
   "Statut", "prix_hai_estim", "date_last_est", "ESTIMATIONs", "Cibles", "Destination_principale", "Destinations",
   "adresse_dpt", "adresse_ville", "adresse_zipcode", "adresse_numero_rue", "adresse_rue", "fin_renta_ba",
-  "occupation_lots", "prix_hai", "surface_carrez", "fin_renta_bm", "fin_loyers_an_max",
+  "occupation_lots", "prix_hai", "surface_carrez", "fin_renta_bm", "fin_loyers_an_max", "lot_de",
 ];
 
 export async function listRecherchesBO(
@@ -3685,6 +3712,7 @@ export async function listRecherchesBO(
         surfaceMin: nombre(r.surface_min), surfaceMax: nombre(r.surface_max),
         occupMin: nombre(r.occup_min), occupMax: nombre(r.occup_max),
         renta: nombre(r.renta),
+        okLots: r.ok_lots === true,
       },
       aProposer,
       group: r.archived === true ? "archivees" : r.standby === true ? "en_attente" : "en_cours",

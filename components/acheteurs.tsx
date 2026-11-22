@@ -99,6 +99,7 @@ export function Acheteurs({ b, d, hist }: { b: BienData; d: AcheteursData | null
       cibles: Array.isArray(m.in_Cibles) ? (m.in_Cibles as string[]) : [],
       destinations: Array.isArray(m.in_Destinations) ? (m.in_Destinations as string[]) : [],
       repartition: d.criteres.repartition,
+      lot: d.criteres.lot,
     };
     /* MAV, 13/11 — Sin-le-Noble : le matching de mars, rouvert tel quel, a
        renvoyé le bien aux 170 acquéreurs de mars, dont des recherches qui ne
@@ -737,6 +738,7 @@ function Resultats({
         surfaceMin: n(x.surface_min), surfaceMax: n(x.surface_max),
         occupMin: n(x.occup_min), occupMax: n(x.occup_max),
         renta: n(x.renta),
+        okLots: x.ok_lots === true,
       },
     };
   }, [rechercheOuverte, d]);

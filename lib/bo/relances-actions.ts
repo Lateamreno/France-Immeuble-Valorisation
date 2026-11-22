@@ -799,6 +799,7 @@ function versDepart(
       surfaceMin: n(r.surface_min), surfaceMax: n(r.surface_max),
       occupMin: n(r.occup_min), occupMax: n(r.occup_max),
       renta: n(r.renta),
+      okLots: r.ok_lots === true,
     },
   };
 }

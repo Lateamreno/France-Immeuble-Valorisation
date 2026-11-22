@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   aSavoirAvant, concerne, copiePour, docFicheLot, ficheDeLUnite, ficheLotDe, libelleLot, rangStatut,
-  reglementAuCoffre, statutInitial, unitesDeVente, ventiler,
+  regrouperLots, reglementAuCoffre, statutInitial, unitesDeVente, ventiler,
 } from "./scission.ts";
 
 const LOTS = [
@@ -118,4 +118,12 @@ test("règlement de copropriété : reconnu à son nom", () => {
   assert.ok(reglementAuCoffre([{ name: "Règlement de copropriété 2024.pdf" }]));
   assert.ok(reglementAuCoffre([{ file_name: "EDD - état descriptif de division.pdf" }]));
   assert.ok(!reglementAuCoffre([{ name: "Règlement intérieur.pdf" }, { name: "Bail lot 2.pdf" }]));
+});
+
+test("tableau de bord : les lots se rangent sous leur immeuble, le reste ne bouge pas", () => {
+  const c = (id: string, lotDe?: string) => ({ id, lotDe });
+  assert.deepEqual(regrouperLots([c("x"), c("l1", "im"), c("y"), c("im"), c("l2", "im")]).map((k) => k.id), ["x", "y", "im", "l1", "l2"]);
+  assert.deepEqual(regrouperLots([c("x"), c("l1", "im"), c("y"), c("l2", "im")]).map((k) => k.id), ["x", "l1", "l2", "y"], "immeuble absent : à la place du premier lot");
+  const sans = [c("a"), c("b")];
+  assert.equal(regrouperLots(sans), sans);
 });

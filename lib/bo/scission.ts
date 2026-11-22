@@ -142,7 +142,7 @@ export function ventiler(hai: number, tauxHonos: number): { nv: number; honos: n
 }
 
 /** Ce que la fiche du lot reprend de l'immeuble : où il est, à qui il est, qui le suit. */
-const REPRIS = /^(adresse_|emp_|PROPRIETAIRE$|source$|year_constru$|Etat$|AGENT$|photo_main_|photo_maps$)/;
+const REPRIS = /^(adresse$|adresse_|emp_|PROPRIETAIRE$|source$|year_constru$|Etat$|AGENT$|photo_main_|photo_maps$)/;
 
 /**
  * Le document de la fiche créée pour une unité. Le terrain et le PLU ne sont
@@ -222,4 +222,30 @@ export function reglementAuCoffre(documents: Doc[]): boolean {
  */
 export function aSavoirAvant(u: Unite): string[] {
   return u.sansPrix.length ? [`Sans prix retenu : ${u.sansPrix.join(", ")} — la fiche sera créée sans prix.`] : [];
+}
+
+/**
+ * Tableau de bord : dans une colonne, les lots d'un même immeuble se suivent,
+ * juste sous leur immeuble quand il est dans la colonne, sinon à la place du
+ * premier d'entre eux (MAV, 20/11 : « plusieurs lots sur la même adresse »).
+ * L'ordre des autres cartes ne bouge pas.
+ */
+export function regrouperLots<T extends { id: string; lotDe?: string }>(cartes: T[]): T[] {
+  if (!cartes.some((c) => c.lotDe)) return cartes;
+  const presents = new Set(cartes.map((c) => c.id));
+  const lotsDe = new Map<string, T[]>();
+  for (const c of cartes) if (c.lotDe) lotsDe.set(c.lotDe, [...(lotsDe.get(c.lotDe) ?? []), c]);
+  const out: T[] = [];
+  const poses = new Set<string>();
+  for (const c of cartes) {
+    if (c.lotDe) {
+      /* Un lot dont l'immeuble est dans la colonne sera posé sous lui. */
+      if (presents.has(c.lotDe) || poses.has(c.lotDe)) continue;
+      poses.add(c.lotDe);
+      out.push(...(lotsDe.get(c.lotDe) ?? []));
+    } else {
+      out.push(c, ...(lotsDe.get(c.id) ?? []));
+    }
+  }
+  return out;
 }

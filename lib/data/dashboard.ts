@@ -144,6 +144,10 @@ export type KCard = {
      jamais ; la pastille de statut à droite ; le téléphone du propriétaire à
      la place du prix tant qu'il n'y a pas de prix (formulaires, à estimer). */
   villeNom?: string;
+  /** Fiche d'un lot vendu à part : son libellé (« Lot 2 — T2, 2e étage ») et
+   *  l'immeuble dont il vient, pour ranger la carte sous lui (§7.11). */
+  lot?: string;
+  lotDe?: string;
   dpt?: string;
   pastille?: { texte: string; ton?: "rouge" | "vert" | "or" };
   tel?: string;

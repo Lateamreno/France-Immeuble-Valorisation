@@ -6346,6 +6346,8 @@ export type SaisieRecherche = {
   occupMax?: number;
   renta?: number;
   commentaire?: string;
+  /** D'accord pour des lots de copropriété (§7.11). Absent = on n'y touche pas. */
+  okLots?: boolean;
   /** Ce que la recherche refuse (retour #332) — voir lib/bo/exclusions.ts. */
   exclusions: {
     destinations: string[];
@@ -6389,6 +6391,7 @@ export async function enregistrerRecherche(
     occup_max: saisie.occupMax ?? null,
     renta: saisie.renta ?? null,
     commentaire: saisie.commentaire?.trim() || null,
+    ok_lots: saisie.okLots,
     date_modif: now,
     "Modified Date": now,
   });

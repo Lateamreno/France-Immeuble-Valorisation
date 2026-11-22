@@ -101,4 +101,13 @@ const exclLogement = new Map([["rF", { destinations: ["Logement"], villes: [], d
 ok(matcher([commerceSeul], new Map(), sinLeNoble, { ...FILTRES_MATCH_DEFAUT, exclureDejaVus: false, dejaRecus: ["cF"] }, exclLogement).length === 0,
   "déjà reçu ET case cochée : une recherche « commerce seul » ne reçoit toujours pas un immeuble à 50 % d'habitation");
 
+// Un lot vendu à part ne part qu'aux recherches qui acceptent les lots de
+// copropriété (MAV, 20/11).
+const unLot: CriteresBien = { immeubleId: "lot1", prix: 190000, lot: true };
+ok(correspond({}, unLot) === false, "lot : une recherche qui n'a rien dit ne le reçoit pas");
+ok(correspond({ ok_lots: false }, unLot) === false, "lot : ni celle qui a dit non");
+ok(correspond({ ok_lots: true }, unLot) === true, "lot : celle qui a coché « d'accord pour des lots » le reçoit");
+ok(correspond({ ok_lots: true, prix_max: 150000 }, unLot) === false, "lot : les autres critères continuent de jouer");
+ok(correspond({}, { immeubleId: "im1", prix: 190000 }) === true, "un immeuble n'est pas concerné par la case");
+
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }

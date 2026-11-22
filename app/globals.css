@@ -10093,3 +10093,37 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
   .plu-tete, .plu-pied { flex-direction: column; align-items: stretch; }
   .plu-plus ul.court { columns: 1; }
 }
+
+/* ====== Vendre les lots à part (état locatif, vue Copropriété) ============ */
+.vpl { margin: 0 0 14px; border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 14px 16px; }
+.vpl-tete { display: flex; align-items: flex-start; gap: 16px; }
+.vpl-tete > div { flex: 1; min-width: 0; }
+.vpl-tete b { font-family: var(--font-title); font-size: 13px; color: var(--slate); }
+.vpl-tete p { margin: 3px 0 0; font-size: 12px; color: var(--gray-txt); line-height: 1.5; max-width: 86ch; }
+.vpl-rappel { margin: 10px 0 0; border: 1px solid #e8c48a; background: #fffaf0; border-radius: 4px; padding: 7px 11px; font-size: 12.5px; color: #8a5300; }
+.vpl-msg { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; color: var(--slate); }
+.vpl-msg.ok { color: #2c8a1b; }
+.vpl-msg.non { color: var(--red); }
+.vpl-liste { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line-lt); }
+.vpl-liste li { display: grid; grid-template-columns: minmax(0, 1fr) 150px 150px auto; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--line-lt); font-size: 12.5px; color: var(--slate); }
+.vpl-liste .l { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vpl-liste .o { color: var(--gray-txt); }
+.vpl-liste .p { text-align: right; font-weight: 700; }
+.vpl-liste .p i { font-style: normal; font-weight: 400; color: var(--orange); }
+.vpl-liste .a { display: flex; align-items: center; gap: 8px; justify-content: flex-end; min-width: 190px; }
+.vpl-liste li.fait .l { font-weight: 600; }
+.vpl-etat { font-size: 11.5px; font-weight: 700; color: #2c8a1b; }
+.vpl-liste a.mopt { text-decoration: none; }
+.vpl .mopt:disabled, .vpl .fadd:disabled { opacity: .55; cursor: default; }
+.lien-lots { margin-top: 5px; font-size: 12px; line-height: 1.35; }
+.lien-lots b { display: block; color: var(--slate); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lien-lots a { color: var(--gray-txt); text-decoration: underline; text-underline-offset: 2px; }
+.klot { font-size: 12px; font-weight: 700; color: var(--gold-bo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.rl-case { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; font-size: 13px; color: var(--slate); cursor: pointer; }
+.rl-case i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
+@media (max-width: 860px) {
+  .vpl-liste li { grid-template-columns: 1fr; gap: 3px; }
+  .vpl-liste .p { text-align: left; }
+  .vpl-liste .a { justify-content: flex-start; }
+  .vpl-tete { flex-direction: column; }
+}

@@ -360,6 +360,8 @@ export type DepartRecherche = {
     surfaceMin?: number; surfaceMax?: number;
     occupMin?: number; occupMax?: number;
     renta?: number;
+    /** D'accord pour des lots de copropriété (§7.11) : reçoit les lots vendus à part. */
+    okLots?: boolean;
   };
   /** Où elle en est (#453) : c'est ce qui choisit entre « Mettre en attente »
    *  et « Réactiver » au pied de la modale. Absent : en cours. */
@@ -458,6 +460,7 @@ export function ModaleRechercheEdition({
   const [occMax, setOccMax] = useState(dep(depart?.brut.occupMax));
   const [renta, setRenta] = useState(dep(depart?.brut.renta));
   const [commentaire, setCommentaire] = useState(depart?.commentaire ?? "");
+  const [okLots, setOkLots] = useState(depart?.brut.okLots === true);
 
   const [exDest, setExDest] = useState<string[]>([]);
   const [exVilles, setExVilles] = useState<string[]>([]);
@@ -501,6 +504,7 @@ export function ModaleRechercheEdition({
         occupMin: num(occMin), occupMax: num(occMax),
         renta: num(renta),
         commentaire,
+        okLots,
         exclusions: {
           destinations: exDest, villes: exVilles,
           departements: exDpts, regions: exRegions,
@@ -677,6 +681,17 @@ export function ModaleRechercheEdition({
               <ChampChiffre valeur={surfMin} onChange={setSurfMin} unite="m²" />
               <span className="rl-a">à</span>
               <ChampChiffre valeur={surfMax} onChange={setSurfMax} unite="m²" />
+            </div>
+
+            {/* MAV, 20/11 : un acheteur d'immeubles ne reçoit les lots vendus à
+                part que s'il l'a dit. Décochée au départ, pour tout le monde. */}
+            <div className="rl-k">Lots</div>
+            <div className="rl-v rl-large">
+              <label className="rl-case">
+                <input type="checkbox" checked={okLots} onChange={(e) => setOkLots(e.target.checked)} />
+                D&apos;accord pour des lots de copropriété
+                <i>— reçoit aussi les lots vendus à part (logements, locaux, libres ou occupés) qui correspondent à ses critères</i>
+              </label>
             </div>
 
             <div className="rl-k">Notes</div>

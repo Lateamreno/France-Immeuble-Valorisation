@@ -17,6 +17,7 @@ import {
   ModaleArchivage, ModaleAttente, ModaleMoyenContact, ModaleTransfert,
 } from "@/components/dashboard-modales";
 import { MOTIFS_ARCHIVAGE } from "@/lib/referentiels";
+import { regrouperLots } from "@/lib/bo/scission";
 
 const COL_IC: Record<KCol["icon"], React.ReactNode> = {
   form: <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1.6 3v2.4h5V7h-5zm7 .4v1.6h5.8V7.4h-5.8zM5.6 11.6v1.6h12.2v-1.6H5.6zm0 3.6V17h12.2v-1.8H5.6z" />,
@@ -159,6 +160,9 @@ export function Card({
             {c.dpt && <span className="kt kt-dpt">({c.dpt})</span>}
             {c.pastille && <span className={`kpast ${c.pastille.ton ?? ""}`} title={c.pastille.texte}>{c.pastille.texte}</span>}
           </div>
+          {/* Un lot vendu à part : dix cartes à la même adresse ne se
+              distinguent que par là (MAV, 20/11). */}
+          {c.lot && <div className="klot" title={c.lot}>{c.lot}</div>}
 
           <div className="krowp">
             {/* Le propriétaire à gauche, le numéro (Formulaires, À estimer) ou
@@ -605,7 +609,7 @@ function Bloc({ b, mock, agents }: { b: KBloc; mock?: boolean; agents?: { id: st
                 <span className="cchev" aria-hidden>˅</span>
               </button>
               <div className="col-body">
-                {col.cards.map((c) => (
+                {regrouperLots(col.cards).map((c) => (
                   <Card key={c.id} c={c} mock={mock} agents={agents} />
                 ))}
               </div>

@@ -25,6 +25,9 @@ export type CriteresBien = {
   /** La région du bien, pour les exclusions géographiques (#332). */
   region?: string;
   cibles?: string[];
+  /** La fiche est celle d'un lot vendu à part (§7.11) : elle ne part qu'aux
+   *  recherches qui acceptent les lots de copropriété. */
+  lot?: boolean;
   /** Les loyers annuels POTENTIELS (un lot vide compte pour son loyer HC max)
    *  et les surfaces, destination par destination — la règle « pro » du
    *  02/11 en a besoin. Absents, la règle ne tranche que sur les logements. */
@@ -309,6 +312,9 @@ export function correspond(
   bien: CriteresBien,
   exclusions?: ExclusionsRecherche,
 ): boolean {
+  /* MAV, 20/11 : un acheteur d'immeubles ne reçoit un lot que s'il a dit
+     « d'accord pour des lots de copropriété ». */
+  if (bien.lot && r.ok_lots !== true) return false;
   if (!dansFourchette(bien.prix, r.prix_min, r.prix_max)) return false;
   if (!dansFourchette(bien.surface, r.surface_min, r.surface_max)) return false;
   if (!dansFourchette(bien.occupation, r.occup_min, r.occup_max)) return false;

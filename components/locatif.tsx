@@ -9,6 +9,7 @@
 // enregistrement, une seule barre. MAV : « de cette façon j'ai accès aux infos
 // totales du bien en cliquant sur ce dont j'ai besoin ».
 import { EtudeDecoupe } from "@/components/etude-decoupe";
+import { VenteParLot } from "@/components/scission";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { Picto } from "@/components/pictos";
@@ -483,6 +484,10 @@ export function LocatifTabs({ b, tab: pilote, onTab }: {
           <Picto nom="etude" className="ftab-ic" />Étude découpe
         </button>
       </div>
+      {/* Étape 2 de la vente par lot (§7.11) : sur la vue Copropriété d'un
+          immeuble entier. Une fiche de lot, ou un bien en copropriété vendu
+          seul, ne se scinde pas. */}
+      {onglet === "lots" && vue === "copro" && b.im.en_copropriete !== true && <VenteParLot b={b} />}
       {onglet === "lots" && (
         <LotsEditor key={cleLots} b={b} colonnes={colonnes} />
       )}
