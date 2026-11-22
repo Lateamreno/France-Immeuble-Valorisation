@@ -230,11 +230,15 @@ export function aSavoirAvant(u: Unite): string[] {
  * premier d'entre eux (MAV, 20/11 : « plusieurs lots sur la même adresse »).
  * L'ordre des autres cartes ne bouge pas.
  */
-export function regrouperLots<T extends { id: string; lotDe?: string }>(cartes: T[]): T[] {
+export function regrouperLots<T extends { id: string; lotDe?: string; lot?: string }>(cartes: T[]): T[] {
   if (!cartes.some((c) => c.lotDe)) return cartes;
   const presents = new Set(cartes.map((c) => c.id));
   const lotsDe = new Map<string, T[]>();
   for (const c of cartes) if (c.lotDe) lotsDe.set(c.lotDe, [...(lotsDe.get(c.lotDe) ?? []), c]);
+  /* Entre eux, dans l'ordre des numéros : « Lot 2 » avant « Lot 10 ». */
+  for (const groupe of lotsDe.values()) {
+    groupe.sort((a, b) => (a.lot ?? "").localeCompare(b.lot ?? "", "fr", { numeric: true }));
+  }
   const out: T[] = [];
   const poses = new Set<string>();
   for (const c of cartes) {

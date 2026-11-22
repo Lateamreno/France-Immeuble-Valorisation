@@ -17,7 +17,7 @@ import { useState, useTransition } from "react";
 import type { BienData } from "@/lib/bubble/server";
 import { useQuestion } from "@/components/modale";
 import { scinderLots } from "@/lib/bo/scission-actions";
-import { aSavoirAvant, ficheDeLUnite, reglementAuCoffre, unitesDeVente, type Unite } from "@/lib/bo/scission";
+import { aSavoirAvant, ficheDeLUnite, reglementAuCoffre, statutInitial, unitesDeVente, type Unite } from "@/lib/bo/scission";
 
 const euros = (n?: number) => (n ? `${new Intl.NumberFormat("fr-FR").format(Math.round(n))} €` : "");
 
@@ -32,6 +32,9 @@ export function VenteParLot({ b }: { b: BienData }) {
   const aFaire = unites.filter((u) => !ficheDeLUnite(u, b.lotsEnVente));
   const reglement = reglementAuCoffre(b.documents);
   const sousMandat = b.mandats.some((m) => String(m.Statut ?? "") !== "Annulé");
+  /* Le statut que portera la fiche : celui de l'immeuble avant la vente,
+     « OK pour vendre » ensuite — jamais commercialisée d'office. */
+  const statutDepart = statutInitial(b.im.Statut).replace(/^\d+\s*-\s*/, "");
 
   const scinder = async (cibles: Unite[]) => {
     const un = cibles.length === 1;
@@ -45,7 +48,7 @@ export function VenteParLot({ b }: { b: BienData }) {
         </p>
         <p>
           {un ? "La fiche reprend" : "Chaque fiche reprend"} l&apos;adresse, le propriétaire, l&apos;agent, la ligne d&apos;état locatif, le bail
-          et le locataire. {sousMandat ? "Le mandat de l'immeuble la couvre. " : ""}Elle naît « OK pour vendre » : rien n&apos;est
+          et le locataire. {sousMandat ? "Le mandat de l'immeuble la couvre. " : ""}Elle naît au statut « {statutDepart} » : rien n&apos;est
           envoyé ni publié tant que vous ne le lancez pas. L&apos;immeuble reste proposé en bloc.
         </p>
         {!reglement && <p><b>Le règlement de copropriété n&apos;est pas au coffre.</b> Vous pouvez scinder quand même ; pensez à l&apos;y déposer.</p>}

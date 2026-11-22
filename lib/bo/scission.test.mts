@@ -126,4 +126,7 @@ test("tableau de bord : les lots se rangent sous leur immeuble, le reste ne boug
   assert.deepEqual(regrouperLots([c("x"), c("l1", "im"), c("y"), c("l2", "im")]).map((k) => k.id), ["x", "l1", "l2", "y"], "immeuble absent : à la place du premier lot");
   const sans = [c("a"), c("b")];
   assert.equal(regrouperLots(sans), sans);
+  const n = (id: string, lot: string) => ({ id, lotDe: "im", lot });
+  assert.deepEqual(regrouperLots([n("c", "Lot 10 — T3"), n("a", "Lot 2 — T2"), { id: "im" }, n("b", "Lot 1 — Boutique")]).map((k) => k.id),
+    ["im", "b", "a", "c"], "entre eux, dans l'ordre des numéros");
 });

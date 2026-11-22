@@ -805,10 +805,47 @@ renseignements arrivent au fil de l'eau : une ligne vide ne s'imprime pas.
   voisins proposés d'office, dépôt du bail depuis la page, couverture propre
   au local, version « local libre » de la page.
 
-**Découpe (étapes suivantes, décidées mais pas codées).**
-- L'agent scinde quand il veut : un bouton sur chaque lot de l'état locatif
-  (« mettre ce lot en vente à part ») et un bouton pour tous ; rappel si le
-  règlement de copropriété n'est pas encore au coffre.
+**Étape 2, première tranche (22/11/26, en preview seulement) : scinder.**
+- État locatif › vue Copropriété d'un immeuble entier : le panneau « Vendre
+  les lots à part » (`components/scission.tsx`) liste les **unités de vente**
+  — un lot, et les caves ou parkings « vendus avec » lui ; une cave non
+  rattachée se vend seule — avec un bouton par unité et un bouton pour toutes.
+  Rappel si le règlement de copropriété n'est pas au coffre (reconnu à son
+  nom de fichier) ; il ne bloque pas.
+- `scinderLots` (`lib/bo/scission-actions.ts`, calcul pur et testé dans
+  `lib/bo/scission.ts`) crée **une fiche `bo_immeuble` par unité** :
+  `lot_de` (l'immeuble), `lots_origine`, `lot_libelle` (« Lot 2 — T2, 2e
+  étage, 34 m² + cave 12 »), `en_copropriete`, adresse, propriétaire, agent,
+  données d'emplacement ; prix = somme des `prix_retenu` (HAI), ventilé au
+  taux du mandat de l'immeuble. Ni terrain, ni PLU, ni descriptif du bloc.
+- **La fiche du lot a ses propres lignes** : copie du lot, de son bail, de son
+  locataire et de l'adresse, chacune avec `origine` (la ligne de l'immeuble).
+  Choix assumé : tout ce qui lit « les lots d'une fiche » marche sans rien
+  changer, version en ligne comprise. Contrepartie : après la scission, une
+  ligne modifiée d'un côté ne l'est pas de l'autre — à synchroniser dans une
+  tranche suivante.
+- **Statut de départ** : celui de l'immeuble avant la vente, « 4 - OK pour
+  vendre » au-delà. Jamais commercialisé d'office.
+- **Un seul mandat** : les fiches créées sont ajoutées aux `IMMEUBLEs` du
+  mandat en vigueur de l'immeuble. Le registre n'est pas touché.
+- **Qui reçoit un lot** : `correspond` (`lib/bo/matching.ts`) refuse une fiche
+  de lot à toute recherche qui n'a pas `ok_lots` — la case « D'accord pour des
+  lots de copropriété » de la fenêtre de recherche, décochée pour tous au
+  départ. Ne vaut que pour les fiches nées d'une scission (`lot_de`), pas
+  pour un bien en copropriété créé seul (Sébastopol, Damrémont).
+- Tableau de bord : la carte d'un lot porte son libellé et se range sous son
+  immeuble dans la colonne (`regrouperLots`). Fiche : « ‹ Lot de l'immeuble »
+  sous le prix d'un lot, « n lots en vente à part » sous celui de l'immeuble.
+- **La preview écrit dans la base de la version en ligne**, qui ne connaît ni
+  `lot_de` ni `ok_lots` : une fiche de lot y est une fiche ordinaire, et entre
+  dans les « à proposer » de tous dès qu'elle passe au statut 5. Tant que ce
+  n'est pas en ligne, n'essayer que sur un immeuble d'essai ou ne pas
+  commercialiser un lot.
+- Essayé au navigateur sur un immeuble d'essai (supprimé ensuite) ; le
+  rattachement au mandat n'a pas été essayé — pas de mandat d'essai, pour ne
+  pas consommer un numéro du registre.
+
+**Découpe (suite, décidée mais pas codée).**
 - Le plus souvent **un seul mandat pour tous les lots**, avec un prix par lot
   (Nanterre) : faire signer un mandat par lot à des indivisaires serait trop
   lourd.
