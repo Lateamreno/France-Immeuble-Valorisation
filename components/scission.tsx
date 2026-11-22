@@ -46,10 +46,10 @@ export function VenteParLot({ b }: { b: BienData }) {
             ? <>Créer la fiche de vente de <b>{cibles[0].libelle}</b> ?</>
             : <>Créer une fiche de vente pour chacun des <b>{cibles.length} lots</b> qui n&apos;en ont pas encore ?</>}
         </p>
+        {/* En une seule chaîne : le texte découpé autour des accolades perdait
+            ses espaces à l'affichage (« reprendl'adresse »). */}
         <p>
-          {un ? "La fiche reprend" : "Chaque fiche reprend"} l&apos;adresse, le propriétaire, l&apos;agent, la ligne d&apos;état locatif, le bail
-          et le locataire. {sousMandat ? "Le mandat de l'immeuble la couvre. " : ""}Elle naît au statut « {statutDepart} » : rien n&apos;est
-          envoyé ni publié tant que vous ne le lancez pas. L&apos;immeuble reste proposé en bloc.
+          {`${un ? "La fiche reprend" : "Chaque fiche reprend"} l'adresse, le propriétaire, l'agent, la ligne d'état locatif, le bail et le locataire. ${sousMandat ? "Le mandat de l'immeuble la couvre. " : ""}Elle naît au statut « ${statutDepart} » : rien n'est envoyé ni publié tant que vous ne le lancez pas. L'immeuble reste proposé en bloc.`}
         </p>
         {!reglement && <p><b>Le règlement de copropriété n&apos;est pas au coffre.</b> Vous pouvez scinder quand même ; pensez à l&apos;y déposer.</p>}
         {remarques.length > 0 && <p>{remarques.slice(0, 4).join(" ")}{remarques.length > 4 ? " …" : ""}</p>}

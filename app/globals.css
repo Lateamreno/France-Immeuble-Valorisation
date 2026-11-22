@@ -10120,8 +10120,11 @@ button.rep-bloc-h { width: 100%; border: 0; background: none; cursor: pointer; t
 .vpl-liste a.mopt { text-decoration: none; }
 .vpl .mopt:disabled, .vpl .fadd:disabled { opacity: .55; cursor: default; }
 .lien-lots { margin-top: 5px; font-size: 12px; line-height: 1.35; }
-.lien-lots b { display: block; color: var(--slate); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lien-lots a { color: var(--gray-txt); text-decoration: underline; text-underline-offset: 2px; }
+/* L'en-tête de la fiche est sombre : le libellé du lot en clair, sur deux
+   lignes s'il le faut — c'est lui qui dit de quel lot on parle. */
+.lien-lots b { display: block; color: #fff; font-weight: 700; overflow-wrap: anywhere; }
+.lien-lots a { color: #c9ccd1; text-decoration: underline; text-underline-offset: 2px; }
+.lien-lots a:hover { color: #fff; }
 .klot { font-size: 12px; font-weight: 700; color: var(--gold-bo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 .rl-case { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; font-size: 13px; color: var(--slate); cursor: pointer; }
 .rl-case i { font-style: normal; font-size: 12px; color: var(--gray-txt); }
