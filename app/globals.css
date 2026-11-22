@@ -9311,6 +9311,10 @@ body.page-connexion { margin: 0; min-height: 100vh; background: #f1f2f3; }
 .lcartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; align-items: start; margin-bottom: 10px; }
 @media (max-width: 760px) { .lcartes { grid-template-columns: 1fr; } }
 .lcartes .lrow { margin: 0; align-self: stretch; }
+/* Un bien sans carte du tableau de bord (les archivés anciens, tous listés
+   depuis le 22/11) garde sa ligne : sur toute la largeur, sinon l'adresse se
+   repliait mot par mot dans une colonne de carte. */
+.lcartes .lrow { grid-column: 1 / -1; }
 .lcarte { min-width: 0; }
 /* #568 / #570 : clercs, gestionnaire, liens de pièces et fenêtre « Écrire ». */
 .sv2-p.charge { border-color: var(--gold-bo); box-shadow: inset 3px 0 0 var(--gold-bo); }
