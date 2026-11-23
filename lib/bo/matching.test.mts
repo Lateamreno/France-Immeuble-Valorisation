@@ -101,4 +101,16 @@ const exclLogement = new Map([["rF", { destinations: ["Logement"], villes: [], d
 ok(matcher([commerceSeul], new Map(), sinLeNoble, { ...FILTRES_MATCH_DEFAUT, exclureDejaVus: false, dejaRecus: ["cF"] }, exclLogement).length === 0,
   "déjà reçu ET case cochée : une recherche « commerce seul » ne reçoit toujours pas un immeuble à 50 % d'habitation");
 
+
+/* --- Un contact supprimé ne reçoit plus rien (MAV, 23/11) --- */
+{
+  const bien = { immeubleId: "im1", prix: 1_000_000, departement: "75", ville: "Paris", destinations: [] } as never;
+  const filtres = { notes: [], exclureDejaVus: false, exclureAgents: false, mandatObligatoire: false } as never;
+  const rech = [{ _id: "r1", ACHETEUR: "c1" }, { _id: "r2", ACHETEUR: "c2" }];
+  const tous = matcher(rech, new Map([["c1", {}], ["c2", {}]]), bien, filtres);
+  const sans = matcher(rech, new Map([["c1", { archived: true }], ["c2", {}]]), bien, filtres);
+  ok(tous.length === 2, "contact supprimé : sans suppression, les deux recherches sortent");
+  ok(sans.length === 1, "contact supprimé : sa recherche encore active ne sort plus du matching");
+}
+
 if (ko) { console.log(`\n${ko} échec(s)`); process.exit(1); }

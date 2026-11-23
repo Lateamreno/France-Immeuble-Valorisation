@@ -1280,7 +1280,7 @@ function Suppression({ id, nom, onClose }: { id: string; nom: string; onClose: (
         pied={<><span style={{ flex: 1 }} /><button type="button" className="cfx-b gris" onClick={() => router.push("/contacts")}>Retour aux contacts</button></>}>
         <p className="vit-note" style={{ marginTop: 0 }}>
           La fiche n&apos;est pas partie à la corbeille, parce qu&apos;il lui reste {retenu}.
-          Elle est sortie de la liste et de la recherche, et se retrouve sous « Contacts supprimés ».
+          Elle est sortie de la liste et de la recherche, ne reçoit plus aucun dossier, et se retrouve sous « Contacts supprimés ».
         </p>
       </Modale>
     );

@@ -55,7 +55,46 @@ export function ceQuiRetient(a: Attaches): string {
 export function annonceSuppression(motif: string): string {
   return motifCorbeille(motif)
     ? "La fiche part à la corbeille : elle disparaît du BO. Si un bien, une recherche, une proposition ou un mandat lui est rattaché, "
-      + "elle est seulement retirée des listes, pour ne pas perdre cet historique."
-    : "La fiche sort de la liste et de la recherche des contacts. Elle est gardée avec son motif : l’historique de ses propositions "
-      + "et de ses mandats reste lisible, et elle se retrouve sous « Contacts supprimés ».";
+      + "elle est seulement retirée des listes, pour ne pas perdre cet historique — et elle ne reçoit plus aucun dossier."
+    : "La fiche sort de la liste et de la recherche des contacts, ses recherches sont retirées et ses relances coupées : "
+      + "elle ne reçoit plus aucun dossier. Elle est gardée avec son motif, l’historique reste lisible, "
+      + "et elle se retrouve sous « Contacts supprimés ».";
 }
+
+/* ------------------------------------------------------------------------
+   Un contact supprimé ne reçoit plus rien (MAV, 23/11 : « il ne faut pas
+   qu'elle continue à recevoir les recherches, surtout pas »).
+
+   Deux verrous. À la suppression, ses recherches encore actives sont retirées
+   et les relances de ses propositions coupées — avec une marque, pour que
+   « Rétablir » rende exactement ce qui a été retiré, et rien de plus. Et à la
+   lecture, le matching et les relances écartent tout contact supprimé, même
+   si une recherche avait échappé au premier verrou.
+   ------------------------------------------------------------------------ */
+
+export const MOTIF_RECHERCHE_CONTACT_SUPPRIME = "Contact supprimé";
+
+type Doc = { id: string; data: Record<string, unknown> };
+
+/** Les recherches à retirer avec le contact : celles qui ne le sont pas déjà. */
+export function recherchesARetirer(recherches: Doc[]): string[] {
+  return recherches.filter((r) => r.data.archived !== true).map((r) => r.id);
+}
+
+/** Les propositions dont il faut couper les relances : envoyées, pas déjà coupées. */
+export function relancesACouper(propositions: Doc[]): string[] {
+  return propositions
+    .filter((p) => String(p.data.Statut ?? "") === "Envoyée" && p.data.stop_relances_yn !== true)
+    .map((p) => p.id);
+}
+
+/** Au rétablissement : seulement ce que la suppression avait elle-même retiré. */
+export function recherchesARendre(recherches: Doc[]): string[] {
+  return recherches.filter((r) => r.data.archived === true && r.data.retiree_avec_contact === true).map((r) => r.id);
+}
+export function relancesARendre(propositions: Doc[]): string[] {
+  return propositions.filter((p) => p.data.stop_relances_yn === true && p.data.relances_coupees_avec_contact === true).map((p) => p.id);
+}
+
+/** Le contact est-il supprimé (retiré des listes) ? */
+export const contactSupprime = (c: Record<string, unknown> | undefined | null) => c?.archived === true;

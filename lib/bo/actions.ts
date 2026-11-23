@@ -19,7 +19,10 @@ import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
 import { refusPrixDelegation } from "@/lib/bo/delegation-prix";
 import { MOTIF_TEST } from "@/lib/referentiels";
-import { ceQuiRetient, destinSuppression, motifCorbeille, type Attaches } from "@/lib/bo/contact-suppression";
+import {
+  MOTIF_RECHERCHE_CONTACT_SUPPRIME, ceQuiRetient, destinSuppression, motifCorbeille,
+  recherchesARendre, recherchesARetirer, relancesACouper, relancesARendre, type Attaches,
+} from "@/lib/bo/contact-suppression";
 import {
   lireRegistre, type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal, type SocieteRegistre,
 } from "@/lib/bo/lot-copro";
@@ -2115,6 +2118,23 @@ async function attachesDuContact(contactId: string): Promise<Attaches> {
   return { immeubles, recherches, propositions, mandats: mandatsA + mandatsB, suivis };
 }
 
+/** Les recherches et les propositions d'un contact, entières. */
+async function recherchesEtPropositions(contactId: string) {
+  const id = encodeURIComponent(contactId);
+  const lire = async (chemin: string) => {
+    const r = await fetch(`${SB_URL}/rest/v1/${chemin}&select=id,data&limit=2000`, {
+      headers: { apikey: SB_KEY ?? "", Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+    });
+    if (!r.ok) throw new Error(`Lecture impossible (${r.status}) : la fiche n'a pas été touchée.`);
+    return (await r.json()) as { id: string; data: Record<string, unknown> }[];
+  };
+  const [recherches, propositions] = await Promise.all([
+    lire(`bo_recherche?or=(data->>ACHETEUR.eq.${id},data->>CONTACT.eq.${id})`),
+    lire(`bo_proposition?or=(data->>ACHETEUR.eq.${id},data->>CONTACT.eq.${id})`),
+  ]);
+  return { recherches, propositions };
+}
+
 /**
  * « Supprimer ce contact » (MAV, 23/11 : « ça ne supprime pas le client, il ne
  * disparaît pas après suppression »).
@@ -2127,32 +2147,79 @@ async function attachesDuContact(contactId: string): Promise<Attaches> {
  */
 export async function archiverContact(
   contactId: string, motif: string,
-): Promise<{ destin: "corbeille" | "retrait"; retenuPar?: string }> {
+): Promise<{ destin: "corbeille" | "retrait"; retenuPar?: string; recherchesRetirees: number; relancesCoupees: number }> {
   const attaches = await attachesDuContact(contactId);
   const destin = destinSuppression(motif, attaches);
+  const now = new Date().toISOString();
+  let recherchesRetirees = 0;
+  let relancesCoupees = 0;
   if (destin === "corbeille") {
     await rpc("bo_delete_doc", { p_table: "bo_contact", p_id: contactId });
   } else {
+    /* « Il ne faut pas qu'elle continue à recevoir, surtout pas » (MAV, 23/11) :
+       les recherches sortent et les relances sont coupées AVANT de marquer la
+       fiche — si une écriture échoue en route, la fiche reste visible et
+       l'agent recommence, plutôt qu'une fiche cachée qui recevrait encore. */
+    const { recherches, propositions } = await recherchesEtPropositions(contactId);
+    for (const id of recherchesARetirer(recherches)) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_recherche", p_id: id,
+        p_patch: { archived: true, motif_archivage: MOTIF_RECHERCHE_CONTACT_SUPPRIME, retiree_avec_contact: true, date_modif: now },
+      });
+      recherchesRetirees++;
+    }
+    for (const id of relancesACouper(propositions)) {
+      await rpc("bo_patch_doc", {
+        p_table: "bo_proposition", p_id: id,
+        p_patch: { stop_relances_yn: true, relances_coupees_avec_contact: true, date_modif: now, "Modified Date": now },
+      });
+      relancesCoupees++;
+    }
     await rpc("bo_patch_doc", {
       p_table: "bo_contact",
       p_id: contactId,
-      p_patch: { archived: true, motif_archivage: motif, date_archivage: new Date().toISOString() },
+      p_patch: { archived: true, motif_archivage: motif, date_archivage: now },
     });
   }
   revalidatePath("/contacts");
   revalidatePath(`/contact/${contactId}`);
-  return { destin, retenuPar: motifCorbeille(motif) && destin === "retrait" ? ceQuiRetient(attaches) : undefined };
+  revalidatePath("/recherches");
+  revalidatePath("/relances");
+  return {
+    destin, recherchesRetirees, relancesCoupees,
+    retenuPar: motifCorbeille(motif) && destin === "retrait" ? ceQuiRetient(attaches) : undefined,
+  };
 }
 
-/** Rétablir un contact supprimé : il revient dans la liste et la recherche. */
+/**
+ * Rétablir un contact supprimé : il revient dans la liste et la recherche, et
+ * retrouve ce que la suppression lui avait retiré — ses recherches et ses
+ * relances — mais rien de ce qu'un agent avait archivé ou coupé lui-même.
+ */
 export async function retablirContact(contactId: string) {
+  const now = new Date().toISOString();
   await rpc("bo_patch_doc", {
     p_table: "bo_contact",
     p_id: contactId,
-    p_patch: { archived: false, retabli_le: new Date().toISOString() },
+    p_patch: { archived: false, retabli_le: now },
   });
+  const { recherches, propositions } = await recherchesEtPropositions(contactId);
+  for (const id of recherchesARendre(recherches)) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_recherche", p_id: id,
+      p_patch: { archived: false, retiree_avec_contact: false, motif_archivage: "", date_modif: now },
+    });
+  }
+  for (const id of relancesARendre(propositions)) {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_proposition", p_id: id,
+      p_patch: { stop_relances_yn: false, relances_coupees_avec_contact: false, date_modif: now, "Modified Date": now },
+    });
+  }
   revalidatePath("/contacts");
   revalidatePath(`/contact/${contactId}`);
+  revalidatePath("/recherches");
+  revalidatePath("/relances");
 }
 
 /**

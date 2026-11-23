@@ -12,6 +12,7 @@
 import { Fragment } from "react";
 import type { DocMandat, LigneCompo, LigneRegistre } from "@/lib/bo/mandat-doc";
 import { MANDATAIRE, MEDIATEUR } from "@/lib/bo/mandat-doc";
+import { dispositionSignatures } from "@/lib/bo/mandat-signatures";
 
 /* Le logo est en SVG dans le document, jamais en image externe : un mandat
    doit se générer à l'identique sans réseau. */
@@ -94,6 +95,7 @@ const LigneCompoRendu = ({ l, avecLoyer }: { l: LigneCompo; avecLoyer: boolean }
 
 export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
   const P = d.pagesCorps;
+  const sig = dispositionSignatures(d.signataires.length);
   return (
     <div className={`mdoc${nu ? " nu" : ""}`}>
 
@@ -339,13 +341,15 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
 
           <h2 style={{ marginTop: "7mm" }}><span className="anum">{d.art.signatures}</span>Signatures</h2>
           <p className="intro">{d.signatureIntro}</p>
-          <div className="sgs">
+          {/* À partir de cinq signataires, trois colonnes : la page n'a la
+              place que de deux lignes de cadres (lib/bo/mandat-signatures.ts). */}
+          <div className="sgs" style={{ gridTemplateColumns: `repeat(${sig.colonnes}, 1fr)`, rowGap: `${sig.ecartMm}mm` }}>
             {d.signataires.map((x, i) => (
               <div className="sg" key={x.role}>
                 <span className="sg-r">{x.role}</span>
                 <span className="sg-n">{x.nom}</span>
                 <span className="sg-q">{x.qualite}</span>
-                <div className="sg-z" data-ancre={i === 0 ? "signature-mandataire" : `signature-mandant-${i}`} />
+                <div className="sg-z" style={{ height: `${sig.cadreMm}mm` }} data-ancre={i === 0 ? "signature-mandataire" : `signature-mandant-${i}`} />
                 <span className="sg-l">Signature</span>
               </div>
             ))}

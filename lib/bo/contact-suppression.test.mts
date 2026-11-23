@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MOTIFS_SUPPRESSION_CONTACT, MOTIF_SPAM, annonceSuppression, ceQuiRetient, destinSuppression,
+  MOTIFS_SUPPRESSION_CONTACT, MOTIF_SPAM, annonceSuppression, ceQuiRetient, contactSupprime, destinSuppression,
+  recherchesARendre, recherchesARetirer, relancesACouper, relancesARendre,
 } from "./contact-suppression.ts";
 
 const RIEN = { immeubles: 0, recherches: 0, propositions: 0, mandats: 0, suivis: 0 };
@@ -40,4 +41,37 @@ test("la fenêtre n'annonce la corbeille que pour un faux contact ou un essai", 
   assert.match(annonceSuppression(MOTIF_SPAM), /corbeille/);
   assert.doesNotMatch(annonceSuppression("Doublon"), /corbeille/);
   assert.match(annonceSuppression("Doublon"), /Contacts supprimés/);
+});
+
+test("à la suppression : les recherches encore actives sortent, les relances des envois sont coupées", () => {
+  const recherches = [
+    { id: "r1", data: {} }, { id: "r2", data: { archived: false, standby: true } }, { id: "r3", data: { archived: true } },
+  ];
+  assert.deepEqual(recherchesARetirer(recherches), ["r1", "r2"]);
+  const props = [
+    { id: "p1", data: { Statut: "Envoyée" } }, { id: "p2", data: { Statut: "Envoyée", stop_relances_yn: true } },
+    { id: "p3", data: { Statut: "Refusée" } }, { id: "p4", data: { Statut: "Visite" } },
+  ];
+  assert.deepEqual(relancesACouper(props), ["p1"]);
+});
+
+test("au rétablissement : on ne rend que ce que la suppression avait retiré", () => {
+  const recherches = [
+    { id: "r1", data: { archived: true, retiree_avec_contact: true } },
+    { id: "r3", data: { archived: true } }, // archivée par l'agent bien avant : elle le reste
+    { id: "r4", data: { archived: false, retiree_avec_contact: true } },
+  ];
+  assert.deepEqual(recherchesARendre(recherches), ["r1"]);
+  const props = [
+    { id: "p1", data: { stop_relances_yn: true, relances_coupees_avec_contact: true } },
+    { id: "p2", data: { stop_relances_yn: true } }, // coupée à la demande du client : elle le reste
+  ];
+  assert.deepEqual(relancesARendre(props), ["p1"]);
+});
+
+test("un contact supprimé se reconnaît à sa marque, et à elle seule", () => {
+  assert.equal(contactSupprime({ archived: true }), true);
+  assert.equal(contactSupprime({ archived: false }), false);
+  assert.equal(contactSupprime({}), false);
+  assert.equal(contactSupprime(undefined), false);
 });

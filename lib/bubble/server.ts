@@ -3099,7 +3099,10 @@ export async function getAcheteurs(immeubleId: string): Promise<AcheteursData | 
       : dest && dest !== "Mixte" ? [dest] : [];
 
   return {
-    recherches,
+    /* Un contact supprimé ne reçoit plus rien (MAV, 23/11) : ses recherches
+       n'arrivent même pas à l'écran — ni dans le matching, ni dans une
+       sélection rouverte, ni dans les ajouts à la main. */
+    recherches: recherches.filter((r) => contacts.get(String(r.ACHETEUR ?? ""))?.archived !== true),
     contacts,
     dejaRecus,
     exclusions,
