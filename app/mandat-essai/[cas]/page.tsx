@@ -92,11 +92,11 @@ export default async function Essai({
   params, searchParams,
 }: {
   params: Promise<{ cas: string }>;
-  searchParams: Promise<{ nu?: string }>;
+  searchParams: Promise<{ nu?: string; sanspub?: string }>;
 }) {
   if (process.env.VERCEL_ENV === "production") notFound();
   const { cas } = await params;
-  const { nu } = await searchParams;
+  const { nu, sanspub } = await searchParams;
   const c = CAS[cas];
   if (!c) {
     return (
@@ -112,6 +112,9 @@ export default async function Essai({
       </div>
     );
   }
-  const { doc } = redigerMandatBloc({ m: c.m, im: IM, lots: c.lots, mandants: c.mandants });
+  // ?sanspub=1 : le même scénario, « Publication en ligne » retirée — la ligne
+  // des pouvoirs s'allonge, il faut voir que la page tient toujours.
+  const m = sanspub ? { ...c.m, publication_web_yn: false } : c.m;
+  const { doc } = redigerMandatBloc({ m, im: IM, lots: c.lots, mandants: c.mandants });
   return <MandatDoc d={doc} nu={!!nu} />;
 }
