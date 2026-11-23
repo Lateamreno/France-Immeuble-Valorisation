@@ -1004,6 +1004,26 @@ cinq, cadres réduits au-delà de six. **Limite connue, non traitée** : à part
 de cinq mandants, c'est la page 1 (les parties) qui déborde. Aucun mandat réel
 n'a plus de trois mandants au 23/11. L'avenant garde ses deux colonnes.
 
+## 10 quinquies. Propositions : ce qu'elles deviennent (23/11/26)
+
+- **L'offre et la visite se lisent sur la carte de la proposition** (retours
+  #629 et #630) : « Visite effectuée le 17/11/26 », « Offre à 450 k€ le
+  23/11/26 — acceptée », à côté de la date. Elles vivent dans `bo_offre` et
+  `bo_visite`, rattachées au contact et à l'immeuble, pas à la proposition :
+  `lib/bo/proposition-suites.ts` (pur, testé) les rapproche par le couple
+  contact + immeuble, la plus récente gagne. Une visite annulée ne s'affiche
+  pas ; une visite passée jamais marquée « effectuée » se dit « à confirmer ».
+- **Un bien engagé ne se relance plus** (retour #624) : statuts 7 à 10 (sous
+  offre acceptée, compromis, acte programmé). `motifSousOffre` /
+  `motifHorsRelance` (`lib/bo/relances.ts`). Les propositions restent
+  **ouvertes** — Bubble les refusait d'office à l'acceptation, le BO non : si
+  l'offre tombe, elles sont toujours là et redeviennent relançables.
+- **Page d'un mandat** : une estimation restée ouverte sur la fiche ne s'y
+  rouvre pas (#628) ; chaque onglet dit en tête ce qui lui manque (#627).
+  Rappel : ouvrir l'onglet Objet d'un mandat sans descriptif **inscrit** le
+  descriptif automatique (retour #231) — une capture sur un vrai mandat écrit
+  donc dans la base.
+
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
 - Société porteuse (Grey Stone Capital ou entité dédiée).
