@@ -19,10 +19,13 @@ test("#629 — l'offre : son montant, sa date, son issue", () => {
 });
 
 test("#630 — la visite : prévue ou effectuée, jamais une visite annulée", () => {
-  assert.equal(mentionVisite({ Statut: "Effectuée", date: "2026-11-20T14:00:00.000Z" }), "Visite effectuée le 20/11/26");
-  assert.equal(mentionVisite({ Statut: "Confirmée", date: "2026-12-02" }), "Visite prévue le 02/12/26");
-  assert.equal(mentionVisite({ Statut: "En attente", date: "2026-12-02" }), "Visite prévue le 02/12/26");
-  assert.equal(mentionVisite({ Statut: "Annulée", date: "2026-12-02" }), undefined);
+  const J = "2026-11-23";
+  assert.equal(mentionVisite({ Statut: "Effectuée", date: "2026-11-20T14:00:00.000Z" }, J), "Visite effectuée le 20/11/26");
+  assert.equal(mentionVisite({ Statut: "Confirmée", date: "2026-12-02" }, J), "Visite prévue le 02/12/26");
+  assert.equal(mentionVisite({ Statut: "En attente", date: "2026-11-23" }, J), "Visite prévue le 23/11/26");
+  assert.equal(mentionVisite({ Statut: "Annulée", date: "2026-12-02" }, J), undefined);
+  // date passée, jamais marquée « effectuée » : on ne dit ni « prévue » ni « effectuée »
+  assert.equal(mentionVisite({ Statut: "Confirmée", date: "2026-10-05" }, J), "Visite du 05/10/26 — à confirmer");
 });
 
 test("offres et visites se rattachent par contact et par immeuble ; la plus récente gagne", () => {
@@ -37,6 +40,7 @@ test("offres et visites se rattachent par contact et par immeuble ; la plus réc
       { VISITEURs: ["c1"], IMMEUBLE: "im1", date: "2026-11-25", Statut: "Annulée" },
       { VISITEURs: ["c3"], IMMEUBLE: "im1", date: "2026-12-01", Statut: "Confirmée" },
     ],
+    "2026-11-23",
   );
   assert.deepEqual(s.get(cleSuite("c1", "im1")), { offre: "Offre à 450 k€ le 18/11/26", visite: "Visite effectuée le 05/11/26" });
   assert.deepEqual(s.get(cleSuite("c2", "im1")), { offre: "Offre à 450 k€ le 18/11/26" });

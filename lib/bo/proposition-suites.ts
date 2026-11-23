@@ -62,12 +62,19 @@ export function mentionOffre(o: Doc): string {
   return `Offre${prix ? ` à ${prix}` : ""}${le ? ` le ${le}` : ""}${issueOffre(texte(o.Statut))}`;
 }
 
-/** « Visite effectuée le … », « Visite prévue le … » ; rien pour une visite annulée. */
-export function mentionVisite(v: Doc): string | undefined {
+/**
+ * « Visite effectuée le … », « Visite prévue le … » ; rien pour une visite
+ * annulée. Une visite dont la date est passée et que personne n'a marquée
+ * « effectuée » ne se dit pas « prévue » : on ne sait pas si elle a eu lieu.
+ */
+export function mentionVisite(v: Doc, aujourdhui = new Date().toISOString().slice(0, 10)): string | undefined {
   const s = (texte(v.Statut) ?? "").toLowerCase();
   if (s.startsWith("annul")) return undefined;
   const le = jourCourt(v.date);
-  return `Visite ${s.startsWith("effectu") ? "effectuée" : "prévue"}${le ? ` le ${le}` : ""}`;
+  if (s.startsWith("effectu")) return `Visite effectuée${le ? ` le ${le}` : ""}`;
+  const jour = texte(v.date)?.slice(0, 10);
+  if (jour && jour < aujourdhui) return `Visite du ${le} — à confirmer`;
+  return `Visite prévue${le ? ` le ${le}` : ""}`;
 }
 
 export const cleSuite = (contactId: string, immeubleId: string) => `${contactId}|${immeubleId}`;
@@ -77,7 +84,7 @@ export const cleSuite = (contactId: string, immeubleId: string) => `${contactId}
  * visite. Une offre peut porter plusieurs acquéreurs et plusieurs immeubles ;
  * une visite, plusieurs visiteurs.
  */
-export function suitesDesPropositions(offres: Doc[], visites: Doc[]): Map<string, Suites> {
+export function suitesDesPropositions(offres: Doc[], visites: Doc[], aujourdhui?: string): Map<string, Suites> {
   const out = new Map<string, Suites>();
   const poser = (cle: string, champ: keyof Suites, valeur: string) => out.set(cle, { ...out.get(cle), [champ]: valeur });
   const parDate = (a: Doc, b: Doc) =>
@@ -87,7 +94,7 @@ export function suitesDesPropositions(offres: Doc[], visites: Doc[]): Map<string
     for (const c of liste(o.ACHETEURs)) for (const im of liste(o.IMMEUBLEs)) poser(cleSuite(c, im), "offre", mentionOffre(o));
   }
   for (const v of [...visites].sort(parDate)) {
-    const m = mentionVisite(v);
+    const m = mentionVisite(v, aujourdhui);
     if (!m) continue;
     for (const c of liste(v.VISITEURs)) for (const im of liste(v.IMMEUBLE)) poser(cleSuite(c, im), "visite", m);
   }
