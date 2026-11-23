@@ -183,8 +183,9 @@ export async function relancesDues(
     ]),
   );
 
-  /* Un immeuble archivé, vendu ou retiré sort de la relance (MAV, 25/09). */
-  const props = brutes.map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsVente(immeubles.get(String(p.IMMEUBLE ?? "")))));
+  /* Un immeuble archivé, vendu ou retiré sort de la relance (MAV, 25/09) ;
+     un contact supprimé aussi (MAV, 23/11). */
+  const props = brutes.filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true).map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsVente(immeubles.get(String(p.IMMEUBLE ?? "")))));
   const clients = grouperParClient(props, libelles, maintenant, jours);
 
   /* Ce que la fenêtre laisse dehors. On le compte plutôt que de le taire :
@@ -844,6 +845,8 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
     return { mailLe, smsLe };
   };
   return rows
+    // Un contact supprimé n'est jamais relancé (MAV, 23/11).
+    .filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true)
     .map((p) => ({ ...versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente), ...canaux(p) }))
     .filter((p) => aRelancer(p, maintenant, jours))
     .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant), tel: telDe(p.contactId ?? "") }))
@@ -864,6 +867,12 @@ export async function lancerSalveRelances(s: {
   lanceParSlug?: string | null;
 }) {
   const file = await import("./relances-file");
+  /* Dernier verrou avant la file (MAV, 23/11) : un contact supprimé entre
+     l'ouverture de l'écran et le clic ne part pas. */
+  const ids = [...new Set([...s.mails.map((m) => m.contactId), ...s.sms.map((m) => m.contactId ?? "")].filter(Boolean))];
+  const fiches = await parPaquets("bo_contact", ids);
+  const garde = <T extends { contactId?: string }>(l: T[]) => l.filter((m) => fiches.get(m.contactId ?? "")?.archived !== true);
+  s = { ...s, mails: garde(s.mails), sms: garde(s.sms) };
   /* Plus de « une seule salve à la fois » (05/10) : chaque agent a la sienne,
      elles avancent en parallèle, chacune sous son verrou. */
   const lancePar = (await agentParSlug(s.lanceParSlug))?.id;

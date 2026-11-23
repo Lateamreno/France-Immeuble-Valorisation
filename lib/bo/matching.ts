@@ -338,6 +338,9 @@ export function matcher(
   const dejaRecus = new Set(filtres.dejaRecus ?? []);
   const retenues = recherches.filter((r) => {
     if (r.archived === true || r.standby === true) return false;
+    /* Un contact supprimé ne reçoit plus rien (MAV, 23/11), même si l'une de
+       ses recherches est restée active. */
+    if (contacts.get(S(r.ACHETEUR))?.archived === true) return false;
 
     /* Filtres de campagne. Les classes cochées sont les seules retenues —
        y compris quand les quatre le sont : une recherche SANS classe n'en

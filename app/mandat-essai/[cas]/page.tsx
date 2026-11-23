@@ -81,6 +81,18 @@ const CAS: Record<string, { titre: string; m: Record<string, unknown>; mandants:
     mandants: [physique(0, "Indivisaire"), physique(1, "Indivisaire"), physique(2, "Indivisaire"), physique(3, "Indivisaire")],
     lots: OCCUPES,
   },
+  /* Au-delà de quatre mandants, la page 1 (les parties) n'est pas faite pour :
+     ces deux scénarios ne servent qu'à la page des signatures. */
+  "signatures-6-mandants": {
+    titre: "Signatures · 6 mandants (7 signataires) — trois colonnes, cadres réduits",
+    m: { ...base, Type_exclu: "Exclusif", "durée_irrevoc_days": 90 },
+    mandants: Array.from({ length: 6 }, (_, i) => physique(i, "Indivisaire")), lots: OCCUPES,
+  },
+  "signatures-5-mandants": {
+    titre: "Signatures · 5 mandants (6 signataires) — trois colonnes, deux lignes",
+    m: { ...base, Type_exclu: "Exclusif", "durée_irrevoc_days": 90 },
+    mandants: Array.from({ length: 5 }, (_, i) => physique(i, "Indivisaire")), lots: OCCUPES,
+  },
   "exclusif-sans-numero": {
     titre: "Exclusif · sans numéro de registre ni prix — les trous doivent apparaître",
     m: { Type_exclu: "Exclusif", date_effet: "2026-08-27T00:00:00Z" },

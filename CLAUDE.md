@@ -1057,6 +1057,26 @@ gauche des contacts) et se rétablit depuis sa fiche. Les recherches de doublon
 par e-mail ou par téléphone voient toujours les fiches retirées : c'est voulu,
 sinon un doublon se recréerait.
 
+**Un contact supprimé ne reçoit plus rien** (MAV, 23/11 : « il ne faut pas
+qu'elle continue à recevoir, surtout pas »). Deux verrous :
+- à la suppression, ses recherches encore actives sont archivées (motif
+  « Contact supprimé », marque `retiree_avec_contact`) et les relances de ses
+  propositions « Envoyée » coupées (marque `relances_coupees_avec_contact`) —
+  **avant** de marquer la fiche. « Rétablir » ne rend que ce qui porte la
+  marque : ce qu'un agent avait archivé ou coupé lui-même le reste ;
+- à la lecture, le matching (`matcher`, et la liste que `getAcheteurs` donne à
+  l'écran), les relances dues, les propositions à relancer et la mise en file
+  d'une salve de relances écartent tout contact `archived`. Les campagnes du
+  module Mailing l'écartaient déjà (`desabonne`).
+Tout nouveau chemin d'envoi doit vérifier `archived` sur le contact.
+
+**Signatures du mandat.** La page « Mentions légales et signatures » n'a la
+place que de deux lignes de cadres de 30 mm. `lib/bo/mandat-signatures.ts`
+(pur, testé) : deux colonnes jusqu'à quatre signataires, trois à partir de
+cinq, cadres réduits au-delà de six. **Limite connue, non traitée** : à partir
+de cinq mandants, c'est la page 1 (les parties) qui déborde. Aucun mandat réel
+n'a plus de trois mandants au 23/11. L'avenant garde ses deux colonnes.
+
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
 - Société porteuse (Grey Stone Capital ou entité dédiée).
