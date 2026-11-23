@@ -361,7 +361,7 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
               {bloque
                 ? <span className="lk" title={`${trous.length} information${trous.length > 1 ? "s" : ""} manquante${trous.length > 1 ? "s" : ""}`}>🔒</span>
                 : n > 0
-                  ? <span className="nb" title={`${n} information${n > 1 ? "s" : ""} à compléter`}>{n}</span>
+                  ? <span className="nb" title={`À compléter : ${trous.filter((x) => x.onglet === t).map((x) => x.label).join(" · ")}`}>{n}</span>
                   : <span className="okv">✓</span>}
             </button>
           );
@@ -369,6 +369,15 @@ export function MandatFiche({ d, bareme }: { d: Data; bareme?: Tranche[] }) {
       </div>
 
       <div className="mdt-body">
+        {/* Retour #627 : « je ne comprends pas pourquoi j'ai une alerte ici
+            alors que tout est rempli ». La pastille comptait sans rien nommer :
+            l'onglet dit maintenant ce qu'il attend, en tête. */}
+        {tab !== "Envoi" && trousPar(tab) > 0 && (
+          <div className="mdt-manque" role="status">
+            <b>Il manque dans cet onglet :</b>
+            <ul>{trous.filter((x) => x.onglet === tab).map((x) => <li key={x.cle}>{x.label}</li>)}</ul>
+          </div>
+        )}
         {tab === "Mandants" && (
           <OngletMandants
             mandatId={mandatId} immeubleId={immeubleId} mandants={mandants} locked={locked}

@@ -1,4 +1,4 @@
-import { aRelancer, grouperParClient, joursDepuis, messageRelance, objetRelance, type PropositionRelance } from "./relances.ts";
+import { motifHorsRelance, motifSousOffre, aRelancer, grouperParClient, joursDepuis, messageRelance, objetRelance, type PropositionRelance } from "./relances.ts";
 
 const T0 = Date.parse("2026-09-04T12:00:00Z");
 const ilYA = (j: number) => new Date(T0 - j * 86400000).toISOString();
@@ -74,4 +74,18 @@ ok(objetRelance(g[1]).startsWith("Re : Relance Immeuble de Nanterre"), "objet si
 console.log("\n--- le message rendu ---\n" + m + "\n---");
 
 console.log(ko === 0 ? `\nTout tient.` : `\n${ko} cas en échec.`);
+/* --- Retour #624 : un bien sous offre acceptée ne se relance plus, sans que
+   ses propositions soient fermées --- */
+ok(motifSousOffre({ Statut: "7 - Sous offre" }) === "Bien sous offre acceptée", "#624 : statut 7 → sous offre acceptée");
+ok(motifSousOffre({ Statut: "8 - Compromis programmé" }) === "Compromis programmé", "#624 : statut 8");
+ok(motifSousOffre({ Statut: "9 - Sous compromis" }) === "Bien sous compromis", "#624 : statut 9");
+ok(motifSousOffre({ Statut: "10 - Acte programmé" }) === "Acte programmé", "#624 : statut 10");
+ok(["4 - OK pour vendre", "5 - Commercialisé (A/B)", "6 - Commercialisé (all)", "11 - VENDU", "0 - RETIRé"]
+  .every((st) => motifSousOffre({ Statut: st }) === undefined), "#624 : un bien en vente, vendu ou retiré n'est pas « sous offre »");
+ok(motifSousOffre({ Statut: "7 - Sous offre", archived: true }) === undefined, "#624 : archivé, c'est « hors vente » qui parle");
+ok(motifHorsRelance({ Statut: "11 - VENDU" }) === "Vendu", "#624 : hors relance reprend « Vendu »");
+ok(motifHorsRelance({ Statut: "7 - Sous offre" }) === "Bien sous offre acceptée", "#624 : hors relance couvre le bien sous offre");
+ok(motifHorsRelance({ Statut: "6 - Commercialisé (all)" }) === undefined, "#624 : un bien commercialisé se relance");
+ok(aRelancer(base({ horsVente: motifHorsRelance({ Statut: "7 - Sous offre" }) }), T0) === false, "#624 : sa proposition n'est plus à relancer");
+
 process.exit(ko === 0 ? 0 : 1);

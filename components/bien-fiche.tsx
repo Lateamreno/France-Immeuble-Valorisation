@@ -333,7 +333,11 @@ export function BienFiche({
   const [memoVue, setMemoVue] = useState<string | null>(null);
   if (memoEst !== memoVue) {
     setMemoVue(memoEst);
-    if (memoEst && !est) {
+    /* Retour #628 : sur la page d'un mandat (`contenu`), l'estimation restée
+       ouverte ne se rouvre pas — elle s'affichait sous le mandat, « ça n'a
+       rien à faire ici ». Sa mémoire reste : de retour sur la fiche, on la
+       retrouve. */
+    if (memoEst && !est && !contenu) {
       let m: MemoEst | null = null;
       try { m = JSON.parse(memoEst) as MemoEst; } catch { /* mémoire illisible : on l'ignore */ }
       if (m) {
@@ -591,7 +595,7 @@ export function BienFiche({
               retour #159 : MAV demandait que la saisie ne soit pas perdue en
               changeant d'onglet, pas que l'estimation bloque la navigation —
               d'où l'impression de modale qui ne se referme jamais. */}
-          {est && (
+          {est && !contenu && (
             <div hidden={sect !== "encours"}>
               {est.mode === "lecture" ? (
                 <EstimationEnLecture
