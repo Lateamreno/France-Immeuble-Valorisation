@@ -15,7 +15,8 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { estFacadeRue } from "@/lib/bo/facade";
-import { motifHorsVente } from "@/lib/bo/relances";
+import { motifHorsVente, motifSousOffre } from "@/lib/bo/relances";
+import { cleSuite, suitesDesPropositions } from "@/lib/bo/proposition-suites";
 import { objetDepuisDoc, resumeDepuisDoc } from "@/lib/bo/resume-immeuble";
 import { nomPdfDossier, urlPdfDossier } from "@/lib/bo/lien-dossier";
 import { derniersDossiers } from "@/lib/bo/piece-dossier";
@@ -2201,6 +2202,13 @@ export type PropositionLigne = {
   /** L'immeuble n'est plus à la vente — « Archivé le 03/03/26 car Mandat
    *  périmé », « Vendu » : la proposition se lit, ne se relance plus (25/09). */
   archivee?: string;
+  /** Le bien est engagé — « Bien sous offre acceptée », « Bien sous compromis » :
+   *  la proposition reste ouverte mais ne se relance plus (retour #624). */
+  sousOffre?: string;
+  /** « Offre à 450 k€ le 18/11/26 » : l'offre de ce contact sur ce bien (#629). */
+  offre?: string;
+  /** « Visite effectuée le 20/11/26 » : sa visite de ce bien (#630). */
+  visite?: string;
   /* Retours #365 et #366 : la carte de la fiche contact porte ce que porte
      celle du BO — les recherches matchées, le dossier envoyé, la relance. */
   refusee: boolean;
@@ -2254,13 +2262,18 @@ export type PropositionLigne = {
  */
 export async function propositionsDuBien(immeubleId: string): Promise<PropositionLigne[]> {
   await loadInitials();
-  const [rows, dossiersBien, [imBien]] = await Promise.all([
+  const [rows, dossiersBien, [imBien], offresBien, visitesBien] = await Promise.all([
     fetchAll("proposition", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 3000,
       { field: "date_envoi", desc: true }).catch(() => []),
     fetchAll("dossier", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 50).catch(() => []),
     parIds("immeuble", [immeubleId], 1, CHAMPS_HORS_VENTE),
+    /* Retours #629 et #630 : l'offre et la visite de chacun, à côté de sa proposition. */
+    fetchAll("offre", [{ key: "IMMEUBLEs", constraint_type: "contains", value: immeubleId }], 500).catch(() => []),
+    fetchAll("visite", [{ key: "IMMEUBLE", constraint_type: "equals", value: immeubleId }], 500).catch(() => []),
   ]);
   const archivee = phraseHorsVente(imBien);
+  const sousOffre = motifSousOffre(imBien);
+  const suites = suitesDesPropositions(offresBien, visitesBien);
   const ids = (k: string) => [...new Set(rows.flatMap((p) => (Array.isArray(p[k]) ? (p[k] as unknown[]).map(String) : [String(p[k] ?? "")])).filter(Boolean))];
   const [contacts, recherches, dossiers] = await Promise.all([
     parIds("contact", ids("ACHETEUR")),
@@ -2308,8 +2321,11 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
         immeuble: undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !archivee,
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !archivee && !sousOffre,
         archivee,
+        sousOffre,
+        offre: suites.get(cleSuite(String(p.ACHETEUR ?? ""), immeubleId))?.offre,
+        visite: suites.get(cleSuite(String(p.ACHETEUR ?? ""), immeubleId))?.visite,
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: dmy(p.date_fin),
         stop: p.stop_relances_yn === true,
@@ -2460,6 +2476,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
     fetchAll("mandat", [{ key: "MANDANTs", constraint_type: "contains", value: id }], 200).catch(() => []),
     societesDeContact(id).then(nommerSocietes).catch(() => [] as SocieteNommee[]),
   ]);
+  /* Retours #629 et #630 : l'offre et la visite de ce contact, bien par bien. */
+  const suitesContact = suitesDesPropositions(offres, visites);
 
   /* Un seul aller-retour pour tous les immeubles cités par les autres onglets. */
   const ims = await imLabelMap([
@@ -2572,8 +2590,11 @@ export async function getContact(id: string): Promise<ContactData | null> {
           pdf: urlPdfDossier(derniers.get(String(p.IMMEUBLE))),
           pdfNom: derniers.get(String(p.IMMEUBLE)) ? nomPdfDossier(S2(im.adresse_ville), derniers.get(String(p.IMMEUBLE))?.version) : undefined,
         } : undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im),
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im) && !motifSousOffre(im),
         archivee: phraseHorsVente(im),
+        sousOffre: motifSousOffre(im),
+        offre: suitesContact.get(cleSuite(id, String(p.IMMEUBLE ?? "")))?.offre,
+        visite: suitesContact.get(cleSuite(id, String(p.IMMEUBLE ?? "")))?.visite,
         refusee: (st ?? "").startsWith("Refus"),
         refusLe: jjmmaa(p.date_fin),
         stop: p.stop_relances_yn === true,
@@ -2654,7 +2675,7 @@ export async function getContact(id: string): Promise<ContactData | null> {
       } satisfies SuiviLigne)),
 
     aRelancer: propositions.filter((p) => S2(p.Statut) === "Envoyée" && p.stop_relances_yn !== true
-      && !phraseHorsVente(ims.get(String(p.IMMEUBLE ?? "")))).length,
+      && !phraseHorsVente(ims.get(String(p.IMMEUBLE ?? ""))) && !motifSousOffre(ims.get(String(p.IMMEUBLE ?? "")))).length,
 
     mandatRechercheActif: mandats.some((m) =>
       String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),

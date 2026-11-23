@@ -93,6 +93,29 @@ export function motifHorsVente(im?: Record<string, unknown>): string | undefined
   return undefined;
 }
 
+/**
+ * Le bien est sous offre acceptée, sous compromis ou à l'acte — ou rien.
+ *
+ * MAV, 12/11 (retour #624) : « c'est l'acquéreur avec offre acceptée sur
+ * l'immeuble, sa proposition ne devrait plus être à relancer, pareil pour les
+ * autres acquéreurs de cet immeuble sous offre acceptée ». Bubble refusait
+ * d'office les autres propositions à l'acceptation ; le BO ne le fait pas, et
+ * c'est mieux ainsi : si l'offre tombe, les propositions sont toujours là.
+ * Elles ne sont simplement plus relancées tant que le bien est engagé.
+ */
+export function motifSousOffre(im?: Record<string, unknown>): string | undefined {
+  if (!im || im.archived === true) return undefined;
+  const st = String(im.Statut ?? "");
+  if (/^7 /.test(st)) return "Bien sous offre acceptée";
+  if (/^8 /.test(st)) return "Compromis programmé";
+  if (/^9 /.test(st)) return "Bien sous compromis";
+  if (/^10 /.test(st)) return "Acte programmé";
+  return undefined;
+}
+
+/** Tout ce qui sort une proposition de la relance, du côté de l'immeuble. */
+export const motifHorsRelance = (im?: Record<string, unknown>) => motifHorsVente(im) ?? motifSousOffre(im);
+
 /** L'ancienneté d'une proposition en jours, ou `undefined` si on ne sait pas. */
 export function joursDepuis(iso: string | undefined, maintenant: number): number | undefined {
   if (!iso) return undefined;

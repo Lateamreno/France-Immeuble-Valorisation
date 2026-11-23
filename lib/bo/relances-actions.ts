@@ -12,7 +12,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis, motifHorsVente,
+  FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis, motifHorsRelance,
   type BilanRelances, type PropositionRelance,
 } from "./relances";
 import { invaliderTable } from "@/lib/bo/cache-tables";
@@ -185,7 +185,7 @@ export async function relancesDues(
 
   /* Un immeuble archivé, vendu ou retiré sort de la relance (MAV, 25/09) ;
      un contact supprimé aussi (MAV, 23/11). */
-  const props = brutes.filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true).map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsVente(immeubles.get(String(p.IMMEUBLE ?? "")))));
+  const props = brutes.filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true).map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsRelance(immeubles.get(String(p.IMMEUBLE ?? "")))));
   const clients = grouperParClient(props, libelles, maintenant, jours);
 
   /* Ce que la fenêtre laisse dehors. On le compte plutôt que de le taire :
@@ -824,7 +824,7 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
   );
   const contactIds = [...new Set(rows.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
   const [contacts, ims] = await Promise.all([parPaquets("bo_contact", contactIds), parPaquets("bo_immeuble", [immeubleId])]);
-  const horsVente = motifHorsVente(ims.get(immeubleId));
+  const horsVente = motifHorsRelance(ims.get(immeubleId));
   const nomDe = (id: string) => {
     const c = contacts.get(id);
     if (!c) return "Acquéreur";

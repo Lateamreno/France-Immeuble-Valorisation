@@ -4935,6 +4935,13 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .mdt-etape .c .er { color: var(--red); margin-top: 6px; }
 .mdt-etape .c .okmsg { color: #2c6b22; margin-top: 6px; }
 .mdt-btns { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+/* Retour #627 : ce que l'onglet attend, dit en tête de l'onglet. */
+.mdt-manque {
+  background: #fff6ea; border: 1px solid #f0cf9c; color: #7a4a00; border-radius: 6px;
+  padding: 9px 13px; margin: 0 0 14px; font-size: 12.5px;
+}
+.mdt-manque ul { margin: 4px 0 0; padding-left: 18px; }
+.mdt-manque li { margin: 2px 0; }
 .mdt-trous { margin: 8px 0 0; padding-left: 18px; }
 .mdt-trous li { font-size: 12.5px; color: var(--slate); margin: 3px 0; }
 .mdt-trous button {

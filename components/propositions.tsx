@@ -172,7 +172,9 @@ export function CarteProposition({
   const classe = p.contact?.note ?? note;
   const ouverte = !p.refusee && !p.archivee && !STATUTS_CLOS_PROP.has(p.statut ?? "");
   const tropTot = jours !== undefined && jours < JOURS_ENTRE_RELANCES;
-  const aRelancer = ouverte && !p.stop && !tropTot;
+  /* Retour #624 : un bien sous offre acceptée, sous compromis ou à l'acte ne
+     se relance plus — la proposition reste ouverte, au cas où l'offre tombe. */
+  const aRelancer = ouverte && !p.stop && !tropTot && !p.sousOffre;
 
   const ouvrirRecherche = (rid: string) =>
     start(async () => {
@@ -191,6 +193,10 @@ export function CarteProposition({
       <div className="cfc-c">
         <div className="cfc-l1">
           <span className="cfc-t">{p.quand}</span>
+          {/* Retours #629 et #630 : ce que la proposition est devenue — la
+              visite, puis l'offre et son montant — à côté de sa date. */}
+          {p.visite && <Pastille ton="bleu" titre="Sa visite de ce bien">{p.visite}</Pastille>}
+          {p.offre && <Pastille ton="vert" titre="Son offre sur ce bien, honoraires inclus">{p.offre}</Pastille>}
           {/* Retour #400 : une proposition refusée le dit EN DESSOUS, dans un
               cadre rouge qui porte le motif — comme le BO. */}
           {p.statut && !p.refusee && <PastilleStatut statut={p.statut} />}
@@ -216,6 +222,9 @@ export function CarteProposition({
               retiré) ferme la proposition — elle se lit, elle ne se relance
               plus, et la relance groupée la saute. */}
           {p.archivee && <span className="cfc-arch">{p.archivee}</span>}
+          {p.sousOffre && ouverte && (
+            <Pastille ton="orange" titre="Tant que le bien est engagé, cette proposition n'est plus relancée">{p.sousOffre} — plus de relance</Pastille>
+          )}
           {/* MAV, 25/09 : « le refusé juste en dessous de la relance ou de la
               date de proposition, avec la date dessus ». Une personne qui a
               refusé n'est plus relancée (statut clos). */}
@@ -227,7 +236,7 @@ export function CarteProposition({
           {p.motif && !p.refusee && <span className="cfc-motif">✕ {p.motif}</span>}
           {p.relanceLe
             ? <span className="cfc-num">Relancé le {p.relanceLe}</span>
-            : ouverte && <span className="cfc-num off">Jamais relancé</span>}
+            : ouverte && !p.sousOffre && <span className="cfc-num off">Jamais relancé</span>}
           {aRelancer && jours !== undefined && jours >= 7 && (
             <span className="cfc-past">À relancer · {jours} j</span>
           )}
