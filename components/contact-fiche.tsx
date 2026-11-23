@@ -33,7 +33,8 @@ import {
   BoutonScinde, CarteProposition, ModaleRelance, STATUTS_CLOS_PROP, VUES_PROPOSITIONS, VuesPropositions,
   categorieProposition, messageVidePropositions, type ModeRelance, type VuePropositions,
 } from "@/components/propositions";
-import { archiverContact, retirerPieceContact, updateContact } from "@/lib/bo/actions";
+import { archiverContact, retablirContact, retirerPieceContact, updateContact } from "@/lib/bo/actions";
+import { MOTIFS_SUPPRESSION_CONTACT, annonceSuppression } from "@/lib/bo/contact-suppression";
 import { envoyerRelances } from "@/lib/bo/relances-actions";
 import { relancerParSms } from "@/lib/bo/propositions-actions";
 import { etatLien } from "@/lib/bo/lien-dossier";
@@ -41,7 +42,7 @@ import {
   JOURS_RELANCE, joursDepuis, lienManquant, messageRelance, objetRelance, type ClientRelance, type ImmeubleRelance,
 } from "@/lib/bo/relances";
 import {
-  CIVILITES, MOTIFS_ARCHIVAGE, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
+  CIVILITES, NOTES_CONTACT, PROFILS_CONTACT, rangNote,
   SOURCES_CONTACT as SOURCES,
 } from "@/lib/referentiels";
 
@@ -167,6 +168,8 @@ export function ContactFiche({ d, echanges = [] }: {
      ici avec l'acquéreur déjà rempli. */
   const [ajout, setAjout] = useState<"recherche" | "proposition" | "visite" | "offre" | null>(null);
   const [suppression, setSuppression] = useState(false);
+  /** Fiche retirée des listes (MAV, 23/11) : elle le dit, et se rétablit. */
+  const supprime = c.archived === true;
 
   /* --- Champs modifiables --- */
   const [prenom, setPrenom] = useState(S(c["prénom"]));
@@ -320,6 +323,11 @@ export function ContactFiche({ d, echanges = [] }: {
             )}
             <span>{nomComplet}</span>
             {entreprise && <i>(société {entreprise})</i>}
+            {supprime && (
+              <Pastille ton="rouge" titre="Retiré de la liste et de la recherche des contacts">
+                Supprimé{S(c.motif_archivage) ? ` — ${S(c.motif_archivage)}` : ""}{dmy(c.date_archivage) ? `, le ${dmy(c.date_archivage)}` : ""}
+              </Pastille>
+            )}
           </div>
 
           <div className="cfx-chips">
@@ -362,10 +370,17 @@ export function ContactFiche({ d, echanges = [] }: {
             <svg viewBox="0 0 24 24"><path d="M21.6 3.2 2.9 10.4l4.7 1.7 11-7.3-8.6 8.4v4.8l2.3-3 4.4 3.2z" /></svg>
             Envoyer un e-mail
           </a>
-          <button type="button" className="cfx-b rouge" onClick={() => setSuppression(true)}>
-            <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.8h4V7M6.6 7l.8 12.2a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L17.4 7M10.4 10.6v6M13.6 10.6v6" /></svg>
-            Supprimer ce contact
-          </button>
+          {supprime ? (
+            <button type="button" className="cfx-b gris" disabled={pending}
+              onClick={() => start(async () => { await retablirContact(id); router.refresh(); })}>
+              Rétablir ce contact
+            </button>
+          ) : (
+            <button type="button" className="cfx-b rouge" onClick={() => setSuppression(true)}>
+              <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.8h4V7M6.6 7l.8 12.2a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L17.4 7M10.4 10.6v6M13.6 10.6v6" /></svg>
+              Supprimer ce contact
+            </button>
+          )}
         </div>
       </header>
 
@@ -1243,36 +1258,62 @@ function Mesure({ titre, valeur, d }: { titre: string; valeur?: string; d: strin
   );
 }
 
-/** « Supprimer ce contact » : la fiche est archivée avec son motif, jamais
- *  effacée — le miroir est réécrit chaque nuit depuis Bubble, un effacement
- *  reviendrait, et on perdrait l'historique au passage. */
+/**
+ * « Supprimer ce contact » (MAV, 23/11 : « le formulaire n'est pas complet, la
+ * liste déroulante est bizarre ; ça ne supprime pas le client »).
+ *
+ * Les motifs sont ceux d'un contact — la fenêtre proposait ceux d'un immeuble.
+ * Un faux contact ou un essai sans rien d'attaché part à la corbeille ; les
+ * autres sortent de la liste et de la recherche, gardés avec leur motif
+ * (lib/bo/contact-suppression.ts). Dans les deux cas on revient à la liste :
+ * rester sur la fiche laissait croire que rien ne s'était passé.
+ */
 function Suppression({ id, nom, onClose }: { id: string; nom: string; onClose: () => void }) {
-  const [motif, setMotif] = useState(MOTIFS_ARCHIVAGE[0]);
+  const [motif, setMotif] = useState(MOTIFS_SUPPRESSION_CONTACT[0]);
   const [pending, start] = useTransition();
+  const [retenu, setRetenu] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const router = useRouter();
+  if (retenu !== null) {
+    return (
+      <Modale titre={`${nom} est retiré des listes`} onFermer={() => router.push("/contacts")}
+        pied={<><span style={{ flex: 1 }} /><button type="button" className="cfx-b gris" onClick={() => router.push("/contacts")}>Retour aux contacts</button></>}>
+        <p className="vit-note" style={{ marginTop: 0 }}>
+          La fiche n&apos;est pas partie à la corbeille, parce qu&apos;il lui reste {retenu}.
+          Elle est sortie de la liste et de la recherche, et se retrouve sous « Contacts supprimés ».
+        </p>
+      </Modale>
+    );
+  }
   return (
     <Modale
       titre={`Supprimer ${nom}`}
       onFermer={onClose}
       pied={
         <>
+          {erreur && <span className="cfx-agent-err">{erreur}</span>}
           <span style={{ flex: 1 }} />
           <button type="button" className="cfx-b rouge" disabled={pending}
-            onClick={() => start(async () => { await archiverContact(id, motif); onClose(); })}>
-            Supprimer ce contact
+            onClick={() => start(async () => {
+              setErreur(null);
+              try {
+                const r = await archiverContact(id, motif);
+                if (r.retenuPar) setRetenu(r.retenuPar);
+                else router.push("/contacts");
+              } catch (e) { setErreur(e instanceof Error ? e.message : "La suppression a échoué."); }
+            })}>
+            {pending ? "Suppression…" : "Supprimer ce contact"}
           </button>
         </>
       }
     >
-      <p className="vit-note" style={{ marginTop: 0 }}>
-        La fiche sort des listes et des recherches. Elle est conservée avec son motif :
-        l&apos;historique des propositions et des mandats reste consultable.
-      </p>
       <label className="vit-l">
         <span>Motif</span>
         <select value={motif} onChange={(e) => setMotif(e.target.value)}>
-          {MOTIFS_ARCHIVAGE.map((m) => <option key={m}>{m}</option>)}
+          {MOTIFS_SUPPRESSION_CONTACT.map((m) => <option key={m}>{m}</option>)}
         </select>
       </label>
+      <p className="vit-note" style={{ marginTop: 10 }}>{annonceSuppression(motif)}</p>
     </Modale>
   );
 }

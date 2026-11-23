@@ -19,6 +19,7 @@ import { rendementPotentiel } from "@/lib/bo/mail-commercialisation";
 import { chiffresDossier } from "@/lib/bo/chiffres-dossier";
 import { refusPrixDelegation } from "@/lib/bo/delegation-prix";
 import { MOTIF_TEST } from "@/lib/referentiels";
+import { ceQuiRetient, destinSuppression, motifCorbeille, type Attaches } from "@/lib/bo/contact-suppression";
 import {
   lireRegistre, type BailLocal, type Copro, type EmplacementCommerce, type LocataireLocal, type SocieteRegistre,
 } from "@/lib/bo/lot-copro";
@@ -2091,12 +2092,64 @@ export type ContactPatch = Partial<{
   date_archivage: string;
 }>;
 
-/** Archive un contact (le BO n'efface pas, il archive). */
-export async function archiverContact(contactId: string, motif: string) {
+/** Ce qui tient à une fiche contact : c'est ce qui décide de la corbeille. */
+async function attachesDuContact(contactId: string): Promise<Attaches> {
+  const id = encodeURIComponent(contactId);
+  const combien = async (chemin: string) => {
+    const r = await fetch(`${SB_URL}/rest/v1/${chemin}&select=id&limit=50`, {
+      headers: { apikey: SB_KEY ?? "", Authorization: `Bearer ${SB_KEY}` }, cache: "no-store",
+    }).catch(() => null);
+    /* Une lecture qui échoue compte pour « quelque chose y tient » : dans le
+       doute on garde la fiche, on ne l'envoie pas à la corbeille. */
+    return r?.ok ? ((await r.json()) as unknown[]).length : 1;
+  };
+  const tableau = (v: unknown) => encodeURIComponent(JSON.stringify(v));
+  const [immeubles, recherches, propositions, mandatsA, mandatsB, suivis] = await Promise.all([
+    combien(`bo_immeuble?data->>PROPRIETAIRE=eq.${id}`),
+    combien(`bo_recherche?or=(data->>ACHETEUR.eq.${id},data->>CONTACT.eq.${id})`),
+    combien(`bo_proposition?or=(data->>ACHETEUR.eq.${id},data->>CONTACT.eq.${id})`),
+    combien(`bo_mandat?data->MANDANTs=cs.${tableau([contactId])}`),
+    combien(`bo_mandat?data->mandants=cs.${tableau([{ contactId }])}`),
+    combien(`bo_suivi?data->>CONTACT=eq.${id}`),
+  ]);
+  return { immeubles, recherches, propositions, mandats: mandatsA + mandatsB, suivis };
+}
+
+/**
+ * « Supprimer ce contact » (MAV, 23/11 : « ça ne supprime pas le client, il ne
+ * disparaît pas après suppression »).
+ *
+ * Un faux contact ou un essai auquel rien ne tient part à la corbeille
+ * (`bo_trash`, récupérable). Tout autre contact est retiré de la liste et de
+ * la recherche et gardé avec son motif : l'historique de ses propositions et
+ * de ses mandats doit rester lisible. La règle est dans
+ * lib/bo/contact-suppression.ts.
+ */
+export async function archiverContact(
+  contactId: string, motif: string,
+): Promise<{ destin: "corbeille" | "retrait"; retenuPar?: string }> {
+  const attaches = await attachesDuContact(contactId);
+  const destin = destinSuppression(motif, attaches);
+  if (destin === "corbeille") {
+    await rpc("bo_delete_doc", { p_table: "bo_contact", p_id: contactId });
+  } else {
+    await rpc("bo_patch_doc", {
+      p_table: "bo_contact",
+      p_id: contactId,
+      p_patch: { archived: true, motif_archivage: motif, date_archivage: new Date().toISOString() },
+    });
+  }
+  revalidatePath("/contacts");
+  revalidatePath(`/contact/${contactId}`);
+  return { destin, retenuPar: motifCorbeille(motif) && destin === "retrait" ? ceQuiRetient(attaches) : undefined };
+}
+
+/** Rétablir un contact supprimé : il revient dans la liste et la recherche. */
+export async function retablirContact(contactId: string) {
   await rpc("bo_patch_doc", {
     p_table: "bo_contact",
     p_id: contactId,
-    p_patch: { archived: true, motif_archivage: motif, date_archivage: new Date().toISOString() },
+    p_patch: { archived: false, retabli_le: new Date().toISOString() },
   });
   revalidatePath("/contacts");
   revalidatePath(`/contact/${contactId}`);
@@ -4782,6 +4835,8 @@ export async function chercherContacts(q: string): Promise<ContactTrouve[]> {
     mots,
   );
   if (f) p.append(f[0], f[1]);
+  // Un contact supprimé ne se propose plus (MAV, 23/11).
+  p.append("or", "(data->>archived.is.null,data->>archived.eq.false)");
   const res = await fetch(`${SB_URL}/rest/v1/bo_contact?${p}`, {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
     cache: "no-store",

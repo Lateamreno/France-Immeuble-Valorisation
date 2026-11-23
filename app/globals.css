@@ -5239,7 +5239,9 @@ body.ecran-tel .col-head { padding: 12px 12px; }
 .vit-corps { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .vit-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--slate, #64748b); }
 .vit-l { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
-.vit-l input, .vit-l textarea {
+/* `select` manquait : la liste déroulante de « Supprimer ce contact » sortait
+   sans bord ni marge, 17 px de haut (MAV, 23/11 : « la liste est bizarre »). */
+.vit-l input, .vit-l textarea, .vit-l select {
   font: inherit; font-weight: 400; font-size: 13px; padding: 8px 10px;
   border: 1px solid var(--line, #e5e7eb); border-radius: 7px; background: #fff; width: 100%;
 }
@@ -5892,6 +5894,9 @@ button.cfx-add {
 .cfx-b.rouge { background: #fff; border-color: var(--red); color: var(--red); }
 .cfx-b.rouge:hover { background: #fdeceb; }
 .cfx-b.off { opacity: .4; pointer-events: none; }
+/* « Rétablir ce contact » : un bouton neutre, à la place du rouge. */
+.cfx-b.gris { background: #fff; border-color: var(--line, #cfd3d8); color: var(--slate, #44525f); }
+.cfx-b.gris:hover { background: #f6f6f6; }
 
 /* --- Barre d'onglets, bord à bord, chiffrée --- */
 .cfx-tabs {

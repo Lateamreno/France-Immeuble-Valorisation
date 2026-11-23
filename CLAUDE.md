@@ -962,6 +962,28 @@ complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
   visible et utilisable que par ma.voci@france-immeuble.fr (`peutReviser`).
 - La porte ne se ferme qu'avec `BO_AUTH=on` (Vercel) ; `off` ou absent = BO ouvert, en secours.
 
+## 10 quater. Deux règles posées le 23/11/26
+
+**Mandat sans publication en ligne.** Le document imprimé suit le réglage
+« Publication en ligne » du mandat (`publication_web_yn`) : coché, il donne le
+pouvoir d'« engager toute publicité sur tout support » ; décoché, cette ligne
+devient « Commercialiser le bien sans publicité : sauf accord écrit du Mandant,
+le Mandataire s'interdit toute annonce… ». Les deux phrases sortent de
+`lib/bo/mandat-publicite.ts` (pur, testé). **Une phrase, pas un paragraphe** :
+la page des obligations n'a que quatre lignes de marge avant son pied. Le banc
+d'essai (`/mandat-essai/<cas>?sanspub=1`) rend chaque scénario sans
+publication. Rédaction à faire valider par MAV avant tout changement.
+
+**Supprimer un contact.** Les motifs sont ceux d'un contact
+(`lib/bo/contact-suppression.ts`), pas ceux d'un immeuble. Un **faux contact
+ou un essai auquel rien ne tient** (ni bien, ni recherche, ni proposition, ni
+mandat, ni suivi) part à la **corbeille** (`bo_trash`, récupérable) ; tout
+autre contact est **retiré de la liste et de la recherche** (`archived`) et
+gardé avec son motif. Il se retrouve sous « Contacts supprimés » (colonne de
+gauche des contacts) et se rétablit depuis sa fiche. Les recherches de doublon
+par e-mail ou par téléphone voient toujours les fiches retirées : c'est voulu,
+sinon un doublon se recréerait.
+
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
 - Société porteuse (Grey Stone Capital ou entité dédiée).
