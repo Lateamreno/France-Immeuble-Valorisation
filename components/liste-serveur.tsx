@@ -16,7 +16,7 @@ const TAILLES = [10, 25, 50, 100];
 
 export function ListeServeur({
   rows, total, page, taille, q, searchPlaceholder,
-  titre, agents, agent = "", note = "",
+  titre, agents, agent = "", note = "", supprimes,
 }: {
   rows: ListCard[];
   total: number;
@@ -31,6 +31,9 @@ export function ListeServeur({
   agent?: string;
   /** Classe A–D filtrée (#401), quand la colonne de filtres est là. */
   note?: string;
+  /** Contacts : on ne montre que les fiches supprimées (MAV, 23/11). Absent
+   *  sur les listes qui n'ont pas ce filtre. */
+  supprimes?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -99,6 +102,14 @@ export function ListeServeur({
                 onClick={() => aller({ note: n, page: 1 })}><b className={`note n${n}`}>{n}</b></button>
             ))}
           </div>
+          {supprimes !== undefined && (
+            <>
+              <div className="lstx-rail-t">Corbeille</div>
+              <button type="button" className={`lstx-f${supprimes ? " on" : ""}`}
+                title="Les fiches retirées de la liste, gardées avec leur motif. On les rétablit depuis leur fiche."
+                onClick={() => aller({ supprimes: supprimes ? "" : 1, page: 1 })}>Contacts supprimés</button>
+            </>
+          )}
         </aside>
       )}
       <div className={agents ? "lst-col-simple cartes" : "lst-col-simple"}>

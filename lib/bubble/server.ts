@@ -2766,6 +2766,7 @@ export async function globalSearch(q: string): Promise<{
     const p = new URLSearchParams({ select: "data", limit: "20" });
     const f = filtreMots(CHAMPS[type] ?? ["searchfield"], mots);
     if (f) p.append(f[0], f[1]);
+    if (type === "contact") p.append("or", "(data->>archived.is.null,data->>archived.eq.false)");
     const res = await fetch(`${SB_URL}/rest/v1/bo_${type}?${p}`, {
       headers: { apikey: SB_KEY!, Authorization: `Bearer ${SB_KEY!}` },
       cache: "no-store",
@@ -2813,6 +2814,8 @@ async function sbPage(
     tri?: string;
     /** Filtres supplémentaires `clé=valeur` sur le jsonb. */
     egal?: Record<string, string>;
+    /** Les fiches supprimées (`archived`) : écartées, ou elles seules. */
+    supprimes?: "sans" | "seuls";
   },
 ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
   if (!SB_KEY) return { rows: [], total: 0 };
@@ -2824,6 +2827,10 @@ async function sbPage(
   for (const [k, v] of Object.entries(opts.egal ?? {})) {
     p.append(`data->>${/^\w+$/.test(k) ? k : `"${k}"`}`, `eq.${v}`);
   }
+  /* Une case jamais cochée n'est pas écrite : « non supprimée » se dit
+     « absente ou fausse », pas « égale à faux ». */
+  if (opts.supprimes === "sans") p.append("or", "(data->>archived.is.null,data->>archived.eq.false)");
+  if (opts.supprimes === "seuls") p.append("data->>archived", "eq.true");
   p.set("order", `${opts.tri ?? "bubble_modified"}.desc`);
   p.set("limit", String(opts.taille));
   p.set("offset", String((opts.page - 1) * opts.taille));
@@ -2871,6 +2878,9 @@ export async function listContactsPage(
   agentId = "",
   /** Classe A–D, ou vide (#401 : le filtre de la colonne de gauche). */
   note = "",
+  /** MAV, 23/11 : un contact supprimé sort de la liste ; `true` ne montre
+   *  qu'eux (« Contacts supprimés »), pour pouvoir en rétablir un. */
+  supprimes = false,
 ): Promise<PageListe> {
   await loadInitials();
   const egal: Record<string, string> = {};
@@ -2880,6 +2890,7 @@ export async function listContactsPage(
     q, page, taille,
     champs: ["searchfield", "nom", '"prénom"', "email", "portable", "entreprise_nom"],
     egal: Object.keys(egal).length ? egal : undefined,
+    supprimes: supprimes ? "seuls" : "sans",
   });
   return {
     total,
@@ -2897,7 +2908,8 @@ export async function listContactsPage(
         email: c.email ? String(c.email) : undefined,
         prenom: c["prénom"] ? String(c["prénom"]) : undefined,
         nomFamille: c.nom ? String(c.nom) : undefined,
-        qualite: qualiteContact(c),
+        /* Sous « Contacts supprimés », la carte dit pourquoi la fiche est là. */
+        qualite: c.archived === true ? `Supprimé${c.motif_archivage ? ` — ${c.motif_archivage}` : ""}` : qualiteContact(c),
         estAgent,
         compteurs: { recherches: combien(c.RECHERCHEs), immeubles: combien(c.IMMEUBLES) },
         grade: gradeOf(c),
