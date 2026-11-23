@@ -275,7 +275,7 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
             <div>
               <h3 style={{ marginTop: 0 }}>Le Mandant s’engage à</h3>
               <ul className="lst">
-                <li>Remettre au Mandataire, sous huitaine, les actes et pièces justifiant sa propriété ainsi que les diagnostics obligatoires, sans lesquels aucune publicité ne peut être engagée.</li>
+                <li>Remettre au Mandataire, sous huitaine, les actes et pièces justifiant sa propriété ainsi que les diagnostics obligatoires, {d.publicite.piecesSansLesquelles}.</li>
                 <li>Garantir l’exactitude des informations transmises et signaler sans délai toute modification juridique ou matérielle affectant le bien, tout congé, toute vacance ou tout impayé.</li>
                 <li>Assurer au Mandataire les moyens de visiter et de faire visiter le bien, dans le respect des droits des occupants.</li>
                 <li>Signer toute promesse ou tout compromis de vente avec un acquéreur présenté par le Mandataire et acceptant les prix, charges et conditions des présentes.</li>
@@ -296,7 +296,9 @@ export function MandatDoc({ d, nu }: { d: DocMandat; nu?: boolean }) {
               <h3>Pouvoirs conférés</h3>
               <ul className="lst">
                 <li>Présenter, visiter, faire visiter et proposer le bien à toute personne de son choix.</li>
-                <li>Engager toute publicité sur tout support à sa convenance, les frais restant à sa charge.</li>
+                {/* MAV, 23/11 : un mandat « sans publication » ne donne aucun
+                    pouvoir de publicité — il écrit l'interdiction à la place. */}
+                <li>{d.publicite.pouvoir}</li>
                 <li>Requérir tout confrère, groupement ou réseau autorisé par la loi à présenter des opérations immobilières.</li>
                 <li>Recevoir toute offre d’achat, assortie ou non d’une condition suspensive de financement, et la transmettre sans délai au Mandant.</li>
                 <li>En cas d’offre acceptée par le Mandant, solliciter et recueillir pour son compte, auprès de toute administration, syndic, notaire ou tiers, les documents nécessaires à la vente. Les pièces dont l’obtention est payante ne sont commandées qu’avec l’accord préalable du Mandant, à qui elles sont facturées.</li>

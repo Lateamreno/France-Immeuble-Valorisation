@@ -2313,7 +2313,7 @@ function OngletConditions({
           <span>
             {web
               ? "Site France Immeuble, portails et fichier acquéreurs. L'annonce ne porte ni l'identité du mandant, ni celle des occupants."
-              : "Commercialisation confidentielle : fichier acquéreurs uniquement, aucune annonce publiée. L'article 6.4 du mandat le stipule noir sur blanc."}
+              : "Commercialisation confidentielle : fichier acquéreurs uniquement, aucune annonce publiée. Le mandat l'écrit : le pouvoir de publicité y est remplacé par l'interdiction de toute annonce."}
           </span>
         </span>
       </button>

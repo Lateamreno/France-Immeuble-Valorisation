@@ -16,7 +16,8 @@
 
 import { dureeEnLettres, entierEnLettres, euroEnLettres, nombreAvecChiffre } from "@/lib/nombre-lettres";
 import { etagesDepuisLots } from "@/lib/bo/etages";
-import { adresseImmeuble, descriptifManuscrit, lotOccupe, synthese, type Mandant } from "@/lib/mandat";
+import { adresseImmeuble, descriptifManuscrit, lotOccupe, publicationWeb, synthese, type Mandant } from "@/lib/mandat";
+import { clausesPublicite, type ClausesPublicite } from "@/lib/bo/mandat-publicite";
 import { dateCivile } from "@/lib/format";
 
 /* ------------------------------------------------------------ Formatage */
@@ -230,6 +231,9 @@ export type DocMandat = {
 
   penale: string[];
   penaleFine: string;
+
+  /** Ce que le mandat dit de la publicité, selon « Publication en ligne ». */
+  publicite: ClausesPublicite;
 
   registreMention: string;
   signatureIntro: string;
@@ -763,6 +767,7 @@ export function redigerMandatBloc(e: EntreeMandat): { doc: DocMandat; trous: Tro
       prixParagraphe, prixVignettes, prixRegistre, prixNote,
       registre, dureeParagraphes, apparent, dureeFine, friseLead, frise,
       exclusivite, penale, penaleFine,
+      publicite: clausesPublicite(publicationWeb(m)),
       registreMention:
         `Le présent mandat est inscrit au registre des mandats de France Immeuble S.A.S. sous le numéro ${numero}. `
         + "Un exemplaire est remis au Mandant le jour de sa signature.",
