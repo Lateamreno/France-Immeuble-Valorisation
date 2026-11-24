@@ -79,6 +79,21 @@ export function mentionVisite(v: Doc, aujourdhui = new Date().toISOString().slic
 
 export const cleSuite = (contactId: string, immeubleId: string) => `${contactId}|${immeubleId}`;
 
+/** Le motif qui sort une proposition des relances (MAV, 24/11/26 : « dès
+ *  qu'il fait une offre il est décoché des relances automatiques »). */
+export const MOTIF_OFFRE_DEPOSEE = "Offre déposée";
+
+/**
+ * Les couples contact + immeuble qui ont une offre, quelle qu'en soit l'issue :
+ * celui qui a fait une offre sur un bien n'y est plus relancé — acceptée, on
+ * est en vente ; en cours ou refusée, c'est une négociation, pas une relance.
+ */
+export function couplesAvecOffre(offres: Doc[]): Set<string> {
+  const out = new Set<string>();
+  for (const o of offres) for (const c of liste(o.ACHETEURs)) for (const im of liste(o.IMMEUBLEs)) out.add(cleSuite(c, im));
+  return out;
+}
+
 /**
  * Pour chaque couple contact + immeuble : sa dernière offre et sa dernière
  * visite. Une offre peut porter plusieurs acquéreurs et plusieurs immeubles ;

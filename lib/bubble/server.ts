@@ -2321,7 +2321,8 @@ export async function propositionsDuBien(immeubleId: string): Promise<Propositio
         motif: S2(p.motif_refus),
         commentaire: S2(p.commentaire),
         immeuble: undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !archivee && !sousOffre,
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !archivee && !sousOffre
+          && !suites.get(cleSuite(String(p.ACHETEUR ?? ""), immeubleId))?.offre,
         archivee,
         sousOffre,
         offre: suites.get(cleSuite(String(p.ACHETEUR ?? ""), immeubleId))?.offre,
@@ -2590,7 +2591,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
           pdf: urlPdfDossier(derniers.get(String(p.IMMEUBLE))),
           pdfNom: derniers.get(String(p.IMMEUBLE)) ? nomPdfDossier(S2(im.adresse_ville), derniers.get(String(p.IMMEUBLE))?.version) : undefined,
         } : undefined,
-        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im) && !motifSousOffre(im),
+        aRelancer: st === "Envoyée" && p.stop_relances_yn !== true && !phraseHorsVente(im) && !motifSousOffre(im)
+          && !suitesContact.get(cleSuite(id, String(p.IMMEUBLE ?? "")))?.offre,
         archivee: phraseHorsVente(im),
         sousOffre: motifSousOffre(im),
         offre: suitesContact.get(cleSuite(id, String(p.IMMEUBLE ?? "")))?.offre,
@@ -2675,7 +2677,8 @@ export async function getContact(id: string): Promise<ContactData | null> {
       } satisfies SuiviLigne)),
 
     aRelancer: propositions.filter((p) => S2(p.Statut) === "Envoyée" && p.stop_relances_yn !== true
-      && !phraseHorsVente(ims.get(String(p.IMMEUBLE ?? ""))) && !motifSousOffre(ims.get(String(p.IMMEUBLE ?? "")))).length,
+      && !phraseHorsVente(ims.get(String(p.IMMEUBLE ?? ""))) && !motifSousOffre(ims.get(String(p.IMMEUBLE ?? "")))
+      && !suitesContact.get(cleSuite(id, String(p.IMMEUBLE ?? "")))?.offre).length,
 
     mandatRechercheActif: mandats.some((m) =>
       String(m.Type ?? "").toLowerCase().includes("recherche") && S2(m.Statut) === "En cours"),

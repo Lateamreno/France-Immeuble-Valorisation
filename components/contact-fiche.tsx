@@ -1095,7 +1095,7 @@ function OngletPropositions({ d, contactId, nom, email, tel, vignette, note, onA
    *  vendu ou retiré n'y est plus : la relance groupée le saute (25/09). */
   const ouvertes = useMemo(
     () => d.propositions
-      .filter((p) => !p.refusee && !p.archivee && !p.sousOffre && !p.stop && !STATUTS_CLOS_PROP.has(p.statut ?? "") && p.immeuble)
+      .filter((p) => !p.refusee && !p.archivee && !p.sousOffre && !p.offre && !p.stop && !STATUTS_CLOS_PROP.has(p.statut ?? "") && p.immeuble)
       .map((p) => ({ p, libelle: p.immeuble!.libelle, jours: joursDepuis(p.depuis, maintenant) })),
     [d.propositions, maintenant],
   );

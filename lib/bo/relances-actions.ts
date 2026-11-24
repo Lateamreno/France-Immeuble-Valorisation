@@ -11,6 +11,7 @@
 // on n'a rien écrit.
 
 import { revalidatePath } from "next/cache";
+import { MOTIF_OFFRE_DEPOSEE, cleSuite, couplesAvecOffre } from "./proposition-suites";
 import {
   FENETRE_DEFAUT, JOURS_RELANCE, PLAFOND_RELANCES, aRelancer, grouperParClient, joursDepuis, motifHorsRelance,
   type BilanRelances, type PropositionRelance,
@@ -185,7 +186,12 @@ export async function relancesDues(
 
   /* Un immeuble archivé, vendu ou retiré sort de la relance (MAV, 25/09) ;
      un contact supprimé aussi (MAV, 23/11). */
-  const props = brutes.filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true).map((p) => versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifHorsRelance(immeubles.get(String(p.IMMEUBLE ?? "")))));
+  const offres = await offresDeposees();
+  const props = brutes.filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true).map((p) => versRelance(
+    p, nomDe(String(p.ACHETEUR ?? "")),
+    motifHorsRelance(immeubles.get(String(p.IMMEUBLE ?? "")))
+      ?? (offres.has(cleSuite(String(p.ACHETEUR ?? ""), String(p.IMMEUBLE ?? ""))) ? MOTIF_OFFRE_DEPOSEE : undefined),
+  ));
   const clients = grouperParClient(props, libelles, maintenant, jours);
 
   /* Ce que la fenêtre laisse dehors. On le compte plutôt que de le taire :
@@ -193,6 +199,16 @@ export async function relancesDues(
   const horsFenetre = await compterHorsFenetre(borne);
 
   return { clients, horsFenetre, jours, fenetre };
+}
+
+/**
+ * Les couples contact + immeuble qui ont une offre (MAV, 24/11 : « dès qu'il
+ * fait une offre il est décoché des relances automatiques »). Deux cents
+ * offres en tout : on les lit d'un coup, ou celles d'un seul bien.
+ */
+async function offresDeposees(immeubleId?: string): Promise<Set<string>> {
+  const filtre = immeubleId ? `&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([immeubleId]))}` : "";
+  return couplesAvecOffre(await pg(`bo_offre?select=data${filtre}&order=id`, 4000));
 }
 
 async function parPaquets(table: string, ids: string[]) {
@@ -823,8 +839,10 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
     3000,
   );
   const contactIds = [...new Set(rows.map((p) => String(p.ACHETEUR ?? "")).filter(Boolean))];
-  const [contacts, ims] = await Promise.all([parPaquets("bo_contact", contactIds), parPaquets("bo_immeuble", [immeubleId])]);
+  const [contacts, ims, offres] = await Promise.all([parPaquets("bo_contact", contactIds), parPaquets("bo_immeuble", [immeubleId]), offresDeposees(immeubleId)]);
   const horsVente = motifHorsRelance(ims.get(immeubleId));
+  const motifDe = (p: Record<string, unknown>) =>
+    horsVente ?? (offres.has(cleSuite(String(p.ACHETEUR ?? ""), immeubleId)) ? MOTIF_OFFRE_DEPOSEE : undefined);
   const nomDe = (id: string) => {
     const c = contacts.get(id);
     if (!c) return "Acquéreur";
@@ -846,7 +864,7 @@ export async function propositionsARelancer(immeubleId: string, jours = JOURS_RE
   return rows
     // Un contact supprimé n'est jamais relancé (MAV, 23/11).
     .filter((p) => contacts.get(String(p.ACHETEUR ?? ""))?.archived !== true)
-    .map((p) => ({ ...versRelance(p, nomDe(String(p.ACHETEUR ?? "")), horsVente), ...canaux(p) }))
+    .map((p) => ({ ...versRelance(p, nomDe(String(p.ACHETEUR ?? "")), motifDe(p)), ...canaux(p) }))
     .filter((p) => aRelancer(p, maintenant, jours))
     .map((p) => ({ ...p, jours: joursDepuis(p.depuis, maintenant), tel: telDe(p.contactId ?? "") }))
     .sort((a, b) => (b.jours ?? 999) - (a.jours ?? 999));

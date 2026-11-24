@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleSuite, mentionOffre, mentionVisite, montantCourt, suitesDesPropositions } from "./proposition-suites.ts";
+import { cleSuite, mentionOffre, mentionVisite, montantCourt, suitesDesPropositions, couplesAvecOffre, MOTIF_OFFRE_DEPOSEE } from "./proposition-suites.ts";
 
 test("un montant se dit en k€, puis en M€", () => {
   assert.equal(montantCourt(450000), "450 k€");
@@ -47,4 +47,20 @@ test("offres et visites se rattachent par contact et par immeuble ; la plus réc
   assert.deepEqual(s.get(cleSuite("c1", "im2")), { offre: "Offre à 900 k€ le 01/11/26" });
   assert.deepEqual(s.get(cleSuite("c3", "im1")), { visite: "Visite prévue le 01/12/26" });
   assert.equal(s.get(cleSuite("c9", "im1")), undefined);
+});
+
+test("MAV 24/11 — celui qui a fait une offre sur un bien n'y est plus relancé, quelle qu'en soit l'issue", () => {
+  const c = couplesAvecOffre([
+    { ACHETEURs: ["c1"], IMMEUBLEs: ["im1"], Statut: "Refusée" },
+    { ACHETEURs: ["c2", "c3"], IMMEUBLEs: ["im1", "im2"], Statut: "En cours" },
+    { ACHETEURs: "c4", IMMEUBLEs: "im3" },
+    { IMMEUBLEs: ["im9"] },
+  ]);
+  assert.equal(c.has(cleSuite("c1", "im1")), true);
+  assert.equal(c.has(cleSuite("c3", "im2")), true);
+  assert.equal(c.has(cleSuite("c4", "im3")), true);
+  // son offre sur un bien ne le sort pas des relances d'un autre bien
+  assert.equal(c.has(cleSuite("c1", "im2")), false);
+  assert.equal(c.size, 6);
+  assert.equal(MOTIF_OFFRE_DEPOSEE, "Offre déposée");
 });
