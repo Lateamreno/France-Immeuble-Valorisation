@@ -1,0 +1,165 @@
+"use client";
+
+// Réglages › Envois : l'état des deux routes (§7.1) et le pont des retours SMS.
+//
+// MAV : « j'aimerais lancer une commercialisation sur le nouveau BO et vérifier
+// que tout soit OK ». Jusqu'ici la vérification se faisait dans les variables
+// Vercel, à l'aveugle ; et `brancherRetoursSms` existait sans qu'aucun écran
+// ne l'appelle. Ce bloc lit l'état côté serveur (aucune valeur secrète ne
+// descend au navigateur : seulement « présent / absent ») et porte le seul
+// geste à faire une fois : déclarer nos adresses de réception chez MailingVox.
+import { useState, useTransition } from "react";
+import { brancherRetoursSms, relireRetoursSms } from "@/lib/bo/actions";
+import { EssaiRcs } from "@/components/essai-rcs";
+import { essayerRappelRapport } from "@/lib/bo/rapport-actions";
+
+export type EtatEnvois = {
+  masse: {
+    configure: boolean; expediteur: string; plafondJour: number;
+    /** Le sous-domaine d'envoi reçoit-il une réponse ? `null` : pas de sous-domaine, ou DNS muet. */
+    reception: { domaine: string; recoit: boolean | null; alerte?: string } | null;
+  };
+  sms: {
+    configure: boolean;
+    message: string;
+    expediteur?: string;
+    plafond: number;
+    numeroStop: string;
+    secretWebhook: boolean;
+  };
+  siteUrl: string | null;
+  essaiRcs: boolean;
+};
+
+function Ligne({ ok, libelle, detail }: { ok: boolean | "info"; libelle: string; detail?: string }) {
+  return (
+    <li className={`rgl-env-l ${ok === "info" ? "info" : ok ? "ok" : "ko"}`}>
+      <span className="rgl-env-p" aria-hidden>{ok === "info" ? "·" : ok ? "✓" : "!"}</span>
+      <span>
+        <b>{libelle}</b>
+        {detail && <> — {detail}</>}
+      </span>
+    </li>
+  );
+}
+
+export function ReglagesEnvois({ etat }: { etat: EtatEnvois }) {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [msgRappel, setMsgRappel] = useState<string | null>(null);
+
+  return (
+    <>
+      <h2 className="fsub">Envois : e-mails de masse et SMS</h2>
+      <p className="rgl-aide">
+        Les deux routes d&apos;une commercialisation. Rien ne part sans un clic dans l&apos;assistant ;
+        cet écran dit seulement si le clic aura un effet.
+      </p>
+
+      <ul className="rgl-env">
+        <Ligne
+          ok={etat.masse.configure}
+          libelle="E-mails de masse (SendGrid)"
+          detail={etat.masse.configure
+            ? `expéditeur ${etat.masse.expediteur}, ${etat.masse.plafondJour.toLocaleString("fr-FR")} messages par jour au plus`
+            : "relais non configuré : les salves seront refusées, les e-mails un-à-un ne sont pas concernés"}
+        />
+        {/* MAV (11/10) : « un client m'a dit que ça faisait mail erroné ». Le
+            sous-domaine signait bien, mais ne recevait rien. On le vérifie ici,
+            avant qu'un client ne le fasse. */}
+        {etat.masse.reception && (
+          <Ligne
+            ok={etat.masse.reception.recoit === false ? false : etat.masse.reception.recoit ? true : "info"}
+            libelle={`Réponses à ${etat.masse.expediteur}`}
+            detail={etat.masse.reception.recoit === false
+              ? etat.masse.reception.alerte
+              : etat.masse.reception.recoit
+                ? `${etat.masse.reception.domaine} a un serveur de réception : une réponse à l'adresse d'expédition arrive quelque part — vérifiez que chaque adresse d'agent est bien renvoyée vers sa boîte`
+                : "impossible d'interroger le DNS pour l'instant"}
+          />
+        )}
+        <Ligne
+          ok={etat.sms.configure}
+          libelle="SMS (MailingVox)"
+          detail={`${etat.sms.message} Plafond ${etat.sms.plafond} par envoi.`}
+        />
+        <Ligne
+          ok="info"
+          libelle={`STOP au ${etat.sms.numeroStop}`}
+          detail="numéro annoncé dans chaque message ; à confirmer avec MailingVox avant le premier envoi"
+        />
+        <Ligne
+          ok={etat.sms.secretWebhook}
+          libelle="Retours SMS (réponses, STOP, accusés)"
+          detail={etat.sms.secretWebhook
+            ? "le secret est en place : brancher une fois, ci-dessous"
+            : "MAILINGVOX_WEBHOOK_SECRET absente : les réponses et les STOP resteront dans MailingVox, ils ne remonteront pas ici"}
+        />
+        <Ligne
+          ok={!!etat.siteUrl}
+          libelle="Adresse publique du BO"
+          detail={etat.siteUrl
+            ? etat.siteUrl
+            : "SITE_URL absente : les liens envoyés par e-mail (espace client) pointent sur l'adresse par défaut"}
+        />
+      </ul>
+
+      <div className="rgl-env-act">
+        <button
+          type="button" className="fchip" disabled={pending || !etat.sms.configure || !etat.sms.secretWebhook}
+          onClick={() => start(async () => {
+            const r = await brancherRetoursSms();
+            setMsg((r.ok ? "" : "Échec : ") + r.message);
+          })}
+        >
+          {pending ? "Déclaration…" : "Brancher les retours MailingVox"}
+        </button>
+        <span className="rgl-aide">
+          Déclare chez MailingVox les trois adresses où pousser réponses, STOP et accusés. À faire une
+          fois par adresse publique, depuis la production.
+        </span>
+      </div>
+      <div className="rgl-env-act">
+        <button
+          type="button" className="fchip" disabled={pending || !etat.sms.configure}
+          onClick={() => start(async () => {
+            const r = await relireRetoursSms();
+            setMsg(r.message);
+          })}
+        >
+          {pending ? "Relecture…" : "Relire les réponses reçues chez MailingVox"}
+        </button>
+        <span className="rgl-aide">
+          Va chercher par leur API les réponses et les STOP des trente derniers jours, et range ceux
+          que le webhook n&apos;a pas reçus — déclaré après coup, serrure posée après coup. Sans risque
+          de doublon.
+        </span>
+      </div>
+      {msg && <p className={msg.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msg}</p>}
+      {etat.essaiRcs && <EssaiRcs actif={etat.sms.configure} />}
+
+      {/* Le rappel du lundi (MAV, 19/11) : à l'agent, jamais au propriétaire. */}
+      <h2 className="fsub">Rapports aux propriétaires : le rappel du lundi</h2>
+      <p className="rgl-aide">
+        Chaque lundi à 8 h, chaque agent reçoit par e-mail la liste de ses biens en vente sous mandat : ceux qui
+        attendent un rapport au propriétaire, ce qu&apos;il y a de nouveau depuis le dernier, et ceux sur lesquels
+        il ne s&apos;est rien passé. Rien ne part chez un propriétaire : le rapport se relit et s&apos;envoie depuis
+        le Suivi de la vente du bien.
+      </p>
+      <div className="rgl-env-act">
+        <button
+          type="button" className="fchip" disabled={pending}
+          onClick={() => start(async () => {
+            setMsgRappel(null);
+            const r = await essayerRappelRapport();
+            setMsgRappel(r.message);
+          })}
+        >
+          {pending ? "Préparation…" : "M'envoyer le mien maintenant"}
+        </button>
+        <span className="rgl-aide">Un essai, à votre seule adresse. Il ne remplace pas celui de lundi.</span>
+      </div>
+      {msgRappel && <p className={msgRappel.startsWith("Échec") ? "rgl-err" : "rgl-ok"}>{msgRappel}</p>}
+    </>
+  );
+}

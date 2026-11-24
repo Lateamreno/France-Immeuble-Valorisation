@@ -14,6 +14,64 @@ Ce document est la source de vérité du projet. Avant toute session de code :
 3. Ne jamais élargir le périmètre d'un milestone sans validation explicite.
 4. Respecter les **garde-fous** de la section 8 comme des invariants non négociables (conformité Hoguet, RGPD locataires, doctrine préemption). Une violation de garde-fou est un bug bloquant, pas un arbitrage de style.
 5. À chaque fin de milestone : déployer sur preview Vercel, attendre validation humaine avant le milestone suivant.
+6. À chaque **lot de modifications livré**, produire le document avant / après (§0 bis). Ce n'est pas une option.
+
+---
+
+## 0 bis. Le document avant / après — à chaque lot livré
+
+> Règle générale de travail avec MAV, valable sur **tous** ses projets (une copie
+> vit dans son contexte permanent utilisateur). Elle est répétée ici parce que le
+> contexte utilisateur ne survit pas à un conteneur neuf, alors que ce fichier,
+> lui, est dans le dépôt.
+
+Dès qu'un **lot de modifications** est livré — plusieurs corrections d'un coup,
+qu'elles soient arrivées **en direct dans la conversation** ou **via l'outil de
+correction** (`bo_feedback`) — le travail n'est pas fini tant que le document
+n'est pas publié en **Artifact** et le lien donné. Sans le demander.
+
+Le document contient, dans cet ordre :
+
+1. **Le relevé** — une ligne par modification, dans la numérotation de MAV quand
+   elle existe, avec sa mention « vérifié ».
+2. **Les comparaisons avant / après** — des captures **réelles**, prises au
+   navigateur sur les **deux versions construites** : l'ancienne servie depuis un
+   worktree du commit d'avant, la nouvelle depuis le build courant, sur le même
+   écran et les mêmes données. Les deux commits sont cités dans le document.
+3. **Ce qu'il faut savoir** — les arbitrages pris sans lui, les vrais défauts
+   trouvés en chemin, ce qui reste en pause.
+
+Règles non négociables :
+
+- **Aucune capture fabriquée ni décorative.** Si un écran n'existait pas avant,
+  le volet « avant » est un **texte** qui dit ce que faisait l'ancienne version —
+  avec le libellé exact de l'alerte ou du message s'il y en avait un — jamais une
+  image de rien.
+- **Écarter les paires trompeuses** : deux captures identiques au pixel près (le
+  changement est un comportement, pas un dessin), ou une capture qui ne montre
+  pas ce dont parle la légende. Mieux vaut huit comparaisons vraies que douze
+  dont trois mentent.
+- **Pas de données personnelles inutiles** dans les captures : une liste qui
+  étale des e-mails et des téléphones sans rien démontrer n'y a pas sa place
+  (cohérent avec le §8.3).
+- **Un revirement de MAV se dit dans le document**, pas seulement dans le commit :
+  la ligne du relevé porte la mention, et la capture « après » est refaite.
+- Le document se **met à jour à la même adresse** quand un retour arrive après
+  coup — jamais un second lien.
+
+**Après chaque fusion dans `main` : attendre que le déploiement Vercel soit
+« Ready » et le dire dans le récap.** Le 16/10, deux déploiements ont échoué
+sans que personne ne le voie (un fichier Deno versionné sous `supabase/`
+faisait tomber la vérification TypeScript de Next) : la prod est restée trois
+jours sur l'ancienne version alors que le lot était annoncé livré. Un lot n'est
+livré que quand le déploiement de `main` est passé.
+
+Recette éprouvée pour les captures (à reprendre telle quelle) : `git worktree add`
+sur le commit d'avant, `npm run build` puis `next start` sur deux ports distincts,
+puis puppeteer-core (`executablePath: "/opt/pw-browsers/chromium"`, `--no-sandbox`)
+qui cadre chaque scène sur le sélecteur qui compte. Les images partent en
+**data: URI base64** dans la page — la CSP des Artifacts bloque toute image
+externe. Nettoyer le worktree ensuite (`git worktree remove`), il pèse ~900 Mo.
 
 ---
 
@@ -35,7 +93,7 @@ Ce n'est **pas** un CRM généraliste ni un logiciel de gestion locative. C'est 
 - **Backend :** Supabase **« Plein Bail »** — projet mutualisé avec la marketplace « biens loués », déjà en production. PostgreSQL + RLS + Storage + Edge Functions.
   - Project ID : `fkfwucqpdhbkgkouccyi` · région `eu-west-1`.
 - **Auth :** Supabase Auth (table `profiles` déjà en place, extension de `auth.users`). Rôles applicatifs (voir §3.2).
-- **Email :** boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium ni SendGrid) synchronisée via **Gmail API** (envoi + réception threadée). Voir §7.1.
+- **Email :** deux routes (§7.1). Un-à-un : boîte dédiée `devis@` (domaine à décider — **jamais** la boîte France Immeuble premium) via **Gmail API**, envoi + réception threadée. Masse : relais **SendGrid** en SMTP, sur un **sous-domaine d'envoi dédié**, plafonné à 4 000 messages par jour.
 - **Signature (V2) :** Docusign (connecteur déjà disponible).
 - **Données de marché :** DVF + loyers **déjà chargés dans Plein Bail** (voir §4.3). Pas d'API externe à brancher.
 - **Diffusion :** Ubiflow (pont marketplace).
@@ -227,10 +285,111 @@ Générés par le moteur de séquencement + saisie manuelle. Le calendrier agrè
 
 ## 7. Intégrations
 
-### 7.1 Email (`devis@`)
-- Boîte **dédiée**, jamais la boîte FI premium, jamais SendGrid (doctrine délivrabilité).
+### 7.1 Email — deux routes, jamais une seule
+
+Le BO écrit à deux publics très différents, et confondre leurs routes est le
+meilleur moyen de griller le domaine. D'où deux chemins distincts, décidés au
+seul endroit qui décide (`lancerSalve` dans `lib/bo/mails-actions.ts`).
+
+**Route nominative — le un-à-un.** Estimation au propriétaire, demande de devis
+à un prestataire, réponse à un locataire.
+- Boîte **dédiée** `devis@`, jamais la boîte FI premium.
 - Gmail API : envoi (avec PJ depuis le coffre) + réception, threading rattaché à `operation_id`/`provider_id`.
-- Doctrine héritée du netlinking : **validation humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Pas d'envoi automatique en masse.
+- Part de l'adresse de l'agent : c'est une conversation, elle doit avoir un visage.
+
+**Route de masse — les salves.** Diffusion d'un dossier à un vivier
+d'acquéreurs, projets annexes.
+- Relais **SendGrid** en SMTP (`smtp.sendgrid.net`, identifiant littéral `apikey`,
+  mot de passe = la clé d'API). Variables `MASSE_SMTP_*`, puis `MASSE_DOMAINE`
+  (une adresse par agent) ou `MASSE_FROM` (adresse de service unique).
+- Adresse d'expédition sur un **sous-domaine dédié** (`agence.france-immeuble.fr`),
+  jamais sur le domaine courant : une campagne qui tourne mal n'entame alors rien
+  de la messagerie de tous les jours. Sous-domaine et non domaine cousin —
+  un nom de domaine proche de la marque et sans historique est le motif même du
+  phishing, c'est lui qui se fait signaler.
+  - Nom du sous-domaine : **neutre et durable**. `dossiers.` deviendrait faux le
+    jour d'une salve « projets annexes » ; `communication.` est long (il s'affiche
+    dans chaque expéditeur, tronqué sur mobile) et sonne publipostage.
+    `agence.` reste vrai quoi qu'on envoie — c'est le nom retenu et authentifié
+    chez SendGrid, il ne change plus.
+  - **Une adresse par agent** sur ce sous-domaine, à sa convention habituelle :
+    `r.voci@agence.france-immeuble.fr` (`MASSE_DOMAINE`). Une salve garde un
+    visage. Attention à deux illusions : ça ne cloisonne PAS la réputation entre
+    agents — les messageries la calculent au niveau du domaine signataire, pas de
+    l'adresse ; et chaque adresse doit **exister en renvoi** vers la vraie boîte
+    de l'agent, sinon une réponse qui ignore le `Reply-To` part dans le vide.
+  - Le **nom affiché** fait l'essentiel : c'est lui que montrent presque tous les
+    clients de messagerie, l'adresse ne venant qu'après.
+- SPF + DKIM + DMARC publiés sur ce sous-domaine. Sans DKIM aligné, le reste ne
+  sert à rien.
+  - **État au 12/10/26, en pause par MAV** : le sous-domaine porte les clés DKIM
+    SendGrid et le DMARC, mais **ni MX, ni SPF**. Une réponse adressée à
+    `ma.voci@agence.france-immeuble.fr` rebondit en « adresse erronée » (cas
+    « Répondre à tous », messagerie qui ignore le `Reply-To`, adresse recopiée).
+    Le BO le détecte et l'affiche en rouge (Réglages › Envois, fenêtre de salve,
+    relance groupée). Chez OVH, le sous-domaine est déclaré dans Email Pro
+    (0 compte) alors que ma.voci est sur Exchange ; le minimum pour clore :
+    ajouter le domaine dans Exchange en « configuration recommandée », alias
+    `ma.voci`, puis TXT `agence` = `v=spf1 include:mx.ovh.com include:sendgrid.net ~all`.
+    Ne pas relancer MAV dessus sans qu'il le demande.
+- `Reply-To` = l'agent : la réponse lui revient à LUI, quel que soit
+  l'expéditeur affiché. C'est ce qui permet à la route de masse de rester
+  compatible avec « le commercial gère les retours ».
+- `List-Unsubscribe` + `List-Unsubscribe-Post` sur chaque message. Sans eux, le
+  bouton « désabonnement » des messageries devient « signaler comme spam ».
+- **Plafond du jour : `PLAFOND_JOUR` (4 000 par défaut).** Au-delà de 5 000 par
+  jour, Gmail classe l'expéditeur en « masse » et lui impose ses obligations :
+  on s'arrête avant, avec une marge. Le compteur s'affiche à l'écran de salve
+  et le bouton se ferme quand la salve ferait franchir la ligne.
+- Connexion SMTP mutualisée, cadence tenue à 4 messages/seconde. Une rafale de
+  connexions se fait limiter aussi sûrement qu'un volume excessif.
+- Montée en charge sur un domaine neuf : 20 le premier jour, 50, 100, puis le
+  régime normal à partir de la deuxième semaine. C'est le démarrage à froid qui
+  se fait signaler, pas le volume.
+
+**Module Mailing (27/10/26)** — les campagnes commerciales (Plein Bail, la
+team réno, bloc ou découpe) à un public choisi dans tout le fichier
+(`/mailing`, `lib/bo/campagnes.ts`). Une campagne est une salve de nature
+« campagne » : chaque message est fusionné d'avance dans `fi_salve_envoi` avec
+un jeton, puis la file est vidée par le cron de chaque minute
+(`/api/relances/tourner`) sous le plafond du jour — fermer la page n'arrête
+rien, le plafond atteint la suite part le lendemain. Le jeton est dans le
+Message-ID : une réponse le cite, la relève (`fi_mail_entrant`) suffit à
+compter les réponses (sinon même adresse dans les 30 jours). Chaque message
+porte un lien de désinscription (obligation de la prospection commerciale) ;
+les refus vont dans `fi_desabonnement` et sortent de **toutes** les salves.
+Lancer une campagne est réservé à la direction.
+
+**Le dossier « Envoyés » d'une boîte (19/11/26).** MAV ne voyait pas les envois
+du BO dans son webmail ni sur son téléphone : sa boîte Exchange porte deux
+dossiers d'envoi, « Sent Items » (le vrai) et un « Éléments envoyés » laissé
+par un ancien logiciel — de même pour les brouillons et la corbeille. Exchange
+ne désigne aucun dossier en IMAP ; la bibliothèque devine d'après les noms et
+marque les deux (`specialUseSource: "name"` veut dire « deviné », pas
+« désigné »). Règle (`lib/mails/dossiers.ts`) : le dossier désigné par le
+serveur, sinon celui qui parle la langue des dossiers sans doublon (« Junk
+Email » : anglais), le nombre de messages en dernier — le doublon de MAV en
+contient plus que le vrai. Les boîtes réapprennent leurs dossiers quand
+`VERSION_DOSSIERS` change, et ce qu'elles montrent est journalisé
+(« [mails] dossiers vus »).
+
+Les envois que le BO avait rangés dans le doublon avant la correction
+(estimations comprises, avec leur pièce jointe) se rapatrient d'un clic depuis
+Mails › Ma boîte e-mail : le réglage dit combien de messages dorment dans le
+doublon depuis le branchement de la boîte, et les déplace dans le vrai dossier
+(`envoisAilleurs`, `rapatrierEnvois`). Rien d'automatique, rien de supprimé.
+Une estimation envoyée a toujours sa copie complète dans « Envoyés ».
+
+**Envois individuels (MAV, 19/11/26).** Une proposition faite à la main
+(jusqu'à cinq personnes) et la relance d'une seule personne sont de la
+correspondance : copiées dans « Envoyés » (revirement partiel du retour #479,
+qui reste vrai pour les salves et les relances groupées). Un message individuel
+part de la boîte de l'agent **ou ne part pas** (`boiteObligatoire`) : plus de
+repli sur une adresse de service.
+
+**Commun aux deux routes :** doctrine héritée du netlinking — **validation
+humaine avant tout envoi**. L'app prépare, MAV/agent envoie. Aucun envoi
+automatique, jamais.
 
 ### 7.2 DVF / loyers
 Déjà en base (§4.3). Consommation directe, aucune API externe.
@@ -238,8 +397,514 @@ Déjà en base (§4.3). Consommation directe, aucune API externe.
 ### 7.3 Ubiflow / marketplace
 Un `listing_lot` « prêt à vendre » → publication marketplace et/ou flux XML Ubiflow. Réutilise l'architecture flux unique déjà décidée.
 
+**Le numéro de l'annonce est celui de l'agent en charge, jamais le standard**
+(décision MAV 20/10/26). La charge utile envoie le contact du dossier
+(`b.im.AGENT` → nom, poste, e-mail, portable) ; côté Plein Bail,
+`reveler_telephone()` le révèle en priorité (migration `telephone_agent`) et
+ne retombe sur le téléphone du compte France Immeuble qu'à défaut. Un bien
+sans agent, ou dont l'agent n'a pas de portable, est **bloqué** à la
+publication (`blocages`, clés `agent` / `agent_tel`).
+
+### 7.3 bis Site France Immeuble — seconde destination
+
+Décidé avec MAV le 21/10/26, contrat complet dans `docs/CONTRAT-SITE.md` (il
+fait foi entre la session du BO et celle du site). L'essentiel : le BO **dépose**
+dans la base Supabase du site (`omtkttpvfjsbnqsajcsp`, variables
+`SITE_FI_SUPABASE_*`), le site ne lit jamais le BO ; le site poste ses
+formulaires sur `/api/site/lead` (jeton `BO_LEAD_TOKEN`), qui ne sait
+qu'enregistrer. Le BO ne crée aucune table dans la base du site. Le statut 5
+n'est jamais en ligne, ni sur le site ni sur Plein Bail.
+
 ### 7.4 Docusign (V2)
 Mandats, contrats de mission, protocoles de départ locataire.
+
+### 7.5 SMS — MailingVox, et lui seul
+
+Décidé le 11/09/26. **Les SMS partent de MailingVox ; les e-mails restent sur
+SendGrid.** MAV a MailingVox, et pour de la France métropolitaine c'est le bon
+outil : STOP opérateur, horaires légaux et prix au SMS y sont natifs. Twilio a
+servi de premier pont et n'a rien laissé derrière lui — tout tenait dans
+`lib/bo/sms.ts`.
+
+MailingVox a bien une API e-mail (pièces jointes, programmation, `email_reponse`
+qui ferait le `Reply-To` agent), **mais la route de masse reste SendGrid** :
+arbitrage de MAV, ne pas y revenir sans lui.
+
+- `POST https://v3.mailingvox.com/api/envoyer/sms`, toute la liste en **un**
+  appel. Réponse `{resultat: 1, id}` ou `{resultat: 0, erreurs: "24,38"}`.
+- Variables : `MAILINGVOX_KEY`, `MAILINGVOX_EXPEDITEUR` (11 caractères,
+  lettres et chiffres seulement), `MAILINGVOX_PLAFOND` (250), `MAILINGVOX_STOP`.
+- **Programmation, pas automatisme.** MAV : « ce que je veux faire c'est une
+  programmation ». Le contenu, la liste ET l'heure sont validés dans le même
+  geste ; la machine attend, elle ne décide de rien. La doctrine §7.1 tient.
+- **Horaires légaux** : lundi–samedi, 8 h – 22 h, hors jours fériés. MailingVox
+  reporte d'office un envoi programmé hors créneau, il ne l'annule pas.
+- **Tranché par MAV le 02/11/26 :**
+  - le **numéro STOP** est le **36200** (celui de leur documentation, valeur
+    par défaut de `MAILINGVOX_STOP`) ; le 36111 n'est plus utilisé ;
+  - l'expéditeur RCS « France Immeuble » est **vérifié** chez MailingVox ;
+  - le lien du dossier reste un lien **transfer.it** (pas de lien
+    france-immeuble.fr). Reste à surveiller l'**erreur 61** (un lien dans le
+    corps d'un SMS peut bloquer la campagne) sur le premier envoi.
+- **Premier envoi RCS (02/11/26)** : un seul modèle pour l'instant, « un
+  immeuble correspondant à votre recherche » — photo principale, type, ville
+  (département), surface, renta potentielle, prix HAI, et trois boutons
+  Intéressé / Pas intéressé / Télécharger le dossier. Texte et maquette :
+  artifact « RCS clients France Immeuble ».
+  - Code : `lib/bo/rcs.ts` (préparer la carte, créer le modèle chez
+    MailingVox `/rcs/model/create` avec la photo en multipart, envoyer
+    `/envoyer/rcs` type `single` avec un SMS de repli ≤ 145 car., lien
+    transfer.it compris — MAV 02/11 : « il passait de mon côté »).
+    Essai à un seul numéro dans Réglages › Envois, au compte de MAV seul.
+  - Les boutons touchés arrivent en POST JSON sur `/api/mailingvox/rcs`
+    (`traiterEvenementsRcs`), adresse à coller **à la main** dans le compte
+    MailingVox (leur API ne la pose pas ; bouton « Copier l'adresse du
+    webhook RCS »). **« Pas intéressé »** (bouton, ou « 2 » au SMS de repli)
+    **refuse la proposition et coupe ses relances** (MAV, 02/11) ; une
+    proposition déjà en visite / offre / vente ne recule pas. « Intéressé »
+    est rangé sur la proposition, sans automatisme.
+- **Réponses** : MailingVox les pousse sur `/api/mailingvox/{reponses,stops,accuses}`
+  (secret `MAILINGVOX_WEBHOOK_SECRET`), rangées dans `fi_sms_entrant` et
+  rattachées à la proposition. Les e-mails de réponse que MailingVox envoie
+  en plus ne sont qu'un doublon.
+- **Désinscrits** : `/api/stops` est lu avant chaque envoi, et
+  `/api/contacts/blacklist` reçoit nos oppositions. C'est légitime — MailingVox
+  est **sous-traitant** au sens du RGPD, pas un tiers : lui transmettre une
+  opposition est la seule façon de la faire respecter par l'outil qui envoie.
+  On ne pousse QUE des numéros, et QUE des oppositions — jamais une liste de
+  contacts, jamais une adresse e-mail (celles-là regardent SendGrid).
+
+### 7.6 Acquisition — Google Ads, puis tests, articles, réseaux
+
+Décidé avec MAV le 10/11/26 : un menu **Acquisition**, à part du module
+Mailing (« rester à part pour mailing »). **Réservé à MAV seul**
+(ma.voci@france-immeuble.fr, revirement du 10/11 : « que la page et le menu
+Acquisition ne soient disponibles que pour moi ») : menu, page, actions et
+connexion Google passent par `estMav` / `exigerMav` (lib/auth/comptes.ts),
+pas par le rôle direction. Quatre lots : 1 lire,
+2 ajuster d'un clic (« À valider »), 3 tests A/B jugés aux mandats, 4 articles
+du site et réseaux sociaux.
+
+- **Lot 1 (livré le 10/11), lecture seule** : `app/acquisition/page.tsx`,
+  `lib/bo/google-ads.ts`. Les jetons développeur ont disparu le 09/09/26 :
+  l'accès passe par le projet Google Cloud (niveau API « Explorer »).
+  **Connexion OAuth** (revirement du 10/11) : l'organisation Google de FI
+  interdit les clés de compte de service (`iam.disableServiceAccountKeyCreation`),
+  donc MAV clique « Connecter Google Ads » sur la page Acquisition ; le jeton
+  de renouvellement est gardé chiffré (`MAIL_CRYPTO_KEY`) dans `fi_google_ads`
+  (`lib/bo/google-ads-oauth.ts`, routes `/api/google-ads/{connexion,retour}`).
+  Variables `GOOGLE_ADS_OAUTH_CLIENT_ID` / `_SECRET`, `GOOGLE_ADS_CUSTOMER_ID`,
+  `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC, facultatif), `GOOGLE_ADS_API_VERSION`
+  (v26). La voie compte de service (`GOOGLE_ADS_SA_JSON`) reste lue si une clé
+  existe un jour. Posées par MAV lui-même ; guide : artifact « Brancher Google
+  Ads au BO ».
+- **Ciblage voulu par MAV (10/11)** : n'apparaître que sur « estimer / vendre
+  immeuble Paris » et proches, jamais sur « vendre immeuble » seul ni pour la
+  province. Moyens : mots-clés en correspondance exacte / expression qui
+  contiennent la ville, exclusions, zone géographique en « Présence » seule.
+  À proposer à MAV dès la connexion, puis appliquer sur son accord.
+- **Le coût par mandat** vient de l'origine des formulaires : le site joint
+  `attribution` (gclid, UTM, page d'arrivée, référent) à chaque formulaire
+  (contrat site §18), rangé dans `fi_lead_origine` ; une estimation du site
+  devient l'immeuble `app_site_<ref>`, dont on lit le mandat signé.
+- **Lot 2 (livré le 10/11) : l'écriture, depuis le BO ET depuis Claude**
+  (MAV : « je veux aussi l'écriture […] depuis Claude qui a accès au BO, tu
+  pourras lire dans cette conversation et modifier au besoin les annonces »).
+  Une seule porte : `lib/bo/google-ads-ecriture.ts` (`appliquer`), garde-fous
+  purs dans `google-ads-changements.ts`, journal `fi_ads_journal` (source
+  `bo` ou `claude`, motif, geste inverse → bouton « Annuler »). Le BO : boutons
+  de la page Acquisition › Google Ads, chacun confirmé. Claude :
+  `/api/claude/ads` (GET lit, POST applique ; clé `BO_CLAUDE_TOKEN` injectée
+  par l'environnement, jamais vue). **Claude ne modifie que sur une demande
+  de MAV dans la conversation**, avec un `motif` qui la cite, et peut d'abord
+  vérifier sans rien changer (`essai`). C'est la validation humaine du §7.1,
+  donnée dans la conversation au lieu d'un clic.
+- **Garde-fous (mêmes pour le BO et Claude)** : un plafond de dépense par
+  jour (somme des budgets actifs), posé par MAV dans le BO seul —
+  sans lui, aucune hausse ni réactivation ; +30 % de budget et 30 points de
+  modulation d'enchère au plus par changement ; pas de requête large ; une
+  annonce n'envoie que vers france-immeuble.fr ; les listes d'exclusions
+  partagées et les budgets partagés se modifient dans Google Ads.
+
+### 7.6 bis Réponses des acquéreurs — la cloche (12/11/26)
+
+Décidé avec MAV le 12/11 (maquettes A, B, C et D, toutes retenues). Une
+réponse d'acquéreur à un envoi de dossier — e-mail relevé et rattaché à la
+proposition, SMS, bouton de la carte RCS (Intéressé, Télécharger le dossier,
+Pas intéressé), réponse depuis le compte du site — devient une ligne de
+`fi_reponse`, créée par des **déclencheurs de la base** (migration
+`reponses_acquereurs`) : aucun chemin d'entrée n'a à y penser.
+- **Qui est prévenu : l'agent qui a envoyé le dossier** (AGENTs de la
+  proposition, sinon son créateur).
+- Une réponse reste **à traiter jusqu'au clic « Traité »** ; l'ouvrir ne
+  suffit pas. « Noter un retour » et « Refuser » depuis la notification la
+  traitent aussi.
+- A : la cloche « Réponses » **en tête du menu de gauche** (toujours visible),
+  panneau avec les gestes ; le nom ouvre la fiche contact habituelle.
+  B : pastille sur « Propositions » de la fiche du bien, bandeau, étiquette
+  « Nouveau » sur la carte. C : bloc du tableau de bord. D : **e-mail
+  récapitulatif à l'agent seulement**, à 8 h et 14 h (cron de chaque minute),
+  pas de notification sur le téléphone.
+- Toutes sonnent (son « réponse », dans components/sons.tsx).
+- Le tri des propositions du bien suit le dernier retour, tous canaux
+  (retour #437 étendu le 12/11).
+- **Réponses aux relances (16/11)** : la relance partait sans jeton, sa
+  réponse restait « à choisir » et ne sonnait pas (32 réponses en souffrance
+  depuis le 25/09). Chaque relance porte désormais un jeton dans son
+  Message-ID (`relance_jeton` + `relance_objet` sur la proposition), que la
+  relève reconnaît ; à défaut, l'objet de la relance, puis la ville **et** la
+  relance des 21 jours qui précèdent la réponse départagent (`choisirParObjet`).
+  « Paris 18 » vaut « Paris 18e ». Reprise faite le 16/11 : 30 rattachées,
+  remises à traiter seulement si la proposition était encore « Envoyée ».
+
+### 7.7 Relances clients — position de MAV (10/11), à cadrer avant de coder
+
+« Certaines catégories mériteraient qu'on fasse en automatique […] peut-être
+tout en automatique si on valide les messages et qu'on ne fait pas d'actions
+trop répétitives. Il faut qu'il y ait tout dans le suivi pour que je sache ce
+qu'on a envoyé et quand. […] voir si le client répond à nos e-mails (comme dans
+l'onglet suivi de vente) et ce qu'il répond. » C'est une **exception à
+cadrer** à la règle « validation humaine avant tout envoi » (§7.1) : messages
+validés une fois par catégorie, cadence plafonnée, chaque envoi et chaque
+réponse visibles dans le suivi du contact. Rien n'est codé tant que MAV n'a
+pas validé le cadrage.
+
+### 7.8 Étude de découpe — DVF autour de l'immeuble (15/11/26)
+
+Onglet « Étude découpe » de l'état locatif (option A « par typologie », choisie
+par MAV). `lib/bo/etude-decoupe.ts` calcule (pur, testé), `etude-decoupe-serveur.ts`
+va chercher, `/api/etude-decoupe` sert l'écran, `/api/facade-dvf` les façades.
+- Ventes DVF géolocalisées (data.gouv.fr) d'un seul local, gardées par commune
+  et par année dans `fi_dvf_cache` ; années de construction BDNB (API ouverte,
+  10 lignes par appel : paginer) par clé d'adresse BAN.
+- **Décisions de MAV** : historique **6 mois, 12 au plus** (comptés depuis la
+  dernière vente publiée par DVF, qui a plusieurs mois de retard) ; rayon
+  **300 m** au départ (450, puis 600 m si moins de 8 ventes) ; surface ±20 % ;
+  ventes **avec annexes gardées mais signalées** ; on écarte une vente **ou tout
+  un immeuble** ; valeur **libre et occupée** (rendement type par typologie) ;
+  ventes à la même adresse gardées ; caves et parkings **au forfait saisi**
+  (DVF ne les distingue pas).
+- Façades Street View : **à l'écran seulement**, jamais dans un dossier ni une
+  annonce (conditions Google). Chaque façade est facturée une fois puis gardée
+  dans le seau (`dvf-facades/`).
+- Les réglages (exclusions, rendements, forfaits) vivent sur la fiche,
+  `etude_decoupe`.
+- **Évaluation lot par lot (MAV, 15/11)** : chaque lot reçoit une prédiction
+  (surface × prix au m² du secteur, médiane de sa typologie) que l'agent ajuste
+  en % — étage, état, extérieur (balcon, terrasse), autre, avec une note
+  (`etude_decoupe.lots`). Les totaux suivent les lots ajustés. Un **local
+  commercial loué s'évalue au rendement** (loyer / rendement de la ligne
+  Locaux), comparé au prix au m² du secteur ; libre, au prix du secteur.
+- **Vue « Valeurs » de l'état locatif (MAV, 15/11)** : « un état locatif dans
+  lequel j'ai une prédiction du prix que tu me proposes, et moi je mets à la
+  main le prix qui me plaît, lot par lot ». Colonnes Prédiction (celle de
+  l'étude, `components/predictions-lots.ts`), **Prix retenu** (champ
+  `prix_retenu` du lot, `bo_lot`, enregistré avec le bouton Enregistrer) et
+  €/m² avec l'écart à la prédiction. La flèche ↓ reprend la prédiction arrondie
+  au millier.
+- **Vue « Copropriété » (MAV, 15/11)** : tantièmes (`tantiemes`), « Vendu
+  avec » (`vente_avec` : une cave ou un parking rattaché à un appartement pour
+  la vente, **au cas par cas**, seul par défaut), prédiction, **prix HAI** (le
+  prix retenu est **honoraires inclus**, tranché par MAV), honoraires et net
+  vendeur. **Un seul mandat pour l'immeuble** : son `honos_taux` ventile chaque
+  prix HAI (HAI ÷ (1 + taux)), 5 % sans mandat ; le minimum du barème n'est pas
+  appliqué lot par lot. Prochain lot : publier chaque lot sur les portails
+  (SeLoger, Leboncoin…) — « publipostage » au sens de MAV — par un
+  multidiffuseur, compte de FI à fournir.
+
+---
+
+### 7.8 bis Dossier de présentation — un tableau de charges trop long (20/11/26)
+
+La page « État financier » porte quatre tableaux : à l'interligne normal elle
+ne tient que cinq lignes de charges (avec deux lignes de revenus). Argenteuil,
+douze charges, perdait son tableau « Rendement » sous le pied de page. Règle
+tranchée par MAV (`lib/bo/dossier-charges.ts`, pur, testé) :
+- **d'abord resserrer les lignes** (classe `tasse` : 9,5 → 7,1 mm), polices
+  inchangées (retours #223 à #239) — seulement quand la page déborderait ;
+- **au-delà de treize charges**, la page ne garde que les **taxes** une à une
+  (foncière, bureaux, balayage…) et réunit le reste sur « Autres charges
+  (n postes, détail page suivante) » ; une page **« Détail des charges »** suit.
+Les totaux ne bougent pas. Un dossier déjà enregistré garde son PDF : il faut
+en refaire une version pour profiter de la correction.
+
+Les lignes de même type ne sont **pas** réunies (MAV : « non, garde »). Pour
+les distinguer, toute charge peut porter une **précision** (`type_autre`,
+ouverte à tous les types le 20/11) que le dossier imprime : « Entretien —
+chaudière » ; une ligne « Autre » précisée ne garde que sa précision
+(`nomCharge`).
+
+**La longueur de façade a disparu du BO** (MAV, 20/11, revirement du retour
+#241 : « ça ne sert à rien et ça nous rajoute une action ») : ni demandée, ni
+saisie, ni imprimée. `ter_facade` reste en base sur les anciennes fiches.
+
+---
+
+### 7.9 Rapport de commercialisation — le point envoyé au propriétaire (19/11/26)
+
+Décidé avec MAV le 19/11 (maquettes : artifact « Rapport de commercialisation »).
+Un bouton en tête du **Suivi de la vente** (`components/rapport-commercialisation.tsx`),
+en trois temps : **contrôle** (« as-tu bien tout noté ? »), **rédaction**,
+**aperçu et envoi**. Rien ne part sans le clic de l'agent.
+- `lib/bo/rapport-commercialisation.ts` calcule (pur, testé) : actions, chiffres,
+  retours, visites, offres, baromètre et **contrôles** — une offre écrite dans
+  un retour de visite et jamais saisie, des réponses non traitées, un
+  « Intéressé » sans suite, une visite passée ni faite ni annulée.
+  `rapport-serveur.ts` lit, `rapport-contenu.ts` fait le premier jet,
+  `rapport-html.ts` met en forme, `rapport-actions.ts` porte les gestes.
+- **Format** : un e-mail mis en forme (« l'essentiel » : quatre chiffres, trois
+  paragraphes) **sans aucune image** — tableaux et styles sur chaque balise,
+  600 px au plus, lisible sur mobile — et un **PDF joint** (compte rendu
+  complet, puis diagnostic). L'aperçu appelle les mêmes fonctions que l'envoi.
+- **Aucun nom d'acquéreur** dans le rapport : initiales du prénom et du nom,
+  et profil (« M. D. — marchand de biens », retour #626). Le nom complet
+  n'apparaît qu'à l'écran de l'agent (contrôle et rédaction), jamais dans
+  ce qui part ni dans ce qui est gardé. La **note A à D** est affichée, avec la légende de MAV : A a
+  déjà acheté ; B a déjà visité ou fait une offre, ou acteur reconnu ; C nous
+  avons déjà échangé, sans visite ni offre ; D inscrit de lui-même sur le site,
+  sans échange.
+- **« Ce qui plaît / ce qui bloque », les pistes, les prix cités** : l'IA
+  propose (elle ne reçoit que des retours sans nom et des chiffres), l'agent
+  corrige. Chaque retour et chaque visite se décoche : une note interne n'est
+  pas pour le propriétaire (la visite a `commentaire_externe`, pris en
+  priorité ; à défaut `rex_fi`, signalé « à relire »).
+- **Rien de rédigé ne part sans avoir été relu** (MAV, 19/11) : chaque bloc
+  que l'IA peut écrire — ce qu'on retient, ce qui plaît, ce qui bloque, les
+  prix cités, chaque piste, la suite — a sa case. Ce que l'IA propose arrive
+  **décoché** ; un bloc décoché ne part pas, et l'aperçu le rappelle. Ces
+  listes se saisissent en texte libre et ne se découpent qu'au départ (#625 :
+  les redécouper à chaque frappe avalait les espaces).
+- Destinataires : **les vendeurs du bien seulement** (vérifié côté serveur). Le
+  rapport part de la boîte de celui qui l'écrit, et reste rangé dans
+  `fi_rapport_commercialisation` (le PDF se refait à la demande).
+- **Diffusion** : les retombées Plein Bail sont demandées **sur la période du
+  rapport** (`retombeesAnnonces(refs, { depuis, jusquA })`, action `retombees`
+  avec `depuis` / `jusqu_a`). Depuis le 19/11, Plein Bail rend en plus
+  `periode`, `visiteurs`, `position_moyenne`, `alertes`, `sources` (recherche,
+  alerte, direct, moteur, site, externe) et `serie` ; `blocPleinBail`
+  (`rapport-contenu.ts`) les met en tuiles et en une phrase d'origine. Un
+  compteur absent ne s'affiche pas — jamais « 0 » pour « on ne sait pas ». La
+  série par jour n'est pas encore dessinée.
+- **Une proposition fermée d'office n'est pas une réponse** (20/11) : une
+  proposition « Refusée » dont le motif est administratif (`motifAdministratif` :
+  « annulée automatiquement » à l'acceptation d'une offre, doublon, ancien
+  dossier, mise à jour) ne compte ni comme un répondant ni comme un refus, et
+  son motif ne part pas au propriétaire. Sur les vraies fiches, 2 459
+  annulations d'office gonflaient les répondants (387 sur 408 pour un bien).
+- **Le rappel du lundi (20/11)** : chaque lundi à 8 h de Paris, un e-mail **à
+  l'agent** — jamais au propriétaire — liste ses biens en vente sous mandat
+  (statuts 5 à 7, mandat de vente « En cours », agent du mandat sinon de la
+  fiche) : rapport à envoyer et ce qu'il y a de nouveau depuis le dernier,
+  biens sur lesquels il ne s'est rien passé, biens à jour (rapport de moins de
+  sept jours). Rien si tout est à jour. Un bien sans agent actif va à la
+  direction. `lib/bo/rapport-rappel.ts` (pur, testé),
+  `rapport-rappel-serveur.ts`, cron `/api/rapports/rappel` (toutes les dix
+  minutes le lundi matin, l'heure de Paris lue dans le code), une ligne de
+  `fi_rapport_rappel` par agent et par semaine. Essai à sa seule adresse :
+  Réglages › Envois, « M'envoyer le mien maintenant ».
+- **Reste à faire** : les vues et impressions du site France Immeuble (le site
+  ne les transmet pas) ; SeLoger et Leboncoin quand le multidiffuseur
+  existera ; borner un rapport au mandat en cours quand un bien a été
+  commercialisé plusieurs fois (aujourd'hui il remonte au tout premier envoi).
+
+### 7.10 Notes des acquéreurs — elles montent toutes seules (20/11/26)
+
+La légende de MAV (19/11) fait foi : **A** a déjà acheté ; **B** a déjà visité
+ou fait une offre, ou acteur reconnu ; **C** nous avons déjà échangé, sans
+visite ni offre ; **D** inscrit de lui-même sur le site, sans échange.
+
+- **Une seule note, sur le contact** (`bo_contact.data.Note`). Chaque
+  recherche en porte la copie, tenue par un déclencheur — c'est elle que lisent
+  les salves. Avant, les montées d'office ne touchaient que le contact : la
+  salve suivante continuait de lire l'ancienne note.
+- **Une seule porte pour monter : `fi_note_monter(contact, note, motif)`**
+  (migrations `notes_acquereurs_*`). Des déclencheurs de la base l'appellent :
+  offre « Vendu » → A ; visite « Effectuée » ou offre déposée → B ; suivi
+  « Manuel » écrit par un agent → C. Le BO l'appelle aussi pour la visite
+  programmée (retour #523, antérieur). Ne pas écrire `Note` par un autre chemin
+  pour une montée d'office.
+- **On ne fait que monter.** Une note qu'un agent **baisse à la main** garde la
+  trace (`note_baissee`) et ne remonte pas d'office au niveau d'où elle vient ;
+  un acte plus fort la remonte quand même (baissée de B à C : une vente la
+  passe en A).
+- **Le C ne classe que des acquéreurs** (#605) : case « Acheter » cochée ou au
+  moins une recherche. Piège vécu le 20/11 : `not (x = 'true' or …)` vaut NULL
+  quand la case est absente, et un `if NULL` ne garde rien — 277 fiches de
+  vendeurs sont passées en C quelques minutes. Toujours `coalesce`.
+- **En attente de MAV : le C sur simple réponse d'un acquéreur** (e-mail, SMS,
+  « Intéressé », compte du site). La fonction `fi_note_reponse` existe, son
+  déclencheur est retiré : sortir du D donne l'agent attitré et l'off-market
+  sur le compte du site (`compte-site.ts`), jusqu'ici réservés à un contact que
+  l'agence a eu. Ne pas le remettre sans sa réponse.
+- `fi_note_journal` garde chaque passage (de, à, motif, date), ceux faits à la
+  main compris. La fiche contact dit d'où vient la note affichée, et
+  n'enregistre la note que si l'agent l'a changée (une fiche restée ouverte
+  remettrait sinon l'ancienne valeur, lue comme une baisse voulue).
+- Le compte du site reçoit une note montée d'office à la reprise de 3 h
+  (`deposerTousLesComptes`), pas dans la minute.
+
+### 7.11 Vente par lot — découpe et locaux commerciaux (cadrage du 20/11/26)
+
+Cadrage : artifact « Vendre des lots : appartements à la découpe et locaux
+commerciaux » ; maquettes de l'étape 1 : artifact « Dossier local commercial ».
+MAV a répondu à tout le 20/11 et donné son accord pour l'étape 1.
+
+**Le principe : une fiche = une chose à vendre.** Un lot mis en vente est une
+fiche comme les autres, rattachée à son immeuble ; propositions, visites,
+offres, annonces, suivi de la vente et tableau de bord ne changent pas.
+
+**Ce qui décide des pages (fiche et dossier) : la copropriété, pas le
+contenu.** Un bien en copropriété reçoit les pages « Copropriété » et « Bail
+et locataire » ; commerce, bureaux ou local d'activité, c'est le même dossier.
+Un immeuble mixte garde le dossier d'immeuble, **sans** page Bail et
+locataire. Seule exception à venir : le dossier d'un appartement vide (plans,
+exposition, écoles et commerces, diagnostics expliqués, frais d'acte estimés,
+rendement, travaux).
+
+**Locaux commerciaux.** Toujours les murs, loués ou vides — jamais un fonds
+ni un droit au bail. Un mandat par local. La société locataire se préremplit
+depuis son SIREN (registre public, déjà utilisé par le BO) ; le chiffre
+d'affaires donné de vive voix se saisit à part. Enseigne, société et chiffre
+d'affaires dans le dossier : « si on peut, mais pas forcément tout le temps »
+— un choix à chaque dossier, et jamais dans une annonce publique (§8.3). Les
+renseignements arrivent au fil de l'eau : une ligne vide ne s'imprime pas.
+
+**Étape 1, livrée le 20/11 : le bien en copropriété vendu seul.**
+- **Un seul renseignement sur la fiche** (`bo_immeuble`) : `en_copropriete`.
+  Il se pose à la création (« Que vend-on ? » : un immeuble entier, ou un bien
+  en copropriété) et se corrige par la puce sous le prix, en tête du menu de la
+  fiche. **Revirement de MAV le 20/11** : la « nature » (local commercial,
+  appartement…) demandée à la création le matin a disparu — « le type de bien
+  se lit dans la partie état locatif », et on dit « logement », pas
+  « appartement » (ce peut être une maison).
+- `en_copropriete` ouvre « Bail et locataire » et « Copropriété » ; un lot
+  « Commerce » à l'état locatif y ajoute « Emplacement commercial »
+  (`components/lot-copro.tsx`). Blocs enregistrés entiers sur la fiche :
+  `bail_local`, `locataire_local`, `copro`, `emp_commerce` (`updateLotCopro`).
+- **Les lots de copropriété ne sont pas les lignes de l'état locatif** (MAV,
+  20/11, rue Damrémont : deux lots aux tantièmes différents sous un seul
+  bail). Ils se saisissent sur la page Copropriété (`copro.lots` : numéro,
+  désignation, tantièmes) ; l'état locatif garde une ligne par chose louée.
+- Un bien en copropriété **ne renseigne ni terrain ni PLU** : la fabrication
+  du dossier ne les réclame pas et le dossier n'imprime pas le bloc.
+- **L'état locatif reste la source** du loyer, du type de bail, de la date
+  d'effet, du dépôt et de l'indice : la page les relit
+  (`etatLocatifDuLot`), elle ne les recopie pas. Elle n'ajoute que les clauses
+  et la société. Les loyers de l'état locatif sont **mensuels**.
+- `lib/bo/lot-copro.ts` (pur, testé) : échéances triennales (la veille de
+  l'anniversaire), congé six mois avant, durée ferme restante, rendement,
+  taux d'effort (comptes publiés d'abord, chiffre déclaré à défaut et nommé
+  comme tel), lecture du registre (`societeDuSiren`).
+- Dossier : `lib/bo/dossier-lot.ts` (pur, testé) ajoute « Le bail », « Le
+  locataire et les chiffres » et « Copropriété » après l'état locatif. Le
+  locataire n'est nommé que si la case « Nommer le locataire dans ce dossier »
+  est cochée à la fabrication (`locataire_nomme` sur `bo_dossier`, décochée
+  au départ). Le dirigeant, la note interne et les concurrents ne s'impriment
+  jamais.
+- Pas encore fait : résumé du procès-verbal par l'IA, transports et commerces
+  voisins proposés d'office, dépôt du bail depuis la page, couverture propre
+  au local, version « local libre » de la page.
+
+**Étape 2, première tranche (22/11/26, en preview seulement) : scinder.**
+- État locatif › vue Copropriété d'un immeuble entier : le panneau « Vendre
+  les lots à part » (`components/scission.tsx`) liste les **unités de vente**
+  — un lot, et les caves ou parkings « vendus avec » lui ; une cave non
+  rattachée se vend seule — avec un bouton par unité et un bouton pour toutes.
+  Rappel si le règlement de copropriété n'est pas au coffre (reconnu à son
+  nom de fichier) ; il ne bloque pas.
+- `scinderLots` (`lib/bo/scission-actions.ts`, calcul pur et testé dans
+  `lib/bo/scission.ts`) crée **une fiche `bo_immeuble` par unité** :
+  `lot_de` (l'immeuble), `lots_origine`, `lot_libelle` (« Lot 2 — T2, 2e
+  étage, 34 m² + cave 12 »), `en_copropriete`, adresse, propriétaire, agent,
+  données d'emplacement ; prix = somme des `prix_retenu` (HAI), ventilé au
+  taux du mandat de l'immeuble. Ni terrain, ni PLU, ni descriptif du bloc.
+- **La fiche du lot a ses propres lignes** : copie du lot, de son bail, de son
+  locataire et de l'adresse, chacune avec `origine` (la ligne de l'immeuble).
+  Choix assumé : tout ce qui lit « les lots d'une fiche » marche sans rien
+  changer, version en ligne comprise. Contrepartie : après la scission, une
+  ligne modifiée d'un côté ne l'est pas de l'autre — à synchroniser dans une
+  tranche suivante.
+- **Statut de départ** : celui de l'immeuble avant la vente, « 4 - OK pour
+  vendre » au-delà. Jamais commercialisé d'office.
+- **Un seul mandat** : les fiches créées sont ajoutées aux `IMMEUBLEs` du
+  mandat en vigueur de l'immeuble. Le registre n'est pas touché.
+- **Qui reçoit un lot** : `correspond` (`lib/bo/matching.ts`) refuse une fiche
+  de lot à toute recherche qui n'a pas `ok_lots` — la case « D'accord pour des
+  lots de copropriété » de la fenêtre de recherche, décochée pour tous au
+  départ. Ne vaut que pour les fiches nées d'une scission (`lot_de`), pas
+  pour un bien en copropriété créé seul (Sébastopol, Damrémont).
+- Tableau de bord : la carte d'un lot porte son libellé et se range sous son
+  immeuble dans la colonne (`regrouperLots`). Fiche : « ‹ Lot de l'immeuble »
+  sous le prix d'un lot, « n lots en vente à part » sous celui de l'immeuble.
+- **La preview écrit dans la base de la version en ligne**, qui ne connaît ni
+  `lot_de` ni `ok_lots` : une fiche de lot y est une fiche ordinaire, et entre
+  dans les « à proposer » de tous dès qu'elle passe au statut 5. Tant que ce
+  n'est pas en ligne, n'essayer que sur un immeuble d'essai ou ne pas
+  commercialiser un lot.
+- Essayé au navigateur sur un immeuble d'essai (supprimé ensuite) ; le
+  rattachement au mandat n'a pas été essayé — pas de mandat d'essai, pour ne
+  pas consommer un numéro du registre.
+
+**Découpe (suite, décidée mais pas codée).**
+- Le plus souvent **un seul mandat pour tous les lots**, avec un prix par lot
+  (Nanterre) : faire signer un mandat par lot à des indivisaires serait trop
+  lourd.
+- L'immeuble reste proposé **en bloc** pendant que ses lots sont en vente. À
+  la première offre acceptée sur un lot, le bloc passe « sous offre » ; ce lot
+  vendu, le bloc est retiré et l'immeuble devient « vendu à la découpe ».
+- Une offre peut porter sur plusieurs lots à un prix global : on choisit les
+  lots depuis la fiche de l'immeuble, ils se réunissent en une seule fiche pour
+  le suivi de la vente.
+- Lot occupé : proposé d'abord au locataire, puis vendu occupé. **Un seul
+  prix**, celui du mandat, libre ou occupé. Le compte à rebours de préemption
+  part de l'envoi du recommandé ou de l'acte du commissaire de justice.
+- Budget, charges par lot et syndic provisoire ne sont connus qu'après la
+  division, pas au mandat.
+- Tableau de bord : les lots regroupés sous leur immeuble dans chaque colonne,
+  chacun reconnaissable (plusieurs lots à la même adresse). Rapport au
+  propriétaire : **un par immeuble**, tous ses lots dedans.
+- Acquéreurs d'appartements : dans le fichier, mais **complètement à part** —
+  ce ne sont pas des acheteurs d'immeubles, aucune communication France
+  Immeuble ne leur part. Un acheteur d'immeubles peut cocher « d'accord pour
+  des lots de copropriété » et reçoit alors les lots, libres ou occupés, qui
+  lui correspondent.
+- Portails : Leboncoin signé ; SeLoger écarté (trop cher).
+
+### 7.12 Constructibilité lue par l'IA (21/11/26, en preview)
+
+Demande de MAV (20/11) : « remplir la constructibilité par IA quand on fait les
+dossiers immeubles […] avec un détail quelque part pour qu'on puisse vérifier
+que le taff a été bien fait ». Onglet Emplacement › Parcelles et PLU, sous les
+quatre cases (`components/plu-ia.tsx`).
+
+- **Deux sources, jamais confondues à l'écran.** La **zone** et son **type**
+  viennent du Géoportail de l'urbanisme (API ouverte de l'IGN,
+  `apicarto.ign.fr/api/gpu`), au point de l'adresse : donnée officielle, sans
+  IA, en trois secondes. L'**emprise** et la **hauteur** sont lues par l'IA dans
+  le PDF du règlement, que le même Géoportail désigne.
+- **Le détail qui permet de vérifier** : chaque chiffre arrive avec la règle en
+  une phrase, l'**extrait du règlement** que l'IA cite (citations de l'API :
+  le texte vient du PDF, pas du modèle) et un lien vers **la page** du PDF. Un
+  contrôle sans IA dit si le chiffre retenu figure bien dans l'extrait
+  (« chiffre cité », « extrait sans le chiffre : à relire », « aucun extrait »).
+- **Rien n'est écrit d'office.** La lecture est gardée à part sur la fiche
+  (`plu_ia`) ; « Reprendre ces valeurs » remplit les cases, que l'agent
+  enregistre comme une saisie. Un type de zone déjà saisi (« Centre ancien »,
+  « Zone d'activités »), plus fin que le code U / AU / A / N, n'est pas écrasé.
+  Un bien en copropriété n'a pas de constructibilité : la route refuse.
+- **Comment** (`lib/bo/plu.ts` pur et testé, `plu-serveur.ts`, route
+  `/api/plu-ia`, cinq minutes au plus) : le règlement est téléchargé, son texte
+  tiré page par page (`unpdf`) ; un règlement fait 300 à 600 pages, donc l'IA
+  reçoit d'abord son **plan** (une ligne par page) et désigne les pages à lire,
+  45 au plus ; ces pages lui sont envoyées **en PDF** (`pdf-lib`) — en PDF et
+  pas en texte, parce qu'un système d'indices s'explique souvent par un schéma
+  (Argenteuil : « UAi7c5 » = destination, forme urbaine, densité c → 70 %,
+  hauteur 5 → 19 m). Une relance au plus si l'IA dit qu'il lui manque des pages.
+- Sans zonage numérisé, sans PDF, ou devant un règlement scanné trop long, la
+  lecture le dit et s'arrête à ce qu'elle sait.
+- **État au 21/11** : en preview seulement. Toute la chaîne a tourné en local
+  sur Argenteuil **contre un faux serveur d'API** (aucune clé dans la session de
+  travail) ; la première vraie lecture par l'IA reste à faire sur la preview.
 
 ---
 
@@ -252,6 +917,11 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ### 8.2 Doctrine préemption — honoraires charge vendeur
 - Sur tout lot susceptible de préemption (locataire loi 75, commercial Pinel), honoraires **charge vendeur** et prix notifié au locataire = **prix net vendeur non majoré**. Jamais de charge acquéreur sur ces lots (jurisprudence constante). Le module grilles/mandats l'impose par défaut.
+- **Exception décidée par MAV le 27/10 (#558)** : sur **sa** session
+  (ma.voci@france-immeuble.fr) seulement, il peut passer outre la charge
+  vendeur imposée (« comme je suis admin je décide »). Le mandat le garde
+  (`Charge_forcee`), l'écran rappelle ce que la doctrine aurait imposé, et le
+  serveur refuse ce choix à tout autre compte.
 
 ### 8.3 RGPD locataires (risque n°1)
 - **Jamais** de nom de locataire exposé côté public/marketplace : personne morale/physique anonymisée dans `listing_lots` publiées.
@@ -281,11 +951,158 @@ Mandats, contrats de mission, protocoles de départ locataire.
 
 ## 10. Décisions actées
 
-- Boîte email **dédiée** (`devis@`), Gmail API, jamais la boîte FI premium ni SendGrid.
+- **Deux routes e-mail, jamais une seule** (§7.1) : le un-à-un part de la boîte dédiée `devis@` via Gmail API, jamais de la boîte FI premium ; la masse part de SendGrid sur un sous-domaine dédié, avec `Reply-To` sur l'agent et un plafond de 4 000 par jour.
 - Supabase **« Plein Bail »** (`fkfwucqpdhbkgkouccyi`) mutualisé : bien = `listings`, lots+baux = `listing_lots`, pas de table `properties`. Le cockpit ajoute la couche `operations`.
 - Benchmarks DVF/loyers déjà chargés → rapprochement DVF dès le MVP.
 - MVP = couche opérations + estimation + grilles + annuaire/devis + documents contractuels ; tout le reste en V2.
 - **Extranet vendeur ET extranet locataire** retenus (locataire en dernier, garde-fous §8.3).
+
+## 10 bis. Espace client — fermé dans le BO le 22/10/26
+
+> L'espace client du BO (`/espace`, `/proprietaire`) n'existe plus. Décision de
+> MAV : un seul compte client, **sur le site France Immeuble**, pour les
+> acquéreurs comme pour les propriétaires — moins de surfaces exposées, moins
+> de risques de fuite. Contrat complet : `docs/CONTRAT-SITE.md` §9 (lot 4).
+
+**Ce qui tient désormais.**
+- **Le BO ne parle jamais directement au client.** Le site gère l'inscription,
+  la connexion, les mots de passe et la vérification d'e-mail. Le BO reçoit des
+  événements (`/api/site/lead`, types `compte`, `recherche_compte`, `reponse`,
+  `prix_proprietaire`, `compte_supprime`) et **dépose** ce que le client doit
+  voir dans les tables `compte_*` du site (`lib/bo/compte-site.ts`), sous une
+  clé neutre `site_cle` — jamais un identifiant du BO (contrat §7).
+- **Rattachement** : par le compte déjà connu, sinon par l'e-mail **vérifié**
+  par le site. Rien ne s'auto-crée côté BO hormis la fiche contact du lead.
+- **L'agent voit ce que voit le client** : panneau « Son compte sur le site »
+  (`components/compte-site.tsx`) sur la fiche contact et sur l'onglet
+  Propriétaire de la fiche bien. Il relit la base du site, pas le BO.
+- Acquéreur : ne voit que ce qu'on lui a proposé (12 derniers mois ou bien
+  encore en vente) et ses propres recherches — **jamais tous les mandats**.
+- Propriétaire : une estimation n'apparaît qu'une fois **envoyée**
+  (statut « 3 »). On l'incite à estimer lui-même sur le site (bouton
+  « Inviter à créer son compte » de l'assistant d'estimation) : c'est une
+  porte d'entrée vers le mandat.
+- Les anciennes adresses mènent à « Votre espace a déménagé », avec un lien
+  vers le compte du site. Les fonctions `ec_*` restent en base mais **plus
+  aucun rôle exposé ne peut les exécuter** (migration
+  `fermer_espace_client_bo`). Ne pas les rebrancher.
+
+**Reste à faire.**
+1. `/api/photo?s=<chemin>` sert toujours n'importe quel objet du seau à qui
+   connaît le chemin. Le BO a désormais une connexion (§10 ter), mais ce
+   relais reste ouvert parce que Plein Bail, le site et les dossiers envoyés
+   s'en servent : à refermer par des liens signés.
+2. Pièces du propriétaire (lot 5, contrat §10) : livré côté BO le 22/10. Le
+   site pose la pièce dans son seau privé, le BO la range au coffre de
+   l'immeuble puis l'efface du site — **le site n'en garde jamais de copie**.
+   Le chemin ne peut viser que le dossier du compte, l'immeuble est vérifié
+   par le BO sur ses propres fiches. En attente des tables et du seau du site.
+
+## 10 ter. Connexion et rôles — depuis le 27/10/26
+
+Chacun se connecte avec **son** mot de passe (Supabase Auth sur la base du BO,
+cookie signé `fi_session`). Deux rôles, **direction** et **agent** ; la règle
+complète, validée par MAV, est dans `docs/AUTORISATIONS.md` et fait foi.
+
+- Un agent travaille sur **tous** les dossiers, voit le tableau de bord des
+  collègues et la vue « tous ». Il ne transfère que **ses** dossiers, n'annule
+  que **ses** mandats, n'exporte rien, et **demande** la publication d'un récit
+  de vente (la direction reçoit un e-mail et relit).
+- Toute règle se vérifie côté serveur. Les transferts sont gardés au point de
+  passage unique des écritures (`gardeTransfert`, `lib/bo/actions.ts`) : ne
+  pas écrire `AGENT` ou `SUIVI` par un autre chemin.
+- L'« agent aux commandes » d'un poste, c'est la personne connectée
+  (`components/session.tsx`), plus un choix.
+- **Qui signe et qui envoie (MAV, 16/11, revirement compris)** : une
+  **commercialisation** part toujours de l'agent qui suit le **mandat**
+  (`AGENT` du mandat choisi, sinon de la fiche) — sa boîte, sa signature, son
+  portable —, quel que soit celui qui la lance. Seule la **proposition faite à
+  la main** (proposition rapide) part de la personne connectée. Sans agent
+  désigné, `contexteRedaction` prend la personne connectée, jamais
+  Marc-Antoine par défaut.
+- **Créateur** : toute fiche créée dans le BO note la personne connectée
+  (`Created By`, au point de passage `rpc`) ; un contact note aussi
+  `AGENT - Créateur` (ce que sa fiche affiche) et, sans commercial choisi, est
+  suivi par qui le crée. Une seule fenêtre « Nouveau contact »
+  (`components/nouveau-contact.tsx`), quel que soit le bouton. La direction
+  change le « suivi par » d'un contact depuis sa fiche.
+- Les comptes se gèrent dans Réglages › Équipe (direction). Revirement de MAV
+  le 27/10 : la direction peut **définir** le premier mot de passe d'un agent
+  (ou copier un lien, ou l'envoyer par e-mail) ; chacun le change ensuite dans
+  « Mon mot de passe ». Un lien ne vaut qu'une fois et le dernier annule les
+  précédents.
+- L'outil de correction (`bo_feedback`, « Signaler un écart », `/revue`) n'est
+  visible et utilisable que par ma.voci@france-immeuble.fr (`peutReviser`).
+- La porte ne se ferme qu'avec `BO_AUTH=on` (Vercel) ; `off` ou absent = BO ouvert, en secours.
+
+## 10 quater. Deux règles posées le 23/11/26
+
+**Mandat sans publication en ligne.** Le document imprimé suit le réglage
+« Publication en ligne » du mandat (`publication_web_yn`) : coché, il donne le
+pouvoir d'« engager toute publicité sur tout support » ; décoché, cette ligne
+devient « Commercialiser le bien sans publicité : sauf accord écrit du Mandant,
+le Mandataire s'interdit toute annonce… ». Les deux phrases sortent de
+`lib/bo/mandat-publicite.ts` (pur, testé). **Une phrase, pas un paragraphe** :
+la page des obligations n'a que quatre lignes de marge avant son pied. Le banc
+d'essai (`/mandat-essai/<cas>?sanspub=1`) rend chaque scénario sans
+publication. Rédaction à faire valider par MAV avant tout changement.
+
+**Supprimer un contact.** Les motifs sont ceux d'un contact
+(`lib/bo/contact-suppression.ts`), pas ceux d'un immeuble. Un **faux contact
+ou un essai auquel rien ne tient** (ni bien, ni recherche, ni proposition, ni
+mandat, ni suivi) part à la **corbeille** (`bo_trash`, récupérable) ; tout
+autre contact est **retiré de la liste et de la recherche** (`archived`) et
+gardé avec son motif. Il se retrouve sous « Contacts supprimés » (colonne de
+gauche des contacts) et se rétablit depuis sa fiche. Les recherches de doublon
+par e-mail ou par téléphone voient toujours les fiches retirées : c'est voulu,
+sinon un doublon se recréerait.
+
+**Un contact supprimé ne reçoit plus rien** (MAV, 23/11 : « il ne faut pas
+qu'elle continue à recevoir, surtout pas »). Deux verrous :
+- à la suppression, ses recherches encore actives sont archivées (motif
+  « Contact supprimé », marque `retiree_avec_contact`) et les relances de ses
+  propositions « Envoyée » coupées (marque `relances_coupees_avec_contact`) —
+  **avant** de marquer la fiche. « Rétablir » ne rend que ce qui porte la
+  marque : ce qu'un agent avait archivé ou coupé lui-même le reste ;
+- à la lecture, le matching (`matcher`, et la liste que `getAcheteurs` donne à
+  l'écran), les relances dues, les propositions à relancer et la mise en file
+  d'une salve de relances écartent tout contact `archived`. Les campagnes du
+  module Mailing l'écartaient déjà (`desabonne`).
+Tout nouveau chemin d'envoi doit vérifier `archived` sur le contact.
+
+**Signatures du mandat.** La page « Mentions légales et signatures » n'a la
+place que de deux lignes de cadres de 30 mm. `lib/bo/mandat-signatures.ts`
+(pur, testé) : deux colonnes jusqu'à quatre signataires, trois à partir de
+cinq, cadres réduits au-delà de six. **Limite connue, non traitée** : à partir
+de cinq mandants, c'est la page 1 (les parties) qui déborde. Aucun mandat réel
+n'a plus de trois mandants au 23/11. L'avenant garde ses deux colonnes.
+
+## 10 quinquies. Propositions : ce qu'elles deviennent (23/11/26)
+
+- **L'offre et la visite se lisent sur la carte de la proposition** (retours
+  #629 et #630) : « Visite effectuée le 17/11/26 », « Offre à 450 k€ le
+  23/11/26 — acceptée », à côté de la date. Elles vivent dans `bo_offre` et
+  `bo_visite`, rattachées au contact et à l'immeuble, pas à la proposition :
+  `lib/bo/proposition-suites.ts` (pur, testé) les rapproche par le couple
+  contact + immeuble, la plus récente gagne. Une visite annulée ne s'affiche
+  pas ; une visite passée jamais marquée « effectuée » se dit « à confirmer ».
+- **Un bien engagé ne se relance plus** (retour #624) : statuts 7 à 10 (sous
+  offre acceptée, compromis, acte programmé). `motifSousOffre` /
+  `motifHorsRelance` (`lib/bo/relances.ts`). Les propositions restent
+  **ouvertes** — Bubble les refusait d'office à l'acceptation, le BO non : si
+  l'offre tombe, elles sont toujours là et redeviennent relançables.
+- **Celui qui a fait une offre sur un bien n'y est plus relancé** (MAV, 24/11 :
+  « dès qu'il fait une offre il est décoché des relances automatiques »),
+  quelle que soit l'issue de l'offre. La proposition reste ouverte ; elle sort
+  de la relance du bien, de la relance groupée et de la liste du contact, et
+  sa carte dit « Offre déposée — plus de relance » (`couplesAvecOffre`,
+  `MOTIF_OFFRE_DEPOSEE`, `lib/bo/proposition-suites.ts`). Son offre sur un
+  bien ne le sort pas des relances d'un autre.
+- **Page d'un mandat** : une estimation restée ouverte sur la fiche ne s'y
+  rouvre pas (#628) ; chaque onglet dit en tête ce qui lui manque (#627).
+  Rappel : ouvrir l'onglet Objet d'un mandat sans descriptif **inscrit** le
+  descriptif automatique (retour #231) — une capture sur un vrai mandat écrit
+  donc dans la base.
 
 ## 11. À trancher plus tard (non bloquant pour M1)
 - Nom + domaine du produit (conditionne le domaine de la boîte `devis@`).
@@ -345,3 +1162,27 @@ déploiement passe **Ready** mais sert le dossier statique `public/` (sans
   conclure à un bug ; le 1ᵉʳ 404 vient souvent d'un test **avant** la fin du build.
 - Polices : rester sur des **polices système** (pas de `next/font/google`) pour un
   build hermétique, indépendant de l'accès réseau au build.
+
+## 13. Objets partagés et leur jumeau côté client
+
+Décidé le 25/09/26 (catalogue des objets). Certains éléments existent en
+**deux versions volontairement séparées**, qui ne sont **jamais** fusionnées.
+Les jumeaux « côté client » (carte de proposition de l'espace client, bloc de
+prix de l'espace propriétaire) ont disparu avec l'espace client du BO le
+22/10/26 (§10 bis) : leur équivalent vit désormais sur le site, et
+`propositions.tsx` / `prix.tsx` n'ont plus de jumeau dans ce dépôt. Reste :
+
+- la pièce jointe : celle du contact (`contact-fiche.tsx`) et celle de
+  l'assistant de commercialisation (`commercialisation-assistant.tsx`) sont
+  deux objets différents sous le même nom, pas deux copies.
+
+**Règle de MAV :** quand une modification touche l'une des deux versions d'un
+jumeau, **lui demander** s'il veut la même chose sur l'autre — dans le récap
+du lot, jamais en décidant à sa place.
+
+Les objets partagés (une seule source, modifiée partout) vivent dans
+`components/` : `modale.tsx` (fenêtre + `useQuestion` à la place de `confirm`
+/ `prompt`), `pastille.tsx` (statut et son ton), `puce-immeuble.tsx`,
+`champ.tsx` (libellé + case), `avatar.tsx`, `vignette-contact.tsx`,
+`copier.tsx`, `propositions.tsx` (`BoutonScinde`, `Pagination`,
+`CarteProposition`). Toute nouvelle fenêtre, pastille ou puce passe par eux.

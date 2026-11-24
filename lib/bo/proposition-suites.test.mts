@@ -1,0 +1,66 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { cleSuite, mentionOffre, mentionVisite, montantCourt, suitesDesPropositions, couplesAvecOffre, MOTIF_OFFRE_DEPOSEE } from "./proposition-suites.ts";
+
+test("un montant se dit en k€, puis en M€", () => {
+  assert.equal(montantCourt(450000), "450 k€");
+  assert.equal(montantCourt(1250000), "1,25 M€");
+  assert.equal(montantCourt(2000000), "2 M€");
+  assert.equal(montantCourt(0), undefined);
+  assert.equal(montantCourt(undefined), undefined);
+});
+
+test("#629 — l'offre : son montant, sa date, son issue", () => {
+  assert.equal(mentionOffre({ prix_hai: 450000, date: "2026-11-18T10:00:00.000Z", Statut: "En cours" }), "Offre à 450 k€ le 18/11/26");
+  assert.equal(mentionOffre({ prix_hai: 450000, date: "2026-11-18", Statut: "Acceptée" }), "Offre à 450 k€ le 18/11/26 — acceptée");
+  assert.equal(mentionOffre({ prix_hai: 450000, date: "2026-11-18", Statut: "Compromis signé" }), "Offre à 450 k€ le 18/11/26 — acceptée");
+  assert.equal(mentionOffre({ prix_nv: 430000, date: "2026-11-18", Statut: "Refusée" }), "Offre à 430 k€ le 18/11/26 — refusée");
+  assert.equal(mentionOffre({ Statut: "En cours" }), "Offre");
+});
+
+test("#630 — la visite : prévue ou effectuée, jamais une visite annulée", () => {
+  const J = "2026-11-23";
+  assert.equal(mentionVisite({ Statut: "Effectuée", date: "2026-11-20T14:00:00.000Z" }, J), "Visite effectuée le 20/11/26");
+  assert.equal(mentionVisite({ Statut: "Confirmée", date: "2026-12-02" }, J), "Visite prévue le 02/12/26");
+  assert.equal(mentionVisite({ Statut: "En attente", date: "2026-11-23" }, J), "Visite prévue le 23/11/26");
+  assert.equal(mentionVisite({ Statut: "Annulée", date: "2026-12-02" }, J), undefined);
+  // date passée, jamais marquée « effectuée » : on ne dit ni « prévue » ni « effectuée »
+  assert.equal(mentionVisite({ Statut: "Confirmée", date: "2026-10-05" }, J), "Visite du 05/10/26 — à confirmer");
+});
+
+test("offres et visites se rattachent par contact et par immeuble ; la plus récente gagne", () => {
+  const s = suitesDesPropositions(
+    [
+      { ACHETEURs: ["c1"], IMMEUBLEs: ["im1"], prix_hai: 400000, date: "2026-11-10", Statut: "Refusée" },
+      { ACHETEURs: ["c1", "c2"], IMMEUBLEs: ["im1"], prix_hai: 450000, date: "2026-11-18", Statut: "En cours" },
+      { ACHETEURs: ["c1"], IMMEUBLEs: ["im2"], prix_hai: 900000, date: "2026-11-01", Statut: "En cours" },
+    ],
+    [
+      { VISITEURs: ["c1"], IMMEUBLE: "im1", date: "2026-11-05", Statut: "Effectuée" },
+      { VISITEURs: ["c1"], IMMEUBLE: "im1", date: "2026-11-25", Statut: "Annulée" },
+      { VISITEURs: ["c3"], IMMEUBLE: "im1", date: "2026-12-01", Statut: "Confirmée" },
+    ],
+    "2026-11-23",
+  );
+  assert.deepEqual(s.get(cleSuite("c1", "im1")), { offre: "Offre à 450 k€ le 18/11/26", visite: "Visite effectuée le 05/11/26" });
+  assert.deepEqual(s.get(cleSuite("c2", "im1")), { offre: "Offre à 450 k€ le 18/11/26" });
+  assert.deepEqual(s.get(cleSuite("c1", "im2")), { offre: "Offre à 900 k€ le 01/11/26" });
+  assert.deepEqual(s.get(cleSuite("c3", "im1")), { visite: "Visite prévue le 01/12/26" });
+  assert.equal(s.get(cleSuite("c9", "im1")), undefined);
+});
+
+test("MAV 24/11 — celui qui a fait une offre sur un bien n'y est plus relancé, quelle qu'en soit l'issue", () => {
+  const c = couplesAvecOffre([
+    { ACHETEURs: ["c1"], IMMEUBLEs: ["im1"], Statut: "Refusée" },
+    { ACHETEURs: ["c2", "c3"], IMMEUBLEs: ["im1", "im2"], Statut: "En cours" },
+    { ACHETEURs: "c4", IMMEUBLEs: "im3" },
+    { IMMEUBLEs: ["im9"] },
+  ]);
+  assert.equal(c.has(cleSuite("c1", "im1")), true);
+  assert.equal(c.has(cleSuite("c3", "im2")), true);
+  assert.equal(c.has(cleSuite("c4", "im3")), true);
+  // son offre sur un bien ne le sort pas des relances d'un autre bien
+  assert.equal(c.has(cleSuite("c1", "im2")), false);
+  assert.equal(c.size, 6);
+  assert.equal(MOTIF_OFFRE_DEPOSEE, "Offre déposée");
+});
