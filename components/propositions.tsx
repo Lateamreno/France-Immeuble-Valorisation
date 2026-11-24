@@ -174,7 +174,7 @@ export function CarteProposition({
   const tropTot = jours !== undefined && jours < JOURS_ENTRE_RELANCES;
   /* Retour #624 : un bien sous offre acceptée, sous compromis ou à l'acte ne
      se relance plus — la proposition reste ouverte, au cas où l'offre tombe. */
-  const aRelancer = ouverte && !p.stop && !tropTot && !p.sousOffre;
+  const aRelancer = ouverte && !p.stop && !tropTot && !p.sousOffre && !p.offre;
 
   const ouvrirRecherche = (rid: string) =>
     start(async () => {
@@ -225,6 +225,10 @@ export function CarteProposition({
           {p.sousOffre && ouverte && (
             <Pastille ton="orange" titre="Tant que le bien est engagé, cette proposition n'est plus relancée">{p.sousOffre} — plus de relance</Pastille>
           )}
+          {/* MAV, 24/11 : « dès qu'il fait une offre il est décoché des relances ». */}
+          {p.offre && ouverte && !p.sousOffre && (
+            <Pastille ton="orange" titre="Il a fait une offre sur ce bien : il n'y est plus relancé">Offre déposée — plus de relance</Pastille>
+          )}
           {/* MAV, 25/09 : « le refusé juste en dessous de la relance ou de la
               date de proposition, avec la date dessus ». Une personne qui a
               refusé n'est plus relancée (statut clos). */}
@@ -236,7 +240,7 @@ export function CarteProposition({
           {p.motif && !p.refusee && <span className="cfc-motif">✕ {p.motif}</span>}
           {p.relanceLe
             ? <span className="cfc-num">Relancé le {p.relanceLe}</span>
-            : ouverte && !p.sousOffre && <span className="cfc-num off">Jamais relancé</span>}
+            : ouverte && !p.sousOffre && !p.offre && <span className="cfc-num off">Jamais relancé</span>}
           {aRelancer && jours !== undefined && jours >= 7 && (
             <span className="cfc-past">À relancer · {jours} j</span>
           )}

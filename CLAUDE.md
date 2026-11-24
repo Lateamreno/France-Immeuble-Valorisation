@@ -1091,6 +1091,13 @@ n'a plus de trois mandants au 23/11. L'avenant garde ses deux colonnes.
   `motifHorsRelance` (`lib/bo/relances.ts`). Les propositions restent
   **ouvertes** — Bubble les refusait d'office à l'acceptation, le BO non : si
   l'offre tombe, elles sont toujours là et redeviennent relançables.
+- **Celui qui a fait une offre sur un bien n'y est plus relancé** (MAV, 24/11 :
+  « dès qu'il fait une offre il est décoché des relances automatiques »),
+  quelle que soit l'issue de l'offre. La proposition reste ouverte ; elle sort
+  de la relance du bien, de la relance groupée et de la liste du contact, et
+  sa carte dit « Offre déposée — plus de relance » (`couplesAvecOffre`,
+  `MOTIF_OFFRE_DEPOSEE`, `lib/bo/proposition-suites.ts`). Son offre sur un
+  bien ne le sort pas des relances d'un autre.
 - **Page d'un mandat** : une estimation restée ouverte sur la fiche ne s'y
   rouvre pas (#628) ; chaque onglet dit en tête ce qui lui manque (#627).
   Rappel : ouvrir l'onglet Objet d'un mandat sans descriptif **inscrit** le
