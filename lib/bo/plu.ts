@@ -273,7 +273,27 @@ export type LecturePlu = {
   pages_total?: number;
   /** Doute exprimé par l'IA, ou raison pour laquelle la lecture est incomplète. */
   reserve?: string;
+  /** Ce que la lecture a consommé (MAV, 24/11 : « vérifier la consommation en € »). */
+  conso?: ConsoLecture;
 };
+
+/** Jetons lus et écrits par l'IA sur une lecture, tous appels réunis, et leur prix. */
+export type ConsoLecture = { appels: number; entree: number; sortie: number; cout_usd: number };
+
+/** Prix du modèle employé, en dollars par million de jetons (grille publique, 11/2026). */
+export const PRIX_ENTREE_USD = 4;
+export const PRIX_SORTIE_USD = 20;
+
+/** Le prix d'une lecture, au centième de dollar. Estimation : la facture fait foi. */
+export function coutLecture(entree: number, sortie: number): number {
+  return Math.round(((entree * PRIX_ENTREE_USD + sortie * PRIX_SORTIE_USD) / 1e6) * 100) / 100;
+}
+
+/** « environ 0,62 $ (112 000 jetons lus, 9 400 écrits, 2 appels) » */
+export function phraseConso(c: ConsoLecture): string {
+  const n = (v: number) => Math.round(v).toLocaleString("fr-FR").replace(/[\u202f\u00a0]/g, " ");
+  return `environ ${c.cout_usd.toFixed(2).replace(".", ",")} $ (${n(c.entree)} jetons lus, ${n(c.sortie)} écrits, ${c.appels} appel${c.appels > 1 ? "s" : ""})`;
+}
 
 /** Un bloc de la réponse : son texte, et les passages du PDF qu'il cite. */
 export type BlocReponse = { text: string; citations?: { cited_text?: string; start_page_number?: number }[] | null };

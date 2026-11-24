@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/components/session";
 import {
-  ecrirePlages, lectureDe, propositions,
+  ecrirePlages, lectureDe, phraseConso, propositions,
   type CasesPlu, type Controle, type Extrait, type LecturePlu, type ValeurLue,
 } from "@/lib/bo/plu";
 
@@ -234,6 +234,7 @@ export function LecturePluIa({ immeubleId, im, actuel, localise, onReprendre }: 
           {lecture.pages_lues.length > 0
             ? `Pages lues par l'IA : ${ecrirePlages(lecture.pages_lues)}${lecture.pages_total ? ` (sur ${lecture.pages_total})` : ""}.`
             : "Le règlement n'a pas été lu par l'IA."}
+          {lecture.conso ? ` Coût de cette lecture : ${phraseConso(lecture.conso)}.` : ""}
           {" "}Rien n&apos;est enregistré tant que vous n&apos;avez pas cliqué « Enregistrer ».
         </span>
         <button type="button" className="savebar-go" disabled={!aReprendre || enCours}

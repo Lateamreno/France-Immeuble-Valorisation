@@ -18,7 +18,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  ecrirePlages, lirePlages, lireReponse, lireServitudes, lireZoneGpu, MAX_PAGES, nettoyerPages,
+  coutLecture, ecrirePlages, lirePlages, lireReponse, lireServitudes, lireZoneGpu, MAX_PAGES, nettoyerPages,
   pagesALire, planDuReglement, type BlocReponse, type LecturePlu, type ZonePlu,
 } from "./plu";
 
@@ -163,8 +163,16 @@ function messageErreur(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Ce que les appels d'une lecture ont consommé, additionné au fil de l'eau. */
+type Compteur = { appels: number; entree: number; sortie: number };
+function compter(c: Compteur, u?: { input_tokens?: number | null; output_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } | null) {
+  c.appels++;
+  c.entree += (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0);
+  c.sortie += u?.output_tokens ?? 0;
+}
+
 /** Première passe : d'après le plan, quelles pages lire ? */
-async function designerPages(client: Anthropic, zone: ZonePlu, commune: string, pages: string[]): Promise<number[]> {
+async function designerPages(client: Anthropic, zone: ZonePlu, commune: string, pages: string[], conso: Compteur): Promise<number[]> {
   const autour = zone.page
     ? [zone.page, zone.page + 1, zone.page + 2, zone.page + 3].filter((n) => n >= 1 && n <= pages.length && pages[n - 1].trim())
       .map((n) => `--- page ${n} ---\n${pages[n - 1].slice(0, 3000)}`).join("\n")
@@ -197,6 +205,7 @@ async function designerPages(client: Anthropic, zone: ZonePlu, commune: string, 
       ].filter(Boolean).join("\n"),
     }],
   });
+  compter(conso, r.usage);
   if (r.stop_reason === "refusal") throw new Error("Le modèle a refusé de lire le plan du règlement.");
   const texte = r.content.map((b) => (b.type === "text" ? b.text : "")).join("");
   let plages = "";
@@ -209,7 +218,7 @@ async function designerPages(client: Anthropic, zone: ZonePlu, commune: string, 
 }
 
 /** Seconde passe : les pages en PDF, citations activées. */
-async function lirePages(client: Anthropic, zone: ZonePlu, commune: string, octets: Uint8Array, pages: number[]) {
+async function lirePages(client: Anthropic, zone: ZonePlu, commune: string, octets: Uint8Array, pages: number[], conso: Compteur) {
   const extrait = await extrairePages(octets, pages);
   if (extrait.length > POIDS_ENVOI_MAX) {
     throw new Error(`Les ${pages.length} pages à lire pèsent ${Math.round(extrait.length / 1e6)} Mo (pages scannées ?) : trop lourd pour une lecture automatique.`);
@@ -241,6 +250,7 @@ async function lirePages(client: Anthropic, zone: ZonePlu, commune: string, octe
     }],
   });
   const r = await flux.finalMessage();
+  compter(conso, r.usage);
   if (r.stop_reason === "refusal") throw new Error("Le modèle a refusé de lire le règlement.");
   const blocs: BlocReponse[] = [];
   for (const b of r.content) {
@@ -292,22 +302,23 @@ export async function lirePlu(e: { lat: number; lon: number; commune: string; pa
     }
 
     const client = new Anthropic();
+    const conso: Compteur = { appels: 0, entree: 0, sortie: 0 };
     /* Un règlement court (un fichier par zone) se lit en entier. */
     let aLire = pages.length <= MAX_PAGES
       ? pages.map((_, i) => i + 1)
-      : pagesALire(await designerPages(client, zone, e.commune, pages), zone.page, pages.length);
+      : pagesALire(await designerPages(client, zone, e.commune, pages, conso), zone.page, pages.length);
     if (aLire.length === 0) return incomplete("L'IA n'a pas su désigner les pages du règlement à lire.");
     journal("pages désignées", ecrirePlages(aLire), Date.now() - debut, "ms");
 
-    let lu = await lirePages(client, zone, e.commune, octets, aLire);
+    let lu = await lirePages(client, zone, e.commune, octets, aLire, conso);
     /* Une seule relance : si l'IA dit qu'il lui manque des pages, on les ajoute. */
     const manquantes = lirePlages(lu.manquantes, pages.length).filter((n) => !aLire.includes(n));
     if (manquantes.length > 0 && aLire.length < pages.length) {
       aLire = [...new Set([...aLire, ...manquantes.slice(0, 20)])].sort((a, b) => a - b);
       journal("pages ajoutées", ecrirePlages(manquantes), Date.now() - debut, "ms");
-      lu = await lirePages(client, zone, e.commune, octets, aLire);
+      lu = await lirePages(client, zone, e.commune, octets, aLire, conso);
     }
-    journal("lecture faite", { emprise: lu.emprise?.valeur, hauteur: lu.hauteur?.valeur }, Date.now() - debut, "ms");
+    journal("lecture faite", { emprise: lu.emprise?.valeur, hauteur: lu.hauteur?.valeur }, conso, Date.now() - debut, "ms");
     return {
       ok: true,
       lecture: {
@@ -316,6 +327,7 @@ export async function lirePlu(e: { lat: number; lon: number; commune: string; pa
         hauteur: lu.hauteur,
         a_savoir: lu.aSavoir,
         pages_lues: aLire,
+        conso: { ...conso, cout_usd: coutLecture(conso.entree, conso.sortie) },
         ...(lu.reserve ? { reserve: lu.reserve } : {}),
       },
     };

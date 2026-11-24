@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  coutLecture, phraseConso,
   chiffreDansExtraits, dateGpu, ecrirePlages, lectureDe, lirePlages, lireReponse, lireServitudes, lireZoneGpu,
   nettoyerPages, pagesALire, planDuReglement, propositions, racineZone, typeZoneEnClair,
   type LecturePlu,
@@ -170,4 +171,12 @@ test("lecture gardée sur la fiche : relue, ou rien", () => {
   assert.equal(lectureDe({}), null);
   assert.equal(lectureDe({ plu_ia: { zone: {} } }), null);
   assert.equal(lectureDe({ plu_ia: JSON.parse(JSON.stringify(LECTURE)) })?.emprise?.valeur, 70);
+});
+
+test("coût d'une lecture : jetons lus et écrits au prix du modèle", () => {
+  assert.equal(coutLecture(1_000_000, 0), 4);
+  assert.equal(coutLecture(0, 1_000_000), 20);
+  assert.equal(coutLecture(120_000, 12_000), 0.72);
+  assert.equal(phraseConso({ appels: 2, entree: 120000, sortie: 12000, cout_usd: 0.72 }), "environ 0,72 $ (120 000 jetons lus, 12 000 écrits, 2 appels)");
+  assert.equal(phraseConso({ appels: 1, entree: 900, sortie: 50, cout_usd: 0 }), "environ 0,00 $ (900 jetons lus, 50 écrits, 1 appel)");
 });
