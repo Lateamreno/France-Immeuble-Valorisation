@@ -207,7 +207,7 @@ export async function relancesDues(
  * offres en tout : on les lit d'un coup, ou celles d'un seul bien.
  */
 async function offresDeposees(immeubleId?: string): Promise<Set<string>> {
-  const filtre = immeubleId ? `&data->IMMEUBLEs=cs.${encodeURIComponent(JSON.stringify([immeubleId]))}` : "";
+  const filtre = immeubleId ? `&data=cs.${encodeURIComponent(JSON.stringify({ IMMEUBLEs: [immeubleId] }))}` : "";
   return couplesAvecOffre(await pg(`bo_offre?select=data${filtre}&order=id`, 4000));
 }
 
